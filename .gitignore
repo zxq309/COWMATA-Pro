@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.log
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime-generated review/index caches
+prediction_cache/
+video_index_cache.json

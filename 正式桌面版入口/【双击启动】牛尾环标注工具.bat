@@ -1,0 +1,21 @@
+@echo off
+setlocal EnableDelayedExpansion
+set "ENTRY_DIR=%~dp0"
+set "PYW="
+for /f "delims=" %%i in ('where pythonw.exe 2^>nul') do if not defined PYW set "PYW=%%i"
+if not defined PYW (
+  for %%P in (
+    "%USERPROFILE%\anaconda3\pythonw.exe"
+    "%USERPROFILE%\miniconda3\pythonw.exe"
+    "C:\ProgramData\anaconda3\pythonw.exe"
+    "C:\ProgramData\miniconda3\pythonw.exe"
+    "C:\Users\%USERNAME%\anaconda3\pythonw.exe"
+    "D:\Users\%USERNAME%\anaconda3\pythonw.exe"
+  ) do if not defined PYW if exist "%%~P" set "PYW=%%~P"
+)
+if not defined PYW (
+  echo [ERROR] can not find pythonw.exe - install Python first, then run °²×°ÒÀÀµ.bat
+  pause
+  exit /b 1
+)
+start "" "%PYW%" "%ENTRY_DIR%..\launch_desktop.py"
