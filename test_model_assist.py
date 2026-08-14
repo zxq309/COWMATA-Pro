@@ -21,6 +21,7 @@ from model_assist import (
     json_safe,
     prediction_fingerprint,
 )
+from video_index import VideoIndexEntry
 
 
 class ModelAssistPureTests(unittest.TestCase):
@@ -120,13 +121,20 @@ class PredictionReviewSortingTests(unittest.TestCase):
             },
         ]
         located: list[float] = []
-        dialog = PredictionReviewDialog(predictions, located.append)
+        smart_located: list[dict] = []
+        dialog = PredictionReviewDialog(
+            predictions,
+            located.append,
+            smart_locate_callback=smart_located.append,
+        )
         try:
             dialog.table.sortItems(7, Qt.SortOrder.DescendingOrder)
             first = dialog._prediction_for_table_row(0)
             self.assertIs(first, predictions[1])
             dialog._locate_row(0, 7)
             self.assertEqual(located, [300.0])
+            dialog._smart_locate_row(0, 7)
+            self.assertEqual(smart_located, [predictions[1]])
 
             dialog._set_all(False)
             dialog.table.item(0, 0).setCheckState(Qt.CheckState.Checked)
@@ -141,6 +149,74 @@ class PredictionReviewSortingTests(unittest.TestCase):
             )
         finally:
             dialog.close()
+
+
+class IndexedVideoOpenTests(unittest.TestCase):
+    def test_source_switch_uses_index_mapping_and_requested_review_target(
+        self,
+    ) -> None:
+        class StatusBar:
+            def __init__(self) -> None:
+                self.message = ""
+
+            def showMessage(self, message: str, _duration: int) -> None:
+                self.message = message
+
+        class FakeWindow:
+            def __init__(self) -> None:
+                self.video_path = str(Path("old.mp4").resolve())
+                self.video_start_wall_ms = 0
+                self.align_method = "continuation"
+                self._source_switch_active = False
+                self._source_switch_kind = ""
+                self._source_switch_snapshot = {}
+                self._source_switch_mapping_committed = False
+                self._timelines_linked = False
+                self.playhead = 0.0
+                self.status = StatusBar()
+
+            def open_video(self, path: str) -> None:
+                self.video_path = str(Path(path).resolve())
+                self._source_switch_active = True
+                self._source_switch_kind = "video"
+                self._source_switch_snapshot = {
+                    "data_ms": 1000.0,
+                    "linked": False,
+                }
+                self._source_switch_mapping_committed = True
+
+            def _sync_pin_button(self) -> None:
+                pass
+
+            def _set_timelines_linked(self, linked: bool) -> None:
+                self._timelines_linked = linked
+
+            def _update_alignment_status(self) -> None:
+                pass
+
+            def set_playhead(self, value: float, seek_video: bool) -> None:
+                self.playhead = value
+                self.seek_video = seek_video
+
+            def statusBar(self) -> StatusBar:
+                return self.status
+
+        target_path = str(Path("matched.mp4").resolve())
+        entry = VideoIndexEntry(target_path, 123_456, 60_000.0, 1, 1)
+        window = FakeWindow()
+
+        opened = ModelAssistMixin._open_video_index_match(
+            window, entry, 45_000.0
+        )
+
+        self.assertTrue(opened)
+        self.assertEqual(window.video_start_wall_ms, 123_456)
+        self.assertEqual(window.align_method, "video_index")
+        self.assertTrue(window._source_switch_mapping_committed)
+        self.assertEqual(window._source_switch_snapshot["data_ms"], 45_000.0)
+        self.assertTrue(window._source_switch_snapshot["linked"])
+        self.assertEqual(window.playhead, 45_000.0)
+        self.assertTrue(window.seek_video)
 
 
 if __name__ == "__main__":

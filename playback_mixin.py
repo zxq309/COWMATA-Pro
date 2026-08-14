@@ -274,6 +274,7 @@ class PlaybackMixin:
             "manual": "人工微调",
             "continuation": "分段续接",
             "data_continuation": "JSON 续接",
+            "video_index": "目录时间索引",
             "default": "零偏移待校准",
         }
         self.align_status.setText(
