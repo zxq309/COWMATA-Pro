@@ -38,11 +38,16 @@ class MainWindow(TimelineWindow):
 
     def _select_event_by_id(self, event_id: int) -> None:
         self.selected_event_id = event_id
+        self.plot.set_selected_event(event_id)
         for row in range(self.event_table.rowCount()):
             item = self.event_table.item(row, 0)
             if item is not None and int(item.data(256)) == event_id:
                 self.event_table.selectRow(row)
                 break
+
+    def _event_selected(self) -> None:
+        super()._event_selected()
+        self.plot.set_selected_event(self.selected_event_id)
 
     def _event_changed_on_plot(
         self, event_id: int, _start_ms: float, _end_ms
@@ -53,4 +58,3 @@ class MainWindow(TimelineWindow):
         )
         self._refresh_events()
         self._autosave()
-

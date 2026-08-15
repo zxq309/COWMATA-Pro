@@ -14,9 +14,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("BOVINE_NO_MEDIA", "1")
 
 import model_assist
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog
 from integrated_window import MainWindow as IntegratedWindow
+from interactive_plot import InteractiveSignalPlotWidget
 from model_assist import (
     ModelAssistMixin,
     PredictionEditDialog,
@@ -27,6 +29,7 @@ from model_assist import (
     json_safe,
     prediction_fingerprint,
 )
+from widgets import PlotSeries
 
 
 class ModelAssistPureTests(unittest.TestCase):
@@ -248,6 +251,95 @@ class PredictionReviewSortingTests(unittest.TestCase):
             dialog.close()
 
 
+class WaveformPredictionAdjustmentTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    @staticmethod
+    def _plot() -> tuple[InteractiveSignalPlotWidget, dict]:
+        plot = InteractiveSignalPlotWidget()
+        plot.resize(1_000, 600)
+        times = np.arange(0.0, 120_001.0, 20.0)
+        plot.set_data(
+            [
+                PlotSeries(
+                    "acc_x",
+                    "加速度 X",
+                    "m/s²",
+                    "#e86c62",
+                    times,
+                    np.sin(times / 1_000.0),
+                )
+            ],
+            120_000.0,
+        )
+        event = {"id": 7, "li": 0, "t0": 50_000.0, "t1": 60_000.0}
+        plot.set_events(
+            [{"name": "排尿", "color": "#2676d9"}],
+            [event],
+        )
+        return plot, event
+
+    def test_selected_interval_focuses_and_exposes_waveform_boundaries(self) -> None:
+        plot, event = self._plot()
+        try:
+            self.assertTrue(plot.focus_event(7))
+            self.assertEqual(plot._selected_event_id, 7)
+            self.assertEqual(plot.view_range, (40_000.0, 70_000.0))
+            y = plot._plot_rect().center().y()
+            left = plot._selected_boundary_hit(
+                plot._x_for_time(float(event["t0"])), y
+            )
+            right = plot._selected_boundary_hit(
+                plot._x_for_time(float(event["t1"])), y
+            )
+            self.assertEqual(left, (event, "left"))
+            self.assertEqual(right, (event, "right"))
+        finally:
+            plot.close()
+
+    def test_waveform_boundary_drag_changes_selected_interval(self) -> None:
+        plot, event = self._plot()
+        changed: list[tuple[int, float, object]] = []
+        plot.eventChanged.connect(
+            lambda event_id, start, end: changed.append((event_id, start, end))
+        )
+        plot.focus_event(7)
+        plot.show()
+        QApplication.processEvents()
+        try:
+            y = int(plot._plot_rect().center().y())
+            start = QPoint(int(plot._x_for_time(50_000.0)), y)
+            target = QPoint(int(plot._x_for_time(52_000.0)), y)
+            QTest.mousePress(plot, Qt.MouseButton.LeftButton, pos=start)
+            QTest.mouseMove(plot, target)
+            QTest.mouseRelease(plot, Qt.MouseButton.LeftButton, pos=target)
+            QApplication.processEvents()
+            self.assertAlmostEqual(float(event["t0"]), 52_000.0, delta=100.0)
+            self.assertEqual(len(changed), 1)
+            self.assertEqual(changed[0][0], 7)
+        finally:
+            plot.close()
+
+    def test_waveform_boundary_cannot_collapse_interval(self) -> None:
+        plot, event = self._plot()
+        plot.focus_event(7)
+        plot.show()
+        QApplication.processEvents()
+        try:
+            y = int(plot._plot_rect().center().y())
+            start = QPoint(int(plot._x_for_time(50_000.0)), y)
+            beyond_end = QPoint(int(plot._x_for_time(65_000.0)), y)
+            QTest.mousePress(plot, Qt.MouseButton.LeftButton, pos=start)
+            QTest.mouseMove(plot, beyond_end)
+            QTest.mouseRelease(plot, Qt.MouseButton.LeftButton, pos=beyond_end)
+            QApplication.processEvents()
+            self.assertLess(float(event["t0"]), float(event["t1"]))
+        finally:
+            plot.close()
+
+
 class ImportedPredictionEditingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -362,6 +454,63 @@ class ImportedPredictionEditingTests(unittest.TestCase):
             self.assertEqual(event["prediction_original_end_ms"], 9_000.0)
             self.assertEqual(len(event["prediction_adjustment_history"]), 1)
             self.assertIn("人工调整预测边界", event["note"])
+        finally:
+            window.close()
+
+    def test_conflicting_body_boundary_drag_is_reverted(self) -> None:
+        window = IntegratedWindow()
+        try:
+            standing_index = next(
+                index
+                for index, label in enumerate(window.labels)
+                if label["code"] == "STANDING"
+            )
+            original = {
+                "id": 10,
+                "li": standing_index,
+                "label_code": "STANDING",
+                "layer": "body_state",
+                "t0": 5_000.0,
+                "t1": 9_000.0,
+                "note": "[模型建议·待人工复核]",
+                "prediction_source": "imu_model",
+                "prediction_review_status": "pending",
+            }
+            window.data = SimpleNamespace(
+                duration_ms=20_000.0,
+                times_ms=np.arange(0.0, 20_001.0, 20.0),
+            )
+            window.events = [
+                {**original, "t1": 11_000.0},
+                {
+                    "id": 11,
+                    "li": standing_index,
+                    "label_code": "STANDING",
+                    "layer": "body_state",
+                    "t0": 10_000.0,
+                    "t1": 15_000.0,
+                },
+            ]
+            window.selected_event_id = 10
+            window._drag_history_snapshot = {
+                "labels": window.labels,
+                "events": [
+                    original,
+                    window.events[1].copy(),
+                ],
+                "next_event_id": window.next_event_id,
+                "selected_label": window.selected_label,
+                "selected_event_id": 10,
+                "pending_intervals": {},
+            }
+            window._autosave = lambda: None
+
+            with patch.object(model_assist.QMessageBox, "warning") as warning:
+                window._event_changed_on_plot(10, 5_000.0, 11_000.0)
+
+            self.assertEqual(window.events[0]["t1"], 9_000.0)
+            self.assertNotIn("prediction_adjustment_history", window.events[0])
+            warning.assert_called_once()
         finally:
             window.close()
 

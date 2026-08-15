@@ -462,20 +462,28 @@ class ModelAssistMixin:
         )
         self.model_select_action = QAction("选择新版模型…", self)
         self.model_select_action.setToolTip("选择 CausalMultiTaskTCN checkpoint")
-        self.model_edit_prediction_action = QAction("修改预测标注", self)
-        self.model_edit_prediction_action.setToolTip(
-            "修改已导入模型建议的标签、开始时间或结束时间（Ctrl+E）"
+        self.model_waveform_adjust_action = QAction("波形调整预测区间", self)
+        self.model_waveform_adjust_action.setToolTip(
+            "在真实九轴波形上高亮预测区间，拖动左右边界进行校准（Ctrl+E）"
         )
-        self.model_edit_prediction_action.setShortcut("Ctrl+E")
+        self.model_waveform_adjust_action.setShortcut("Ctrl+E")
+        self.model_edit_prediction_action = QAction("修改预测标签/精确时间…", self)
+        self.model_edit_prediction_action.setToolTip(
+            "通过输入框修改已导入模型建议的标签、开始时间或结束时间"
+        )
         self.model_mark_reviewed_action = QAction("确认建议已复核", self)
         self.model_mark_reviewed_action.setToolTip(
             "把事件表中选中的待复核模型建议标记为已人工复核"
         )
         toolbar.addAction(self.model_predict_action)
+        toolbar.addAction(self.model_waveform_adjust_action)
         toolbar.addAction(self.model_edit_prediction_action)
         toolbar.addAction(self.model_mark_reviewed_action)
         toolbar.addAction(self.model_select_action)
         self.model_predict_action.triggered.connect(self.run_model_prediction)
+        self.model_waveform_adjust_action.triggered.connect(
+            self.focus_selected_prediction_on_waveform
+        )
         self.model_edit_prediction_action.triggered.connect(
             self.edit_selected_prediction
         )
@@ -499,6 +507,12 @@ class ModelAssistMixin:
     def _event_selected(self) -> None:
         super()._event_selected()
         self._update_model_review_action()
+        event = self._selected_model_event()
+        if (
+            event is not None
+            and getattr(self.plot, "_event_drag", None) is None
+        ):
+            self._focus_prediction_on_waveform(event, announce=True)
 
     def _selected_model_event(self) -> dict[str, Any] | None:
         if self.selected_event_id is None:
@@ -516,9 +530,12 @@ class ModelAssistMixin:
     def _update_model_review_action(self) -> None:
         action = getattr(self, "model_mark_reviewed_action", None)
         edit_action = getattr(self, "model_edit_prediction_action", None)
+        waveform_action = getattr(self, "model_waveform_adjust_action", None)
         event = self._selected_model_event()
         if edit_action is not None:
             edit_action.setEnabled(event is not None)
+        if waveform_action is not None:
+            waveform_action.setEnabled(event is not None)
         if action is not None:
             action.setEnabled(
                 event is not None
@@ -539,9 +556,37 @@ class ModelAssistMixin:
             )
             if event is not None and event.get("prediction_source") == "imu_model":
                 self.selected_event_id = event_id
-                self.edit_selected_prediction()
+                self.focus_selected_prediction_on_waveform()
                 return
         super()._event_double_clicked(row, column)
+
+    def _focus_prediction_on_waveform(
+        self, event: dict[str, Any], *, announce: bool
+    ) -> None:
+        focus_event = getattr(self.plot, "focus_event", None)
+        if callable(focus_event):
+            focus_event(int(event.get("id", -1)))
+        else:
+            self.plot.set_selected_event(int(event.get("id", -1)))
+        if announce:
+            self.statusBar().showMessage(
+                "预测区间已覆盖在真实波形上：拖动左右竖线调整边界；"
+                "在下方标签轨道拖动色块可整体平移；滚轮缩放、Shift+拖动平移",
+                6000,
+            )
+
+    def focus_selected_prediction_on_waveform(
+        self, _checked: bool = False
+    ) -> None:
+        event = self._selected_model_event()
+        if event is None:
+            self.statusBar().showMessage(
+                "请先在事件表中选择一条模型预测标注", 3000
+            )
+            return
+        self._focus_prediction_on_waveform(event, announce=True)
+        self.set_playhead(float(event.get("t0", 0.0)))
+        self.plot.setFocus()
 
     def _event_changed_on_plot(
         self, event_id: int, start_ms: float, end_ms: Any
@@ -557,6 +602,58 @@ class ModelAssistMixin:
                 ),
                 None,
             )
+        current_event = next(
+            (
+                value
+                for value in self.events
+                if int(value.get("id", -1)) == int(event_id)
+            ),
+            None,
+        )
+        if (
+            current_event is not None
+            and previous_event is not None
+            and current_event.get("prediction_source") == "imu_model"
+            and current_event.get("t1") is not None
+        ):
+            previous_start = float(previous_event.get("t0", 0.0))
+            previous_end = float(previous_event.get("t1", previous_start))
+            current_start = float(current_event.get("t0", 0.0))
+            current_end = float(current_event["t1"])
+            changed = (
+                abs(previous_start - current_start) >= 0.5
+                or abs(previous_end - current_end) >= 0.5
+            )
+            if changed:
+                candidate = {
+                    "code": self._event_code(current_event),
+                    "start_ms": current_start,
+                    "end_ms": current_end,
+                }
+                other_events = [
+                    value
+                    for value in self.events
+                    if int(value.get("id", -1)) != int(event_id)
+                ]
+                conflict_message = ""
+                if self._body_conflicts(candidate, other_events):
+                    conflict_message = (
+                        "调整后的身体行为与已有身体行为区间重叠，"
+                        "本次拖动已撤回。"
+                    )
+                elif self._matches_existing_annotation(candidate, other_events):
+                    conflict_message = (
+                        "调整后与已有同类标注高度重合，本次拖动已撤回。"
+                    )
+                if conflict_message:
+                    current_event["t0"] = previous_start
+                    current_event["t1"] = previous_end
+                    self.plot.set_events(self.labels, self.events)
+                    super()._event_changed_on_plot(
+                        event_id, previous_start, previous_end
+                    )
+                    QMessageBox.warning(self, "预测区间冲突", conflict_message)
+                    return
         super()._event_changed_on_plot(event_id, start_ms, end_ms)
         event = next(
             (
