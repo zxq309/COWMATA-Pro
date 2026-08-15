@@ -56,6 +56,7 @@ class WindowUi:
 
         toolbar = window.addToolBar("主工具")
         toolbar.setMovable(False)
+        self.main_toolbar = toolbar
         self.open_json_action = QAction("打开九轴 JSON", window)
         self.open_video_action = QAction("打开视频", window)
         self.load_project_action = QAction("载入工程", window)
@@ -88,7 +89,7 @@ class WindowUi:
         toolbar_spacer.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
-        toolbar.addWidget(toolbar_spacer)
+        self.toolbar_spacer_action = toolbar.addWidget(toolbar_spacer)
         toolbar.addWidget(QLabel(" 标注者 "))
         self.annotator_edit = QLineEdit()
         self.annotator_edit.setPlaceholderText("姓名/工号")

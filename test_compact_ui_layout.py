@@ -6,7 +6,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("BOVINE_NO_MEDIA", "1")
 
-from PySide6.QtWidgets import QApplication, QHeaderView
+from PySide6.QtWidgets import QApplication, QHeaderView, QToolBar
 
 from integrated_window import MainWindow
 
@@ -60,6 +60,27 @@ class CompactUiLayoutTests(unittest.TestCase):
             self.window.export_training_action,
             self.window.export_boris_action,
             self.window.irr_action,
+        ):
+            self.assertIn(action, actions)
+
+    def test_model_actions_share_the_top_toolbar_dropdown(self) -> None:
+        self.assertIs(
+            self.window.model_assist_toolbar, self.window.main_toolbar
+        )
+        self.assertEqual(len(self.window.findChildren(QToolBar)), 1)
+        self.assertIs(
+            self.window.main_toolbar.widgetForAction(
+                self.window.model_assist_widget_action
+            ),
+            self.window.model_assist_button,
+        )
+        actions = set(self.window.model_assist_menu.actions())
+        for action in (
+            self.window.model_predict_action,
+            self.window.model_waveform_adjust_action,
+            self.window.model_edit_prediction_action,
+            self.window.model_mark_reviewed_action,
+            self.window.model_select_action,
         ):
             self.assertIn(action, actions)
 

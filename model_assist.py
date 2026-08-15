@@ -23,9 +23,10 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressDialog,
     QPushButton,
+    QMenu,
     QTableWidget,
     QTableWidgetItem,
-    QToolBar,
+    QToolButton,
     QVBoxLayout,
 )
 
@@ -451,10 +452,7 @@ class ModelAssistMixin:
         self._install_model_assist_ui()
 
     def _install_model_assist_ui(self) -> None:
-        self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
-        toolbar = QToolBar("模型辅助", self)
-        toolbar.setMovable(False)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+        toolbar = self.main_toolbar
         self.model_assist_toolbar = toolbar
         self.model_predict_action = QAction("开始模型预测", self)
         self.model_predict_action.setToolTip(
@@ -475,12 +473,30 @@ class ModelAssistMixin:
         self.model_mark_reviewed_action.setToolTip(
             "把事件表中选中的待复核模型建议标记为已人工复核"
         )
-        toolbar.addAction(self.model_predict_action)
-        toolbar.addAction(self.model_waveform_adjust_action)
-        toolbar.addAction(self.model_edit_prediction_action)
-        toolbar.addAction(self.model_mark_reviewed_action)
-        toolbar.addSeparator()
-        toolbar.addAction(self.model_select_action)
+        self.model_assist_button = QToolButton()
+        self.model_assist_button.setText("模型辅助")
+        self.model_assist_button.setToolTip("模型预测、复核调整与模型设置")
+        self.model_assist_button.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+        self.model_assist_menu = QMenu(self.model_assist_button)
+        self.model_assist_menu.addAction(self.model_predict_action)
+        self.model_assist_menu.addSeparator()
+        self.model_assist_menu.addAction(self.model_waveform_adjust_action)
+        self.model_assist_menu.addAction(self.model_edit_prediction_action)
+        self.model_assist_menu.addAction(self.model_mark_reviewed_action)
+        self.model_assist_menu.addSeparator()
+        self.model_assist_menu.addAction(self.model_select_action)
+        self.model_assist_button.setMenu(self.model_assist_menu)
+        before = getattr(self, "toolbar_spacer_action", None)
+        if before is not None:
+            self.model_assist_widget_action = toolbar.insertWidget(
+                before, self.model_assist_button
+            )
+        else:
+            self.model_assist_widget_action = toolbar.addWidget(
+                self.model_assist_button
+            )
         self.model_predict_action.triggered.connect(self.run_model_prediction)
         self.model_waveform_adjust_action.triggered.connect(
             self.focus_selected_prediction_on_waveform
