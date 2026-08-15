@@ -34,7 +34,6 @@ from PySide6.QtWidgets import (
 from ui_helpers import format_relative, format_wall
 from video_index import (
     VideoIndexBuildResult,
-    VideoIndexCancelled,
     VideoIndexEntry,
     build_video_index,
     matching_videos,
@@ -165,7 +164,6 @@ class VideoIndexWorker(QThread):
     progress = Signal(int, int, str)
     succeeded = Signal(object)
     failed = Signal(str)
-    scan_cancelled = Signal()
 
     def __init__(
         self, root: Path, data_epoch_ms: int | None, parent=None
@@ -183,11 +181,8 @@ class VideoIndexWorker(QThread):
                 progress=lambda current, total, name: self.progress.emit(
                     current, total, name
                 ),
-                cancelled=self.isInterruptionRequested,
             )
             self.succeeded.emit(result)
-        except VideoIndexCancelled:
-            self.scan_cancelled.emit()
         except Exception:
             self.failed.emit(traceback.format_exc())
 
@@ -440,7 +435,6 @@ class ModelAssistMixin:
         self._video_index_root = ""
         self._video_index_data_epoch_ms: int | None = None
         self._video_index_loaded = False
-        self._video_index_channels: list[str] = []
         self._pending_video_prediction: dict[str, Any] | None = None
         super().__init__()
         self._install_model_assist_ui()
@@ -469,15 +463,10 @@ class ModelAssistMixin:
         self.model_locate_video_action.setToolTip(
             "为事件表中选中的模型建议匹配视频，并提前 5 秒定位"
         )
-        self.model_channel_action = QAction("复核通道：每次选择", self)
-        self.model_channel_action.setToolTip(
-            "海康目录包含多个监控通道时，设置自动复核的首选通道"
-        )
         toolbar.addAction(self.model_predict_action)
         toolbar.addAction(self.model_locate_video_action)
         toolbar.addAction(self.model_mark_reviewed_action)
         toolbar.addAction(self.model_video_dir_action)
-        toolbar.addAction(self.model_channel_action)
         toolbar.addAction(self.model_select_action)
         self.model_predict_action.triggered.connect(self.run_model_prediction)
         self.model_mark_reviewed_action.triggered.connect(
@@ -488,7 +477,6 @@ class ModelAssistMixin:
         self.model_locate_video_action.triggered.connect(
             self.locate_selected_prediction_video
         )
-        self.model_channel_action.triggered.connect(self.choose_review_channel)
         saved_video_root = str(
             self.settings.value("model_assist/video_directory", "") or ""
         ).strip()
@@ -509,9 +497,6 @@ class ModelAssistMixin:
         video_dir_action = getattr(self, "model_video_dir_action", None)
         if video_dir_action is not None:
             video_dir_action.setEnabled(not self._video_index_is_running())
-        channel_action = getattr(self, "model_channel_action", None)
-        if channel_action is not None:
-            channel_action.setEnabled(len(self._video_index_channels) > 1)
         self._update_model_review_action()
 
     def _event_selected(self) -> None:
@@ -576,41 +561,11 @@ class ModelAssistMixin:
         self._start_video_index(root)
         return root
 
-    def choose_review_channel(self, _checked: bool = False) -> str:
-        if len(self._video_index_channels) <= 1:
-            return self._video_index_channels[0] if self._video_index_channels else ""
-        options = ["每次匹配时选择", *self._video_index_channels]
-        current = str(
-            self.settings.value("model_assist/preferred_video_channel", "")
-            or ""
-        )
-        current_text = current if current in self._video_index_channels else options[0]
-        selected, ok = QInputDialog.getItem(
-            self._model_assist_dialog_parent(),
-            "选择监控复核通道",
-            "候选事件默认使用哪个通道？",
-            options,
-            options.index(current_text),
-            False,
-        )
-        if not ok:
-            return current
-        value = "" if selected == options[0] else selected
-        self.settings.setValue("model_assist/preferred_video_channel", value)
-        self.model_channel_action.setText(
-            f"复核通道：{value}" if value else "复核通道：每次选择"
-        )
-        return value
-
     def _start_video_index(self, root: Path) -> None:
         if self._video_index_is_running():
             self.statusBar().showMessage("视频目录正在建立索引，请稍候", 3000)
             return
         self._video_index_loaded = False
-        self._video_index_entries = []
-        self._video_index_channels = []
-        self.model_video_dir_action.setText("视频目录（索引中）…")
-        self.model_channel_action.setText("复核通道：待索引")
         data_epoch_ms = self.data_create_time_ms or None
         progress = QProgressDialog(
             "正在扫描视频目录…",
@@ -620,7 +575,7 @@ class ModelAssistMixin:
             self._model_assist_dialog_parent(),
         )
         progress.setWindowTitle("建立视频时间索引")
-        progress.setCancelButtonText("取消（保留已完成缓存）")
+        progress.setCancelButton(None)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
         progress.setValue(0)
@@ -632,9 +587,7 @@ class ModelAssistMixin:
         worker.progress.connect(self._on_video_index_progress)
         worker.succeeded.connect(self._on_video_index_succeeded)
         worker.failed.connect(self._on_video_index_failed)
-        worker.scan_cancelled.connect(self._on_video_index_cancelled)
         worker.finished.connect(self._on_video_index_finished)
-        progress.canceled.connect(worker.requestInterruption)
         worker.start()
         self._refresh_enabled()
 
@@ -661,7 +614,6 @@ class ModelAssistMixin:
         self._video_index_root = result.root
         self._video_index_entries = list(result.entries)
         self._video_index_loaded = True
-        self._video_index_channels = list(result.channels)
         worker = self._video_index_worker
         self._video_index_data_epoch_ms = (
             worker.data_epoch_ms
@@ -671,34 +623,13 @@ class ModelAssistMixin:
         self.model_video_dir_action.setText(
             f"视频目录（{len(result.entries)} 段）…"
         )
-        preferred = str(
-            self.settings.value("model_assist/preferred_video_channel", "")
-            or ""
-        )
-        if preferred not in self._video_index_channels:
-            preferred = ""
-            self.settings.setValue("model_assist/preferred_video_channel", "")
-        if len(self._video_index_channels) == 1:
-            preferred = self._video_index_channels[0]
-            self.settings.setValue(
-                "model_assist/preferred_video_channel", preferred
-            )
-        self.model_channel_action.setText(
-            f"复核通道：{preferred}"
-            if preferred
-            else "复核通道：每次选择"
-        )
         details: list[str] = [
             f"视频索引完成：可匹配 {len(result.entries)}/{result.scanned} 段"
         ]
-        if result.index_kind == "hikvision_osd":
-            details.append("海康画面角标索引")
-        if result.channels:
-            details.append("通道 " + "、".join(result.channels))
         if result.missing_time:
-            details.append(f"{result.missing_time} 段为空白或没有可识别时间")
+            details.append(f"{result.missing_time} 段文件名没有可识别时间")
         if result.failures:
-            details.append(f"{len(result.failures)} 段无法建立时间索引")
+            details.append(f"{len(result.failures)} 段无法读取时长")
         self.statusBar().showMessage("；".join(details), 7000)
 
         pending = self._pending_video_prediction
@@ -716,25 +647,12 @@ class ModelAssistMixin:
     def _on_video_index_failed(self, details: str) -> None:
         self._close_video_index_progress()
         self._video_index_loaded = False
-        self.model_video_dir_action.setText("视频目录（索引失败）…")
-        self.model_channel_action.setText("复核通道：待索引")
         self._pending_video_prediction = None
         lines = [line.strip() for line in details.splitlines() if line.strip()]
         QMessageBox.critical(
             self._model_assist_dialog_parent(),
             "视频索引失败",
             lines[-1] if lines else "无法建立视频目录索引",
-        )
-
-    def _on_video_index_cancelled(self) -> None:
-        self._close_video_index_progress()
-        self._video_index_loaded = False
-        self.model_video_dir_action.setText("视频目录（索引未完成）…")
-        self.model_channel_action.setText("复核通道：待索引")
-        self._pending_video_prediction = None
-        self.statusBar().showMessage(
-            "已取消视频索引；已完成部分已缓存，下次选择同一目录会继续",
-            7000,
         )
 
     def _on_video_index_finished(self) -> None:
@@ -834,10 +752,6 @@ class ModelAssistMixin:
         if self._open_video_index_match(selected, target):
             prediction["review_video_path"] = selected.path
             prediction["review_video_start_wall_ms"] = selected.start_wall_ms
-            prediction["review_video_playback_offset_ms"] = (
-                selected.playback_offset_ms
-            )
-            prediction["review_video_channel"] = selected.channel
             prediction["review_video_match"] = (
                 "exact" if len(matches) == 1 else "user_selected"
             )
@@ -847,21 +761,11 @@ class ModelAssistMixin:
     def _choose_video_match(
         self, matches: list[VideoIndexEntry]
     ) -> VideoIndexEntry | None:
-        preferred = str(
-            self.settings.value("model_assist/preferred_video_channel", "")
-            or ""
-        )
-        preferred_matches = [
-            item for item in matches if preferred and item.channel == preferred
-        ]
-        if preferred_matches:
-            matches = preferred_matches
         if len(matches) == 1:
             return matches[0]
         labels = [
-            f"{item.channel or '未识别通道'}｜{item.width}x{item.height}｜"
             f"{Path(item.path).name}｜{format_wall(item.start_wall_ms)}–"
-            f"{format_wall(item.end_wall_ms)}"
+            f"{format_wall(item.end_wall_ms)}｜{Path(item.path).parent}"
             for item in matches
         ]
         selected, ok = QInputDialog.getItem(
@@ -892,9 +796,7 @@ class ModelAssistMixin:
             )
             return False
 
-        self.video_start_wall_ms = int(
-            round(entry.effective_video_start_wall_ms)
-        )
+        self.video_start_wall_ms = int(entry.start_wall_ms)
         self.align_method = "video_index"
         source_switch_active = bool(
             getattr(self, "_source_switch_active", False)
@@ -915,8 +817,7 @@ class ModelAssistMixin:
         self._update_alignment_status()
         self.set_playhead(float(target_data_ms), seek_video=True)
         self.statusBar().showMessage(
-            f"已匹配 {entry.channel or '视频'} · {Path(entry.path).name}，"
-            "定位到事件前 5 秒上下文",
+            f"已匹配 {Path(entry.path).name}，定位到事件前 5 秒上下文",
             6000,
         )
         return True
@@ -1325,12 +1226,6 @@ class ModelAssistMixin:
                 event["review_video_path"] = str(row["review_video_path"])
                 event["review_video_start_wall_ms"] = int(
                     row.get("review_video_start_wall_ms", 0)
-                )
-                event["review_video_playback_offset_ms"] = float(
-                    row.get("review_video_playback_offset_ms", 0.0)
-                )
-                event["review_video_channel"] = str(
-                    row.get("review_video_channel", "")
                 )
                 event["review_video_match"] = str(
                     row.get("review_video_match", "")
