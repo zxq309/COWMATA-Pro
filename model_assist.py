@@ -11,16 +11,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
-from PySide6.QtCore import QThread, QTimer, Qt, Signal
+from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QApplication,
     QDialog,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
-    QInputDialog,
     QLabel,
     QMessageBox,
     QProgressDialog,
@@ -31,21 +29,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ui_helpers import format_relative, format_wall
-from video_index import (
-    VideoIndexBuildResult,
-    VideoIndexEntry,
-    build_video_index,
-    matching_videos,
-    review_target_ms,
-)
+from ui_helpers import format_relative
 
 
 APP_DIR = Path(__file__).resolve().parent
 MODEL_RUNTIME_DIR = APP_DIR / "model_runtime"
 DEFAULT_MODEL_PATH = APP_DIR / "models" / "production" / "best_model.pt"
 PREDICTION_CACHE_DIR = APP_DIR / "prediction_cache"
-VIDEO_INDEX_CACHE_PATH = APP_DIR / "video_index_cache.json"
 
 BODY_CODES = {"LYING", "STANDING", "WALKING"}
 RESEARCH_MODEL_CODES = {"DEFECATION", "TAIL_RAISED", "TAIL_WAGGING"}
@@ -160,33 +150,6 @@ class PredictionWorker(QThread):
             self.failed.emit(traceback.format_exc())
 
 
-class VideoIndexWorker(QThread):
-    progress = Signal(int, int, str)
-    succeeded = Signal(object)
-    failed = Signal(str)
-
-    def __init__(
-        self, root: Path, data_epoch_ms: int | None, parent=None
-    ) -> None:
-        super().__init__(parent)
-        self.root = root
-        self.data_epoch_ms = data_epoch_ms
-
-    def run(self) -> None:
-        try:
-            result = build_video_index(
-                self.root,
-                self.data_epoch_ms,
-                cache_path=VIDEO_INDEX_CACHE_PATH,
-                progress=lambda current, total, name: self.progress.emit(
-                    current, total, name
-                ),
-            )
-            self.succeeded.emit(result)
-        except Exception:
-            self.failed.emit(traceback.format_exc())
-
-
 class PredictionReviewDialog(QDialog):
     """Review model intervals before any suggestion becomes an annotation."""
 
@@ -196,19 +159,17 @@ class PredictionReviewDialog(QDialog):
         locate_callback: Callable[[float], None],
         runtime_warnings: list[str] | None = None,
         parent=None,
-        smart_locate_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.predictions = predictions
         self.locate_callback = locate_callback
-        self.smart_locate_callback = smart_locate_callback
         self.setWindowTitle("复核模型建议")
         self.resize(1180, 700)
 
         layout = QVBoxLayout(self)
         summary = QLabel(
             "模型结果只作为建议。勾选并点击“导入选中建议”后才会进入标注表；"
-            "导入项会标记为“待人工复核”。双击任意行可打开匹配视频并定位。"
+            "导入项会标记为“待人工复核”。双击任意行可定位到建议开始时间。"
             "点击“平均置信度”或“最高置信度”表头可切换升序/降序。"
         )
         summary.setWordWrap(True)
@@ -253,28 +214,19 @@ class PredictionReviewDialog(QDialog):
             header_item = self.table.horizontalHeaderItem(column)
             if header_item is not None:
                 header_item.setToolTip("点击切换升序/降序；按真实数值排序")
-        self.table.cellDoubleClicked.connect(self._smart_locate_row)
+        self.table.cellDoubleClicked.connect(self._locate_row)
         layout.addWidget(self.table, 1)
 
         controls = QHBoxLayout()
         recommended_btn = QPushButton("恢复推荐选择")
         all_btn = QPushButton("全选")
         none_btn = QPushButton("全不选")
-        locate_btn = QPushButton("仅定位当前视频")
-        smart_locate_btn = QPushButton("打开对应视频并定位")
+        locate_btn = QPushButton("定位选中")
         recommended_btn.clicked.connect(self._select_recommended)
         all_btn.clicked.connect(lambda: self._set_all(True))
         none_btn.clicked.connect(lambda: self._set_all(False))
         locate_btn.clicked.connect(self._locate_selected)
-        smart_locate_btn.clicked.connect(self._smart_locate_selected)
-        smart_locate_btn.setEnabled(self.smart_locate_callback is not None)
-        for button in (
-            recommended_btn,
-            all_btn,
-            none_btn,
-            locate_btn,
-            smart_locate_btn,
-        ):
+        for button in (recommended_btn, all_btn, none_btn, locate_btn):
             controls.addWidget(button)
         controls.addStretch()
         cancel_btn = QPushButton("取消")
@@ -390,22 +342,10 @@ class PredictionReviewDialog(QDialog):
         if prediction is not None:
             self.locate_callback(float(prediction["start_ms"]))
 
-    def _smart_locate_row(self, row: int, column: int) -> None:
-        prediction = self._prediction_for_table_row(row)
-        if prediction is not None and self.smart_locate_callback is not None:
-            self.smart_locate_callback(prediction)
-            return
-        self._locate_row(row, column)
-
     def _locate_selected(self) -> None:
         rows = self.table.selectionModel().selectedRows()
         if rows:
             self._locate_row(rows[0].row(), 0)
-
-    def _smart_locate_selected(self) -> None:
-        rows = self.table.selectionModel().selectedRows()
-        if rows:
-            self._smart_locate_row(rows[0].row(), 0)
 
     def selected_predictions(self) -> list[dict[str, Any]]:
         selected: list[dict[str, Any]] = []
@@ -429,13 +369,6 @@ class ModelAssistMixin:
         self._prediction_progress: QProgressDialog | None = None
         self._prediction_source_path = ""
         self._last_prediction_cache_path = ""
-        self._video_index_worker: VideoIndexWorker | None = None
-        self._video_index_progress: QProgressDialog | None = None
-        self._video_index_entries: list[VideoIndexEntry] = []
-        self._video_index_root = ""
-        self._video_index_data_epoch_ms: int | None = None
-        self._video_index_loaded = False
-        self._pending_video_prediction: dict[str, Any] | None = None
         super().__init__()
         self._install_model_assist_ui()
 
@@ -455,34 +388,14 @@ class ModelAssistMixin:
         self.model_mark_reviewed_action.setToolTip(
             "把事件表中选中的待复核模型建议标记为已人工复核"
         )
-        self.model_video_dir_action = QAction("选择视频目录…", self)
-        self.model_video_dir_action.setToolTip(
-            "扫描视频文件名和时长，用事件绝对时间自动匹配对应录像"
-        )
-        self.model_locate_video_action = QAction("定位建议视频", self)
-        self.model_locate_video_action.setToolTip(
-            "为事件表中选中的模型建议匹配视频，并提前 5 秒定位"
-        )
         toolbar.addAction(self.model_predict_action)
-        toolbar.addAction(self.model_locate_video_action)
         toolbar.addAction(self.model_mark_reviewed_action)
-        toolbar.addAction(self.model_video_dir_action)
         toolbar.addAction(self.model_select_action)
         self.model_predict_action.triggered.connect(self.run_model_prediction)
         self.model_mark_reviewed_action.triggered.connect(
             self.mark_selected_prediction_reviewed
         )
         self.model_select_action.triggered.connect(self.choose_prediction_model)
-        self.model_video_dir_action.triggered.connect(self.choose_video_directory)
-        self.model_locate_video_action.triggered.connect(
-            self.locate_selected_prediction_video
-        )
-        saved_video_root = str(
-            self.settings.value("model_assist/video_directory", "") or ""
-        ).strip()
-        if saved_video_root:
-            self._video_index_root = saved_video_root
-            self.model_video_dir_action.setText("视频目录（待索引）…")
         self._refresh_enabled()
 
     def _refresh_enabled(self) -> None:
@@ -494,9 +407,6 @@ class ModelAssistMixin:
                 and bool(self.data_path)
                 and not self._prediction_is_running()
             )
-        video_dir_action = getattr(self, "model_video_dir_action", None)
-        if video_dir_action is not None:
-            video_dir_action.setEnabled(not self._video_index_is_running())
         self._update_model_review_action()
 
     def _event_selected(self) -> None:
@@ -518,309 +428,13 @@ class ModelAssistMixin:
 
     def _update_model_review_action(self) -> None:
         action = getattr(self, "model_mark_reviewed_action", None)
+        if action is None:
+            return
         event = self._selected_model_event()
-        if action is not None:
-            action.setEnabled(
-                event is not None
-                and event.get("prediction_review_status") == "pending"
-            )
-        locate_action = getattr(self, "model_locate_video_action", None)
-        if locate_action is not None:
-            locate_action.setEnabled(event is not None and self.data is not None)
-
-    def _video_index_is_running(self) -> bool:
-        return (
-            self._video_index_worker is not None
-            and self._video_index_worker.isRunning()
+        action.setEnabled(
+            event is not None
+            and event.get("prediction_review_status") == "pending"
         )
-
-    def _model_assist_dialog_parent(self):
-        return QApplication.activeModalWidget() or self
-
-    def choose_video_directory(self, _checked: bool = False) -> Path | None:
-        current = self._video_index_root or str(
-            self.settings.value("model_assist/video_directory", "") or ""
-        )
-        if not current or not Path(current).is_dir():
-            current = (
-                str(Path(self.video_path).parent)
-                if self.video_path
-                else str(Path.cwd())
-            )
-        selected = QFileDialog.getExistingDirectory(
-            self._model_assist_dialog_parent(),
-            "选择录像视频目录",
-            current,
-        )
-        if not selected:
-            self._pending_video_prediction = None
-            return None
-        root = Path(selected).resolve()
-        self._video_index_root = str(root)
-        self.settings.setValue("model_assist/video_directory", str(root))
-        self._start_video_index(root)
-        return root
-
-    def _start_video_index(self, root: Path) -> None:
-        if self._video_index_is_running():
-            self.statusBar().showMessage("视频目录正在建立索引，请稍候", 3000)
-            return
-        self._video_index_loaded = False
-        data_epoch_ms = self.data_create_time_ms or None
-        progress = QProgressDialog(
-            "正在扫描视频目录…",
-            "",
-            0,
-            100,
-            self._model_assist_dialog_parent(),
-        )
-        progress.setWindowTitle("建立视频时间索引")
-        progress.setCancelButton(None)
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
-        progress.show()
-        self._video_index_progress = progress
-
-        worker = VideoIndexWorker(root, data_epoch_ms, self)
-        self._video_index_worker = worker
-        worker.progress.connect(self._on_video_index_progress)
-        worker.succeeded.connect(self._on_video_index_succeeded)
-        worker.failed.connect(self._on_video_index_failed)
-        worker.finished.connect(self._on_video_index_finished)
-        worker.start()
-        self._refresh_enabled()
-
-    def _on_video_index_progress(
-        self, current: int, total: int, name: str
-    ) -> None:
-        if self._video_index_progress is not None:
-            percent = 100 if total <= 0 else int(current * 100 / total)
-            self._video_index_progress.setValue(percent)
-            self._video_index_progress.setLabelText(
-                f"正在读取 {current}/{total}：{name}"
-            )
-
-    def _close_video_index_progress(self) -> None:
-        if self._video_index_progress is not None:
-            self._video_index_progress.close()
-            self._video_index_progress.deleteLater()
-            self._video_index_progress = None
-
-    def _on_video_index_succeeded(
-        self, result: VideoIndexBuildResult
-    ) -> None:
-        self._close_video_index_progress()
-        self._video_index_root = result.root
-        self._video_index_entries = list(result.entries)
-        self._video_index_loaded = True
-        worker = self._video_index_worker
-        self._video_index_data_epoch_ms = (
-            worker.data_epoch_ms
-            if worker is not None
-            else self.data_create_time_ms or None
-        )
-        self.model_video_dir_action.setText(
-            f"视频目录（{len(result.entries)} 段）…"
-        )
-        details: list[str] = [
-            f"视频索引完成：可匹配 {len(result.entries)}/{result.scanned} 段"
-        ]
-        if result.missing_time:
-            details.append(f"{result.missing_time} 段文件名没有可识别时间")
-        if result.failures:
-            details.append(f"{len(result.failures)} 段无法读取时长")
-        self.statusBar().showMessage("；".join(details), 7000)
-
-        pending = self._pending_video_prediction
-        expected_epoch = self.data_create_time_ms or None
-        if (
-            pending is not None
-            and self._video_index_data_epoch_ms == expected_epoch
-        ):
-            self._pending_video_prediction = None
-            QTimer.singleShot(
-                0,
-                lambda row=pending: self._locate_prediction_video(row),
-            )
-
-    def _on_video_index_failed(self, details: str) -> None:
-        self._close_video_index_progress()
-        self._video_index_loaded = False
-        self._pending_video_prediction = None
-        lines = [line.strip() for line in details.splitlines() if line.strip()]
-        QMessageBox.critical(
-            self._model_assist_dialog_parent(),
-            "视频索引失败",
-            lines[-1] if lines else "无法建立视频目录索引",
-        )
-
-    def _on_video_index_finished(self) -> None:
-        worker = self._video_index_worker
-        self._video_index_worker = None
-        if worker is not None:
-            worker.deleteLater()
-        self._refresh_enabled()
-        expected_epoch = self.data_create_time_ms or None
-        if (
-            self._pending_video_prediction is not None
-            and self._video_index_root
-            and self._video_index_data_epoch_ms != expected_epoch
-        ):
-            self._start_video_index(Path(self._video_index_root))
-
-    @staticmethod
-    def _prediction_relative_bounds(
-        prediction: dict[str, Any]
-    ) -> tuple[float, float | None]:
-        start = float(
-            prediction.get("start_ms", prediction.get("t0", 0.0))
-        )
-        raw_end = prediction.get("end_ms", prediction.get("t1"))
-        end = None if raw_end is None else float(raw_end)
-        return start, end
-
-    def locate_selected_prediction_video(
-        self, _checked: bool = False
-    ) -> None:
-        event = self._selected_model_event()
-        if event is None:
-            self.statusBar().showMessage("请先选择一条模型建议事件", 3000)
-            return
-        self._locate_prediction_video(event)
-
-    def _locate_prediction_video(
-        self, prediction: dict[str, Any]
-    ) -> None:
-        if self.data is None or not self.data_create_time_ms:
-            QMessageBox.warning(
-                self._model_assist_dialog_parent(),
-                "无法匹配视频",
-                "当前九轴数据没有有效的记录开始时间。",
-            )
-            return
-        expected_epoch = self.data_create_time_ms or None
-        if self._video_index_is_running():
-            self._pending_video_prediction = prediction
-            self.statusBar().showMessage(
-                "视频索引正在生成，完成后将自动定位", 4000
-            )
-            return
-        if (
-            not self._video_index_loaded
-            or self._video_index_data_epoch_ms != expected_epoch
-        ):
-            self._pending_video_prediction = prediction
-            root = (
-                Path(self._video_index_root)
-                if self._video_index_root
-                else None
-            )
-            if root is not None and root.is_dir():
-                self._start_video_index(root)
-            else:
-                self.choose_video_directory()
-            return
-
-        start, end = self._prediction_relative_bounds(prediction)
-        event_start_wall = self.data_create_time_ms + start
-        event_end_wall = (
-            None if end is None else self.data_create_time_ms + end
-        )
-        matches = matching_videos(
-            self._video_index_entries, event_start_wall, event_end_wall
-        )
-        if not matches:
-            QMessageBox.warning(
-                self._model_assist_dialog_parent(),
-                "没有匹配视频",
-                "视频目录中没有录像覆盖事件时间：\n"
-                + format_wall(event_start_wall)
-                + "\n可继续使用“打开视频”手工关联。",
-            )
-            return
-        selected = self._choose_video_match(matches)
-        if selected is None:
-            return
-        target = review_target_ms(
-            self.data_create_time_ms,
-            start,
-            selected,
-            preroll_ms=5000.0,
-            data_duration_ms=self.data_duration_ms,
-        )
-        if self._open_video_index_match(selected, target):
-            prediction["review_video_path"] = selected.path
-            prediction["review_video_start_wall_ms"] = selected.start_wall_ms
-            prediction["review_video_match"] = (
-                "exact" if len(matches) == 1 else "user_selected"
-            )
-            if "id" in prediction:
-                self._autosave()
-
-    def _choose_video_match(
-        self, matches: list[VideoIndexEntry]
-    ) -> VideoIndexEntry | None:
-        if len(matches) == 1:
-            return matches[0]
-        labels = [
-            f"{Path(item.path).name}｜{format_wall(item.start_wall_ms)}–"
-            f"{format_wall(item.end_wall_ms)}｜{Path(item.path).parent}"
-            for item in matches
-        ]
-        selected, ok = QInputDialog.getItem(
-            self._model_assist_dialog_parent(),
-            "多个视频覆盖该事件",
-            "请选择要复核的录像：",
-            labels,
-            0,
-            False,
-        )
-        if not ok:
-            return None
-        return matches[labels.index(selected)]
-
-    def _open_video_index_match(
-        self, entry: VideoIndexEntry, target_data_ms: float
-    ) -> bool:
-        requested = os.path.normcase(os.path.abspath(entry.path))
-        current = os.path.normcase(os.path.abspath(self.video_path or ""))
-        if requested != current:
-            self.open_video(entry.path)
-        actual = os.path.normcase(os.path.abspath(self.video_path or ""))
-        if actual != requested:
-            QMessageBox.warning(
-                self._model_assist_dialog_parent(),
-                "视频打开失败",
-                f"未能打开匹配视频：\n{entry.path}",
-            )
-            return False
-
-        self.video_start_wall_ms = int(entry.start_wall_ms)
-        self.align_method = "video_index"
-        source_switch_active = bool(
-            getattr(self, "_source_switch_active", False)
-            and getattr(self, "_source_switch_kind", "") == "video"
-        )
-        if source_switch_active:
-            snapshot = dict(
-                getattr(self, "_source_switch_snapshot", {})
-            )
-            snapshot["data_ms"] = float(target_data_ms)
-            snapshot["linked"] = True
-            self._source_switch_snapshot = snapshot
-            self._source_switch_mapping_committed = True
-            self._timelines_linked = True
-            self._sync_pin_button()
-        else:
-            self._set_timelines_linked(True)
-        self._update_alignment_status()
-        self.set_playhead(float(target_data_ms), seek_video=True)
-        self.statusBar().showMessage(
-            f"已匹配 {Path(entry.path).name}，定位到事件前 5 秒上下文",
-            6000,
-        )
-        return True
 
     def mark_selected_prediction_reviewed(
         self, _checked: bool = False
@@ -1007,7 +621,6 @@ class ModelAssistMixin:
             lambda position: self.set_playhead(position),
             [str(value) for value in result.get("warnings", [])],
             self,
-            smart_locate_callback=self._locate_prediction_video,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             self.statusBar().showMessage(
@@ -1222,14 +835,6 @@ class ModelAssistMixin:
                 "prediction_fold": fold_metadata.get("fold"),
                 "prediction_test_cow": fold_metadata.get("test_cow"),
             }
-            if row.get("review_video_path"):
-                event["review_video_path"] = str(row["review_video_path"])
-                event["review_video_start_wall_ms"] = int(
-                    row.get("review_video_start_wall_ms", 0)
-                )
-                event["review_video_match"] = str(
-                    row.get("review_video_match", "")
-                )
             if times.size:
                 event["json_sample_start"] = int(
                     np.searchsorted(times, start, side="left")
@@ -1304,14 +909,6 @@ class ModelAssistMixin:
                 self,
                 "模型预测仍在运行",
                 "请等待本次模型预测完成后再关闭工具。",
-            )
-            event.ignore()
-            return
-        if self._video_index_is_running():
-            QMessageBox.information(
-                self,
-                "视频索引仍在生成",
-                "请等待视频目录索引完成后再关闭工具。",
             )
             event.ignore()
             return
