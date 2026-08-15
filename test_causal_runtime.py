@@ -77,12 +77,63 @@ class CausalRuntimeIntegrationTests(unittest.TestCase):
 
             result = predict_imu(checkpoint_path, imu_path, device="cpu")
 
-        self.assertEqual(result["algorithm"], "causal_multitask_tcn_v2")
+        self.assertEqual(
+            result["algorithm"], "causal_multitask_tcn_package_20260815_v1"
+        )
         self.assertEqual(result["preprocessing"]["calibration_source"], "checkpoint:sensor_calibration")
         self.assertFalse(result["warnings"])
         self.assertNotIn(
             "FEEDING", {row["code"] for row in result["prediction_intervals"]}
         )
+
+    def test_uncached_session_without_explicit_calibration_is_blocked(self) -> None:
+        model = CausalMultiTaskTCN(in_channels=8, width=4, dropout=0.0)
+        frame_dtype = np.dtype(
+            [("elapsed_ms", "<u4"), ("values", "<i2", (9,))], align=False
+        )
+        frames = np.zeros(300, dtype=frame_dtype)
+        frames["elapsed_ms"] = np.arange(len(frames), dtype=np.uint32) * 20
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkpoint_path = root / "causal.pt"
+            imu_path = root / "uncached_sample.json"
+            torch.save(
+                {
+                    "model_class": "CausalMultiTaskTCN",
+                    "model_kwargs": {
+                        "in_channels": 8,
+                        "event_codes": list(EVENT_CLASSES),
+                        "sample_rate_hz": 50,
+                        "width": 4,
+                        "dropout": 0.0,
+                    },
+                    "model_state": model.state_dict(),
+                    "feature_indices": [0, 1, 2, 3, 4, 5, 9, 10],
+                    "feature_statistics": {
+                        "mean": [0.0] * 13,
+                        "std": [1.0] * 13,
+                    },
+                    "thresholds": {
+                        "WALKING": 0.5,
+                        **{code: 0.5 for code in EVENT_CLASSES},
+                    },
+                },
+                checkpoint_path,
+            )
+            imu_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "device": "TEST_UNCACHED_DEVICE",
+                        "create_time": 1_700_000_000_000,
+                        "imu": base64.b64encode(frames.tobytes()).decode("ascii"),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "正式预测已停止"):
+                predict_imu(checkpoint_path, imu_path, device="cpu")
 
 
 if __name__ == "__main__":

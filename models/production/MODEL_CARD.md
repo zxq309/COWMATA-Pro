@@ -1,5 +1,9 @@
 # HierarchicalMSResTCN 模型卡
 
+> 历史归档：该固定中心窗权重已不再是自动标注工具默认模型。当前默认使用
+> `牛尾环IMU_20260815_整理包/复现实验/development_all/fold_0_None_20260815_111619/best.pt`
+> 的新版 `CausalMultiTaskTCN`。
+
 ## 模型
 
 - 文件：`best_model.pt`

@@ -34,7 +34,14 @@ from ui_helpers import format_relative
 
 APP_DIR = Path(__file__).resolve().parent
 MODEL_RUNTIME_DIR = APP_DIR / "model_runtime"
-DEFAULT_MODEL_PATH = APP_DIR / "models" / "production" / "best_model.pt"
+CAUSAL_PACKAGE_ROOT = APP_DIR.parent / "牛尾环IMU_20260815_整理包"
+DEFAULT_MODEL_PATH = (
+    CAUSAL_PACKAGE_ROOT
+    / "复现实验"
+    / "development_all"
+    / "fold_0_None_20260815_111619"
+    / "best.pt"
+)
 PREDICTION_CACHE_DIR = APP_DIR / "prediction_cache"
 
 BODY_CODES = {"LYING", "STANDING", "WALKING"}
@@ -176,8 +183,9 @@ class PredictionReviewDialog(QDialog):
         layout.addWidget(summary)
 
         warning_text = (
-            "v4 已删除采食和其他标签：历史采食证据归入直立；站/卧由已知初始站立状态和状态机生成，"
-            "行走作为直立子状态叠加。排便、抬尾、甩尾仍是研究性候选，默认不勾选；"
+            "当前使用新版因果模型：站立/躺卧来自姿态头，行走作为直立子状态叠加；"
+            "事件候选按 checkpoint 阈值和新版分类别合并规则生成。排便、抬尾、甩尾"
+            "仍是研究性候选，默认不勾选；"
             "努责和分娩节点仅支持人工标注。"
         )
         if runtime_warnings:
@@ -381,10 +389,10 @@ class ModelAssistMixin:
         self.model_assist_toolbar = toolbar
         self.model_predict_action = QAction("模型辅助预测", self)
         self.model_predict_action.setToolTip(
-            "对当前九轴 JSON 运行正式模型，复核后选择性导入建议"
+            "对当前九轴 JSON 运行新版因果模型，复核后选择性导入建议"
         )
-        self.model_select_action = QAction("选择模型…", self)
-        self.model_select_action.setToolTip("选择另一份兼容的 best_model.pt")
+        self.model_select_action = QAction("选择新版模型…", self)
+        self.model_select_action.setToolTip("选择 CausalMultiTaskTCN checkpoint")
         self.model_mark_reviewed_action = QAction("确认建议已复核", self)
         self.model_mark_reviewed_action.setToolTip(
             "把事件表中选中的待复核模型建议标记为已人工复核"
@@ -472,15 +480,26 @@ class ModelAssistMixin:
         configured = str(
             self.settings.value("model_assist/model_path", "") or ""
         ).strip()
-        if configured and Path(configured).is_file():
-            return Path(configured)
+        configured_path = Path(configured) if configured else None
+        if configured_path is not None and configured_path.is_file():
+            try:
+                runtime = str(MODEL_RUNTIME_DIR)
+                if runtime not in sys.path:
+                    sys.path.insert(0, runtime)
+                from imu_behavior.checkpoint import inspect_checkpoint
+
+                _, payload = inspect_checkpoint(configured_path)
+                if payload.get("model_class") == "CausalMultiTaskTCN":
+                    return configured_path
+            except Exception:
+                pass
         return DEFAULT_MODEL_PATH
 
     def choose_prediction_model(self, _checked: bool = False) -> Path | None:
         current = self._configured_model_path()
         selected, _ = QFileDialog.getOpenFileName(
             self,
-            "选择兼容的模型权重",
+            "选择新版因果模型权重",
             str(current.parent if current.exists() else APP_DIR),
             "PyTorch 模型 (*.pt);;所有文件 (*.*)",
         )
@@ -501,19 +520,15 @@ class ModelAssistMixin:
                 self._show_error(
                     "这是一份自监督 SSL 表征权重，只有编码器、没有行为分类头，"
                     "不能直接用于自动标注。\n\n"
-                    "请选择 models_codex\\loco_v1、"
-                    "models_codex\\loco_v2_domain_robust 下的 best.pt，"
-                    "或新版 CausalMultiTaskTCN checkpoint。"
+                    "请选择复现实验\\development_all 下的新版 "
+                    "CausalMultiTaskTCN checkpoint。"
                 )
                 return None
-            supported = {
-                "HierarchicalMSResTCN",
-                "MultiTaskResTCN",
-                "CausalMultiTaskTCN",
-            }
-            if model_class not in supported:
+            if model_class != "CausalMultiTaskTCN":
                 self._show_error(
-                    f"不支持的模型类型：{model_class or '无法识别'}\n{path}"
+                    "当前工具已切换到新版预测流程，不再从界面运行旧固定中心窗模型。\n\n"
+                    f"所选类型：{model_class or '无法识别'}\n{path}\n\n"
+                    "请选择 CausalMultiTaskTCN checkpoint。"
                 )
                 return None
         except Exception as exc:
