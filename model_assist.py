@@ -456,22 +456,22 @@ class ModelAssistMixin:
         toolbar.setMovable(False)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
         self.model_assist_toolbar = toolbar
-        self.model_predict_action = QAction("模型辅助预测", self)
+        self.model_predict_action = QAction("开始模型预测", self)
         self.model_predict_action.setToolTip(
             "对当前九轴 JSON 运行新版因果模型，复核后选择性导入建议"
         )
-        self.model_select_action = QAction("选择新版模型…", self)
+        self.model_select_action = QAction("模型设置…", self)
         self.model_select_action.setToolTip("选择 CausalMultiTaskTCN checkpoint")
-        self.model_waveform_adjust_action = QAction("波形调整预测区间", self)
+        self.model_waveform_adjust_action = QAction("调整预测区间", self)
         self.model_waveform_adjust_action.setToolTip(
             "在真实九轴波形上高亮预测区间，拖动左右边界进行校准（Ctrl+E）"
         )
         self.model_waveform_adjust_action.setShortcut("Ctrl+E")
-        self.model_edit_prediction_action = QAction("修改预测标签/精确时间…", self)
+        self.model_edit_prediction_action = QAction("修改标签/时间…", self)
         self.model_edit_prediction_action.setToolTip(
             "通过输入框修改已导入模型建议的标签、开始时间或结束时间"
         )
-        self.model_mark_reviewed_action = QAction("确认建议已复核", self)
+        self.model_mark_reviewed_action = QAction("确认已复核", self)
         self.model_mark_reviewed_action.setToolTip(
             "把事件表中选中的待复核模型建议标记为已人工复核"
         )
@@ -479,6 +479,7 @@ class ModelAssistMixin:
         toolbar.addAction(self.model_waveform_adjust_action)
         toolbar.addAction(self.model_edit_prediction_action)
         toolbar.addAction(self.model_mark_reviewed_action)
+        toolbar.addSeparator()
         toolbar.addAction(self.model_select_action)
         self.model_predict_action.triggered.connect(self.run_model_prediction)
         self.model_waveform_adjust_action.triggered.connect(
@@ -571,7 +572,7 @@ class ModelAssistMixin:
         if announce:
             self.statusBar().showMessage(
                 "预测区间已覆盖在真实波形上：拖动左右竖线调整边界；"
-                "在下方标签轨道拖动色块可整体平移；滚轮缩放、Shift+拖动平移",
+                "滚轮缩放、Shift+拖动平移；整体移动可使用“修改标签/时间…”",
                 6000,
             )
 

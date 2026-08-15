@@ -102,7 +102,9 @@ class DualAnchorPrecisionV2Mixin:
     # ------------------------------------------------------------------
 
     def _install_view_scale_selector(self) -> None:
-        nav_layout = self.full_view_btn.parentWidget().layout()
+        nav_layout = getattr(self, "data_nav_layout", None)
+        if nav_layout is None:
+            nav_layout = self.full_view_btn.parentWidget().layout()
         combo = QComboBox()
         for text, span_ms in self.VIEW_SCALE_PRESETS:
             combo.addItem(text, span_ms)

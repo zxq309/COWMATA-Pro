@@ -314,7 +314,7 @@ class MainWindow(QMainWindow):
         toolbars = self.findChildren(QToolBar)
         hidden_widgets = (
             self.data_panel,
-            self.annotation_splitter,
+            getattr(self, "annotation_container", self.annotation_splitter),
             *self.video_fullscreen_hidden_widgets,
         )
         self._video_fullscreen_restore = {

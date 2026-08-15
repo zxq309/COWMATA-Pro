@@ -20,10 +20,14 @@ class MainWindow(StableWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.ffmpeg_btn = QPushButton("FFmpeg 诊断 / 无损封装修复")
-        self.video_surface.parentWidget().layout().insertWidget(
-            4, self.ffmpeg_btn
-        )
+        self.ffmpeg_btn = QPushButton("FFmpeg 诊断 / 无损封装")
+        utility_layout = getattr(self, "video_utility_layout", None)
+        if utility_layout is not None:
+            utility_layout.addWidget(self.ffmpeg_btn)
+        else:
+            self.video_surface.parentWidget().layout().insertWidget(
+                4, self.ffmpeg_btn
+            )
         self.ffmpeg_btn.clicked.connect(self._ffmpeg_diagnose)
         self._ffmpeg_process: QProcess | None = None
         self._ffmpeg_progress: QProgressDialog | None = None
@@ -103,4 +107,3 @@ class MainWindow(StableWindow):
         self._show_error(
             "FFmpeg 无损封装失败。\n" + detail[-2000:]
         )
-
