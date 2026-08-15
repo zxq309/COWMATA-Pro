@@ -29,6 +29,15 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from prediction_edit import (
+    BODY_CODES,
+    MODEL_EDIT_CODES,
+    MODEL_LABEL_LAYERS,
+    MODEL_LABEL_NAMES,
+    RESEARCH_MODEL_CODES,
+    PredictionEditDialog,
+    adjust_prediction_row,
+)
 from ui_helpers import format_relative
 
 
@@ -44,8 +53,6 @@ DEFAULT_MODEL_PATH = (
 )
 PREDICTION_CACHE_DIR = APP_DIR / "prediction_cache"
 
-BODY_CODES = {"LYING", "STANDING", "WALKING"}
-RESEARCH_MODEL_CODES = {"DEFECATION", "TAIL_RAISED", "TAIL_WAGGING"}
 RECOMMENDATION_THRESHOLDS = {
     "STANDING": 0.60,
     "LYING": 0.60,
@@ -165,11 +172,15 @@ class PredictionReviewDialog(QDialog):
         predictions: list[dict[str, Any]],
         locate_callback: Callable[[float], None],
         runtime_warnings: list[str] | None = None,
+        duration_ms: float = 0.0,
+        current_position_callback: Callable[[], float] | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.predictions = predictions
         self.locate_callback = locate_callback
+        self.duration_ms = float(duration_ms)
+        self.current_position_callback = current_position_callback
         self.setWindowTitle("复核模型建议")
         self.resize(1180, 700)
 
@@ -177,7 +188,8 @@ class PredictionReviewDialog(QDialog):
         summary = QLabel(
             "模型结果只作为建议。勾选并点击“导入选中建议”后才会进入标注表；"
             "导入项会标记为“待人工复核”。双击任意行可定位到建议开始时间。"
-            "点击“平均置信度”或“最高置信度”表头可切换升序/降序。"
+            "选择一行后可修改标签和起止边界。点击“平均置信度”或“最高置信度”"
+            "表头可切换升序/降序。"
         )
         summary.setWordWrap(True)
         layout.addWidget(summary)
@@ -210,6 +222,9 @@ class PredictionReviewDialog(QDialog):
         self.table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
+        self.table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
         self.table.setEditTriggers(
             QAbstractItemView.EditTrigger.NoEditTriggers
         )
@@ -231,11 +246,13 @@ class PredictionReviewDialog(QDialog):
         all_btn = QPushButton("全选")
         none_btn = QPushButton("全不选")
         locate_btn = QPushButton("定位选中")
+        edit_btn = QPushButton("修改选中建议")
         recommended_btn.clicked.connect(self._select_recommended)
         all_btn.clicked.connect(lambda: self._set_all(True))
         none_btn.clicked.connect(lambda: self._set_all(False))
         locate_btn.clicked.connect(self._locate_selected)
-        for button in (recommended_btn, all_btn, none_btn, locate_btn):
+        edit_btn.clicked.connect(self._edit_selected)
+        for button in (recommended_btn, all_btn, none_btn, locate_btn, edit_btn):
             controls.addWidget(button)
         controls.addStretch()
         cancel_btn = QPushButton("取消")
@@ -356,6 +373,58 @@ class PredictionReviewDialog(QDialog):
         if rows:
             self._locate_row(rows[0].row(), 0)
 
+    def _edit_selected(self) -> None:
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.information(self, "修改预测标注", "请先选择一条模型建议。")
+            return
+        table_row = selected_rows[0].row()
+        prediction = self._prediction_for_table_row(table_row)
+        if prediction is None:
+            return
+        check_states: dict[int, Qt.CheckState] = {}
+        for row in range(self.table.rowCount()):
+            source = self._prediction_for_table_row(row)
+            check_item = self.table.item(row, 0)
+            if source is not None and check_item is not None:
+                check_states[id(source)] = check_item.checkState()
+        options = [
+            (code, MODEL_LABEL_NAMES[code], MODEL_LABEL_LAYERS[code])
+            for code in MODEL_EDIT_CODES
+        ]
+        dialog = PredictionEditDialog(
+            prediction,
+            options,
+            self.duration_ms,
+            self.current_position_callback,
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        code, name, layer, start_ms, end_ms = dialog.values()
+        updated = adjust_prediction_row(
+            prediction,
+            code=code,
+            label=name,
+            layer=layer,
+            start_ms=start_ms,
+            end_ms=end_ms,
+        )
+        prediction.clear()
+        prediction.update(updated)
+        self._populate()
+        for row in range(self.table.rowCount()):
+            source = self._prediction_for_table_row(row)
+            check_item = self.table.item(row, 0)
+            if source is not None and check_item is not None:
+                check_item.setCheckState(
+                    Qt.CheckState.Checked
+                    if source is prediction
+                    else check_states.get(id(source), check_item.checkState())
+                )
+            if source is prediction:
+                self.table.selectRow(row)
+
     def selected_predictions(self) -> list[dict[str, Any]]:
         selected: list[dict[str, Any]] = []
         for row in range(self.table.rowCount()):
@@ -393,14 +462,23 @@ class ModelAssistMixin:
         )
         self.model_select_action = QAction("选择新版模型…", self)
         self.model_select_action.setToolTip("选择 CausalMultiTaskTCN checkpoint")
+        self.model_edit_prediction_action = QAction("修改预测标注", self)
+        self.model_edit_prediction_action.setToolTip(
+            "修改已导入模型建议的标签、开始时间或结束时间（Ctrl+E）"
+        )
+        self.model_edit_prediction_action.setShortcut("Ctrl+E")
         self.model_mark_reviewed_action = QAction("确认建议已复核", self)
         self.model_mark_reviewed_action.setToolTip(
             "把事件表中选中的待复核模型建议标记为已人工复核"
         )
         toolbar.addAction(self.model_predict_action)
+        toolbar.addAction(self.model_edit_prediction_action)
         toolbar.addAction(self.model_mark_reviewed_action)
         toolbar.addAction(self.model_select_action)
         self.model_predict_action.triggered.connect(self.run_model_prediction)
+        self.model_edit_prediction_action.triggered.connect(
+            self.edit_selected_prediction
+        )
         self.model_mark_reviewed_action.triggered.connect(
             self.mark_selected_prediction_reviewed
         )
@@ -437,13 +515,268 @@ class ModelAssistMixin:
 
     def _update_model_review_action(self) -> None:
         action = getattr(self, "model_mark_reviewed_action", None)
-        if action is None:
-            return
+        edit_action = getattr(self, "model_edit_prediction_action", None)
         event = self._selected_model_event()
-        action.setEnabled(
-            event is not None
-            and event.get("prediction_review_status") == "pending"
+        if edit_action is not None:
+            edit_action.setEnabled(event is not None)
+        if action is not None:
+            action.setEnabled(
+                event is not None
+                and event.get("prediction_review_status") == "pending"
+            )
+
+    def _event_double_clicked(self, row: int, column: int) -> None:
+        item = self.event_table.item(row, 0)
+        if item is not None:
+            event_id = int(item.data(256))
+            event = next(
+                (
+                    value
+                    for value in self.events
+                    if int(value.get("id", -1)) == event_id
+                ),
+                None,
+            )
+            if event is not None and event.get("prediction_source") == "imu_model":
+                self.selected_event_id = event_id
+                self.edit_selected_prediction()
+                return
+        super()._event_double_clicked(row, column)
+
+    def _event_changed_on_plot(
+        self, event_id: int, start_ms: float, end_ms: Any
+    ) -> None:
+        snapshot = getattr(self, "_drag_history_snapshot", None)
+        previous_event = None
+        if isinstance(snapshot, dict):
+            previous_event = next(
+                (
+                    value
+                    for value in snapshot.get("events", [])
+                    if int(value.get("id", -1)) == int(event_id)
+                ),
+                None,
+            )
+        super()._event_changed_on_plot(event_id, start_ms, end_ms)
+        event = next(
+            (
+                value
+                for value in self.events
+                if int(value.get("id", -1)) == int(event_id)
+            ),
+            None,
         )
+        if (
+            event is None
+            or previous_event is None
+            or event.get("prediction_source") != "imu_model"
+            or event.get("t1") is None
+        ):
+            return
+        previous_start = float(previous_event.get("t0", 0.0))
+        previous_end = float(previous_event.get("t1", previous_start))
+        current_start = float(event.get("t0", 0.0))
+        current_end = float(event["t1"])
+        if (
+            abs(previous_start - current_start) < 0.5
+            and abs(previous_end - current_end) < 0.5
+        ):
+            return
+        code = self._event_code(event)
+        trace = adjust_prediction_row(
+            {
+                "code": code,
+                "start_ms": previous_start,
+                "end_ms": previous_end,
+                "prediction_original_code": event.get(
+                    "prediction_original_code", code
+                ),
+                "prediction_original_start_ms": event.get(
+                    "prediction_original_start_ms", previous_start
+                ),
+                "prediction_original_end_ms": event.get(
+                    "prediction_original_end_ms", previous_end
+                ),
+                "prediction_adjustment_history": event.get(
+                    "prediction_adjustment_history", []
+                ),
+            },
+            code=code,
+            label=MODEL_LABEL_NAMES.get(code, code),
+            layer=str(event.get("layer", "")),
+            start_ms=current_start,
+            end_ms=current_end,
+        )
+        event["prediction_original_code"] = trace["prediction_original_code"]
+        event["prediction_original_start_ms"] = trace[
+            "prediction_original_start_ms"
+        ]
+        event["prediction_original_end_ms"] = trace["prediction_original_end_ms"]
+        event["prediction_human_adjusted"] = True
+        event["prediction_review_status"] = "pending"
+        event.pop("prediction_reviewed_at", None)
+        event.pop("prediction_reviewed_by", None)
+        event["prediction_adjustment_history"] = trace[
+            "prediction_adjustment_history"
+        ]
+        event["prediction_fingerprint"] = prediction_fingerprint(
+            {"code": code, "start_ms": current_start, "end_ms": current_end}
+        )
+        marker = "[人工调整预测边界]"
+        note = str(event.get("note", "")).replace(
+            "[模型建议·已人工复核]", "[模型建议·待人工复核]"
+        )
+        if marker not in note:
+            note = f"{note} {marker}".strip()
+        event["note"] = note
+        self._refresh_events()
+        self._autosave()
+        self.statusBar().showMessage("已调整预测边界，并保留原始模型时间", 3000)
+
+    def _model_label_options(self) -> list[tuple[str, str, str]]:
+        by_code = {
+            str(label.get("code", "")).upper(): label for label in self.labels
+        }
+        return [
+            (
+                code,
+                str(by_code.get(code, {}).get("name", MODEL_LABEL_NAMES[code])),
+                str(by_code.get(code, {}).get("layer", MODEL_LABEL_LAYERS[code])),
+            )
+            for code in MODEL_EDIT_CODES
+            if code in by_code
+        ]
+
+    def edit_selected_prediction(self, _checked: bool = False) -> None:
+        event = self._selected_model_event()
+        if event is None:
+            self.statusBar().showMessage("请先在事件表中选择一条模型预测标注", 3000)
+            return
+        code = self._event_code(event)
+        label_index = int(event.get("li", -1))
+        current_label = (
+            self.labels[label_index]
+            if 0 <= label_index < len(self.labels)
+            else {}
+        )
+        editable = {
+            "code": code,
+            "label": str(current_label.get("name", MODEL_LABEL_NAMES.get(code, code))),
+            "layer": str(current_label.get("layer", event.get("layer", ""))),
+            "start_ms": float(event.get("t0", 0.0)),
+            "end_ms": float(event.get("t1", event.get("t0", 0.0))),
+            "prediction_original_code": event.get("prediction_original_code", code),
+            "prediction_original_start_ms": event.get(
+                "prediction_original_start_ms", float(event.get("t0", 0.0))
+            ),
+            "prediction_original_end_ms": event.get(
+                "prediction_original_end_ms",
+                float(event.get("t1", event.get("t0", 0.0))),
+            ),
+            "prediction_adjustment_history": event.get(
+                "prediction_adjustment_history", []
+            ),
+        }
+        dialog = PredictionEditDialog(
+            editable,
+            self._model_label_options(),
+            self.data_duration_ms,
+            lambda: float(self.playhead_ms),
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        new_code, name, layer, start_ms, end_ms = dialog.values()
+        candidate = {
+            "code": new_code,
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        }
+        other_events = [
+            value
+            for value in self.events
+            if int(value.get("id", -1)) != int(event.get("id", -1))
+        ]
+        if self._body_conflicts(candidate, other_events):
+            QMessageBox.warning(
+                self,
+                "身体行为冲突",
+                "修改后的身体行为与已有身体行为区间重叠，请先调整边界。",
+            )
+            return
+        if self._matches_existing_annotation(candidate, other_events):
+            QMessageBox.warning(
+                self,
+                "重复标注",
+                "已有高度重合的同类标注，本次修改未保存。",
+            )
+            return
+
+        before = self._annotation_snapshot() if hasattr(self, "_annotation_snapshot") else None
+        updated = adjust_prediction_row(
+            editable,
+            code=new_code,
+            label=name,
+            layer=layer,
+            start_ms=start_ms,
+            end_ms=end_ms,
+        )
+        new_label_index = self._label_index_for_code(new_code)
+        if new_label_index is None:
+            self._show_error(f"当前标注协议中不存在标签 {new_code}")
+            return
+        event.update(
+            {
+                "li": new_label_index,
+                "label_code": new_code,
+                "layer": layer,
+                "t0": start_ms,
+                "t1": end_ms,
+                "reviewed_range": {"start": start_ms, "end": end_ms},
+                "prediction_fingerprint": prediction_fingerprint(updated),
+                "prediction_original_code": updated["prediction_original_code"],
+                "prediction_original_start_ms": updated[
+                    "prediction_original_start_ms"
+                ],
+                "prediction_original_end_ms": updated["prediction_original_end_ms"],
+                "prediction_human_adjusted": True,
+                "prediction_review_status": "pending",
+                "prediction_candidate_type": updated["candidate_type"],
+                "prediction_model_support": updated["model_support"],
+                "prediction_review_priority": updated["review_priority"],
+                "prediction_adjustment_history": updated[
+                    "prediction_adjustment_history"
+                ],
+            }
+        )
+        times = np.asarray(getattr(self.data, "times_ms", []), dtype=float)
+        if times.size:
+            event["json_sample_start"] = int(
+                np.searchsorted(times, start_ms, side="left")
+            )
+            event["json_sample_end"] = int(
+                np.searchsorted(times, end_ms, side="left")
+            )
+        note = str(event.get("note", ""))
+        note = note.replace(
+            "[模型建议·已人工复核]", "[模型建议·待人工复核]"
+        )
+        adjustment_marker = "[人工调整预测标签/边界]"
+        if adjustment_marker not in note:
+            event["note"] = f"{note} {adjustment_marker}".strip()
+        else:
+            event["note"] = note
+        event.pop("prediction_reviewed_at", None)
+        event.pop("prediction_reviewed_by", None)
+        self.events.sort(
+            key=lambda item: (float(item.get("t0", 0.0)), int(item.get("id", 0)))
+        )
+        self._refresh_events()
+        self._autosave()
+        if before is not None and hasattr(self, "_checkpoint_if_changed"):
+            self._checkpoint_if_changed(before)
+        self.set_playhead(start_ms)
+        self.statusBar().showMessage("已修改预测标注，并保留原始模型结果", 4000)
 
     def mark_selected_prediction_reviewed(
         self, _checked: bool = False
@@ -635,8 +968,10 @@ class ModelAssistMixin:
         dialog = PredictionReviewDialog(
             prepared,
             lambda position: self.set_playhead(position),
-            [str(value) for value in result.get("warnings", [])],
-            self,
+            runtime_warnings=[str(value) for value in result.get("warnings", [])],
+            duration_ms=self.data_duration_ms,
+            current_position_callback=lambda: float(self.playhead_ms),
+            parent=self,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             self.statusBar().showMessage(
@@ -814,6 +1149,7 @@ class ModelAssistMixin:
             support_note = (
                 "，研究性扩样候选" if model_support == "research" else ""
             )
+            adjusted_note = "，人工已调整标签或边界" if row.get("human_adjusted") else ""
             fold_metadata = result.get("fold", {})
             if not isinstance(fold_metadata, dict):
                 fold_metadata = {}
@@ -827,7 +1163,7 @@ class ModelAssistMixin:
                 "note": (
                     "[模型建议·待人工复核] "
                     f"平均置信度 {mean_confidence:.1%}，最高 {max_confidence:.1%}"
-                    f"{support_note}"
+                    f"{support_note}{adjusted_note}"
                 ),
                 "ev": "curve",
                 "ctx": "",
@@ -848,6 +1184,21 @@ class ModelAssistMixin:
                 "prediction_decision_threshold": float(
                     row.get("decision_threshold", 0.0)
                 ),
+                "prediction_original_code": str(
+                    row.get("prediction_original_code", code)
+                ),
+                "prediction_original_start_ms": float(
+                    row.get("prediction_original_start_ms", start)
+                ),
+                "prediction_original_end_ms": float(
+                    row.get("prediction_original_end_ms", end)
+                ),
+                "prediction_human_adjusted": bool(row.get("human_adjusted", False)),
+                "prediction_adjustment_history": [
+                    dict(item)
+                    for item in row.get("prediction_adjustment_history", [])
+                    if isinstance(item, dict)
+                ],
                 "prediction_fold": fold_metadata.get("fold"),
                 "prediction_test_cow": fold_metadata.get("test_cow"),
             }
