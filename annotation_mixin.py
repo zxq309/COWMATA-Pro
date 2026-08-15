@@ -26,10 +26,14 @@ LAYER_NAMES = {
     "tail_action": "尾部动作",
     "posture_transition": "姿态转换",
     "objective_event": "客观事件",
+    "calving_process": "分娩过程",
     "sync_anchor": "同步锚点",
 }
 MAIN_OPERATION_CODES = {
-    "STANDING", "LYING", "WALKING", "FEEDING", "OTHER",
+    "STANDING", "LYING", "WALKING",
+    "STRAINING_ONSET", "STRAINING_BOUT",
+    "AMNIOTIC_SAC_FIRST_VISIBLE", "FETAL_PART_FIRST_VISIBLE",
+    "CALF_FULLY_EXPELLED", "FETAL_MEMBRANES_FULLY_EXPELLED",
     "TAIL_RAISED", "TAIL_WAGGING", "STANDING_UP", "LYING_DOWN",
     "URINATION", "DEFECATION",
 }

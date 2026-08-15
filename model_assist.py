@@ -176,8 +176,9 @@ class PredictionReviewDialog(QDialog):
         layout.addWidget(summary)
 
         warning_text = (
-            "当前口径不再输出采食：历史采食证据归入直立；站/卧由已知初始站立状态和状态机生成，"
-            "行走作为直立子状态叠加。排便、抬尾、甩尾仍是研究性候选，默认不勾选。"
+            "v4 已删除采食和其他标签：历史采食证据归入直立；站/卧由已知初始站立状态和状态机生成，"
+            "行走作为直立子状态叠加。排便、抬尾、甩尾仍是研究性候选，默认不勾选；"
+            "努责和分娩节点仅支持人工标注。"
         )
         if runtime_warnings:
             warning_text += "\n\n运行提示：" + "；".join(

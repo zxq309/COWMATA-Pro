@@ -15,7 +15,7 @@ standalone HTML annotator:
     }
 
 Unknown JSON fields are preserved during a load/save round trip.  The project
-file remains v4; the annotation protocol is stored separately as ``v2`` in
+file remains v4; the annotation protocol is stored separately as ``v4`` in
 the project's ``protocol`` field.
 """
 
@@ -38,6 +38,14 @@ from typing import Any, Generic, Iterable, Mapping, MutableMapping, Sequence, Ty
 
 PROJECT_TYPE = "bovine-annotation-project"
 PROJECT_VERSION = 4
+REQUIRED_POINT_LABEL_CODES = {
+    "STRAINING_ONSET",
+    "AMNIOTIC_SAC_FIRST_VISIBLE",
+    "FETAL_PART_FIRST_VISIBLE",
+    "CALF_FULLY_EXPELLED",
+    "FETAL_MEMBRANES_FULLY_EXPELLED",
+    "SYNC_ANCHOR",
+}
 BEIJING_TZ = timezone(timedelta(hours=8), name="Asia/Shanghai")
 
 EVIDENCE_NAMES = {
@@ -594,7 +602,7 @@ class Project:
 
 
 def default_labels() -> list[Label]:
-    """Return a fresh copy of the annotation-protocol v2 ethogram."""
+    """Return a fresh copy of the current annotation-protocol ethogram."""
 
     from defaults import DEFAULT_LABELS
 
@@ -772,7 +780,7 @@ def validate_project(
                     label_index=index,
                 )
             )
-        if label.code in {"CALF_FULLY_EXPELLED", "SYNC_ANCHOR"} and not label.is_point:
+        if label.code in REQUIRED_POINT_LABEL_CODES and not label.is_point:
             issues.append(
                 ValidationIssue(
                     "error", "point_label_required",
@@ -1695,7 +1703,7 @@ def self_test(base_dir: str | os.PathLike[str] | None = None) -> dict[str, Any]:
         ]
         project_a = Project(
             annotator="A",
-            protocol="v2",
+            protocol="v4",
             cow_id="COW-001",
             source={
                 "name": "selftest",
@@ -1718,7 +1726,7 @@ def self_test(base_dir: str | os.PathLike[str] | None = None) -> dict[str, Any]:
         project_path = save_project(project_a, root / "project.json")
         loaded = load_project(project_path)
         assert loaded.to_dict() == project_a.to_dict(), "v4 project round-trip failed"
-        assert loaded.protocol == "v2" and loaded.cow_id == "COW-001"
+        assert loaded.protocol == "v4" and loaded.cow_id == "COW-001"
         assert loaded.events[0].reviewed_range == {"start": 0.0, "end": 10_000.0}
 
         legacy = Project.from_dict(
