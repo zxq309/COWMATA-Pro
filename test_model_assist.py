@@ -202,7 +202,14 @@ class IndexedVideoOpenTests(unittest.TestCase):
                 return self.status
 
         target_path = str(Path("matched.mp4").resolve())
-        entry = VideoIndexEntry(target_path, 123_456, 60_000.0, 1, 1)
+        entry = VideoIndexEntry(
+            target_path,
+            123_456,
+            60_000.0,
+            1,
+            1,
+            playback_offset_ms=5_000.0,
+        )
         window = FakeWindow()
 
         opened = ModelAssistMixin._open_video_index_match(
@@ -210,7 +217,7 @@ class IndexedVideoOpenTests(unittest.TestCase):
         )
 
         self.assertTrue(opened)
-        self.assertEqual(window.video_start_wall_ms, 123_456)
+        self.assertEqual(window.video_start_wall_ms, 118_456)
         self.assertEqual(window.align_method, "video_index")
         self.assertTrue(window._source_switch_mapping_committed)
         self.assertEqual(window._source_switch_snapshot["data_ms"], 45_000.0)
