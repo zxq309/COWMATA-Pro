@@ -108,10 +108,8 @@ class FullHybridRuntimeTests(unittest.TestCase):
     def test_raw_json_runs_gbdt_fallback_without_training_cache(self) -> None:
         frames = np.zeros(400, dtype=FRAME_DTYPE)
         frames["elapsed_ms"] = np.arange(len(frames), dtype=np.uint32) * 20
-        # Known device-specific bias plus roughly +1 g on Z.
-        frames["values"][:, 0] = 79
-        frames["values"][:, 1] = 155
-        frames["values"][:, 2] = 4057
+        # Shared production scale with roughly +1 g on Z.
+        frames["values"][:, 2] = 4096
         names = feature_names()
         models = {
             task: ConstantProbabilityModel(
@@ -150,7 +148,14 @@ class FullHybridRuntimeTests(unittest.TestCase):
             result["model_status"], "gbdt_fallback_waiting_for_best_pt"
         )
         self.assertEqual(result["preprocessing"]["segments"], 1)
-        self.assertEqual(result["preprocessing"]["calibration_source"], "checkpoint:sensor_calibration")
+        self.assertEqual(
+            result["preprocessing"]["calibration_source"],
+            "tool:unified_sensor_defaults",
+        )
+        self.assertEqual(
+            result["preprocessing"]["sensor_calibration"]["acc_bias_counts"],
+            [0.0, 0.0, 0.0],
+        )
         codes = {row["code"] for row in result["prediction_intervals"]}
         self.assertEqual(codes, {"STANDING"})
 
@@ -179,9 +184,10 @@ class FullHybridRuntimeTests(unittest.TestCase):
         self.assertLessEqual(lying[0]["end_ms"], 1250)
         self.assertGreaterEqual(lying[1]["start_ms"], 9750)
 
-    def test_unknown_device_requires_explicit_calibration(self) -> None:
+    def test_unknown_device_uses_same_global_calibration(self) -> None:
         frames = np.zeros(400, dtype=FRAME_DTYPE)
         frames["elapsed_ms"] = np.arange(len(frames), dtype=np.uint32) * 20
+        frames["values"][:, 2] = 4096
         bundle = {
             "features": feature_names(),
             "models": {
@@ -207,21 +213,27 @@ class FullHybridRuntimeTests(unittest.TestCase):
                 "imu_behavior.full_inference._load_gbdt_bundle",
                 return_value=bundle,
             ):
-                with self.assertRaisesRegex(ValueError, "没有 20260816 校准参数"):
-                    predict_imu(root, imu_path, device="cpu")
+                unconfigured = predict_imu(root, imu_path, device="cpu")
+            self.assertEqual(
+                unconfigured["preprocessing"]["calibration_source"],
+                "tool:unified_sensor_defaults",
+            )
+            self.assertEqual(
+                unconfigured["preprocessing"]["sensor_calibration"],
+                {
+                    "acc_divisor": 4096.0,
+                    "acc_bias_counts": [0.0, 0.0, 0.0],
+                    "gyro_divisor": 32.0,
+                    "gyro_bias_counts": [0.0, 0.0, 0.0],
+                    "mag_divisor": 1000.0,
+                },
+            )
             (root / "inference_config.json").write_text(
                 json.dumps(
                     {
                         "sensor_calibration": {
-                            "devices": {
-                                "UNREGISTERED_MAC": {
-                                    "acc_divisor": 4096.0,
-                                    "acc_bias_counts": [0.0, 0.0, 0.0],
-                                    "gyro_divisor": 32.0,
-                                    "gyro_bias_counts": [0.0, 0.0, 0.0],
-                                    "mag_divisor": 1000.0,
-                                }
-                            }
+                            "acc_divisor": 2048.0,
+                            "acc_bias_counts": [1.0, 2.0, 3.0],
                         }
                     }
                 ),
@@ -234,7 +246,18 @@ class FullHybridRuntimeTests(unittest.TestCase):
                 configured = predict_imu(root, imu_path, device="cpu")
             self.assertEqual(
                 configured["preprocessing"]["calibration_source"],
-                "checkpoint:sensor_calibration",
+                "inference_config:sensor_calibration",
+            )
+            self.assertEqual(
+                configured["preprocessing"]["sensor_calibration"]["acc_divisor"],
+                2048.0,
+            )
+            self.assertEqual(
+                configured["preprocessing"]["sensor_calibration"]["acc_bias_counts"],
+                [1.0, 2.0, 3.0],
+            )
+            self.assertNotEqual(
+                unconfigured["model_fingerprint"], configured["model_fingerprint"]
             )
 
 

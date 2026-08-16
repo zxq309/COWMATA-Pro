@@ -13,7 +13,7 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
-from .causal_io import load_causal_features, resolve_calibration
+from .causal_io import DEFAULT_CALIBRATION, load_causal_features, resolve_calibration
 from .checkpoint import inspect_checkpoint
 from .full_features import (
     SessionReference,
@@ -38,66 +38,13 @@ FULL_EVENT_CODES = (
     "TAIL_WAGGING",
 )
 REQUIRED_GBDT_TASKS = ("POSTURE_LYING", "WALKING", *FULL_EVENT_CODES)
-ALGORITHM_VERSION = "offline_tcn_gbdt_hybrid_20260816_v1"
+ALGORITHM_VERSION = "offline_tcn_gbdt_hybrid_20260816_v2"
 
 DEFAULT_EVENT_THRESHOLDS = {code: 0.5 for code in FULL_EVENT_CODES}
-# Recovered and cross-checked against the delivered training cache.  The
-# divisors are shared, while accelerometer/gyroscope biases are fixed per
-# physical device.  Future devices can be added through inference_config.json.
-KNOWN_DEVICE_CALIBRATIONS: dict[str, dict[str, object]] = {
-    "546C50CA01F1": {
-        "acc_divisor": 4096.0,
-        "acc_bias_counts": [676.951788, 76.478848, 8094.687987],
-        "gyro_divisor": 32.0,
-        "gyro_bias_counts": [3.5, -17.0, 0.0],
-        "mag_divisor": 1000.0,
-    },
-    "546C50CA07D0": {
-        "acc_divisor": 4096.0,
-        "acc_bias_counts": [39.388634, -103.220518, -59.63414],
-        "gyro_divisor": 32.0,
-        "gyro_bias_counts": [-10.0, -16.0, 0.0],
-        "mag_divisor": 1000.0,
-    },
-    "546C50CA07DE": {
-        "acc_divisor": 4096.0,
-        "acc_bias_counts": [79.388427, 155.225448, -39.292368],
-        "gyro_divisor": 32.0,
-        "gyro_bias_counts": [-1.0, -34.0, -1.0],
-        "mag_divisor": 1000.0,
-    },
-    "546C50CA07F2": {
-        "acc_divisor": 4096.0,
-        "acc_bias_counts": [-30.304168, -140.195878, -32.158664],
-        "gyro_divisor": 32.0,
-        "gyro_bias_counts": [20.5, 19.5, -1.5],
-        "mag_divisor": 1000.0,
-    },
-    "546C50CA07F8": {
-        "acc_divisor": 4096.0,
-        "acc_bias_counts": [-16.636054, 68.90596, 5.453978],
-        "gyro_divisor": 32.0,
-        "gyro_bias_counts": [9.5, 13.0, 2.0],
-        "mag_divisor": 1000.0,
-    },
-    "546C50CA090B": {
-        "acc_divisor": 4096.0,
-        "acc_bias_counts": [62.068718, 707.841301, 14.008683],
-        "gyro_divisor": 32.0,
-        "gyro_bias_counts": [63.0, -9.0, 0.0],
-        "mag_divisor": 1000.0,
-    },
-    "546C50CA090F": {
-        "acc_divisor": 4096.0,
-        "acc_bias_counts": [67.46442, 68.488777, -41.974901],
-        "gyro_divisor": 32.0,
-        "gyro_bias_counts": [30.0, -6.0, -4.0],
-        "mag_divisor": 1000.0,
-    },
-}
-BUILTIN_SENSOR_CALIBRATION: dict[str, object] = {
-    "devices": KNOWN_DEVICE_CALIBRATIONS
-}
+# All production devices share the same sensor contract.  MAC addresses are
+# metadata only and never select preprocessing parameters.  The centred
+# session reference below still compensates for the ring's mounting angle.
+UNIFIED_SENSOR_CALIBRATION: dict[str, object] = dict(DEFAULT_CALIBRATION)
 DEFAULT_FULL_POSTPROCESS: dict[str, object] = {
     "state_machine": {
         "initial_state": "AUTO",
@@ -329,23 +276,32 @@ def _effective_config(
 def _sensor_calibration_contract(
     bundle: Mapping[str, object],
     config: Mapping[str, object],
-) -> dict[str, object]:
-    """Merge new device entries with the seven cache-verified built-ins."""
+) -> tuple[dict[str, object], str]:
+    """Resolve one global sensor contract without branching on device MAC."""
 
-    result = deepcopy(BUILTIN_SENSOR_CALIBRATION)
-    for source in (bundle.get("sensor_calibration"), config.get("sensor_calibration")):
+    result = deepcopy(UNIFIED_SENSOR_CALIBRATION)
+    source_name = "tool:unified_sensor_defaults"
+    candidates = (
+        (bundle.get("sensor_calibration"), "model:sensor_calibration"),
+        (config.get("sensor_calibration"), "inference_config:sensor_calibration"),
+    )
+    for source, name in candidates:
         if not isinstance(source, Mapping):
             continue
-        if all(
-            key in source
-            for key in ("acc_divisor", "gyro_divisor", "mag_divisor")
-        ):
-            # A direct contract intentionally applies the same calibration to
-            # every device and therefore replaces the per-device table.
-            result = dict(source)
-        else:
-            _merge_mapping(result, source)
-    return result
+        # Older configuration files may wrap a global value in ``default``.
+        # Device/MAC tables are deliberately ignored because production
+        # devices do not carry individual calibration parameters.
+        candidate = source.get("default")
+        if not isinstance(candidate, Mapping):
+            candidate = source
+        updated = False
+        for key in DEFAULT_CALIBRATION:
+            if key in candidate:
+                result[key] = deepcopy(candidate[key])
+                updated = True
+        if updated:
+            source_name = name
+    return result, source_name
 
 
 def _extract_feature_table(
@@ -635,24 +591,20 @@ def predict_full_imu(
     file_config, _ = _read_package_config(package.directory)
     config = _effective_config(bundle, file_config)
 
-    calibration_source = _sensor_calibration_contract(bundle, config)
+    calibration_source, calibration_source_name = _sensor_calibration_contract(
+        bundle, config
+    )
     _emit(progress, 8, "正在按新版规则解码、分段并重采样原始 JSON")
     times, base_features, segments, metadata = load_causal_features(
         source,
         {"sensor_calibration": calibration_source},
     )
-    if metadata.get("calibration_source") == "standard_device_defaults":
-        raise ValueError(
-            f"设备 {metadata.get('device') or '（JSON 未填写 MAC）'} 没有 20260816 校准参数。"
-            "请在模型包 inference_config.json 的 sensor_calibration.devices 中"
-            "加入该 MAC 的 acc_bias_counts/gyro_bias_counts 后再预测。"
-        )
-    applied_calibration, applied_source = resolve_calibration(
+    applied_calibration, _ = resolve_calibration(
         {"sensor_calibration": calibration_source},
         device=str(metadata.get("device", "")),
         session_id=source.stem,
     )
-    metadata["calibration_source"] = applied_source
+    metadata["calibration_source"] = calibration_source_name
     metadata["calibration_warning"] = ""
     (
         feature_frame,
@@ -758,9 +710,9 @@ def predict_full_imu(
     deep_hash = _sha256(package.deep_path) if package.deep_path is not None else ""
     fingerprint = hashlib.sha256(
         f"{ALGORITHM_VERSION}|{gbdt_hash}|{deep_hash}|"
-        f"{json.dumps(event_thresholds, sort_keys=True)}|{walking_threshold}".encode(
-            "utf-8"
-        )
+        f"{json.dumps(applied_calibration, sort_keys=True)}|"
+        f"{json.dumps(event_thresholds, sort_keys=True)}|"
+        f"{walking_threshold}".encode("utf-8")
     ).hexdigest()
     if package.config_path is None:
         warnings.append(
@@ -805,7 +757,7 @@ def predict_full_imu(
         "package": package.to_dict(),
         "deep_runtime": deep_metadata,
         "preprocessing": {
-            "contract": "20260816_v2_offline_gap_safe_imu13",
+            "contract": "20260816_v2_offline_gap_safe_imu13_unified_sensor_v1",
             "segments": len(segments),
             "regular_frames": int(len(base_features)),
             "dense_points": int(len(dense_times)),
