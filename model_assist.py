@@ -44,13 +44,11 @@ from ui_helpers import format_relative
 
 APP_DIR = Path(__file__).resolve().parent
 MODEL_RUNTIME_DIR = APP_DIR / "model_runtime"
-CAUSAL_PACKAGE_ROOT = APP_DIR.parent / "牛尾环IMU_20260815_整理包"
+FULL_PACKAGE_ROOT = APP_DIR / "预测" / "20260816"
 DEFAULT_MODEL_PATH = (
-    CAUSAL_PACKAGE_ROOT
+    FULL_PACKAGE_ROOT
     / "复现实验"
-    / "development_all"
-    / "fold_0_None_20260815_111619"
-    / "best.pt"
+    / "final_model"
 )
 PREDICTION_CACHE_DIR = APP_DIR / "prediction_cache"
 
@@ -196,9 +194,10 @@ class PredictionReviewDialog(QDialog):
         layout.addWidget(summary)
 
         warning_text = (
-            "当前使用新版因果模型：站立/躺卧来自姿态头，行走作为直立子状态叠加；"
-            "事件候选按 checkpoint 阈值和新版分类别合并规则生成。排便、抬尾、甩尾"
-            "仍是研究性候选，默认不勾选；"
+            "当前使用 20260816 离线混合模型：有 best.pt 时站立/躺卧/行走来自"
+            "深度模型，否则自动使用 GBDT 回退；六类事件始终来自 GBDT，并执行"
+            "状态机和分类别区间后处理。排便、抬尾、甩尾仍是研究性候选，"
+            "默认不勾选；"
             "努责和分娩节点仅支持人工标注。"
         )
         if runtime_warnings:
@@ -456,10 +455,12 @@ class ModelAssistMixin:
         self.model_assist_toolbar = toolbar
         self.model_predict_action = QAction("开始模型预测", self)
         self.model_predict_action.setToolTip(
-            "对当前九轴 JSON 运行新版因果模型，复核后选择性导入建议"
+            "对当前原始九轴 JSON 运行 20260816 离线混合模型，复核后选择性导入"
         )
-        self.model_select_action = QAction("模型设置…", self)
-        self.model_select_action.setToolTip("选择 CausalMultiTaskTCN checkpoint")
+        self.model_select_action = QAction("模型包设置…", self)
+        self.model_select_action.setToolTip(
+            "选择包含 gbdt_full.joblib 和可选 best.pt 的 20260816 模型目录"
+        )
         self.model_waveform_adjust_action = QAction("调整预测区间", self)
         self.model_waveform_adjust_action.setToolTip(
             "在真实九轴波形上高亮预测区间，拖动左右边界进行校准（Ctrl+E）"
@@ -928,27 +929,26 @@ class ModelAssistMixin:
             self.settings.value("model_assist/model_path", "") or ""
         ).strip()
         configured_path = Path(configured) if configured else None
-        if configured_path is not None and configured_path.is_file():
+        if configured_path is not None and configured_path.exists():
             try:
                 runtime = str(MODEL_RUNTIME_DIR)
                 if runtime not in sys.path:
                     sys.path.insert(0, runtime)
-                from imu_behavior.checkpoint import inspect_checkpoint
+                from imu_behavior.full_inference import is_full_model_package
 
-                _, payload = inspect_checkpoint(configured_path)
-                if payload.get("model_class") == "CausalMultiTaskTCN":
-                    return configured_path
+                if is_full_model_package(configured_path):
+                    return configured_path.resolve()
             except Exception:
                 pass
         return DEFAULT_MODEL_PATH
 
     def choose_prediction_model(self, _checked: bool = False) -> Path | None:
         current = self._configured_model_path()
-        selected, _ = QFileDialog.getOpenFileName(
+        selected = QFileDialog.getExistingDirectory(
             self,
-            "选择新版因果模型权重",
-            str(current.parent if current.exists() else APP_DIR),
-            "PyTorch 模型 (*.pt);;所有文件 (*.*)",
+            "选择 20260816 模型包目录",
+            str(current if current.is_dir() else APP_DIR),
+            QFileDialog.Option.ShowDirsOnly,
         )
         if not selected:
             return None
@@ -957,33 +957,25 @@ class ModelAssistMixin:
             runtime = str(MODEL_RUNTIME_DIR)
             if runtime not in sys.path:
                 sys.path.insert(0, runtime)
-            from imu_behavior.checkpoint import inspect_checkpoint
+            from imu_behavior.full_inference import inspect_full_model_package
 
-            _, payload = inspect_checkpoint(path)
-            model_class = str(
-                payload.get("model_class") or payload.get("architecture") or ""
-            )
-            if model_class in {"SSLTemporalEncoder", "LegacySSLTemporalEncoder"}:
-                self._show_error(
-                    "这是一份自监督 SSL 表征权重，只有编码器、没有行为分类头，"
-                    "不能直接用于自动标注。\n\n"
-                    "请选择复现实验\\development_all 下的新版 "
-                    "CausalMultiTaskTCN checkpoint。"
-                )
-                return None
-            if model_class != "CausalMultiTaskTCN":
-                self._show_error(
-                    "当前工具已切换到新版预测流程，不再从界面运行旧固定中心窗模型。\n\n"
-                    f"所选类型：{model_class or '无法识别'}\n{path}\n\n"
-                    "请选择 CausalMultiTaskTCN checkpoint。"
-                )
-                return None
+            package = inspect_full_model_package(path)
         except Exception as exc:
-            self._show_error(f"无法安全读取所选模型：\n{path}\n\n{exc}")
+            self._show_error(
+                "无法使用所选模型包。目录中必须包含 gbdt_full.joblib；"
+                "如果已经存在 best.pt，则它必须是 OfflineMultiTaskTCN。\n\n"
+                f"{path}\n\n{exc}"
+            )
             return None
+        path = package.directory
         self.settings.setValue("model_assist/model_path", str(path))
+        status = (
+            "深度 + GBDT 已就绪"
+            if package.deep_status == "ready"
+            else "GBDT 已就绪，等待训练完成的 best.pt"
+        )
         self.statusBar().showMessage(
-            f"已选择 {model_class} 模型：{path}", 5000
+            f"已选择 20260816 模型包（{status}）：{path}", 6000
         )
         return path
 
@@ -995,7 +987,14 @@ class ModelAssistMixin:
             self._show_error("请先打开需要辅助标注的九轴 JSON。")
             return
         model_path = self._configured_model_path()
-        if not model_path.is_file():
+        try:
+            runtime = str(MODEL_RUNTIME_DIR)
+            if runtime not in sys.path:
+                sys.path.insert(0, runtime)
+            from imu_behavior.full_inference import inspect_full_model_package
+
+            inspect_full_model_package(model_path)
+        except Exception:
             selected = self.choose_prediction_model()
             if selected is None:
                 return
@@ -1196,6 +1195,8 @@ class ModelAssistMixin:
             if code in RESEARCH_MODEL_CODES or row.get("model_support") == "research":
                 recommended = False
                 notes.append("研究性候选，仅用于扩样")
+            elif row.get("model_support") == "provisional":
+                notes.append("深度权重未完成，当前为 GBDT 身体行为回退")
             if prediction_fingerprint(row) in fingerprints:
                 recommended = False
                 notes.append("已导入过")
@@ -1261,12 +1262,19 @@ class ModelAssistMixin:
             max_confidence = float(row.get("confidence_max", 0.0))
             model_support = str(row.get("model_support", "formal"))
             support_note = (
-                "，研究性扩样候选" if model_support == "research" else ""
+                "，研究性扩样候选"
+                if model_support == "research"
+                else "，GBDT 身体行为回退"
+                if model_support == "provisional"
+                else ""
             )
             adjusted_note = "，人工已调整标签或边界" if row.get("human_adjusted") else ""
             fold_metadata = result.get("fold", {})
             if not isinstance(fold_metadata, dict):
                 fold_metadata = {}
+            model_hashes = result.get("model_hashes", {})
+            if not isinstance(model_hashes, dict):
+                model_hashes = {}
             event = {
                 "id": self.next_event_id,
                 "li": label_index,
@@ -1291,6 +1299,16 @@ class ModelAssistMixin:
                 "prediction_fingerprint": fingerprint,
                 "prediction_algorithm": str(result.get("algorithm", "")),
                 "prediction_model_class": str(result.get("model_class", "")),
+                "prediction_model_status": str(result.get("model_status", "")),
+                "prediction_model_fingerprint": str(
+                    result.get("model_fingerprint", "")
+                ),
+                "prediction_gbdt_sha256": str(
+                    model_hashes.get("gbdt_sha256") or ""
+                ),
+                "prediction_deep_sha256": str(
+                    model_hashes.get("deep_sha256") or ""
+                ),
                 "prediction_candidate_type": str(row.get("candidate_type", "")),
                 "prediction_review_priority": str(row.get("review_priority", "")),
                 "prediction_model_support": model_support,
@@ -1358,6 +1376,7 @@ class ModelAssistMixin:
                     identity(source),
                     identity(model),
                     str(result.get("algorithm", "")),
+                    str(result.get("model_fingerprint", "")),
                 )
             )
             source_key = hashlib.sha256(cache_token.encode("utf-8")).hexdigest()[:12]
