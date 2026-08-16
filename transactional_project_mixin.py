@@ -5,10 +5,76 @@ import os
 from pathlib import Path
 from typing import Any
 
+from PySide6.QtCore import QStandardPaths
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 import annotation_core
-from ffmpeg_tools import FFmpegToolError, probe_media
+from ffmpeg_tools import FFmpegToolError, find_ffmpeg, probe_media
+from media_timeline import (
+    MediaTimelineIndex,
+    TimelineProbeError,
+    load_timeline_cache,
+    probe_media_timeline,
+    save_timeline_cache,
+)
+
+
+VIDEO_IDENTITY_DURATION_TOLERANCE_MS = 2_000
+
+
+def _identity_duration_value(identity: dict[str, Any], key: str) -> int:
+    try:
+        value = int(round(float(identity.get(key, 0) or 0)))
+    except (OverflowError, TypeError, ValueError):
+        return 0
+    return value if value > 0 else 0
+
+
+def _expected_video_durations(identity: dict[str, Any]) -> tuple[int, ...]:
+    values: list[int] = []
+    for key in ("durationMs", "rawDurationMs", "continuousDurationMs"):
+        value = _identity_duration_value(identity, key)
+        if value > 0 and value not in values:
+            values.append(value)
+    return tuple(values)
+
+
+def _video_identity_duration_matches(
+    identity: dict[str, Any],
+    raw_duration_ms: int,
+    timeline_index: MediaTimelineIndex | None = None,
+) -> bool:
+    """Accept either the container duration or the corrected UI timeline."""
+
+    expected = _expected_video_durations(identity)
+    if not expected:
+        return True
+    actual_raw = [int(raw_duration_ms)] if raw_duration_ms > 0 else []
+    if timeline_index is not None:
+        rounded_raw = int(round(float(timeline_index.raw_duration_ms)))
+        if rounded_raw > 0 and rounded_raw not in actual_raw:
+            actual_raw.append(rounded_raw)
+    expected_raw = _identity_duration_value(identity, "rawDurationMs")
+    if expected_raw and actual_raw:
+        return any(
+            abs(expected_raw - actual_value)
+            <= VIDEO_IDENTITY_DURATION_TOLERANCE_MS
+            for actual_value in actual_raw
+        )
+
+    actual = list(actual_raw)
+    if timeline_index is not None:
+        rounded_continuous = int(round(float(timeline_index.duration_ms)))
+        if rounded_continuous > 0 and rounded_continuous not in actual:
+            actual.append(rounded_continuous)
+    if not actual:
+        return True
+    return any(
+        abs(expected_value - actual_value)
+        <= VIDEO_IDENTITY_DURATION_TOLERANCE_MS
+        for expected_value in expected
+        for actual_value in actual
+    )
 
 
 class TransactionalProjectMixin:
@@ -22,7 +88,8 @@ class TransactionalProjectMixin:
         project = super()._project_model()
         if self.video_path and Path(self.video_path).is_file():
             path = Path(self.video_path)
-            project.extras["videoIdentity"] = {
+            identity: dict[str, Any] = {
+                "schema": 2,
                 "name": path.name,
                 "size": path.stat().st_size,
                 "durationMs": (
@@ -30,7 +97,34 @@ class TransactionalProjectMixin:
                     if self.media is not None
                     else 0
                 ),
+                "durationBasis": "player_public_timeline",
             }
+            timeline_index = (
+                getattr(self.media, "_timeline_index", None)
+                if self.media is not None
+                else None
+            )
+            if (
+                isinstance(timeline_index, MediaTimelineIndex)
+                and os.path.normcase(
+                    os.path.abspath(timeline_index.source_path)
+                )
+                == os.path.normcase(os.path.abspath(path))
+            ):
+                identity.update(
+                    {
+                        "rawDurationMs": int(
+                            round(timeline_index.raw_duration_ms)
+                        ),
+                        "continuousDurationMs": int(
+                            round(timeline_index.duration_ms)
+                        ),
+                        "timelineCorrected": bool(
+                            timeline_index.is_corrected
+                        ),
+                    }
+                )
+            project.extras["videoIdentity"] = identity
         return project
 
     def _release_validation_issues(
@@ -174,6 +268,72 @@ class TransactionalProjectMixin:
         except (TypeError, ValueError):
             return 0
 
+    def _timeline_cache_directory_for_identity(self) -> Path:
+        getter = (
+            getattr(self.media, "_timeline_cache_directory", None)
+            if self.media is not None
+            else None
+        )
+        if callable(getter):
+            try:
+                return Path(getter())
+            except (OSError, TypeError, ValueError):
+                pass
+        root = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.CacheLocation
+        )
+        if not root:
+            root = str(Path.home() / ".bovine-motion-workbench" / "cache")
+        return Path(root) / "video-timeline"
+
+    def _timeline_index_for_identity(
+        self, candidate: Path
+    ) -> MediaTimelineIndex | None:
+        active = (
+            getattr(self.media, "_timeline_index", None)
+            if self.media is not None
+            else None
+        )
+        if isinstance(active, MediaTimelineIndex):
+            try:
+                same_source = (
+                    os.path.normcase(os.path.abspath(active.source_path))
+                    == os.path.normcase(os.path.abspath(candidate))
+                    and active.source_size == candidate.stat().st_size
+                    and active.source_mtime_ns == candidate.stat().st_mtime_ns
+                )
+            except OSError:
+                same_source = False
+            if same_source:
+                return active
+
+        cache_directory = self._timeline_cache_directory_for_identity()
+        try:
+            cached = load_timeline_cache(cache_directory, candidate)
+        except OSError:
+            cached = None
+        if cached is not None:
+            return cached
+
+        self.statusBar().showMessage(
+            "检测到监控视频原始时长异常，正在核对连续时间轴…",
+            0,
+        )
+        try:
+            _ffmpeg, ffprobe = find_ffmpeg()
+            index = probe_media_timeline(
+                candidate,
+                ffprobe,
+                timeout_seconds=60.0,
+            )
+        except (FFmpegToolError, TimelineProbeError, OSError):
+            return None
+        try:
+            save_timeline_cache(cache_directory, index)
+        except OSError:
+            pass
+        return index
+
     def _confirm_video_identity(
         self,
         project: annotation_core.Project,
@@ -227,19 +387,39 @@ class TransactionalProjectMixin:
                     f"文件大小应为 {expected_size}，实际为 "
                     f"{candidate.stat().st_size}"
                 )
-            expected_duration = int(
-                expected.get("durationMs", 0) or 0
-            )
+            expected_durations = _expected_video_durations(expected)
             actual_duration = self._media_duration_from_probe(info)
             if (
-                expected_duration
+                not mismatches
+                and expected_durations
                 and actual_duration
-                and abs(actual_duration - expected_duration) > 2000
-            ):
-                mismatches.append(
-                    f"时长应约为 {expected_duration} ms，实际为 "
-                    f"{actual_duration} ms"
+                and not _video_identity_duration_matches(
+                    expected,
+                    actual_duration,
                 )
+            ):
+                timeline_index = (
+                    None
+                    if _identity_duration_value(expected, "rawDurationMs")
+                    else self._timeline_index_for_identity(candidate)
+                )
+                if not _video_identity_duration_matches(
+                    expected,
+                    actual_duration,
+                    timeline_index,
+                ):
+                    expected_text = "/".join(
+                        str(value) for value in expected_durations
+                    )
+                    actual_text = f"原始 {actual_duration} ms"
+                    if timeline_index is not None:
+                        actual_text += (
+                            f"，连续 {int(round(timeline_index.duration_ms))} ms"
+                        )
+                    mismatches.append(
+                        f"时长应约为 {expected_text} ms，实际为 "
+                        + actual_text
+                    )
             if mismatches:
                 self._show_error(
                     "重新关联的视频与工程记录不一致，已取消载入：\n"
