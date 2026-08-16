@@ -212,6 +212,22 @@ class AnnotationReviewCoreTests(unittest.TestCase):
         self.assertEqual(session["json_path"], "")
         self.assertEqual(session["json_candidates"], [str(source.resolve())])
 
+    def test_json_resolution_can_use_saved_absolute_source_path_without_index(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            csv_path = root / "session-001.events.csv"
+            write_events_csv(csv_path)
+            source = root / "elsewhere" / "session-001.json"
+            source.parent.mkdir()
+            source.write_text("source", encoding="utf-8")
+            session = load_events_csv(csv_path)
+            session["source_meta"] = {"source_json_path": str(source)}
+
+            status = resolve_session_json(session, {})
+
+        self.assertEqual(status, "resolved")
+        self.assertEqual(session["json_path"], str(source.resolve()))
+
     def test_infer_root_and_workspace_round_trip(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

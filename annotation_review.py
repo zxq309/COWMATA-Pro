@@ -40,6 +40,7 @@ from annotation_review_core import (
     iter_review_events,
     load_workspace,
     new_workspace,
+    resolve_session_json,
     resolve_workspace_jsons,
     review_counts,
     review_display_status,
@@ -638,6 +639,22 @@ class AnnotationReviewMixin:
         if root is not None:
             counts = resolve_workspace_jsons(self._review_workspace, root)
             self.settings.setValue("review_json_root", str(root))
+        else:
+            # A newer export may carry an absolute source_json_path in its
+            # companion metadata.  Resolve that path even before a root
+            # directory is selected; sessions without it remain explicitly
+            # marked as missing instead of looking indefinitely unresolved.
+            counts = {
+                "resolved": 0,
+                "missing": 0,
+                "ambiguous": 0,
+                "fingerprint_mismatch": 0,
+            }
+            for session in self._review_workspace.get("sessions", []):
+                if not isinstance(session, dict):
+                    continue
+                status = resolve_session_json(session, {})
+                counts[status] = counts.get(status, 0) + 1
         self._save_review_workspace()
         self._show_review_errors(errors)
         self.show_annotation_review()
