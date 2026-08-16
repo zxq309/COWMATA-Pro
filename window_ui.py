@@ -308,10 +308,20 @@ class WindowUi:
         nav.setSpacing(5)
         self.data_nav_bar = nav_bar
         self.data_nav_layout = nav
+        self.previous_json_btn = QPushButton("◀ 上个 JSON")
+        self.previous_json_btn.setToolTip(
+            "打开当前文件夹中按文件名排序的上一个 JSON"
+        )
+        self.next_json_btn = QPushButton("下个 JSON ▶")
+        self.next_json_btn.setToolTip(
+            "打开当前文件夹中按文件名排序的下一个 JSON"
+        )
         self.prev_activity_btn = QPushButton("◀ 活动")
         self.next_activity_btn = QPushButton("活动 ▶")
         self.full_view_btn = QPushButton("显示全程")
         self.playhead_label = QLabel("00:00:00.000")
+        nav.addWidget(self.previous_json_btn)
+        nav.addWidget(self.next_json_btn)
         nav.addWidget(self.prev_activity_btn)
         nav.addWidget(self.next_activity_btn)
         nav.addWidget(self.full_view_btn)

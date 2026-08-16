@@ -1187,6 +1187,8 @@ class DualAnchorPrecisionV2Mixin:
         for button in (
             getattr(self, "previous_video_btn", None),
             getattr(self, "next_video_btn", None),
+            getattr(self, "previous_json_btn", None),
+            getattr(self, "next_json_btn", None),
         ):
             if button is not None and self._source_switch_active:
                 button.setEnabled(False)

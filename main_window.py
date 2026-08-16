@@ -91,10 +91,10 @@ VIDEO_FILE_SUFFIXES = frozenset(
 )
 
 
-def _natural_video_sort_key(
+def _natural_file_sort_key(
     path: Path,
 ) -> tuple[tuple[tuple[int, object], ...], str]:
-    """Sort numbered video names in human order (2 before 10)."""
+    """Sort numbered file names in human order (2 before 10)."""
 
     folded = path.name.casefold()
     parts = tuple(
@@ -191,6 +191,8 @@ class MainWindow(QMainWindow):
 
         self.plot.seekRequested.connect(self.set_playhead)
         self.plot.rangeSelected.connect(self._range_selected)
+        self.previous_json_btn.clicked.connect(self.open_previous_json)
+        self.next_json_btn.clicked.connect(self.open_next_json)
         self.prev_activity_btn.clicked.connect(
             lambda: self._jump_activity(-1)
         )
@@ -300,6 +302,11 @@ class MainWindow(QMainWindow):
             has_video and previous_video is not None
         )
         self.next_video_btn.setEnabled(has_video and next_video is not None)
+        previous_json, next_json = self._neighboring_json_paths()
+        self.previous_json_btn.setEnabled(
+            has_data and previous_json is not None
+        )
+        self.next_json_btn.setEnabled(has_data and next_json is not None)
         for widget in (
             self.pin_btn,
             self.filename_btn,
@@ -318,49 +325,82 @@ class MainWindow(QMainWindow):
             f"视频：{'已载入' if has_video else '未载入'}"
         )
 
-    def _videos_in_current_directory(self) -> list[Path]:
-        """Return sibling video files without probing or indexing media."""
+    def _files_in_current_directory(
+        self,
+        current_path: str,
+        suffixes: frozenset[str],
+    ) -> list[Path]:
+        """Return matching sibling files without parsing their contents."""
 
-        if not self.video_path:
+        if not current_path:
             return []
-        folder = Path(self.video_path).parent
+        folder = Path(current_path).parent
         try:
-            videos = [
+            files = [
                 candidate
                 for candidate in folder.iterdir()
                 if candidate.is_file()
-                and candidate.suffix.casefold() in VIDEO_FILE_SUFFIXES
+                and candidate.suffix.casefold() in suffixes
             ]
         except OSError:
             return []
-        return sorted(videos, key=_natural_video_sort_key)
+        return sorted(files, key=_natural_file_sort_key)
+
+    def _videos_in_current_directory(self) -> list[Path]:
+        """Return sibling videos without probing or indexing media."""
+
+        return self._files_in_current_directory(
+            self.video_path,
+            VIDEO_FILE_SUFFIXES,
+        )
+
+    def _json_files_in_current_directory(self) -> list[Path]:
+        return self._files_in_current_directory(
+            self.data_path,
+            frozenset({".json"}),
+        )
 
     @staticmethod
     def _normalized_path_key(path: str | os.PathLike[str]) -> str:
         return os.path.normcase(os.path.abspath(os.fspath(path)))
 
-    def _neighboring_video_paths(self) -> tuple[Path | None, Path | None]:
-        if not self.video_path:
+    def _neighboring_file_paths(
+        self,
+        current_path: str,
+        files: list[Path],
+    ) -> tuple[Path | None, Path | None]:
+        if not current_path:
             return None, None
-        videos = self._videos_in_current_directory()
-        current_key = self._normalized_path_key(self.video_path)
+        current_key = self._normalized_path_key(current_path)
         current_index = next(
             (
                 index
-                for index, candidate in enumerate(videos)
+                for index, candidate in enumerate(files)
                 if self._normalized_path_key(candidate) == current_key
             ),
             None,
         )
         if current_index is None:
             return None, None
-        previous_video = videos[current_index - 1] if current_index > 0 else None
-        next_video = (
-            videos[current_index + 1]
-            if current_index + 1 < len(videos)
+        previous_file = files[current_index - 1] if current_index > 0 else None
+        next_file = (
+            files[current_index + 1]
+            if current_index + 1 < len(files)
             else None
         )
-        return previous_video, next_video
+        return previous_file, next_file
+
+    def _neighboring_video_paths(self) -> tuple[Path | None, Path | None]:
+        return self._neighboring_file_paths(
+            self.video_path,
+            self._videos_in_current_directory(),
+        )
+
+    def _neighboring_json_paths(self) -> tuple[Path | None, Path | None]:
+        return self._neighboring_file_paths(
+            self.data_path,
+            self._json_files_in_current_directory(),
+        )
 
     def _open_neighboring_video(self, direction: int) -> None:
         if getattr(self, "_source_switch_active", False):
@@ -379,6 +419,24 @@ class MainWindow(QMainWindow):
 
     def open_next_video(self, _checked: bool = False) -> None:
         self._open_neighboring_video(1)
+
+    def _open_neighboring_json(self, direction: int) -> None:
+        if getattr(self, "_source_switch_active", False):
+            return
+        previous_json, next_json = self._neighboring_json_paths()
+        target = previous_json if direction < 0 else next_json
+        if target is None:
+            boundary = "上一个" if direction < 0 else "下一个"
+            self._refresh_enabled()
+            self.statusBar().showMessage(f"当前没有{boundary} JSON", 3000)
+            return
+        self.open_json(str(target))
+
+    def open_previous_json(self, _checked: bool = False) -> None:
+        self._open_neighboring_json(-1)
+
+    def open_next_json(self, _checked: bool = False) -> None:
+        self._open_neighboring_json(1)
 
     def _install_video_fullscreen_shortcut(self) -> None:
         self._video_fullscreen_shortcut = QShortcut(QKeySequence("F11"), self)

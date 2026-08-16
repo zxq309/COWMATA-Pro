@@ -118,6 +118,71 @@ class CompactUiLayoutTests(unittest.TestCase):
                 self.window.media = original_media
                 self.window.video_path = ""
 
+    def test_json_navigation_follows_natural_filename_order(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in (
+                "session10.json",
+                "session2.json",
+                "session1.json",
+                "session3.mp4",
+            ):
+                (root / name).touch()
+
+            original_data = self.window.data
+            original_data_path = self.window.data_path
+            original_open_json = self.window.open_json
+            opened: list[str] = []
+            try:
+                self.window.data = object()
+                self.window.data_path = str(root / "session2.json")
+                self.window.open_json = lambda path=None: opened.append(str(path))
+                self.window._refresh_enabled()
+
+                self.assertTrue(self.window.previous_json_btn.isEnabled())
+                self.assertTrue(self.window.next_json_btn.isEnabled())
+                self.window.next_json_btn.click()
+                self.assertEqual(Path(opened[-1]).name, "session10.json")
+
+                self.window.previous_json_btn.click()
+                self.assertEqual(Path(opened[-1]).name, "session1.json")
+            finally:
+                self.window.open_json = original_open_json
+                self.window.data = original_data
+                self.window.data_path = original_data_path
+
+    def test_json_navigation_disables_buttons_at_directory_boundaries(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            first = root / "data1.json"
+            last = root / "data2.json"
+            first.touch()
+            last.touch()
+            (root / "data3.mp4").touch()
+
+            original_data = self.window.data
+            original_data_path = self.window.data_path
+            try:
+                self.window.data = object()
+                self.window.data_path = str(first)
+                self.window._refresh_enabled()
+                self.assertFalse(self.window.previous_json_btn.isEnabled())
+                self.assertTrue(self.window.next_json_btn.isEnabled())
+
+                self.window.data_path = str(last)
+                self.window._refresh_enabled()
+                self.assertTrue(self.window.previous_json_btn.isEnabled())
+                self.assertFalse(self.window.next_json_btn.isEnabled())
+
+                last.unlink()
+                self.window.data_path = str(first)
+                self.window._refresh_enabled()
+                self.assertFalse(self.window.previous_json_btn.isEnabled())
+                self.assertFalse(self.window.next_json_btn.isEnabled())
+            finally:
+                self.window.data = original_data
+                self.window.data_path = original_data_path
+
     def test_export_actions_remain_available_in_compact_menu(self) -> None:
         actions = set(self.window.export_tools_menu.actions())
         for action in (
