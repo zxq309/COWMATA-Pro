@@ -340,6 +340,78 @@ class WaveformPredictionAdjustmentTests(unittest.TestCase):
             plot.close()
 
 
+class ManualIntervalWaveformDisplayTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_selecting_manual_interval_displays_waveform_boundaries(self) -> None:
+        window = IntegratedWindow()
+        try:
+            urination_index = next(
+                index
+                for index, label in enumerate(window.labels)
+                if label["code"] == "URINATION"
+            )
+            times = np.arange(0.0, 20_001.0, 20.0)
+            window.data = SimpleNamespace(duration_ms=20_000.0, times_ms=times)
+            window.plot.set_data(
+                [
+                    PlotSeries(
+                        "acc_x",
+                        "加速度 X",
+                        "m/s²",
+                        "#e86c62",
+                        times,
+                        np.sin(times / 1_000.0),
+                    )
+                ],
+                20_000.0,
+            )
+            manual = {
+                "id": 31,
+                "li": urination_index,
+                "label_code": "URINATION",
+                "layer": "objective_event",
+                "t0": 5_000.0,
+                "t1": 9_000.0,
+                "note": "人工标注",
+            }
+            window.events = [manual]
+            located: list[float] = []
+            window.set_playhead = lambda value, *_args, **_kwargs: located.append(
+                float(value)
+            )
+            window._refresh_events()
+
+            window.event_table.selectRow(0)
+            QApplication.processEvents()
+
+            self.assertEqual(window.selected_event_id, 31)
+            self.assertEqual(window.plot._selected_event_id, 31)
+            self.assertIs(window.plot._selected_event(), manual)
+            self.assertTrue(window.model_waveform_adjust_action.isEnabled())
+            self.assertEqual(
+                window.model_waveform_adjust_action.text(), "调整选中区间"
+            )
+            y = window.plot._plot_rect().center().y()
+            self.assertEqual(
+                window.plot._selected_boundary_hit(
+                    window.plot._x_for_time(5_000.0), y
+                ),
+                (manual, "left"),
+            )
+            self.assertEqual(
+                window.plot._selected_boundary_hit(
+                    window.plot._x_for_time(9_000.0), y
+                ),
+                (manual, "right"),
+            )
+            self.assertEqual(located, [5_000.0])
+        finally:
+            window.close()
+
+
 class ImportedPredictionEditingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

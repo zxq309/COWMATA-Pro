@@ -325,18 +325,28 @@ class AnnotationMixin:
         self.event_table.blockSignals(False)
         self.event_count_label.setText(f"{len(self.events)} 条")
         self.plot.set_events(self.labels, self.events)
+        self._sync_plot_event_selection()
         self._refresh_enabled()
+
+    def _sync_plot_event_selection(self) -> None:
+        """Keep manual and model event selection identical on the waveform."""
+
+        set_selected_event = getattr(self.plot, "set_selected_event", None)
+        if callable(set_selected_event):
+            set_selected_event(self.selected_event_id)
 
     def _event_selected(self) -> None:
         rows = self.event_table.selectionModel().selectedRows()
         if not rows:
             self.selected_event_id = None
+            self._sync_plot_event_selection()
             return
         row = rows[0].row()
         item = self.event_table.item(row, 0)
         if item is None:
             return
         self.selected_event_id = int(item.data(256))
+        self._sync_plot_event_selection()
         event = next(
             (e for e in self.events if int(e["id"]) == self.selected_event_id),
             None,

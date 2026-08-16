@@ -461,9 +461,9 @@ class ModelAssistMixin:
         self.model_select_action.setToolTip(
             "选择包含 gbdt_full.joblib 和可选 best.pt 的 20260816 模型目录"
         )
-        self.model_waveform_adjust_action = QAction("调整预测区间", self)
+        self.model_waveform_adjust_action = QAction("调整选中区间", self)
         self.model_waveform_adjust_action.setToolTip(
-            "在真实九轴波形上高亮预测区间，拖动左右边界进行校准（Ctrl+E）"
+            "在真实九轴波形上高亮选中的预测或人工区间，拖动左右边界进行校准（Ctrl+E）"
         )
         self.model_waveform_adjust_action.setShortcut("Ctrl+E")
         self.model_edit_prediction_action = QAction("修改标签/时间…", self)
@@ -500,7 +500,7 @@ class ModelAssistMixin:
             )
         self.model_predict_action.triggered.connect(self.run_model_prediction)
         self.model_waveform_adjust_action.triggered.connect(
-            self.focus_selected_prediction_on_waveform
+            self.focus_selected_interval_on_waveform
         )
         self.model_edit_prediction_action.triggered.connect(
             self.edit_selected_prediction
@@ -525,14 +525,14 @@ class ModelAssistMixin:
     def _event_selected(self) -> None:
         super()._event_selected()
         self._update_model_review_action()
-        event = self._selected_model_event()
+        event = self._selected_interval_event()
         if (
             event is not None
             and getattr(self.plot, "_event_drag", None) is None
         ):
-            self._focus_prediction_on_waveform(event, announce=True)
+            self._focus_interval_on_waveform(event, announce=True)
 
-    def _selected_model_event(self) -> dict[str, Any] | None:
+    def _selected_annotation_event(self) -> dict[str, Any] | None:
         if self.selected_event_id is None:
             return None
         return next(
@@ -540,9 +540,24 @@ class ModelAssistMixin:
                 event
                 for event in self.events
                 if int(event.get("id", -1)) == self.selected_event_id
-                and event.get("prediction_source") == "imu_model"
             ),
             None,
+        )
+
+    def _selected_interval_event(self) -> dict[str, Any] | None:
+        event = self._selected_annotation_event()
+        return (
+            event
+            if event is not None and event.get("t1") is not None
+            else None
+        )
+
+    def _selected_model_event(self) -> dict[str, Any] | None:
+        event = self._selected_annotation_event()
+        return (
+            event
+            if event is not None and event.get("prediction_source") == "imu_model"
+            else None
         )
 
     def _update_model_review_action(self) -> None:
@@ -550,10 +565,11 @@ class ModelAssistMixin:
         edit_action = getattr(self, "model_edit_prediction_action", None)
         waveform_action = getattr(self, "model_waveform_adjust_action", None)
         event = self._selected_model_event()
+        interval_event = self._selected_interval_event()
         if edit_action is not None:
             edit_action.setEnabled(event is not None)
         if waveform_action is not None:
-            waveform_action.setEnabled(event is not None)
+            waveform_action.setEnabled(interval_event is not None)
         if action is not None:
             action.setEnabled(
                 event is not None
@@ -578,7 +594,7 @@ class ModelAssistMixin:
                 return
         super()._event_double_clicked(row, column)
 
-    def _focus_prediction_on_waveform(
+    def _focus_interval_on_waveform(
         self, event: dict[str, Any], *, announce: bool
     ) -> None:
         focus_event = getattr(self.plot, "focus_event", None)
@@ -587,11 +603,30 @@ class ModelAssistMixin:
         else:
             self.plot.set_selected_event(int(event.get("id", -1)))
         if announce:
+            is_prediction = event.get("prediction_source") == "imu_model"
+            prefix = "预测区间" if is_prediction else "人工标注区间"
+            suffix = (
+                "；整体移动可使用“修改标签/时间…”" if is_prediction else ""
+            )
             self.statusBar().showMessage(
-                "预测区间已覆盖在真实波形上：拖动左右竖线调整边界；"
-                "滚轮缩放、Shift+拖动平移；整体移动可使用“修改标签/时间…”",
+                f"{prefix}已覆盖在真实波形上：拖动左右竖线调整边界；"
+                f"滚轮缩放、Shift+拖动平移{suffix}",
                 6000,
             )
+
+    def focus_selected_interval_on_waveform(
+        self, _checked: bool = False
+    ) -> None:
+        event = self._selected_interval_event()
+        if event is None:
+            self.statusBar().showMessage(
+                "请先在事件表中选择一条区间标注（点标注没有左右边界）",
+                3000,
+            )
+            return
+        self._focus_interval_on_waveform(event, announce=True)
+        self.set_playhead(float(event.get("t0", 0.0)))
+        self.plot.setFocus()
 
     def focus_selected_prediction_on_waveform(
         self, _checked: bool = False
@@ -602,7 +637,7 @@ class ModelAssistMixin:
                 "请先在事件表中选择一条模型预测标注", 3000
             )
             return
-        self._focus_prediction_on_waveform(event, announce=True)
+        self._focus_interval_on_waveform(event, announce=True)
         self.set_playhead(float(event.get("t0", 0.0)))
         self.plot.setFocus()
 
