@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "sensor_calibration": {
+    "devices": {
+      "NEW_DEVICE_MAC": {
+        "acc_divisor": 4096.0,
+        "acc_bias_counts": [0.0, 0.0, 0.0],
+        "gyro_divisor": 32.0,
+        "gyro_bias_counts": [0.0, 0.0, 0.0],
+        "mag_divisor": 1000.0
+      }
+    }
+  }
+}

@@ -1,0 +1,242 @@
+from __future__ import annotations
+
+import base64
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+import torch
+
+
+RUNTIME = Path(__file__).resolve().parent / "model_runtime"
+if str(RUNTIME) not in sys.path:
+    sys.path.insert(0, str(RUNTIME))
+
+from imu_behavior.full_features import segment_features  # noqa: E402
+from imu_behavior.full_inference import (  # noqa: E402
+    ALGORITHM_VERSION,
+    FULL_EVENT_CODES,
+    REQUIRED_GBDT_TASKS,
+    inspect_full_model_package,
+)
+from imu_behavior.inference import predict_imu  # noqa: E402
+from imu_behavior.offline_model import OfflineMultiTaskTCN  # noqa: E402
+from imu_behavior.postprocess import (  # noqa: E402
+    postprocess_hierarchical_predictions,
+)
+from imu_behavior.schema import EVENT_CLASSES  # noqa: E402
+
+
+FRAME_DTYPE = np.dtype(
+    [("elapsed_ms", "<u4"), ("values", "<i2", (9,))], align=False
+)
+
+
+class ConstantProbabilityModel:
+    def __init__(self, probability: float) -> None:
+        self.probability = float(probability)
+
+    def predict_proba(self, values: np.ndarray) -> np.ndarray:
+        return np.full(len(values), self.probability, dtype=np.float32)
+
+
+def feature_names() -> list[str]:
+    array = np.zeros((300, 13), dtype=np.float32)
+    array[:, 2] = 1.0
+    array[:, 9] = 1.0
+    return list(
+        segment_features(
+            array,
+            np.arange(0, len(array), 25),
+            causal=False,
+        ).columns
+    )
+
+
+class FullHybridRuntimeTests(unittest.TestCase):
+    def test_offline_feature_contract_contains_exactly_104_columns(self) -> None:
+        names = feature_names()
+        self.assertEqual(len(names), 104)
+        self.assertEqual(len(set(names)), 104)
+        self.assertEqual(names[0], "tilt_mean_1s")
+        self.assertEqual(names[-2:], ["segment_position", "segment_length"])
+
+    def test_package_accepts_gbdt_fallback_then_offline_best_pt(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "gbdt_full.joblib").write_bytes(b"placeholder")
+            waiting = inspect_full_model_package(root)
+            self.assertEqual(waiting.deep_status, "waiting_for_training")
+            self.assertIsNone(waiting.deep_path)
+
+            model = OfflineMultiTaskTCN(
+                in_channels=8,
+                event_codes=EVENT_CLASSES,
+                sample_rate_hz=50,
+                width=4,
+                dropout=0.0,
+            )
+            torch.save(
+                {
+                    "model_class": "OfflineMultiTaskTCN",
+                    "model_kwargs": {
+                        "in_channels": 8,
+                        "event_codes": list(EVENT_CLASSES),
+                        "sample_rate_hz": 50,
+                        "width": 4,
+                        "dropout": 0.0,
+                    },
+                    "model_state": model.state_dict(),
+                    "feature_indices": [0, 1, 2, 3, 4, 5, 9, 10],
+                    "feature_statistics": {
+                        "mean": [0.0] * 13,
+                        "std": [1.0] * 13,
+                    },
+                    "context_samples": 256,
+                    "thresholds": {"WALKING": 0.5},
+                },
+                root / "best.pt",
+            )
+            ready = inspect_full_model_package(root)
+            self.assertEqual(ready.deep_status, "ready")
+            self.assertEqual(ready.deep_model_class, "OfflineMultiTaskTCN")
+
+    def test_raw_json_runs_gbdt_fallback_without_training_cache(self) -> None:
+        frames = np.zeros(400, dtype=FRAME_DTYPE)
+        frames["elapsed_ms"] = np.arange(len(frames), dtype=np.uint32) * 20
+        # Known device-specific bias plus roughly +1 g on Z.
+        frames["values"][:, 0] = 79
+        frames["values"][:, 1] = 155
+        frames["values"][:, 2] = 4057
+        names = feature_names()
+        models = {
+            task: ConstantProbabilityModel(
+                0.20
+                if task == "POSTURE_LYING"
+                else 0.05
+                if task == "WALKING"
+                else 0.0
+            )
+            for task in REQUIRED_GBDT_TASKS
+        }
+        bundle = {"features": names, "models": models}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "gbdt_full.joblib").write_bytes(b"trusted-placeholder")
+            imu_path = root / "future-session.json"
+            imu_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "device": "546C50CA07DE",
+                        "create_time": 1_700_000_000_000,
+                        "imu": base64.b64encode(frames.tobytes()).decode("ascii"),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "imu_behavior.full_inference._load_gbdt_bundle",
+                return_value=bundle,
+            ):
+                result = predict_imu(root, imu_path, device="cpu")
+
+        self.assertEqual(result["algorithm"], ALGORITHM_VERSION)
+        self.assertEqual(
+            result["model_status"], "gbdt_fallback_waiting_for_best_pt"
+        )
+        self.assertEqual(result["preprocessing"]["segments"], 1)
+        self.assertEqual(result["preprocessing"]["calibration_source"], "checkpoint:sensor_calibration")
+        codes = {row["code"] for row in result["prediction_intervals"]}
+        self.assertEqual(codes, {"STANDING"})
+
+    def test_postprocess_never_bridges_a_recording_gap(self) -> None:
+        times = np.asarray([0, 500, 1000, 10_000, 10_500, 11_000])
+        posture = np.tile(np.asarray([[0.05, 0.95]]), (len(times), 1))
+        walking = np.zeros(len(times))
+        events = np.zeros((len(times), len(FULL_EVENT_CODES)))
+        rows = postprocess_hierarchical_predictions(
+            times,
+            posture,
+            walking,
+            events,
+            FULL_EVENT_CODES,
+            {code: 0.5 for code in FULL_EVENT_CODES},
+            output_hz=2.0,
+            settings={
+                "state_machine": {
+                    "initial_state": "AUTO",
+                    "max_sequence_gap_ms": 750,
+                }
+            },
+        )
+        lying = [row for row in rows if row["code"] == "LYING"]
+        self.assertEqual(len(lying), 2)
+        self.assertLessEqual(lying[0]["end_ms"], 1250)
+        self.assertGreaterEqual(lying[1]["start_ms"], 9750)
+
+    def test_unknown_device_requires_explicit_calibration(self) -> None:
+        frames = np.zeros(400, dtype=FRAME_DTYPE)
+        frames["elapsed_ms"] = np.arange(len(frames), dtype=np.uint32) * 20
+        bundle = {
+            "features": feature_names(),
+            "models": {
+                task: ConstantProbabilityModel(0.0)
+                for task in REQUIRED_GBDT_TASKS
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "gbdt_full.joblib").write_bytes(b"trusted-placeholder")
+            imu_path = root / "new-device.json"
+            imu_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "device": "UNREGISTERED_MAC",
+                        "imu": base64.b64encode(frames.tobytes()).decode("ascii"),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "imu_behavior.full_inference._load_gbdt_bundle",
+                return_value=bundle,
+            ):
+                with self.assertRaisesRegex(ValueError, "没有 20260816 校准参数"):
+                    predict_imu(root, imu_path, device="cpu")
+            (root / "inference_config.json").write_text(
+                json.dumps(
+                    {
+                        "sensor_calibration": {
+                            "devices": {
+                                "UNREGISTERED_MAC": {
+                                    "acc_divisor": 4096.0,
+                                    "acc_bias_counts": [0.0, 0.0, 0.0],
+                                    "gyro_divisor": 32.0,
+                                    "gyro_bias_counts": [0.0, 0.0, 0.0],
+                                    "mag_divisor": 1000.0,
+                                }
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch(
+                "imu_behavior.full_inference._load_gbdt_bundle",
+                return_value=bundle,
+            ):
+                configured = predict_imu(root, imu_path, device="cpu")
+            self.assertEqual(
+                configured["preprocessing"]["calibration_source"],
+                "checkpoint:sensor_calibration",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

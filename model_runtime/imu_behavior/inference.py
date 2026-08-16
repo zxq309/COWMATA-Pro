@@ -33,6 +33,18 @@ def predict_imu(
     batch_size: int | None = None,
     progress: ProgressCallback | None = None,
 ) -> dict:
+    from .full_inference import is_full_model_package, predict_full_imu
+
+    if is_full_model_package(checkpoint_path):
+        if annotation_path is not None:
+            raise ValueError("20260816 混合模型的工具内验证比较尚未开放")
+        return predict_full_imu(
+            checkpoint_path,
+            imu_path,
+            device=device,
+            batch_size=batch_size,
+            progress=progress,
+        )
     resolved, inspected = inspect_checkpoint(checkpoint_path)
     if inspected.get("model_class") == "CausalMultiTaskTCN":
         from .causal_inference import predict_causal_imu

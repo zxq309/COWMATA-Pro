@@ -51,6 +51,23 @@ def _runs(labels: np.ndarray) -> list[tuple[int, int, int]]:
     ]
 
 
+def _sequence_blocks(
+    times_ms: np.ndarray,
+    max_gap_ms: int,
+) -> list[tuple[int, int]]:
+    """Return dense-output blocks that never bridge a recording gap."""
+
+    times = np.asarray(times_ms, dtype=np.int64)
+    if times.size == 0:
+        return []
+    boundaries = np.flatnonzero(
+        (np.diff(times) <= 0) | (np.diff(times) > max(1, int(max_gap_ms)))
+    ) + 1
+    starts = np.concatenate(([0], boundaries))
+    stops = np.concatenate((boundaries, [times.size]))
+    return [(int(start), int(stop)) for start, stop in zip(starts, stops)]
+
+
 def clean_short_body_runs(
     labels: np.ndarray,
     probability: np.ndarray,
@@ -139,7 +156,9 @@ def run_posture_state_machine(
     if standing_up.shape != (times.size,) or lying_down.shape != (times.size,):
         raise ValueError("transition probability arrays must each have shape (N,)")
 
-    initial_state = 1 if str(config["initial_state"]).upper() == "LYING" else 0
+    initial_setting = str(config["initial_state"]).upper()
+    automatic_initial = initial_setting in {"AUTO", "AUTOMATIC", "MODEL"}
+    initial_state = 1 if initial_setting == "LYING" else 0
     confirm_points = max(1, int(config["confirm_points"]))
     min_dwell = max(0, int(config["min_dwell_points"]))
     margin = float(config["margin"])
@@ -153,7 +172,11 @@ def run_posture_state_machine(
 
     for index in range(times.size):
         if index == 0 or times[index] - times[index - 1] > max_gap:
-            state = initial_state
+            state = (
+                int(posture[index, 1] > posture[index, 0])
+                if automatic_initial
+                else initial_state
+            )
             candidate = -1
             candidate_count = 0
             dwell = min_dwell
@@ -288,16 +311,26 @@ def postprocess_hierarchical_predictions(
         times, posture, standing_up, lying_down, state_config
     )
 
+    max_sequence_gap_ms = max(1, int(state_config["max_sequence_gap_ms"]))
+    blocks = _sequence_blocks(times, max_sequence_gap_ms)
+
     walking_high = float(config["walking_threshold"])
     walking_low = max(
         0.02, walking_high - float(config["walking_hysteresis_margin"])
     )
-    walking_active = hysteresis_binary(walking, walking_high, walking_low)
-    walking_active = merge_and_filter_binary(
-        walking_active,
-        max(1, int(round(float(config["walking_min_duration_s"]) * output_hz))),
-        max(0, int(round(float(config["walking_merge_gap_s"]) * output_hz))),
-    )
+    walking_active = np.zeros(times.size, dtype=bool)
+    for block_start, block_stop in blocks:
+        block_active = hysteresis_binary(
+            walking[block_start:block_stop], walking_high, walking_low
+        )
+        walking_active[block_start:block_stop] = merge_and_filter_binary(
+            block_active,
+            max(
+                1,
+                int(round(float(config["walking_min_duration_s"]) * output_hz)),
+            ),
+            max(0, int(round(float(config["walking_merge_gap_s"]) * output_hz))),
+        )
     walking_active &= states == 0
 
     # The annotation protocol remains mutually exclusive. Internally walking is
@@ -307,75 +340,108 @@ def postprocess_hierarchical_predictions(
     body_confidence = np.column_stack((posture[:, 0], posture[:, 1], walking))
     step_ms = int(round(1000.0 / output_hz))
     rows: list[dict[str, object]] = []
-    for class_index, start, end in _runs(body_labels):
-        code = OUTPUT_BODY_CODES[class_index]
-        confidence = body_confidence[:, class_index]
-        rows.append(
-            _interval_row(
-                code,
-                start,
-                end,
-                times,
-                confidence,
-                step_ms,
-                create_time_ms,
-                candidate_type="continuous_state",
-                review_priority="standard",
-                model_support="formal",
-                review_recommended=bool(float(confidence[start:end].mean()) >= 0.60),
-                source_head=("locomotion" if code == "WALKING" else "posture_state_machine"),
-                decision_threshold=(walking_high if code == "WALKING" else 0.5),
-            )
-        )
-
-    margin = float(config["hysteresis_margin"])
-    merge_steps = max(
-        0, int(round(float(config["event_merge_gap_s"]) * output_hz))
-    )
-    for class_index, code in enumerate(codes):
-        high = thresholds[code]
-        low = max(0.02, high - margin)
-        active = hysteresis_binary(events[:, class_index], high, low)
-        active = merge_and_filter_binary(
-            active,
-            max(
-                1,
-                int(
-                    round(float(minimum_by_event.get(code, 1.0)) * output_hz)
-                ),
-            ),
-            merge_steps,
-        )
-        support = "research" if code in RESEARCH_EVENT_CODES else "formal"
-        for label, start, end in _runs(active.astype(np.int8)):
-            if label != 1:
-                continue
-            mean_score = float(events[start:end, class_index].mean())
-            priority = (
-                "research"
-                if support == "research"
-                else "high_score"
-                if mean_score >= min(0.99, high + 0.15)
-                else "uncertain"
-            )
+    body_support = str(config.get("body_model_support", "formal"))
+    for block_start, block_stop in blocks:
+        for class_index, local_start, local_end in _runs(
+            body_labels[block_start:block_stop]
+        ):
+            start = block_start + local_start
+            end = block_start + local_end
+            code = OUTPUT_BODY_CODES[class_index]
+            confidence = body_confidence[:, class_index]
             rows.append(
                 _interval_row(
                     code,
                     start,
                     end,
                     times,
-                    events[:, class_index],
+                    confidence,
                     step_ms,
                     create_time_ms,
-                    candidate_type="event_candidate",
-                    review_priority=priority,
-                    model_support=support,
-                    review_recommended=support == "formal",
-                    source_head=f"event:{code}",
-                    decision_threshold=high,
-                    uncertainty=round(abs(mean_score - high), 6),
+                    candidate_type="continuous_state",
+                    review_priority="standard",
+                    model_support=body_support,
+                    review_recommended=bool(
+                        float(confidence[start:end].mean()) >= 0.60
+                    ),
+                    source_head=(
+                        str(config.get("walking_source_head", "locomotion"))
+                        if code == "WALKING"
+                        else str(
+                            config.get(
+                                "posture_source_head", "posture_state_machine"
+                            )
+                        )
+                    ),
+                    decision_threshold=(
+                        walking_high if code == "WALKING" else 0.5
+                    ),
                 )
             )
+
+    margin = float(config["hysteresis_margin"])
+    merge_gap_setting = config["event_merge_gap_s"]
+    for class_index, code in enumerate(codes):
+        high = thresholds[code]
+        low = max(0.02, high - margin)
+        merge_gap_seconds = (
+            float(merge_gap_setting.get(code, 1.0))
+            if isinstance(merge_gap_setting, Mapping)
+            else float(merge_gap_setting)
+        )
+        merge_steps = max(0, int(round(merge_gap_seconds * output_hz)))
+        active = np.zeros(times.size, dtype=bool)
+        for block_start, block_stop in blocks:
+            block_active = hysteresis_binary(
+                events[block_start:block_stop, class_index], high, low
+            )
+            active[block_start:block_stop] = merge_and_filter_binary(
+                block_active,
+                max(
+                    1,
+                    int(
+                        round(
+                            float(minimum_by_event.get(code, 1.0)) * output_hz
+                        )
+                    ),
+                ),
+                merge_steps,
+            )
+        support = "research" if code in RESEARCH_EVENT_CODES else "formal"
+        for block_start, block_stop in blocks:
+            for label, local_start, local_end in _runs(
+                active[block_start:block_stop].astype(np.int8)
+            ):
+                if label != 1:
+                    continue
+                start = block_start + local_start
+                end = block_start + local_end
+                mean_score = float(events[start:end, class_index].mean())
+                priority = (
+                    "research"
+                    if support == "research"
+                    else "high_score"
+                    if mean_score >= min(0.99, high + 0.15)
+                    else "uncertain"
+                )
+                rows.append(
+                    _interval_row(
+                        code,
+                        start,
+                        end,
+                        times,
+                        events[:, class_index],
+                        step_ms,
+                        create_time_ms,
+                        candidate_type="event_candidate",
+                        review_priority=priority,
+                        model_support=support,
+                        review_recommended=support == "formal",
+                        source_head=f"event:{code}",
+                        decision_threshold=high,
+                        uncertainty=round(abs(mean_score - high), 6),
+                    )
+                )
     return sorted(
         rows,
         key=lambda row: (
