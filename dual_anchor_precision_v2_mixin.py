@@ -1125,6 +1125,12 @@ class DualAnchorPrecisionV2Mixin:
         self.pin_btn.setEnabled(has_pair and not self._source_switch_active)
         for button, _delta in getattr(self, "nudge_buttons", []):
             button.setEnabled(has_pair and not self._source_switch_active)
+        for button in (
+            getattr(self, "previous_video_btn", None),
+            getattr(self, "next_video_btn", None),
+        ):
+            if button is not None and self._source_switch_active:
+                button.setEnabled(False)
         calibration = self._annotation_blocked_by_alignment()
         self.label_list.setEnabled(not calibration)
 

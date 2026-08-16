@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -52,6 +54,69 @@ class CompactUiLayoutTests(unittest.TestCase):
         self.app.processEvents()
         self.assertTrue(self.window.alignment_advanced.isVisible())
         self.assertTrue(self.window.ffmpeg_btn.isVisible())
+
+    def test_video_navigation_follows_natural_filename_order(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in (
+                "segment10.mp4",
+                "segment2.mp4",
+                "segment1.mp4",
+                "notes.txt",
+            ):
+                (root / name).touch()
+
+            original_media = self.window.media
+            original_open_video = self.window.open_video
+            opened: list[str] = []
+            try:
+                self.window.media = object()
+                self.window.video_path = str(root / "segment2.mp4")
+                self.window.open_video = lambda path=None: opened.append(str(path))
+                self.window._refresh_enabled()
+
+                self.assertTrue(self.window.previous_video_btn.isEnabled())
+                self.assertTrue(self.window.next_video_btn.isEnabled())
+                self.window.next_video_btn.click()
+                self.assertEqual(Path(opened[-1]).name, "segment10.mp4")
+
+                self.window.previous_video_btn.click()
+                self.assertEqual(Path(opened[-1]).name, "segment1.mp4")
+            finally:
+                self.window.open_video = original_open_video
+                self.window.media = original_media
+                self.window.video_path = ""
+
+    def test_video_navigation_disables_buttons_at_directory_boundaries(self) -> None:
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            first = root / "clip1.mp4"
+            last = root / "clip2.mp4"
+            first.touch()
+            last.touch()
+            (root / "clip3.json").touch()
+
+            original_media = self.window.media
+            try:
+                self.window.media = object()
+                self.window.video_path = str(first)
+                self.window._refresh_enabled()
+                self.assertFalse(self.window.previous_video_btn.isEnabled())
+                self.assertTrue(self.window.next_video_btn.isEnabled())
+
+                self.window.video_path = str(last)
+                self.window._refresh_enabled()
+                self.assertTrue(self.window.previous_video_btn.isEnabled())
+                self.assertFalse(self.window.next_video_btn.isEnabled())
+
+                last.unlink()
+                self.window.video_path = str(first)
+                self.window._refresh_enabled()
+                self.assertFalse(self.window.previous_video_btn.isEnabled())
+                self.assertFalse(self.window.next_video_btn.isEnabled())
+            finally:
+                self.window.media = original_media
+                self.window.video_path = ""
 
     def test_export_actions_remain_available_in_compact_menu(self) -> None:
         actions = set(self.window.export_tools_menu.actions())

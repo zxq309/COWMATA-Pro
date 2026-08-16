@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -72,6 +73,36 @@ CHANNEL_ALIASES = {
     "mag_z": "mz",
     "temp": "temperature",
 }
+
+VIDEO_FILE_SUFFIXES = frozenset(
+    {
+        ".mp4",
+        ".mkv",
+        ".avi",
+        ".mov",
+        ".ts",
+        ".m2ts",
+        ".ps",
+        ".mpeg",
+        ".mpg",
+        ".h265",
+        ".hevc",
+    }
+)
+
+
+def _natural_video_sort_key(
+    path: Path,
+) -> tuple[tuple[tuple[int, object], ...], str]:
+    """Sort numbered video names in human order (2 before 10)."""
+
+    folded = path.name.casefold()
+    parts = tuple(
+        (0, int(part)) if part.isdigit() else (1, part)
+        for part in re.split(r"(\d+)", folded)
+        if part
+    )
+    return parts, folded
 
 
 def _value(obj: Any, *names: str, default: Any = None) -> Any:
@@ -169,6 +200,8 @@ class MainWindow(QMainWindow):
         self.full_view_btn.clicked.connect(self.plot.show_all)
 
         self.play_btn.clicked.connect(self.toggle_play)
+        self.previous_video_btn.clicked.connect(self.open_previous_video)
+        self.next_video_btn.clicked.connect(self.open_next_video)
         self.prev_frame_btn.clicked.connect(self.previous_frame)
         self.next_frame_btn.clicked.connect(self.next_frame)
         self.rate_combo.currentIndexChanged.connect(self._apply_rate)
@@ -262,6 +295,11 @@ class MainWindow(QMainWindow):
             self.video_fullscreen_btn,
         ):
             widget.setEnabled(has_video)
+        previous_video, next_video = self._neighboring_video_paths()
+        self.previous_video_btn.setEnabled(
+            has_video and previous_video is not None
+        )
+        self.next_video_btn.setEnabled(has_video and next_video is not None)
         for widget in (
             self.pin_btn,
             self.filename_btn,
@@ -279,6 +317,68 @@ class MainWindow(QMainWindow):
             f"数据：{'已载入' if has_data else '未载入'}　"
             f"视频：{'已载入' if has_video else '未载入'}"
         )
+
+    def _videos_in_current_directory(self) -> list[Path]:
+        """Return sibling video files without probing or indexing media."""
+
+        if not self.video_path:
+            return []
+        folder = Path(self.video_path).parent
+        try:
+            videos = [
+                candidate
+                for candidate in folder.iterdir()
+                if candidate.is_file()
+                and candidate.suffix.casefold() in VIDEO_FILE_SUFFIXES
+            ]
+        except OSError:
+            return []
+        return sorted(videos, key=_natural_video_sort_key)
+
+    @staticmethod
+    def _normalized_path_key(path: str | os.PathLike[str]) -> str:
+        return os.path.normcase(os.path.abspath(os.fspath(path)))
+
+    def _neighboring_video_paths(self) -> tuple[Path | None, Path | None]:
+        if not self.video_path:
+            return None, None
+        videos = self._videos_in_current_directory()
+        current_key = self._normalized_path_key(self.video_path)
+        current_index = next(
+            (
+                index
+                for index, candidate in enumerate(videos)
+                if self._normalized_path_key(candidate) == current_key
+            ),
+            None,
+        )
+        if current_index is None:
+            return None, None
+        previous_video = videos[current_index - 1] if current_index > 0 else None
+        next_video = (
+            videos[current_index + 1]
+            if current_index + 1 < len(videos)
+            else None
+        )
+        return previous_video, next_video
+
+    def _open_neighboring_video(self, direction: int) -> None:
+        if getattr(self, "_source_switch_active", False):
+            return
+        previous_video, next_video = self._neighboring_video_paths()
+        target = previous_video if direction < 0 else next_video
+        if target is None:
+            boundary = "上一个" if direction < 0 else "下一个"
+            self._refresh_enabled()
+            self.statusBar().showMessage(f"当前没有{boundary}视频", 3000)
+            return
+        self.open_video(str(target))
+
+    def open_previous_video(self, _checked: bool = False) -> None:
+        self._open_neighboring_video(-1)
+
+    def open_next_video(self, _checked: bool = False) -> None:
+        self._open_neighboring_video(1)
 
     def _install_video_fullscreen_shortcut(self) -> None:
         self._video_fullscreen_shortcut = QShortcut(QKeySequence("F11"), self)

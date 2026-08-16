@@ -354,6 +354,14 @@ class WindowUi:
         controls.setContentsMargins(5, 3, 5, 3)
         controls.setSpacing(5)
         self.video_control_bar = control_bar
+        self.previous_video_btn = QPushButton("◀ 上个视频")
+        self.previous_video_btn.setToolTip(
+            "打开当前文件夹中按文件名排序的上一个视频"
+        )
+        self.next_video_btn = QPushButton("下个视频 ▶")
+        self.next_video_btn.setToolTip(
+            "打开当前文件夹中按文件名排序的下一个视频"
+        )
         self.play_btn = QPushButton("▶ 播放")
         self.prev_frame_btn = QPushButton("⟨ 帧")
         self.next_frame_btn = QPushButton("帧 ⟩")
@@ -366,6 +374,8 @@ class WindowUi:
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(70)
         self.volume_slider.setMaximumWidth(90)
+        controls.addWidget(self.previous_video_btn)
+        controls.addWidget(self.next_video_btn)
         controls.addWidget(self.play_btn)
         controls.addWidget(self.prev_frame_btn)
         controls.addWidget(self.next_frame_btn)
