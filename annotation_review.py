@@ -1337,6 +1337,12 @@ class AnnotationReviewMixin:
         root = str(self._review_workspace.get("json_root", "") or "")
         if root and Path(root).is_dir():
             resolve_workspace_jsons(self._review_workspace, root)
+        else:
+            # Re-check source_json_path metadata even when the saved workspace
+            # has no usable root directory yet.
+            for session in self._review_workspace.get("sessions", []):
+                if isinstance(session, dict):
+                    resolve_session_json(session, {})
         self._save_review_workspace()
         self.show_annotation_review()
         last_uid = str(self._review_workspace.get("last_event_uid", "") or "")
