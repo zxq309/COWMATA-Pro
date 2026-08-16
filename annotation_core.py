@@ -25,6 +25,7 @@ import argparse
 import bisect
 import copy
 import csv
+import hashlib
 import io
 import json
 import math
@@ -994,6 +995,60 @@ def _format_wall_ms(value_ms: float | int | None) -> str:
     return value.strftime("%Y-%m-%d %H:%M:%S.") + f"{value.microsecond // 1000:03d}"
 
 
+def _source_json_metadata(
+    source: Mapping[str, Any], supplied: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Return stable identity fields for the source IMU JSON.
+
+    The path is intentionally stored alongside the filename.  A filename is
+    usually enough for the current export layout, but it is not unique once
+    several device/date folders are reviewed together.  The partial digest is
+    inexpensive for large recordings and catches a file being silently
+    replaced without requiring the whole JSON to be read.
+    """
+
+    raw_path = supplied.get("source_json_path", source.get("path", ""))
+    path_text = str(raw_path or "").strip()
+    result = {
+        "source_json_path": path_text,
+        "source_json_name": Path(path_text).name if path_text else "",
+        "source_json_size": supplied.get("source_json_size", ""),
+        "source_json_mtime_ns": supplied.get("source_json_mtime_ns", ""),
+        "source_json_fingerprint": supplied.get(
+            "source_json_fingerprint", ""
+        ),
+    }
+    if not path_text:
+        return result
+
+    path = Path(path_text).expanduser()
+    try:
+        resolved = path.resolve()
+        stat = resolved.stat()
+        result["source_json_path"] = str(resolved)
+        result["source_json_name"] = resolved.name
+        result["source_json_size"] = int(stat.st_size)
+        result["source_json_mtime_ns"] = int(stat.st_mtime_ns)
+        if not result["source_json_fingerprint"]:
+            digest = hashlib.sha256()
+            chunk_size = 65_536
+            digest.update(str(stat.st_size).encode("ascii"))
+            with resolved.open("rb") as handle:
+                digest.update(handle.read(chunk_size))
+                if stat.st_size > chunk_size:
+                    handle.seek(max(0, stat.st_size - chunk_size))
+                    digest.update(handle.read(chunk_size))
+            result["source_json_fingerprint"] = (
+                "sha256-partial:" + digest.hexdigest()
+            )
+    except (OSError, ValueError):
+        # Keep caller-supplied identity values if the source is unavailable.
+        # Exporting annotations should still work when the original drive is
+        # temporarily disconnected; the review UI will show the missing JSON.
+        pass
+    return result
+
+
 def _session_id(project: Project, explicit: str | None = None) -> str:
     if explicit:
         return explicit
@@ -1184,7 +1239,7 @@ def build_meta(
         if exported_at_ms is None
         else exported_at_ms
     )
-    return {
+    metadata = {
         "tool": "牛尾环九轴桌面标注工具",
         "project_version": PROJECT_VERSION,
         "session_id": _session_id(project, session_id),
@@ -1204,6 +1259,11 @@ def build_meta(
         "video_name": project.videoName,
         "exported_bj": _format_wall_ms(exported_at_ms),
     }
+    # Preserve arbitrary runtime metadata so future calibration parameters can
+    # be added outside the package without requiring another schema migration.
+    metadata.update(supplied)
+    metadata.update(_source_json_metadata(source, supplied))
+    return metadata
 
 
 def export_meta_json(
