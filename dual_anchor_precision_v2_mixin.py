@@ -29,6 +29,8 @@ class DualAnchorPrecisionV2Mixin:
     )
     VIEW_SCALE_ALL = -1.0
     VIEW_SCALE_CUSTOM = -2.0
+    VIDEO_SWITCH_RECOVERY_DELAY_MS = 350
+    VIDEO_SWITCH_RECOVERY_RETRIES = 12
 
     def __init__(self) -> None:
         self._timelines_linked = False
@@ -369,6 +371,61 @@ class DualAnchorPrecisionV2Mixin:
             5000,
         )
 
+    def _schedule_video_source_switch_recovery(self, path: str) -> None:
+        """Finish a switch if VLC omits the paused-state transition."""
+
+        expected = os.path.normcase(os.path.abspath(path))
+        QTimer.singleShot(
+            self.VIDEO_SWITCH_RECOVERY_DELAY_MS,
+            lambda: self._recover_video_source_switch(
+                expected,
+                self.VIDEO_SWITCH_RECOVERY_RETRIES,
+            ),
+        )
+
+    def _recover_video_source_switch(
+        self,
+        expected_path: str,
+        retries_left: int,
+    ) -> None:
+        if not (
+            self._source_switch_active
+            and self._source_switch_kind == "video"
+            and self._source_switch_mapping_committed
+            and self.media is not None
+        ):
+            return
+        current = os.path.normcase(
+            os.path.abspath(self.media.current_path or "")
+        )
+        if current != expected_path:
+            return
+
+        duration_ms = float(self.media.duration_ms())
+        playing = bool(self.media.is_playing())
+        if (duration_ms <= 0.0 or playing) and retries_left > 0:
+            QTimer.singleShot(
+                self.VIDEO_SWITCH_RECOVERY_DELAY_MS,
+                lambda: self._recover_video_source_switch(
+                    expected_path,
+                    retries_left - 1,
+                ),
+            )
+            return
+
+        timed_out = duration_ms <= 0.0 or playing
+        if not self._media_primed:
+            self._media_primed = True
+            self._finish_media_priming()
+        if self._source_switch_active:
+            self._complete_video_source_switch()
+        if timed_out:
+            self.statusBar().showMessage(
+                "视频初始化确认超时，已自动解除界面冻结；"
+                "如画面不能播放请重新打开该视频",
+                8000,
+            )
+
     def _restore_new_json_view(self, snapshot: dict[str, object]) -> None:
         view = snapshot.get("view")
         if not isinstance(view, (tuple, list)) or len(view) != 2:
@@ -536,6 +593,8 @@ class DualAnchorPrecisionV2Mixin:
             )
             if getattr(self, "_media_primed", False):
                 self._complete_video_source_switch()
+            else:
+                self._schedule_video_source_switch_recovery(current)
             return
 
         if switching:

@@ -12,12 +12,16 @@ class _FakeMedia:
         self.current_path = os.path.abspath(path)
         self.video_ms = 1_000_000.0
         self.playing = False
+        self.duration = 973_000.0
 
     def is_playing(self) -> bool:
         return self.playing
 
     def get_time_ms(self) -> float:
         return self.video_ms
+
+    def duration_ms(self) -> float:
+        return self.duration
 
     def set_time_ms(self, value: float) -> bool:
         self.video_ms = float(value)
@@ -96,6 +100,9 @@ class _VideoOpenBase:
     def _clear_ui_seek(self) -> None:
         self.seek_cleared = True
 
+    def _finish_media_priming(self) -> None:
+        self.priming_finished = True
+
 
 class _Harness(DualAnchorPrecisionV2Mixin, _VideoOpenBase):
     def __init__(self, old_path: str) -> None:
@@ -123,6 +130,7 @@ class _Harness(DualAnchorPrecisionV2Mixin, _VideoOpenBase):
         self.align_method = "pin"
         self.seek_requested = False
         self.seek_cleared = False
+        self.priming_finished = False
         self.alignment_refreshed = False
         self._status_bar = _FakeStatusBar()
 
@@ -173,6 +181,21 @@ class VideoContinuationTest(unittest.TestCase):
 
         self.assertEqual(window.playhead_ms, 0.0)
         self.assertEqual(window.align_method, "default")
+
+    def test_paused_video_recovers_when_vlc_omits_pause_signal(self) -> None:
+        window = _Harness("hiv00000.mp4")
+        window.open_video("hiv00001.mp4")
+        expected = os.path.normcase(os.path.abspath("hiv00001.mp4"))
+
+        self.assertTrue(window._source_switch_active)
+        self.assertFalse(window._media_primed)
+        window._recover_video_source_switch(expected, retries_left=12)
+
+        self.assertTrue(window._media_primed)
+        self.assertTrue(window.priming_finished)
+        self.assertFalse(window._source_switch_active)
+        self.assertTrue(window._timelines_are_linked())
+        self.assertIn("续接完成", window.statusBar().message)
 
     def test_switch_json_keeps_video_position_and_starts_new_data_at_zero(self) -> None:
         window = _Harness("hiv00000.mp4")
