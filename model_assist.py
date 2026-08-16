@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import sys
 import traceback
 from datetime import datetime
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
+import pandas as pd
 from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
@@ -1419,9 +1421,16 @@ class ModelAssistMixin:
                 PREDICTION_CACHE_DIR
                 / f"{Path(source).stem}.{source_key}.prediction_summary.json"
             )
+            guide_outputs = ModelAssistMixin._write_predict_full_csv_outputs(
+                self,
+                result,
+                output_directory=PREDICTION_CACHE_DIR,
+                source_key=source_key,
+            )
             payload = dict(result)
             payload["annotation_source"] = source
             payload["cache_key"] = source_key
+            payload["predict_full_outputs"] = guide_outputs
             temp_path = output_path.with_suffix(output_path.suffix + ".tmp")
             temp_path.write_text(
                 json.dumps(
@@ -1437,6 +1446,126 @@ class ModelAssistMixin:
         except Exception:
             self.statusBar().showMessage("预测完成，但预测摘要缓存写入失败", 5000)
             return None
+
+    def _write_predict_full_csv_outputs(
+        self,
+        result: dict[str, Any],
+        *,
+        output_directory: Path,
+        source_key: str,
+    ) -> dict[str, str]:
+        """Write the two CSV files documented by PredictFull_使用指南.md."""
+
+        arrays = result.get("_arrays")
+        if not isinstance(arrays, dict):
+            return {}
+        required = (
+            "center_index",
+            "times_ms",
+            "posture_probability",
+            "walking_probability",
+            "event_probability",
+            "event_codes",
+        )
+        if any(name not in arrays for name in required):
+            return {}
+
+        centers = np.asarray(arrays["center_index"], dtype=np.int64)
+        times = np.asarray(arrays["times_ms"], dtype=np.int64)
+        posture = np.asarray(arrays["posture_probability"], dtype=np.float32)
+        walking = np.asarray(arrays["walking_probability"], dtype=np.float32)
+        events = np.asarray(arrays["event_probability"], dtype=np.float64)
+        event_codes = [str(value) for value in arrays["event_codes"]]
+        count = len(times)
+        if (
+            centers.shape != (count,)
+            or posture.shape != (count, 2)
+            or walking.shape != (count,)
+            or events.shape != (count, len(event_codes))
+        ):
+            raise ValueError("PredictFull CSV 稠密概率数组形状不一致")
+
+        preprocessing = result.get("preprocessing")
+        guide_cache_key = (
+            str(preprocessing.get("guide_cache_key") or "")
+            if isinstance(preprocessing, dict)
+            else ""
+        )
+        if guide_cache_key:
+            prefix = guide_cache_key
+        else:
+            stem = re.sub(
+                r"[^A-Za-z0-9_-]+",
+                "_",
+                Path(str(result.get("imu_file", "session"))).stem,
+            ).strip("_") or "session"
+            prefix = f"{stem}_{source_key}"
+
+        dense_path = output_directory / f"{prefix}_dense.csv"
+        dense_temp = dense_path.with_suffix(dense_path.suffix + ".tmp")
+        dense = pd.DataFrame(
+            {"center_index": centers, "center_time_ms": times}
+        )
+        dense["prob_posture_UPRIGHT"] = posture[:, 0]
+        dense["prob_posture_LYING"] = posture[:, 1]
+        dense["prob_WALKING"] = walking
+        for index, code in enumerate(event_codes):
+            dense[f"prob_{code}"] = events[:, index]
+        dense.to_csv(dense_temp, index=False, encoding="utf-8-sig")
+        dense_temp.replace(dense_path)
+
+        candidates_path = output_directory / f"{prefix}_candidates.csv"
+        candidates_temp = candidates_path.with_suffix(
+            candidates_path.suffix + ".tmp"
+        )
+        candidate_rows: list[dict[str, object]] = []
+        for event_index, code in enumerate(event_codes):
+            probability = events[:, event_index]
+            positive = np.flatnonzero(probability >= 0.5)
+            if positive.size == 0:
+                continue
+            start = int(positive[0])
+            previous = int(positive[0])
+            groups: list[tuple[int, int]] = []
+            for current_value in positive[1:]:
+                current = int(current_value)
+                if int(times[current]) - int(times[previous]) > 5_000:
+                    groups.append((start, previous))
+                    start = current
+                previous = current
+            groups.append((start, previous))
+            for start, end in groups:
+                candidate_rows.append(
+                    {
+                        "event_code": code,
+                        "label": MODEL_LABEL_NAMES.get(code, code),
+                        "t_start_rel_ms": int(times[start]),
+                        "t_end_rel_ms": int(times[end] + 500),
+                        "max_prob": round(
+                            float(probability[start : end + 1].max()), 4
+                        ),
+                    }
+                )
+        candidate_frame = pd.DataFrame(
+            candidate_rows,
+            columns=[
+                "event_code",
+                "label",
+                "t_start_rel_ms",
+                "t_end_rel_ms",
+                "max_prob",
+            ],
+        )
+        if not candidate_frame.empty:
+            candidate_frame = candidate_frame.sort_values("t_start_rel_ms")
+        candidate_frame.to_csv(
+            candidates_temp, index=False, encoding="utf-8-sig"
+        )
+        candidates_temp.replace(candidates_path)
+        return {
+            "dense_csv": str(dense_path),
+            "candidates_csv": str(candidates_path),
+        }
 
     def closeEvent(self, event) -> None:  # noqa: N802
         if self._prediction_is_running():

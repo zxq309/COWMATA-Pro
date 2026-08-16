@@ -22,7 +22,8 @@ from ui_helpers import format_relative
 
 
 BODY_CODES = {"LYING", "STANDING", "WALKING"}
-RESEARCH_MODEL_CODES = {"DEFECATION", "TAIL_RAISED", "TAIL_WAGGING"}
+# PredictFull_使用指南.md only marks tail wagging as evidence-limited.
+RESEARCH_MODEL_CODES = {"TAIL_WAGGING"}
 MODEL_EDIT_CODES = (
     "STANDING",
     "LYING",

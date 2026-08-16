@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import asdict, dataclass
@@ -21,7 +22,7 @@ from .full_features import (
     segment_features,
     session_reference,
 )
-from .postprocess import postprocess_hierarchical_predictions
+from .postprocess import postprocess_predict_full_guide
 
 
 ProgressCallback = Callable[[int, str], None]
@@ -38,43 +39,25 @@ FULL_EVENT_CODES = (
     "TAIL_WAGGING",
 )
 REQUIRED_GBDT_TASKS = ("POSTURE_LYING", "WALKING", *FULL_EVENT_CODES)
-ALGORITHM_VERSION = "offline_tcn_gbdt_hybrid_20260816_v2"
+ALGORITHM_VERSION = "predict_full_guide_20260816_v1"
 
 DEFAULT_EVENT_THRESHOLDS = {code: 0.5 for code in FULL_EVENT_CODES}
 # All production devices share the same sensor contract.  MAC addresses are
 # metadata only and never select preprocessing parameters.  The centred
 # session reference below still compensates for the ring's mounting angle.
 UNIFIED_SENSOR_CALIBRATION: dict[str, object] = dict(DEFAULT_CALIBRATION)
-DEFAULT_FULL_POSTPROCESS: dict[str, object] = {
-    "state_machine": {
-        "initial_state": "AUTO",
-        "confirm_points": 4,
-        "min_dwell_points": 4,
-        "margin": 0.10,
-        "transition_event_weight": 0.50,
-        "max_sequence_gap_ms": 750,
+GUIDE_POSTPROCESS: dict[str, object] = {
+    "contract": "PredictFull_使用指南.md",
+    "event_threshold": 0.5,
+    "event_split_gap_ms": 5_000,
+    "event_min_duration_s": None,
+    "event_hysteresis": False,
+    "posture_state_machine": False,
+    "body_display_adapter": {
+        "posture": "argmax(UPRIGHT, LYING)",
+        "walking_threshold": 0.5,
+        "walking_requires_upright": True,
     },
-    "walking_threshold": 0.5,
-    "walking_hysteresis_margin": 0.0,
-    "walking_min_duration_s": 1.0,
-    "walking_merge_gap_s": 0.75,
-    "event_min_duration_s": {
-        "STANDING_UP": 1.0,
-        "LYING_DOWN": 1.0,
-        "URINATION": 4.0,
-        "DEFECATION": 3.0,
-        "TAIL_RAISED": 2.0,
-        "TAIL_WAGGING": 1.0,
-    },
-    "event_merge_gap_s": {
-        "STANDING_UP": 2.0,
-        "LYING_DOWN": 2.0,
-        "URINATION": 5.0,
-        "DEFECATION": 4.0,
-        "TAIL_RAISED": 3.0,
-        "TAIL_WAGGING": 1.5,
-    },
-    "hysteresis_margin": 0.0,
 }
 
 
@@ -304,6 +287,136 @@ def _sensor_calibration_contract(
     return result, source_name
 
 
+def _read_source_document(path: Path) -> dict[str, object]:
+    with path.open("r", encoding="utf-8-sig") as handle:
+        document = json.load(handle)
+    if not isinstance(document, dict):
+        raise ValueError("原始 IMU JSON 顶层必须是对象")
+    if int(document.get("version", 2)) != 2:
+        raise ValueError("PredictFull 指南适配当前只支持 V2 九轴 JSON")
+    # Cache lookup needs only session identity. Do not retain the large Base64
+    # payload while the models are running.
+    document.pop("imu", None)
+    return document
+
+
+def _guide_cache_roots(model_directory: Path) -> list[Path]:
+    """Locate the two cache roots in the same order as predict_full.py."""
+
+    anchors = [model_directory, *model_directory.parents]
+    bundled_root = Path(__file__).resolve().parents[2] / "预测" / "20260816"
+    anchors.append(bundled_root)
+    data_roots: list[Path] = []
+    seen: set[str] = set()
+    for anchor in anchors:
+        candidate = anchor / "01_关键训练数据"
+        key = str(candidate.resolve(strict=False)).casefold()
+        if key in seen or not candidate.is_dir():
+            continue
+        seen.add(key)
+        data_roots.append(candidate)
+    roots: list[Path] = []
+    for data_root in data_roots:
+        roots.extend(
+            (
+                data_root / "supervised_cache" / "session_cache",
+                data_root / "ssl_cache" / "session_cache",
+            )
+        )
+    return [root for root in roots if root.is_dir()]
+
+
+def _find_guide_cache(
+    model_directory: Path,
+    source: Path,
+    document: Mapping[str, object],
+) -> Path | None:
+    device = str(
+        document.get("device")
+        or document.get("device_id")
+        or document.get("mac")
+        or ""
+    ).strip()
+    if not device:
+        return None
+    prefix = re.sub(
+        r"[^A-Za-z0-9]+", "_", f"{device}_{source.stem}"
+    ).strip("_")
+    for root in _guide_cache_roots(model_directory):
+        matches = sorted(
+            path
+            for path in root.glob(f"{prefix}_*")
+            if path.is_dir() and (path / "features.npy").is_file()
+        )
+        if len(matches) > 1:
+            raise ValueError(
+                f"PredictFull 指南缓存匹配不唯一：{prefix}，请保留一个 cache_key"
+            )
+        if matches:
+            return matches[0]
+    return None
+
+
+def _load_guide_cache(
+    cache_directory: Path,
+    document: Mapping[str, object],
+) -> tuple[np.ndarray, np.ndarray, list[tuple[int, int]], dict[str, object]]:
+    """Load ``features.npy`` and segment times exactly like predict_full.py."""
+
+    features = np.load(cache_directory / "features.npy", mmap_mode="r")
+    if features.ndim != 2 or features.shape[1] != 13:
+        raise ValueError(
+            f"PredictFull 缓存必须是 N×13，实际为 {tuple(features.shape)}"
+        )
+    metadata_path = cache_directory / "metadata.json"
+    if metadata_path.is_file():
+        with metadata_path.open("r", encoding="utf-8-sig") as handle:
+            cache_metadata = json.load(handle)
+        raw_segments = cache_metadata.get("segments", [])
+        segments_with_time = [
+            (
+                int(item["start_index"]),
+                int(item["stop_index"]),
+                int(item.get("start_ms", int(item["start_index"]) * 20)),
+            )
+            for item in raw_segments
+        ]
+    else:
+        segments_with_time = [(0, len(features), 0)]
+    if not segments_with_time:
+        raise ValueError(f"PredictFull 缓存没有有效 segments：{cache_directory}")
+
+    times = np.empty(len(features), dtype=np.int64)
+    segments: list[tuple[int, int]] = []
+    for start, stop, start_ms in segments_with_time:
+        if not (0 <= start < stop <= len(features)):
+            raise ValueError(
+                f"PredictFull 缓存 segment 越界：[{start}, {stop})/{len(features)}"
+            )
+        times[start:stop] = start_ms + np.arange(stop - start, dtype=np.int64) * 20
+        segments.append((start, stop))
+
+    device = str(
+        document.get("device")
+        or document.get("device_id")
+        or document.get("mac")
+        or ""
+    )
+    metadata: dict[str, object] = {
+        "create_time": document.get("create_time"),
+        "device": device,
+        "uid": document.get("uid", ""),
+        "version": 2,
+        "regular_frames": int(len(features)),
+        "segments": len(segments),
+        "calibration_source": "predict_full:preprocessed_cache",
+        "calibration_warning": "",
+        "guide_cache_key": cache_directory.name,
+        "guide_cache_path": str(cache_directory.resolve()),
+    }
+    return times, features, segments, metadata
+
+
 def _extract_feature_table(
     features: np.ndarray,
     times_ms: np.ndarray,
@@ -380,14 +493,6 @@ def _extract_feature_table(
 
 
 def _prediction_vector(model: object, values: np.ndarray, task: str) -> np.ndarray:
-    inner = getattr(model, "model", model)
-    set_params = getattr(inner, "set_params", None)
-    if callable(set_params):
-        try:
-            # CPU inference is portable and fast for only 104 features at 2 Hz.
-            set_params(device="cpu", tree_method="hist")
-        except Exception:
-            pass
     predict = getattr(model, "predict_proba", None)
     if not callable(predict):
         raise ValueError(f"GBDT 任务 {task} 不提供 predict_proba")
@@ -445,7 +550,6 @@ def _deep_probabilities(
     centers: np.ndarray,
     segment_starts: np.ndarray,
     segment_stops: np.ndarray,
-    package_config: Mapping[str, object],
     progress: ProgressCallback | None,
     *,
     device: str,
@@ -453,7 +557,7 @@ def _deep_probabilities(
 ) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
     import torch
 
-    from .hardware import autocast_dtype, detect_runtime
+    from .hardware import detect_runtime
     from .offline_model import OfflineMultiTaskTCN
 
     resolved, checkpoint = inspect_checkpoint(deep_path)
@@ -487,16 +591,12 @@ def _deep_probabilities(
     )
     indices = np.asarray(checkpoint["feature_indices"], dtype=np.int64)
     context = int(checkpoint["context_samples"])
-    configured_batch = package_config.get("deep_batch_size")
-    effective_batch = int(
-        batch_size
-        or (configured_batch if configured_batch is not None else 0)
-        or (64 if torch_device.type == "cuda" else 8)
-    )
+    # PredictFull_使用指南.md fixes B=64.  An explicit smaller value and the
+    # OOM fallback are retained only so the desktop tool can recover safely.
+    effective_batch = int(batch_size or 64)
     effective_batch = max(1, effective_batch)
     posture_parts: list[np.ndarray] = []
     walking_parts: list[np.ndarray] = []
-    amp_enabled = runtime.amp and torch_device.type == "cuda"
     completed = 0
     with torch.inference_mode():
         while completed < len(centers):
@@ -525,14 +625,9 @@ def _deep_probabilities(
                 torch_device, non_blocking=runtime.pin_memory
             )
             try:
-                with torch.autocast(
-                    device_type=torch_device.type,
-                    dtype=autocast_dtype(runtime),
-                    enabled=amp_enabled,
-                ):
-                    posture_logits, walking_logits = (
-                        model.forward_posture_locomotion(inputs)
-                    )
+                output = model(inputs)
+                posture_logits = output["posture_logits"]
+                walking_logits = output["locomotion_logits"]
             except RuntimeError as exc:
                 if (
                     torch_device.type == "cuda"
@@ -570,6 +665,7 @@ def _deep_probabilities(
             "batch_size": effective_batch,
             "best_epoch": checkpoint.get("best_epoch", checkpoint.get("epoch")),
             "thresholds": dict(thresholds) if isinstance(thresholds, Mapping) else {},
+            "precision": "float32_predict_full_guide",
         },
     )
 
@@ -591,21 +687,37 @@ def predict_full_imu(
     file_config, _ = _read_package_config(package.directory)
     config = _effective_config(bundle, file_config)
 
-    calibration_source, calibration_source_name = _sensor_calibration_contract(
-        bundle, config
-    )
-    _emit(progress, 8, "正在按新版规则解码、分段并重采样原始 JSON")
-    times, base_features, segments, metadata = load_causal_features(
-        source,
-        {"sensor_calibration": calibration_source},
-    )
-    applied_calibration, _ = resolve_calibration(
-        {"sensor_calibration": calibration_source},
-        device=str(metadata.get("device", "")),
-        session_id=source.stem,
-    )
-    metadata["calibration_source"] = calibration_source_name
-    metadata["calibration_warning"] = ""
+    document = _read_source_document(source)
+    guide_cache = _find_guide_cache(package.directory, source, document)
+    applied_calibration: dict[str, object] | None
+    if guide_cache is not None:
+        _emit(progress, 8, f"正在按 PredictFull 指南加载 cache_key：{guide_cache.name}")
+        times, base_features, segments, metadata = _load_guide_cache(
+            guide_cache, document
+        )
+        applied_calibration = None
+        preprocessing_contract = "predict_full_guide_preprocessed_cache_v1"
+    else:
+        calibration_source, calibration_source_name = _sensor_calibration_contract(
+            bundle, config
+        )
+        _emit(
+            progress,
+            8,
+            "新会话无 cache_key，正在按指南第 6 节生成 50 Hz/13 通道输入",
+        )
+        times, base_features, segments, metadata = load_causal_features(
+            source,
+            {"sensor_calibration": calibration_source},
+        )
+        applied_calibration, _ = resolve_calibration(
+            {"sensor_calibration": calibration_source},
+            device=str(metadata.get("device", "")),
+            session_id=source.stem,
+        )
+        metadata["calibration_source"] = calibration_source_name
+        metadata["calibration_warning"] = ""
+        preprocessing_contract = "predict_full_guide_raw_cache_adapter_v1"
     (
         feature_frame,
         dense_times,
@@ -630,14 +742,13 @@ def predict_full_imu(
                 centers,
                 segment_starts,
                 segment_stops,
-                config,
                 progress,
                 device=device,
                 batch_size=batch_size,
             )
         )
         body_support = "formal"
-        posture_source = "offline_tcn:posture_state_machine"
+        posture_source = "offline_tcn:posture"
         walking_source = "offline_tcn:locomotion"
         model_status = "hybrid_ready"
         model_class = "OfflineMultiTaskTCN+FullGBDT"
@@ -648,7 +759,7 @@ def predict_full_imu(
         )
         walking_probability = task_probability["WALKING"]
         body_support = "provisional"
-        posture_source = "gbdt:posture_state_machine"
+        posture_source = "gbdt:posture"
         walking_source = "gbdt:walking"
         model_status = "gbdt_fallback_waiting_for_best_pt"
         model_class = "FullGBDT"
@@ -658,68 +769,36 @@ def predict_full_imu(
         )
 
     event_thresholds = dict(DEFAULT_EVENT_THRESHOLDS)
-    embedded_thresholds = bundle.get("thresholds")
-    if isinstance(embedded_thresholds, Mapping):
-        for code in FULL_EVENT_CODES:
-            if code in embedded_thresholds:
-                event_thresholds[code] = float(embedded_thresholds[code])
-    configured_thresholds = config.get("event_thresholds")
-    if isinstance(configured_thresholds, Mapping):
-        for code in FULL_EVENT_CODES:
-            if code in configured_thresholds:
-                event_thresholds[code] = float(configured_thresholds[code])
-    for code, threshold in event_thresholds.items():
-        if not 0.0 <= threshold <= 1.0:
-            raise ValueError(f"{code} 阈值必须在 0 到 1 之间：{threshold}")
-
     walking_threshold = 0.5
-    if deep_metadata is not None:
-        deep_thresholds = deep_metadata.get("thresholds")
-        if isinstance(deep_thresholds, Mapping) and "WALKING" in deep_thresholds:
-            walking_threshold = float(deep_thresholds["WALKING"])
-    bundle_walking = bundle.get("walking_threshold")
-    if bundle_walking is not None:
-        walking_threshold = float(bundle_walking)
-    if config.get("walking_threshold") is not None:
-        walking_threshold = float(config["walking_threshold"])
-    if not 0.0 <= walking_threshold <= 1.0:
-        raise ValueError(f"WALKING 阈值必须在 0 到 1 之间：{walking_threshold}")
-
-    settings = deepcopy(DEFAULT_FULL_POSTPROCESS)
-    configured_postprocess = config.get("postprocess")
-    if isinstance(configured_postprocess, Mapping):
-        _merge_mapping(settings, configured_postprocess)
-    settings["walking_threshold"] = walking_threshold
-    settings["body_model_support"] = body_support
-    settings["posture_source_head"] = posture_source
-    settings["walking_source_head"] = walking_source
-    _emit(progress, 92, "正在执行状态机和分类别区间后处理")
-    intervals = postprocess_hierarchical_predictions(
+    settings = deepcopy(GUIDE_POSTPROCESS)
+    _emit(progress, 92, "正在按 PredictFull 指南生成 0.5 阈值候选区间")
+    intervals = postprocess_predict_full_guide(
         dense_times,
         posture_probability,
         walking_probability,
         event_probability,
         FULL_EVENT_CODES,
-        event_thresholds,
-        2.0,
         metadata.get("create_time"),
-        settings,
+        body_model_support=body_support,
+        posture_source_head=posture_source,
+        walking_source_head=walking_source,
     )
 
     gbdt_hash = _sha256(package.gbdt_path)
     deep_hash = _sha256(package.deep_path) if package.deep_path is not None else ""
     fingerprint = hashlib.sha256(
         f"{ALGORITHM_VERSION}|{gbdt_hash}|{deep_hash}|"
+        f"{metadata.get('guide_cache_key', '')}|"
         f"{json.dumps(applied_calibration, sort_keys=True)}|"
         f"{json.dumps(event_thresholds, sort_keys=True)}|"
         f"{walking_threshold}".encode("utf-8")
     ).hexdigest()
-    if package.config_path is None:
+    if guide_cache is None:
         warnings.append(
-            "模型包没有 inference_config.json；六类事件暂按使用指南的 0.5 阈值，"
-            "并采用训练评估代码中的分类别合并/最短时长规则。"
+            "当前会话不在 PredictFull 训练缓存中；工具已按指南第 6 节从原始 "
+            "JSON 生成 50 Hz/13 通道输入后预测。"
         )
-    warnings.append("排便、抬尾、甩尾证据仍有限，候选必须逐条人工复核。")
+    warnings.append("甩尾仅有 4 个事件/1 头牛，按指南必须逐条人工复核。")
     result: dict[str, object] = {
         "model": str(package.directory),
         "model_class": model_class,
@@ -731,8 +810,8 @@ def predict_full_imu(
         },
         "algorithm": ALGORITHM_VERSION,
         "model_semantics": (
-            "offline deep posture/walking when best.pt is present; full GBDT "
-            "six-event heads; GBDT posture/walking fallback while training"
+            "PredictFull guide: offline deep posture/walking when best.pt is "
+            "present; GBDT six-event heads; fixed 0.5 event candidates"
         ),
         "imu_file": str(source),
         "device": (
@@ -757,12 +836,14 @@ def predict_full_imu(
         "package": package.to_dict(),
         "deep_runtime": deep_metadata,
         "preprocessing": {
-            "contract": "20260816_v2_offline_gap_safe_imu13_unified_sensor_v1",
+            "contract": preprocessing_contract,
             "segments": len(segments),
             "regular_frames": int(len(base_features)),
             "dense_points": int(len(dense_times)),
             "calibration_source": metadata["calibration_source"],
             "sensor_calibration": applied_calibration,
+            "guide_cache_key": metadata.get("guide_cache_key"),
+            "guide_cache_path": metadata.get("guide_cache_path"),
             "session_reference": reference.to_dict(),
             "phase_score": metadata.get("phase_score"),
             "dropped_prefix_bytes": metadata.get("dropped_prefix_bytes", 0),
@@ -770,11 +851,13 @@ def predict_full_imu(
         },
         "warnings": warnings,
         "_arrays": {
+            "center_index": centers,
             "times_ms": dense_times,
             "posture_probability": posture_probability,
             "walking_probability": walking_probability,
             "event_probability": event_probability,
+            "event_codes": list(FULL_EVENT_CODES),
         },
     }
-    _emit(progress, 100, f"完成：生成 {len(intervals)} 个分层预测区间")
+    _emit(progress, 100, f"完成：按 PredictFull 指南生成 {len(intervals)} 个区间")
     return result

@@ -21,12 +21,15 @@ from imu_behavior.full_inference import (  # noqa: E402
     ALGORITHM_VERSION,
     FULL_EVENT_CODES,
     REQUIRED_GBDT_TASKS,
+    _find_guide_cache,
+    _load_guide_cache,
     inspect_full_model_package,
 )
 from imu_behavior.inference import predict_imu  # noqa: E402
 from imu_behavior.offline_model import OfflineMultiTaskTCN  # noqa: E402
 from imu_behavior.postprocess import (  # noqa: E402
     postprocess_hierarchical_predictions,
+    postprocess_predict_full_guide,
 )
 from imu_behavior.schema import EVENT_CLASSES  # noqa: E402
 
@@ -156,6 +159,9 @@ class FullHybridRuntimeTests(unittest.TestCase):
             result["preprocessing"]["sensor_calibration"]["acc_bias_counts"],
             [0.0, 0.0, 0.0],
         )
+        self.assertEqual(result["postprocess"]["event_threshold"], 0.5)
+        self.assertFalse(result["postprocess"]["posture_state_machine"])
+        self.assertEqual(set(result["thresholds"].values()), {0.5})
         codes = {row["code"] for row in result["prediction_intervals"]}
         self.assertEqual(codes, {"STANDING"})
 
@@ -183,6 +189,104 @@ class FullHybridRuntimeTests(unittest.TestCase):
         self.assertEqual(len(lying), 2)
         self.assertLessEqual(lying[0]["end_ms"], 1250)
         self.assertGreaterEqual(lying[1]["start_ms"], 9750)
+
+    def test_predict_full_guide_candidates_use_exact_half_threshold_and_gap(self) -> None:
+        times = np.arange(0, 11_000, 500, dtype=np.int64)
+        posture = np.tile(np.asarray([[0.9, 0.1]]), (len(times), 1))
+        walking = np.zeros(len(times))
+        events = np.zeros((len(times), len(FULL_EVENT_CODES)))
+        urination_index = FULL_EVENT_CODES.index("URINATION")
+        events[0, urination_index] = 0.5
+        events[10, urination_index] = 0.8
+        events[21, urination_index] = 0.9
+
+        rows = postprocess_predict_full_guide(
+            times,
+            posture,
+            walking,
+            events,
+            FULL_EVENT_CODES,
+        )
+
+        urination = [row for row in rows if row["code"] == "URINATION"]
+        self.assertEqual(
+            [(row["start_ms"], row["end_ms"]) for row in urination],
+            [(0, 5_500), (10_500, 11_000)],
+        )
+        self.assertEqual(urination[0]["decision_threshold"], 0.5)
+        self.assertEqual(urination[1]["duration_s"], 0.5)
+
+    def test_predict_full_guide_body_adapter_has_no_state_machine(self) -> None:
+        times = np.asarray([0, 500, 1_000], dtype=np.int64)
+        posture = np.asarray([[0.9, 0.1], [0.1, 0.9], [0.9, 0.1]])
+        walking = np.asarray([0.0, 0.9, 0.6])
+        events = np.zeros((len(times), len(FULL_EVENT_CODES)))
+
+        rows = postprocess_predict_full_guide(
+            times,
+            posture,
+            walking,
+            events,
+            FULL_EVENT_CODES,
+        )
+
+        body = [row for row in rows if row["layer"] == "body_state"]
+        self.assertEqual(
+            [
+                (row["code"], row["start_ms"], row["end_ms"])
+                for row in body
+            ],
+            [
+                ("STANDING", 0, 500),
+                ("LYING", 500, 1_000),
+                ("WALKING", 1_000, 1_500),
+            ],
+        )
+
+    def test_predict_full_cache_lookup_prefers_supervised_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "20260816"
+            model_dir = root / "复现实验" / "final_model"
+            model_dir.mkdir(parents=True)
+            key = "AABBCC_2026_08_16_12_00_00_1234567890"
+            cache_dir = (
+                root
+                / "01_关键训练数据"
+                / "supervised_cache"
+                / "session_cache"
+                / key
+            )
+            cache_dir.mkdir(parents=True)
+            np.save(cache_dir / "features.npy", np.zeros((300, 13), np.float32))
+            (cache_dir / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "segments": [
+                            {
+                                "start_index": 0,
+                                "stop_index": 300,
+                                "start_ms": 160,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            source = Path(directory) / "2026-08-16 12_00_00.json"
+            document = {"version": 2, "device": "AABBCC"}
+
+            found = _find_guide_cache(model_dir, source, document)
+            self.assertEqual(found, cache_dir)
+            times, features, segments, metadata = _load_guide_cache(
+                found, document
+            )
+            self.assertEqual(features.shape, (300, 13))
+            self.assertEqual(segments, [(0, 300)])
+            self.assertEqual((times[0], times[-1]), (160, 6_140))
+            self.assertEqual(metadata["guide_cache_key"], key)
+            mmap = getattr(features, "_mmap", None)
+            if mmap is not None:
+                mmap.close()
 
     def test_unknown_device_uses_same_global_calibration(self) -> None:
         frames = np.zeros(400, dtype=FRAME_DTYPE)

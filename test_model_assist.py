@@ -120,6 +120,74 @@ class ModelAssistPureTests(unittest.TestCase):
             self.assertIsNone(payload["calibration"]["nll"])
             self.assertEqual(len(payload["cache_key"]), 12)
 
+    def test_predict_full_csv_outputs_match_guide_columns(self) -> None:
+        event_codes = [
+            "STANDING_UP",
+            "LYING_DOWN",
+            "URINATION",
+            "DEFECATION",
+            "TAIL_RAISED",
+            "TAIL_WAGGING",
+        ]
+        event_probability = np.zeros((2, len(event_codes)))
+        event_probability[1, event_codes.index("URINATION")] = 0.87654
+        result = {
+            "imu_file": "sample.json",
+            "preprocessing": {"guide_cache_key": "DEVICE_SESSION_HASH"},
+            "prediction_intervals": [
+                {
+                    "code": "STANDING",
+                    "label": "站立",
+                    "start_ms": 0,
+                    "end_ms": 1_000,
+                    "confidence_max": 0.9,
+                },
+                {
+                    "code": "URINATION",
+                    "label": "排尿",
+                    "start_ms": 500,
+                    "end_ms": 1_000,
+                    "confidence_max": 0.87654,
+                },
+            ],
+            "_arrays": {
+                "center_index": np.asarray([0, 25]),
+                "times_ms": np.asarray([0, 500]),
+                "posture_probability": np.asarray(
+                    [[0.8, 0.2], [0.7, 0.3]]
+                ),
+                "walking_probability": np.asarray([0.1, 0.2]),
+                "event_probability": event_probability,
+                "event_codes": event_codes,
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            outputs = ModelAssistMixin._write_predict_full_csv_outputs(
+                object(),
+                result,
+                output_directory=Path(directory),
+                source_key="abcdef123456",
+            )
+            dense = Path(outputs["dense_csv"])
+            candidates = Path(outputs["candidates_csv"])
+            self.assertEqual(dense.name, "DEVICE_SESSION_HASH_dense.csv")
+            self.assertEqual(
+                dense.read_text(encoding="utf-8-sig").splitlines()[0],
+                "center_index,center_time_ms,prob_posture_UPRIGHT,"
+                "prob_posture_LYING,prob_WALKING,prob_STANDING_UP,"
+                "prob_LYING_DOWN,prob_URINATION,prob_DEFECATION,"
+                "prob_TAIL_RAISED,prob_TAIL_WAGGING",
+            )
+            candidate_lines = candidates.read_text(
+                encoding="utf-8-sig"
+            ).splitlines()
+            self.assertEqual(
+                candidate_lines[0],
+                "event_code,label,t_start_rel_ms,t_end_rel_ms,max_prob",
+            )
+            self.assertEqual(candidate_lines[1], "URINATION,排尿,500,1000,0.8765")
+            self.assertEqual(len(candidate_lines), 2)
+
 
 class PredictionReviewSortingTests(unittest.TestCase):
     @classmethod

@@ -12,6 +12,8 @@ from .schema import BODY_CLASSES, EVENT_CLASSES, LABEL_LAYER, LABEL_ZH
 POSTURE_CODES = ("UPRIGHT", "LYING")
 OUTPUT_BODY_CODES = ("STANDING", "LYING", "WALKING")
 RESEARCH_EVENT_CODES = {"DEFECATION", "TAIL_RAISED", "TAIL_WAGGING"}
+PREDICT_FULL_GUIDE_EVENT_THRESHOLD = 0.5
+PREDICT_FULL_GUIDE_EVENT_SPLIT_GAP_MS = 5_000
 
 DEFAULT_POSTPROCESS = {
     # The animal is standing while the tail ring is fitted and recording starts.
@@ -244,6 +246,168 @@ def _interval_row(
         "end_wall_bj": _wall_time(create_time_ms, end_ms),
         **metadata,
     }
+
+
+def _predict_full_guide_row(
+    code: str,
+    start_index: int,
+    end_index: int,
+    times_ms: np.ndarray,
+    class_probability: np.ndarray,
+    create_time_ms: int | float | None,
+    **metadata: object,
+) -> dict[str, object]:
+    """Build one interval with the exact boundaries used by predict_full.py."""
+
+    start_ms = int(times_ms[start_index])
+    end_ms = int(times_ms[end_index] + 500)
+    selected = class_probability[start_index : end_index + 1]
+    return {
+        "layer": LABEL_LAYER[code],
+        "code": code,
+        "label": LABEL_ZH[code],
+        "start_ms": start_ms,
+        "end_ms": end_ms,
+        "duration_s": round((end_ms - start_ms) / 1000.0, 3),
+        "confidence_mean": round(float(selected.mean()), 6),
+        "confidence_max": round(float(selected.max()), 6),
+        "start_wall_bj": _wall_time(create_time_ms, start_ms),
+        "end_wall_bj": _wall_time(create_time_ms, end_ms),
+        **metadata,
+    }
+
+
+def postprocess_predict_full_guide(
+    times_ms: np.ndarray,
+    posture_probability: np.ndarray,
+    walking_probability: np.ndarray,
+    event_probability: np.ndarray,
+    event_codes: Sequence[str],
+    create_time_ms: int | float | None = None,
+    *,
+    body_model_support: str = "formal",
+    posture_source_head: str = "offline_tcn:posture",
+    walking_source_head: str = "offline_tcn:locomotion",
+) -> list[dict[str, object]]:
+    """Adapt the documented ``predict_full.py`` output to the tool's 9 labels.
+
+    The six event candidates follow the guide literally: probability >= 0.5,
+    split only when adjacent positive points are more than 5 seconds apart,
+    start at the first positive centre and end 500 ms after the last one.
+    The guide exports posture/walking as dense probabilities, so the tool's
+    three mutually-exclusive body intervals are a thin display adapter over
+    its documented label mapping, with no state machine or smoothing.
+    """
+
+    times = np.asarray(times_ms, dtype=np.int64)
+    posture = np.asarray(posture_probability, dtype=np.float64)
+    walking = np.asarray(walking_probability, dtype=np.float64).reshape(-1)
+    events = np.asarray(event_probability, dtype=np.float64)
+    codes = tuple(str(code) for code in event_codes)
+    if posture.shape != (times.size, 2):
+        raise ValueError("posture_probability shape does not match output times")
+    if walking.shape != (times.size,):
+        raise ValueError("walking_probability shape does not match output times")
+    if events.shape != (times.size, len(codes)):
+        raise ValueError("event_probability shape does not match output times/codes")
+    if times.size == 0:
+        return []
+
+    lying = posture[:, 1] > posture[:, 0]
+    walking_active = (walking >= 0.5) & ~lying
+    body_labels = np.zeros(times.size, dtype=np.int8)
+    body_labels[lying] = 1
+    body_labels[walking_active] = 2
+    body_confidence = np.column_stack(
+        (np.minimum(posture[:, 0], 1.0 - walking), posture[:, 1], walking)
+    )
+
+    # Body intervals are a UI-only representation of the guide's dense label
+    # mapping. Never draw an interval through a missing 2 Hz decision point.
+    body_boundaries = np.flatnonzero(
+        (body_labels[1:] != body_labels[:-1])
+        | (np.diff(times) <= 0)
+        | (np.diff(times) > 500)
+    ) + 1
+    body_starts = np.concatenate(([0], body_boundaries))
+    body_stops = np.concatenate((body_boundaries, [times.size]))
+    rows: list[dict[str, object]] = []
+    for start, stop in zip(body_starts, body_stops):
+        start_index = int(start)
+        end_index = int(stop) - 1
+        class_index = int(body_labels[start_index])
+        code = OUTPUT_BODY_CODES[class_index]
+        rows.append(
+            _predict_full_guide_row(
+                code,
+                start_index,
+                end_index,
+                times,
+                body_confidence[:, class_index],
+                create_time_ms,
+                candidate_type="continuous_state",
+                model_support=body_model_support,
+                source_head=(
+                    walking_source_head if code == "WALKING" else posture_source_head
+                ),
+                decision_threshold=0.5,
+                predict_full_guide_adapter=True,
+            )
+        )
+
+    for class_index, code in enumerate(codes):
+        probability = events[:, class_index]
+        positive = np.flatnonzero(
+            probability >= PREDICT_FULL_GUIDE_EVENT_THRESHOLD
+        )
+        if positive.size == 0:
+            continue
+        group_start = int(positive[0])
+        previous = int(positive[0])
+        groups: list[tuple[int, int]] = []
+        for current_value in positive[1:]:
+            current = int(current_value)
+            if (
+                int(times[current]) - int(times[previous])
+                > PREDICT_FULL_GUIDE_EVENT_SPLIT_GAP_MS
+            ):
+                groups.append((group_start, previous))
+                group_start = current
+            previous = current
+        groups.append((group_start, previous))
+
+        research = code == "TAIL_WAGGING"
+        for start_index, end_index in groups:
+            mean_score = float(probability[start_index : end_index + 1].mean())
+            rows.append(
+                _predict_full_guide_row(
+                    code,
+                    start_index,
+                    end_index,
+                    times,
+                    probability,
+                    create_time_ms,
+                    candidate_type="event_candidate",
+                    review_priority="research" if research else "guide_candidate",
+                    model_support="research" if research else "formal",
+                    review_recommended=not research,
+                    source_head=f"gbdt:{code}",
+                    decision_threshold=PREDICT_FULL_GUIDE_EVENT_THRESHOLD,
+                    uncertainty=round(
+                        abs(mean_score - PREDICT_FULL_GUIDE_EVENT_THRESHOLD), 6
+                    ),
+                    predict_full_guide_adapter=False,
+                )
+            )
+
+    return sorted(
+        rows,
+        key=lambda row: (
+            int(row["start_ms"]),
+            str(row["layer"]),
+            str(row["code"]),
+        ),
+    )
 
 
 def _threshold_map(
