@@ -311,6 +311,10 @@ def load_events_csv(path: str | os.PathLike[str]) -> dict[str, Any]:
         events.append(event)
 
     first = rows[0]
+    try:
+        acc_scale = int(float(meta.get("acc_scale_divisor", 4096) or 4096))
+    except (TypeError, ValueError):
+        acc_scale = 4096
     return {
         "key": key,
         "session_id": session_id,
@@ -330,7 +334,7 @@ def load_events_csv(path: str | os.PathLike[str]) -> dict[str, Any]:
         ),
         "video_name": str(meta.get("video_name", "") or ""),
         "create_time_ms": _parse_beijing_ms(meta.get("create_time_bj")),
-        "acc_scale": int(meta.get("acc_scale_divisor", 4096) or 4096),
+        "acc_scale": acc_scale,
         "source_meta": meta,
         "labels": labels,
         "events": events,
@@ -653,7 +657,11 @@ def load_workspace(path: str | os.PathLike[str]) -> dict[str, Any]:
         "bovine-annotation-review-workspace"
     ):
         raise ReviewImportError("不是本工具的标注复核工作区")
-    if int(payload.get("schema", 0) or 0) != REVIEW_WORKSPACE_SCHEMA:
+    try:
+        schema = int(payload.get("schema", 0) or 0)
+    except (TypeError, ValueError) as exc:
+        raise ReviewImportError("复核工作区 schema 字段无效") from exc
+    if schema != REVIEW_WORKSPACE_SCHEMA:
         raise ReviewImportError("不支持的标注复核工作区版本")
     if not isinstance(payload.get("sessions"), list):
         raise ReviewImportError("复核工作区 sessions 字段无效")

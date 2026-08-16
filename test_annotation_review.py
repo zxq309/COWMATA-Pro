@@ -377,6 +377,22 @@ class AnnotationReviewCoreTests(unittest.TestCase):
             with self.assertRaises(ReviewImportError):
                 load_workspace(path)
 
+    def test_workspace_loader_reports_invalid_schema_instead_of_leaking_value_error(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "bad-schema.review.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "_type": "bovine-annotation-review-workspace",
+                        "schema": "not-a-number",
+                        "sessions": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ReviewImportError):
+                load_workspace(path)
+
 
 if __name__ == "__main__":
     unittest.main()
