@@ -55,7 +55,12 @@ def _video_identity_duration_matches(
         if rounded_raw > 0 and rounded_raw not in actual_raw:
             actual_raw.append(rounded_raw)
     expected_raw = _identity_duration_value(identity, "rawDurationMs")
-    if expected_raw and actual_raw:
+    schema = _identity_duration_value(identity, "schema")
+    duration_basis = str(identity.get("durationBasis", "") or "")
+    public_duration_is_explicit = bool(
+        schema >= 2 or duration_basis == "player_public_timeline"
+    )
+    if expected_raw and actual_raw and not public_duration_is_explicit:
         return any(
             abs(expected_raw - actual_value)
             <= VIDEO_IDENTITY_DURATION_TOLERANCE_MS
@@ -398,11 +403,13 @@ class TransactionalProjectMixin:
                     actual_duration,
                 )
             ):
-                timeline_index = (
-                    None
-                    if _identity_duration_value(expected, "rawDurationMs")
-                    else self._timeline_index_for_identity(candidate)
-                )
+                # Schema-2 projects deliberately record both VLC's public
+                # duration and the packet timeline duration.  Depending on
+                # the container/driver, FFprobe may report either one during
+                # a later relink.  Reuse or rebuild the timeline index before
+                # rejecting a project instead of treating those two valid
+                # views of the same file as a conflict.
+                timeline_index = self._timeline_index_for_identity(candidate)
                 if not _video_identity_duration_matches(
                     expected,
                     actual_duration,
