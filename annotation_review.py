@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 import numpy as np
-from PySide6.QtCore import QStandardPaths, Qt
+from PySide6.QtCore import QStandardPaths, QTimer, Qt
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QDockWidget,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -259,13 +260,18 @@ class AnnotationReviewDialog(QDialog):
         self.root_callback = root_callback
         self.export_callback = export_callback
         self.setWindowTitle("已导出标注批量复核")
-        self.resize(1260, 720)
+        # Normally hosted in a bottom QDockWidget. Keep a modest floating
+        # size as well, so undocking never opens a giant window over the
+        # waveform.
+        self.setMinimumSize(620, 280)
+        self.resize(1120, 390)
         self.setModal(False)
 
         layout = QVBoxLayout(self)
         description = QLabel(
             "单击一条标注会自动载入对应九轴 JSON，并在主界面定位真实波形。"
             "区间可在波形上拖动边界，也可使用“修改标签/时间/备注”。"
+            "面板可拖动标题栏调整位置或浮动。"
         )
         description.setWordWrap(True)
         layout.addWidget(description)
@@ -329,13 +335,13 @@ class AnnotationReviewDialog(QDialog):
         self.approve_btn = QPushButton("确认通过并转到下一条")
         self.next_btn = QPushButton("下一条待复核")
         self.export_btn = QPushButton("导出复核结果")
-        self.close_btn = QPushButton("关闭窗口")
+        self.close_btn = QPushButton("关闭复核面板")
         self.locate_btn.clicked.connect(self._locate_selected)
         self.edit_btn.clicked.connect(self._edit_selected)
         self.approve_btn.clicked.connect(self._approve_selected)
         self.next_btn.clicked.connect(self._next_selected)
         self.export_btn.clicked.connect(self.export_callback)
-        self.close_btn.clicked.connect(self.hide)
+        self.close_btn.clicked.connect(self._close_review_view)
         for button in (
             self.locate_btn,
             self.edit_btn,
@@ -348,6 +354,17 @@ class AnnotationReviewDialog(QDialog):
         controls.addWidget(self.close_btn)
         layout.addLayout(controls)
         self.refresh()
+
+    def _close_review_view(self) -> None:
+        """Hide the host dock, or this widget when used standalone."""
+
+        host = self.parentWidget()
+        while host is not None:
+            if isinstance(host, QDockWidget):
+                host.hide()
+                return
+            host = host.parentWidget()
+        self.hide()
 
     def _refresh_controls(self) -> None:
         """Keep review actions honest when the filtered table is empty."""
@@ -509,6 +526,7 @@ class AnnotationReviewMixin:
     def __init__(self) -> None:
         self._review_workspace: dict[str, Any] = new_workspace()
         self._review_dialog: AnnotationReviewDialog | None = None
+        self._review_dock: QDockWidget | None = None
         self._review_active_session_key = ""
         self._review_loading_session = False
         self._review_entry_confirmed = False
@@ -733,10 +751,48 @@ class AnnotationReviewMixin:
                 self.export_annotation_review,
                 self,
             )
+            # Keep the queue inside the main window so the waveform remains
+            # visible while a row is being reviewed. The dock can still be
+            # moved to another edge or floated from its title bar.
+            self._review_dialog.setWindowFlags(Qt.WindowType.Widget)
+            self._review_dock = QDockWidget("已导出标注批量复核", self)
+            self._review_dock.setObjectName("annotationReviewDock")
+            self._review_dock.setAllowedAreas(
+                Qt.DockWidgetArea.BottomDockWidgetArea
+                | Qt.DockWidgetArea.LeftDockWidgetArea
+                | Qt.DockWidgetArea.RightDockWidgetArea
+            )
+            self._review_dock.setFeatures(
+                QDockWidget.DockWidgetFeature.DockWidgetClosable
+                | QDockWidget.DockWidgetFeature.DockWidgetMovable
+                | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            )
+            self._review_dock.setMinimumSize(620, 280)
+            self._review_dock.setWidget(self._review_dialog)
+            self.addDockWidget(
+                Qt.DockWidgetArea.BottomDockWidgetArea,
+                self._review_dock,
+            )
+            initial_height = max(300, min(430, int(self.height() * 0.42)))
+            QTimer.singleShot(
+                0,
+                lambda height=initial_height: self._resize_review_dock(height),
+            )
         self._review_dialog.refresh()
-        self._review_dialog.show()
-        self._review_dialog.raise_()
-        self._review_dialog.activateWindow()
+        if self._review_dock is not None:
+            self._review_dock.show()
+            self._review_dock.raise_()
+            self._review_dock.activateWindow()
+        else:
+            self._review_dialog.show()
+            self._review_dialog.raise_()
+            self._review_dialog.activateWindow()
+
+    def _resize_review_dock(self, height: int) -> None:
+        dock = self._review_dock
+        if dock is None or not dock.isVisible() or dock.isFloating():
+            return
+        dock.resize(max(700, self.width() - 12), int(height))
 
     def _review_lookup(
         self, uid: str
@@ -1416,6 +1472,8 @@ class AnnotationReviewMixin:
                 pass
         if self._review_dialog is not None:
             self._review_dialog.hide()
+        if self._review_dock is not None:
+            self._review_dock.hide()
         self._refresh_review_actions()
 
     def _autosave(self) -> None:

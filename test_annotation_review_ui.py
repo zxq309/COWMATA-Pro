@@ -134,6 +134,8 @@ class AnnotationReviewWindowTests(unittest.TestCase):
             write_events_csv(csv_path)
             window = MainWindow()
             window._review_autosave_path = root / "autosave.review.json"
+            window.show()
+            self.app.processEvents()
             try:
                 window.import_review_csvs([str(csv_path)])
                 self.app.processEvents()
@@ -146,11 +148,22 @@ class AnnotationReviewWindowTests(unittest.TestCase):
                 self.assertIsNotNone(window._review_dialog)
                 self.assertFalse(window._review_dialog.isModal())
                 self.assertEqual(window._review_dialog.table.rowCount(), 2)
+                self.assertIsNotNone(window._review_dock)
+                self.assertFalse(window._review_dock.isFloating())
+                self.assertTrue(window._review_dock.isVisible())
+                self.assertTrue(window.plot.isVisible())
+                self.assertGreater(window.plot.height(), 240)
                 actions = set(window.annotation_review_menu.actions())
                 self.assertIn(window.review_import_action, actions)
                 self.assertIn(window.review_export_action, actions)
                 self.assertTrue(window.review_open_action.isEnabled())
                 self.assertTrue(window.review_save_action.isEnabled())
+                window._review_dialog.close_btn.click()
+                self.app.processEvents()
+                self.assertFalse(window._review_dock.isVisible())
+                window.show_annotation_review()
+                self.app.processEvents()
+                self.assertTrue(window._review_dock.isVisible())
             finally:
                 window.close()
 
