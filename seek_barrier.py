@@ -59,6 +59,28 @@ class PlaybackSeekBarrier:
     def playback_confirmation_pending(self) -> bool:
         return self.target_ms is not None and self.phase == "verifying"
 
+    def expire(self, now: float | None = None) -> bool:
+        """Release a stale confirmation even when VLC's time is unchanged."""
+
+        if self.target_ms is None:
+            return False
+        moment = time.monotonic() if now is None else float(now)
+        if moment < self.deadline:
+            return False
+        self.reset()
+        return True
+
+    def _confirm(self, video_ms: float) -> None:
+        target = self.target_ms
+        if target is None:
+            return
+        self.confirmed_target_ms = target
+        self.confirmed_video_ms = float(video_ms)
+        self.confirmation_serial += 1
+        self.target_ms = None
+        self.phase = "idle"
+        self.deadline = 0.0
+
     def observe(
         self,
         video_ms: float,
@@ -70,8 +92,7 @@ class PlaybackSeekBarrier:
         if self.target_ms is None:
             return True
         moment = time.monotonic() if now is None else float(now)
-        if moment >= self.deadline:
-            self.reset()
+        if self.expire(moment):
             return True
 
         value = float(video_ms)
@@ -79,7 +100,7 @@ class PlaybackSeekBarrier:
         tolerance = self.POSITION_TOLERANCE_MS
         if not playing:
             if abs(value - target) <= tolerance:
-                self.phase = "paused_ready"
+                self._confirm(value)
                 return True
             return False
 
@@ -90,13 +111,10 @@ class PlaybackSeekBarrier:
         upper_window = max(5_000.0, max(0.05, float(rate)) * 1_000.0)
         if value < target - tolerance or value > target + upper_window:
             return False
-        if value > target + tolerance:
-            self.confirmed_target_ms = target
-            self.confirmed_video_ms = value
-            self.confirmation_serial += 1
-            self.target_ms = None
-            self.phase = "idle"
-            self.deadline = 0.0
+        # Reaching the requested position is itself a valid confirmation.
+        # Requiring a second, later VLC timestamp made the UI wait forever
+        # on streams whose picture advances while get_time() stays frozen.
+        self._confirm(value)
         return True
 
 

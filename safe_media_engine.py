@@ -21,6 +21,61 @@ from media_timeline import (
 from seek_barrier import PlaybackSeekBarrier
 
 
+TIMELINE_DURATION_TOLERANCE_MS = 2_000
+
+
+def _effective_timeline_duration_ms(
+    player_duration_ms: int | float,
+    index: MediaTimelineIndex | None,
+) -> int:
+    """Choose the safe UI duration from VLC metadata and packet timing."""
+
+    player_duration = max(0, int(round(float(player_duration_ms))))
+    if index is None:
+        return player_duration
+    packet_duration = max(0, int(round(float(index.duration_ms))))
+    if packet_duration <= 0:
+        return player_duration
+    if index.is_corrected:
+        return packet_duration
+    # A continuous packet index is authoritative when VLC under-reports the
+    # stream.  Keep the player value when it is longer, which is safer for an
+    # unusual stream containing a backwards timestamp reset.
+    return max(player_duration, packet_duration)
+
+
+def _uses_fractional_timeline_seek(
+    player_duration_ms: int | float,
+    index: MediaTimelineIndex | None,
+) -> bool:
+    """Return whether millisecond seeks are bounded by bad VLC metadata."""
+
+    if index is None or index.is_corrected:
+        return False
+    player_duration = max(0, int(round(float(player_duration_ms))))
+    packet_duration = max(0, int(round(float(index.duration_ms))))
+    return bool(
+        player_duration > 0
+        and packet_duration
+        > player_duration + TIMELINE_DURATION_TOLERANCE_MS
+    )
+
+
+def _fractional_seek_clock(
+    target_ms: int | float,
+    player_duration_ms: int | float,
+    index_duration_ms: int | float,
+) -> tuple[float, float]:
+    """Map a true timeline target to VLC position and logical offset."""
+
+    packet_duration = max(1.0, float(index_duration_ms))
+    player_duration = max(0.0, float(player_duration_ms))
+    target = min(packet_duration, max(0.0, float(target_ms)))
+    fraction = min(1.0, max(0.0, target / packet_duration))
+    raw_anchor_ms = player_duration * fraction
+    return fraction, target - raw_anchor_ms
+
+
 class SafeMediaEngine(MediaEngine):
     """Compatibility and lifecycle fixes for the installed libVLC 3.x."""
 
@@ -43,6 +98,9 @@ class SafeMediaEngine(MediaEngine):
         self._timeline_probe_generation = 0
         self._timeline_probe_thread: threading.Thread | None = None
         self._timeline_probe_lock = threading.Lock()
+        self._timeline_probe_pending = False
+        self._normalized_seek_time_offset_ms = 0.0
+        self._timeline_duration_overrides_player = False
         self._timeline_probe_completed.connect(
             self._finish_timeline_probe
         )
@@ -61,6 +119,9 @@ class SafeMediaEngine(MediaEngine):
         self._timeline_probe_generation += 1
         self._timeline_index = None
         self._timeline_segment_hint = 0
+        self._timeline_probe_pending = False
+        self._normalized_seek_time_offset_ms = 0.0
+        self._timeline_duration_overrides_player = False
         self._force_avformat = self._is_hikvision_program_stream(normalized)
         self._pending_seek_ms = None
         self._seek_barrier.reset()
@@ -94,6 +155,7 @@ class SafeMediaEngine(MediaEngine):
             self._apply_timeline_index(cached)
             return
 
+        self._timeline_probe_pending = True
         self.timeline_analysis_message.emit("正在校验视频时间轴…", 0)
 
         def probe() -> None:
@@ -139,21 +201,41 @@ class SafeMediaEngine(MediaEngine):
         ):
             return
         if isinstance(index, MediaTimelineIndex):
+            self._timeline_probe_pending = False
             self._apply_timeline_index(index)
-            if not index.is_corrected:
+            if (
+                not index.is_corrected
+                and not self._timeline_duration_overrides_player
+            ):
                 self.timeline_analysis_message.emit("视频时间轴校验正常", 2500)
         elif error:
+            self._timeline_probe_pending = False
             self.timeline_analysis_message.emit(
                 "视频时间轴校验失败，暂时使用播放器原始时长", 6000
             )
 
     def _apply_timeline_index(self, index: MediaTimelineIndex) -> None:
+        player_duration = super().duration_ms()
         self._timeline_index = index
         self._timeline_segment_hint = 0
-        if not index.is_corrected:
+        self._timeline_duration_overrides_player = (
+            _uses_fractional_timeline_seek(player_duration, index)
+        )
+        if (
+            not index.is_corrected
+            and not self._timeline_duration_overrides_player
+        ):
             return
         self._last_time = -1
         self._last_duration = -1
+        if self._timeline_duration_overrides_player:
+            packet_duration = int(round(index.duration_ms))
+            self.timeline_analysis_message.emit(
+                "播放器时长读取偏短，已按完整视频时间轴校正："
+                f"{player_duration} ms → {packet_duration} ms",
+                8000,
+            )
+            return
         raw_duration = int(round(index.raw_duration_ms))
         corrected_duration = int(round(index.duration_ms))
         self.timeline_analysis_message.emit(
@@ -176,7 +258,15 @@ class SafeMediaEngine(MediaEngine):
     def _raw_to_public_time_ms(self, value_ms: int | float) -> int:
         index = self._timeline_index
         if index is None or not index.is_corrected:
-            return max(0, int(round(value_ms)))
+            return max(
+                0,
+                int(
+                    round(
+                        float(value_ms)
+                        + self._normalized_seek_time_offset_ms
+                    )
+                ),
+            )
         public, segment = index.raw_to_public_ms(
             float(value_ms), self._timeline_segment_hint
         )
@@ -188,10 +278,36 @@ class SafeMediaEngine(MediaEngine):
         return self._raw_to_public_time_ms(raw_time_ms)
 
     def duration_ms(self) -> int:
-        index = self._timeline_index
-        if index is not None and index.is_corrected:
-            return max(0, int(round(index.duration_ms)))
+        return _effective_timeline_duration_ms(
+            super().duration_ms(),
+            self._timeline_index,
+        )
+
+    def player_duration_ms(self) -> int:
+        """Return VLC's container duration before packet-time correction."""
+
         return super().duration_ms()
+
+    def _apply_decoder_seek(self, target_ms: int) -> None:
+        index = self._timeline_index
+        player_duration = super().duration_ms()
+        if _uses_fractional_timeline_seek(player_duration, index):
+            assert index is not None
+            fraction, offset_ms = _fractional_seek_clock(
+                target_ms,
+                player_duration,
+                index.duration_ms,
+            )
+            self._normalized_seek_time_offset_ms = offset_ms
+            self._lib.libvlc_media_player_set_position(
+                self._player,
+                ctypes.c_float(fraction),
+            )
+            return
+
+        self._normalized_seek_time_offset_ms = 0.0
+        raw_target = self._public_to_raw_time_ms(target_ms)
+        self._lib.libvlc_media_player_set_time(self._player, raw_target)
 
     def stop(self) -> None:
         if self._closed or not self._player:
@@ -203,22 +319,26 @@ class SafeMediaEngine(MediaEngine):
 
     def set_time_ms(self, value: int | float) -> bool:
         self._ensure_media()
-        target = max(0, int(round(value)))
+        requested_target = max(0, int(round(value)))
+        probe_pending = bool(
+            self._timeline_probe_pending and self._timeline_index is None
+        )
+        target = requested_target
         duration = self.duration_ms()
-        if duration > 0:
+        if duration > 0 and not probe_pending:
             target = min(target, duration)
         playing = self.is_playing()
         self._seek_barrier.request(
             target, playing=playing, now=time.monotonic()
         )
-        if not self.is_seekable() or self.current_status not in {
-            "playing",
-            "paused",
-        }:
+        if (
+            probe_pending
+            or not self.is_seekable()
+            or self.current_status not in {"playing", "paused"}
+        ):
             self._pending_seek_ms = target
             return True
-        raw_target = self._public_to_raw_time_ms(target)
-        self._lib.libvlc_media_player_set_time(self._player, raw_target)
+        self._apply_decoder_seek(target)
         self._pending_seek_ms = None
         return True
 
@@ -274,7 +394,11 @@ class SafeMediaEngine(MediaEngine):
         return super().set_rate(rate)
 
     def poll(self) -> dict[str, Any]:
-        if self._pending_seek_ms is not None and self._player:
+        if (
+            self._pending_seek_ms is not None
+            and self._player
+            and not self._timeline_probe_pending
+        ):
             state_code = int(
                 self._lib.libvlc_media_player_get_state(self._player)
             )
@@ -283,12 +407,22 @@ class SafeMediaEngine(MediaEngine):
             )
             if seekable and state_code in {3, 4}:  # playing / paused
                 target = self._pending_seek_ms
+                duration = self.duration_ms()
+                if duration > 0:
+                    target = min(target, duration)
+                if target != self._pending_seek_ms:
+                    self._seek_barrier.request(
+                        target,
+                        playing=state_code == 3,
+                        now=time.monotonic(),
+                    )
                 self._pending_seek_ms = None
-                raw_target = self._public_to_raw_time_ms(target)
-                self._lib.libvlc_media_player_set_time(
-                    self._player, raw_target
-                )
+                self._apply_decoder_seek(target)
         snapshot = super().poll()
+        # MediaEngine only calls _accept_time_update when the integer VLC
+        # timestamp changes.  Maintain the deadline here as well so a frozen
+        # decoder clock cannot leave playback and both UI timelines blocked.
+        self._seek_barrier.expire(time.monotonic())
         if snapshot.get("status") == "playing":
             current = float(snapshot.get("rate", 1.0))
             if abs(current - self._requested_rate) > 1e-3:

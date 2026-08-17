@@ -93,15 +93,25 @@ class TransactionalProjectMixin:
         project = super()._project_model()
         if self.video_path and Path(self.video_path).is_file():
             path = Path(self.video_path)
+            reported_duration = 0
+            if self.media is not None:
+                player_duration = getattr(
+                    self.media,
+                    "player_duration_ms",
+                    None,
+                )
+                reported_duration = (
+                    player_duration()
+                    if callable(player_duration)
+                    else self.media.duration_ms()
+                )
+            if reported_duration <= 0 and self.media is not None:
+                reported_duration = self.media.duration_ms()
             identity: dict[str, Any] = {
                 "schema": 2,
                 "name": path.name,
                 "size": path.stat().st_size,
-                "durationMs": (
-                    self.media.duration_ms()
-                    if self.media is not None
-                    else 0
-                ),
+                "durationMs": reported_duration,
                 "durationBasis": "player_public_timeline",
             }
             timeline_index = (

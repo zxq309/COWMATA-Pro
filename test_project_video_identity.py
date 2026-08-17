@@ -63,6 +63,17 @@ class _ProjectHarness(TransactionalProjectMixin, _ProjectBase):
         super().__init__()
 
 
+class _ReportedDurationProjectHarness(TransactionalProjectMixin, _ProjectBase):
+    def __init__(self, video_path: Path, index: MediaTimelineIndex) -> None:
+        self.video_path = str(video_path)
+        self.media = SimpleNamespace(
+            duration_ms=lambda: int(round(index.duration_ms)),
+            player_duration_ms=lambda: 245_420,
+            _timeline_index=index,
+        )
+        super().__init__()
+
+
 class ProjectVideoIdentityTests(unittest.TestCase):
     def test_new_project_saves_both_raw_and_continuous_durations(self) -> None:
         with TemporaryDirectory() as folder:
@@ -77,6 +88,31 @@ class ProjectVideoIdentityTests(unittest.TestCase):
         self.assertEqual(identity["rawDurationMs"], 25_009_368)
         self.assertEqual(identity["continuousDurationMs"], 968_196)
         self.assertTrue(identity["timelineCorrected"])
+
+    def test_new_project_keeps_vlc_duration_for_identity_relink(self) -> None:
+        with TemporaryDirectory() as folder:
+            video_path = Path(folder) / "hiv00086.mp4"
+            video_path.write_bytes(b"video-fixture")
+            index = MediaTimelineIndex(
+                source_path=str(video_path.resolve()),
+                source_size=video_path.stat().st_size,
+                source_mtime_ns=video_path.stat().st_mtime_ns,
+                first_pts_ms=0.0,
+                frame_duration_ms=80.0,
+                segments=(
+                    TimelineSegment(0.0, 973_631.0, 0.0, 973_631.0),
+                ),
+                discontinuities=(),
+            )
+            project = _ReportedDurationProjectHarness(
+                video_path,
+                index,
+            )._project_model()
+
+        identity = project.extras["videoIdentity"]
+        self.assertEqual(identity["durationMs"], 245_420)
+        self.assertEqual(identity["rawDurationMs"], 973_631)
+        self.assertEqual(identity["continuousDurationMs"], 973_631)
 
     def test_saved_public_duration_matches_corrected_hikvision_timeline(self) -> None:
         identity = {"durationMs": 968_196}

@@ -243,6 +243,11 @@ class MediaEngine(QObject):
         lib.libvlc_media_player_set_time.restype = ctypes.c_int
         lib.libvlc_media_player_get_length.argtypes = [void_p]
         lib.libvlc_media_player_get_length.restype = int64
+        lib.libvlc_media_player_set_position.argtypes = [
+            void_p,
+            ctypes.c_float,
+        ]
+        lib.libvlc_media_player_set_position.restype = None
         lib.libvlc_media_player_is_seekable.argtypes = [void_p]
         lib.libvlc_media_player_is_seekable.restype = ctypes.c_int
         lib.libvlc_media_player_set_rate.argtypes = [void_p, ctypes.c_float]
