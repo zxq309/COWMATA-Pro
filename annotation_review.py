@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from annotation_review_core import (
