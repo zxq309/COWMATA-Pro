@@ -29,7 +29,9 @@ class SmoothPlayheadMixin:
         self._smooth_timer.setInterval(30)
         self._smooth_timer.timeout.connect(self._smooth_playhead_tick)
 
-    def _on_media_time(self, video_time_ms: int) -> None:
+    def _calibrate_smooth_clock(self, video_time_ms: int) -> str:
+        """Record a VLC sample without necessarily moving the UI cursor."""
+
         now = time.monotonic()
         raw = float(video_time_ms)
         self._smooth_last_raw_video_ms = raw
@@ -45,8 +47,7 @@ class SmoothPlayheadMixin:
         if confirmed_seek:
             self._smooth_seek_confirmation_serial = serial
             self._reset_smooth_clock(raw, now)
-            super()._on_media_time(video_time_ms)
-            return
+            return "confirmed"
 
         pending_seek = (
             getattr(self, "_ui_pending_seek_video_ms", None) is not None
@@ -59,9 +60,16 @@ class SmoothPlayheadMixin:
         if actively_smoothing:
             # Do not copy VLC's sparse public timestamp directly into the UI.
             # The timer keeps moving and uses this sample only as calibration.
-            return
+            return "suppress"
 
         self._reset_smooth_clock(raw, now)
+
+        return "present"
+
+    def _on_media_time(self, video_time_ms: int) -> None:
+        calibration_mode = self._calibrate_smooth_clock(video_time_ms)
+        if calibration_mode == "suppress":
+            return
         super()._on_media_time(video_time_ms)
 
     def _on_playing_changed(self, playing: bool) -> None:
@@ -126,7 +134,7 @@ class SmoothPlayheadMixin:
         if duration > 0:
             video_ms = float(np.clip(video_ms, 0.0, duration))
 
-        limits = self._shared_video_limits()
+        limits = self._smooth_video_limits()
         reached_boundary = False
         if limits is not None:
             clamped = float(np.clip(video_ms, limits[0], limits[1]))
@@ -150,6 +158,11 @@ class SmoothPlayheadMixin:
                 if 0.0 <= data_ms <= self.data_duration_ms:
                     self._set_playhead_visual(data_ms)
         return reached_boundary
+
+    def _smooth_video_limits(self):
+        """Return the playback boundary used by the smooth video clock."""
+
+        return self._shared_video_limits()
 
     def _smooth_playhead_tick(self) -> None:
         if (

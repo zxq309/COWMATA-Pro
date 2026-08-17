@@ -6,6 +6,7 @@ from unittest.mock import patch
 from playback_mixin import PlaybackMixin
 from seek_watchdog_mixin import SeekWatchdogMixin
 from smooth_playhead_mixin import SmoothPlayheadMixin
+from dual_anchor_precision_v2_mixin import DualAnchorPrecisionV2Mixin
 
 
 class _Text:
@@ -153,6 +154,19 @@ class _SmoothHarness(SmoothPlayheadMixin, _SmoothBase):
         return None
 
 
+class _DualSmoothLimitsHarness:
+    video_path = "hiv00086.mp4"
+
+    def __init__(self, linked: bool) -> None:
+        self.linked = linked
+
+    def _timelines_are_linked(self) -> bool:
+        return self.linked
+
+    def _shared_video_limits(self):
+        return (0.0, 100_000.0)
+
+
 class PlaybackTimingTest(unittest.TestCase):
     def test_ordinary_resume_does_not_seek_again(self) -> None:
         window = _ResumeHarness()
@@ -219,6 +233,25 @@ class PlaybackTimingTest(unittest.TestCase):
 
         self.assertGreater(window.video_timeline.position, 2_800.0)
 
+    def test_smooth_calibration_does_not_move_cursor_while_playing(self) -> None:
+        window = _SmoothHarness(rate=1.0)
+        window.video_timeline.position = 1_000.0
+
+        with patch("smooth_playhead_mixin.time.monotonic", return_value=10.8):
+            window._calibrate_smooth_clock(1_700)
+
+        self.assertEqual(window.video_timeline.position, 1_000.0)
+        self.assertEqual(window._smooth_last_raw_video_ms, 1_700.0)
+
+    def test_smooth_calibration_reanchors_when_paused(self) -> None:
+        window = _SmoothHarness(rate=1.0)
+        window.media.playing = False
+
+        with patch("smooth_playhead_mixin.time.monotonic", return_value=10.8):
+            window._calibrate_smooth_clock(4_000)
+
+        self.assertEqual(window._smooth_display_video_ms, 4_000.0)
+
     def test_seek_barrier_pauses_smooth_clock(self) -> None:
         window = _SmoothHarness(rate=1.0)
         window.media.barrier_pending = True
@@ -262,6 +295,18 @@ class PlaybackTimingTest(unittest.TestCase):
 
         self.assertEqual(window._smooth_display_video_ms, 1_000.0)
         self.assertEqual(window.video_timeline.position, 1_000.0)
+
+    def test_unlinked_smooth_clock_does_not_apply_shared_data_boundary(self) -> None:
+        unlinked = _DualSmoothLimitsHarness(linked=False)
+        linked = _DualSmoothLimitsHarness(linked=True)
+
+        self.assertIsNone(
+            DualAnchorPrecisionV2Mixin._smooth_video_limits(unlinked)
+        )
+        self.assertEqual(
+            DualAnchorPrecisionV2Mixin._smooth_video_limits(linked),
+            (0.0, 100_000.0),
+        )
 
 
 if __name__ == "__main__":

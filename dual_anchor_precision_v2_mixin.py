@@ -234,14 +234,20 @@ class DualAnchorPrecisionV2Mixin:
         )
 
     def _smooth_playhead_tick(self) -> None:
-        if self._source_switch_active or (
-            self.video_path and not self._timelines_are_linked()
-        ):
+        if self._source_switch_active:
             return
-        # SmoothPlayheadMixin follows the actual playing state and uses VLC's
-        # sparse time reports only for calibration.  The former 400 ms media-
-        # time ceiling made 1x freeze after 400 ms and 10x after only 40 ms.
+        # Keep the video clock smooth in both calibration (unpinned) and
+        # annotation (pinned) modes.  SmoothPlayheadMixin only copies the
+        # derived wall-clock position to the IMU playhead when timelines are
+        # pinned, so the two modes remain independent.
         super()._smooth_playhead_tick()
+
+    def _smooth_video_limits(self):
+        """Only pinned playback is constrained by the shared IMU window."""
+
+        if self.video_path and not self._timelines_are_linked():
+            return None
+        return self._shared_video_limits()
 
     # ------------------------------------------------------------------
     # Pending dual-anchor state
@@ -850,18 +856,23 @@ class DualAnchorPrecisionV2Mixin:
                         5000,
                     )
                 self._clear_ui_seek()
+            calibrate = getattr(self, "_calibrate_smooth_clock", None)
+            if callable(calibrate):
+                calibrate(video_time_ms)
             self._pending_video_anchor_ms = float(video_time_ms)
-            self.video_timeline.set_position(video_time_ms)
-            self.video_clock_label.setText(
-                "视频 " + format_relative(video_time_ms)
-            )
-            self.wall_clock_label.setText(
-                "画面时间：未钉住，待与九轴位置配对"
-            )
+            actively_smoothing = bool(self._is_user_playing())
+            if not actively_smoothing:
+                self.video_timeline.set_position(video_time_ms)
+                self.video_clock_label.setText(
+                    "视频 " + format_relative(video_time_ms)
+                )
+                self.wall_clock_label.setText(
+                    "画面时间：未钉住，待与九轴位置配对"
+                )
             self.video_status.setText(
                 f"{Path(self.video_path).name} · 校准模式"
             )
-            if not self._is_user_playing():
+            if not actively_smoothing:
                 self._show_pending_pair()
             return
         super()._on_media_time(video_time_ms)
