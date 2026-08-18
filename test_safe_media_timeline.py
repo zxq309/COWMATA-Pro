@@ -8,10 +8,12 @@ from media_timeline import (
     TimelineSegment,
 )
 from safe_media_engine import (
+    SafeMediaEngine,
     _effective_timeline_duration_ms,
     _fractional_seek_clock,
     _uses_fractional_timeline_seek,
 )
+from seek_barrier import PlaybackSeekBarrier
 
 
 def _index(
@@ -56,6 +58,36 @@ def _index(
     )
 
 
+class _DeferredSeekHarness:
+    def __init__(self) -> None:
+        self._timeline_probe_pending = False
+        self._timeline_index = None
+        self._pause_requested = True
+        self._pending_seek_ms = None
+        self._seek_barrier = PlaybackSeekBarrier()
+        self.current_status = "playing"
+        self.applied_targets: list[int] = []
+
+    @staticmethod
+    def _ensure_media() -> None:
+        pass
+
+    @staticmethod
+    def duration_ms() -> int:
+        return 1_030_052
+
+    @staticmethod
+    def is_playing() -> bool:
+        return True
+
+    @staticmethod
+    def is_seekable() -> bool:
+        return True
+
+    def _apply_decoder_seek(self, target_ms: int) -> None:
+        self.applied_targets.append(int(target_ms))
+
+
 class SafeMediaTimelineTests(unittest.TestCase):
     def test_continuous_packet_duration_extends_short_player_duration(self) -> None:
         index = _index(973_631.0)
@@ -96,6 +128,46 @@ class SafeMediaTimelineTests(unittest.TestCase):
 
         self.assertAlmostEqual(fraction, 600_000 / 973_631)
         self.assertAlmostEqual(245_420 * fraction + offset, 600_000)
+
+    def test_seek_waits_until_an_async_pause_has_really_settled(self) -> None:
+        engine = _DeferredSeekHarness()
+
+        self.assertTrue(SafeMediaEngine.set_time_ms(engine, 700_000))
+
+        self.assertEqual(engine._pending_seek_ms, 700_000)
+        self.assertEqual(engine.applied_targets, [])
+        self.assertEqual(engine._seek_barrier.phase, "waiting")
+        self.assertFalse(
+            SafeMediaEngine._apply_pending_seek_if_ready(
+                engine,
+                state_code=3,
+                seekable=True,
+            )
+        )
+        self.assertTrue(
+            SafeMediaEngine._apply_pending_seek_if_ready(
+                engine,
+                state_code=4,
+                seekable=True,
+            )
+        )
+        self.assertEqual(engine.applied_targets, [700_000])
+        self.assertIsNone(engine._pending_seek_ms)
+        self.assertFalse(engine._pause_requested)
+
+    def test_only_latest_seek_is_applied_during_pause_transition(self) -> None:
+        engine = _DeferredSeekHarness()
+
+        SafeMediaEngine.set_time_ms(engine, 120_000)
+        SafeMediaEngine.set_time_ms(engine, 700_000)
+        SafeMediaEngine._apply_pending_seek_if_ready(
+            engine,
+            state_code=4,
+            seekable=True,
+        )
+
+        self.assertEqual(engine.applied_targets, [700_000])
+        self.assertEqual(engine._seek_barrier.target_ms, 700_000)
 
 
 if __name__ == "__main__":

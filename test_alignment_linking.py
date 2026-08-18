@@ -167,6 +167,33 @@ class TimelineLinkingTest(unittest.TestCase):
         self.assertEqual(window.playhead_ms, 18_000.0)
         self.assertIsNone(window._pending_video_anchor_ms)
 
+    def test_repeated_two_way_seeks_never_change_the_pinned_origin(self) -> None:
+        window = _Harness("pin")
+        original_wall = window.video_start_wall_ms
+        actions = (
+            ("data", 25_000.0),
+            ("video", 8_000.0),
+            ("data", 125_000.0),
+            ("video", 55_000.0),
+            ("data", 43_000.0),
+            ("video", 17_000.0),
+        )
+
+        for kind, position in actions:
+            if kind == "data":
+                window._data_timeline_selected(position)
+            else:
+                window._queue_video_timeline_seek(position)
+                window._seek_from_video_timeline(position)
+
+            data_wall = window.data_create_time_ms + window.playhead_ms
+            video_wall = window.video_start_wall_ms + window.media.video_ms
+            self.assertEqual(window.video_start_wall_ms, original_wall)
+            self.assertEqual(data_wall, video_wall)
+
+        self.assertEqual(window.align_method, "pin")
+        self.assertTrue(window._timelines_are_linked())
+
     def test_default_alignment_keeps_independent_anchor_mode(self) -> None:
         window = _Harness("default")
         window._pending_data_anchor_ms = None

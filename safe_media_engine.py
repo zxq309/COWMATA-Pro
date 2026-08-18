@@ -101,6 +101,7 @@ class SafeMediaEngine(MediaEngine):
         self._timeline_probe_pending = False
         self._normalized_seek_time_offset_ms = 0.0
         self._timeline_duration_overrides_player = False
+        self._pause_requested = False
         self._timeline_probe_completed.connect(
             self._finish_timeline_probe
         )
@@ -122,6 +123,7 @@ class SafeMediaEngine(MediaEngine):
         self._timeline_probe_pending = False
         self._normalized_seek_time_offset_ms = 0.0
         self._timeline_duration_overrides_player = False
+        self._pause_requested = False
         self._force_avformat = self._is_hikvision_program_stream(normalized)
         self._pending_seek_ms = None
         self._seek_barrier.reset()
@@ -317,6 +319,14 @@ class SafeMediaEngine(MediaEngine):
         self._lib.libvlc_media_player_set_pause(self._player, 1)
         self.poll()
 
+    def pause(self, paused: bool = True) -> None:
+        # libVLC changes into the paused state asynchronously.  Remember the
+        # requested state so a seek issued immediately after Pause is queued
+        # until that transition is real; otherwise the late pause completion
+        # can put the decoder back on the frame from before the seek.
+        self._pause_requested = bool(paused)
+        super().pause(paused)
+
     def set_time_ms(self, value: int | float) -> bool:
         self._ensure_media()
         requested_target = max(0, int(round(value)))
@@ -328,11 +338,15 @@ class SafeMediaEngine(MediaEngine):
         if duration > 0 and not probe_pending:
             target = min(target, duration)
         playing = self.is_playing()
+        pause_pending = bool(self._pause_requested)
         self._seek_barrier.request(
-            target, playing=playing, now=time.monotonic()
+            target,
+            playing=bool(playing and not pause_pending),
+            now=time.monotonic(),
         )
         if (
-            probe_pending
+            pause_pending
+            or probe_pending
             or not self.is_seekable()
             or self.current_status not in {"playing", "paused"}
         ):
@@ -382,6 +396,7 @@ class SafeMediaEngine(MediaEngine):
         return self.play()
 
     def play(self) -> bool:
+        self._pause_requested = False
         target = self._seek_barrier.playback_started()
         if target is not None:
             # Apply once after VLC enters a genuinely seekable playback state.
@@ -392,6 +407,37 @@ class SafeMediaEngine(MediaEngine):
     def set_rate(self, rate: float) -> bool:
         self._requested_rate = float(rate)
         return super().set_rate(rate)
+
+    def _apply_pending_seek_if_ready(
+        self,
+        *,
+        state_code: int,
+        seekable: bool,
+    ) -> bool:
+        if (
+            self._pending_seek_ms is None
+            or self._timeline_probe_pending
+            or not seekable
+            or state_code not in {3, 4}  # playing / paused
+            or (self._pause_requested and state_code != 4)
+        ):
+            return False
+
+        target = self._pending_seek_ms
+        duration = self.duration_ms()
+        if duration > 0:
+            target = min(target, duration)
+        if target != self._pending_seek_ms:
+            self._seek_barrier.request(
+                target,
+                playing=state_code == 3,
+                now=time.monotonic(),
+            )
+        self._pending_seek_ms = None
+        if state_code == 4:
+            self._pause_requested = False
+        self._apply_decoder_seek(target)
+        return True
 
     def poll(self) -> dict[str, Any]:
         if (
@@ -405,24 +451,38 @@ class SafeMediaEngine(MediaEngine):
             seekable = bool(
                 self._lib.libvlc_media_player_is_seekable(self._player)
             )
-            if seekable and state_code in {3, 4}:  # playing / paused
-                target = self._pending_seek_ms
-                duration = self.duration_ms()
-                if duration > 0:
-                    target = min(target, duration)
-                if target != self._pending_seek_ms:
-                    self._seek_barrier.request(
-                        target,
-                        playing=state_code == 3,
-                        now=time.monotonic(),
-                    )
-                self._pending_seek_ms = None
-                self._apply_decoder_seek(target)
+            self._apply_pending_seek_if_ready(
+                state_code=state_code,
+                seekable=seekable,
+            )
         snapshot = super().poll()
+        if snapshot.get("status") in {
+            "paused",
+            "stopped",
+            "ended",
+            "error",
+        }:
+            self._pause_requested = False
         # MediaEngine only calls _accept_time_update when the integer VLC
-        # timestamp changes.  Maintain the deadline here as well so a frozen
-        # decoder clock cannot leave playback and both UI timelines blocked.
-        self._seek_barrier.expire(time.monotonic())
+        # timestamp changes.  Observe every poll as well: this lets a frame
+        # held steadily at the requested target finish its short decoder-
+        # settle period, and still guarantees that a frozen stale clock times
+        # out instead of blocking both UI timelines forever.
+        before_serial = self._seek_barrier.confirmation_serial
+        accepted = self._seek_barrier.observe(
+            float(snapshot.get("time_ms", 0)),
+            playing=bool(snapshot.get("playing", False)),
+            rate=float(snapshot.get("rate", 1.0)),
+            now=time.monotonic(),
+        )
+        if (
+            accepted
+            and self._seek_barrier.confirmation_serial > before_serial
+        ):
+            confirmed_time = int(round(float(snapshot.get("time_ms", 0))))
+            if confirmed_time != self._last_time:
+                self._last_time = confirmed_time
+            self.time_changed.emit(confirmed_time)
         if snapshot.get("status") == "playing":
             current = float(snapshot.get("rate", 1.0))
             if abs(current - self._requested_rate) > 1e-3:

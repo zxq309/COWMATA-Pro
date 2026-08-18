@@ -13,8 +13,16 @@ class PlaybackSeekBarrierTest(unittest.TestCase):
         self.assertFalse(
             barrier.observe(67_444, playing=False, rate=10.0, now=10.1)
         )
+        self.assertFalse(
+            barrier.observe(
+                400_173,
+                playing=False,
+                rate=10.0,
+                now=10.2,
+            )
+        )
         self.assertTrue(
-            barrier.observe(400_173, playing=False, rate=10.0, now=10.2)
+            barrier.observe(400_173, playing=False, rate=10.0, now=10.41)
         )
         self.assertTrue(barrier.target_is_ready(400_173))
 
@@ -22,6 +30,7 @@ class PlaybackSeekBarrierTest(unittest.TestCase):
         barrier = PlaybackSeekBarrier()
         barrier.request(400_173, playing=False, now=10.0)
         barrier.observe(400_173, playing=False, rate=10.0, now=10.1)
+        barrier.observe(400_173, playing=False, rate=10.0, now=10.31)
 
         target = barrier.playback_started(now=11.0)
 
@@ -47,8 +56,17 @@ class PlaybackSeekBarrierTest(unittest.TestCase):
         barrier = PlaybackSeekBarrier()
         barrier.request(400_173, playing=True, now=11.0)
 
+        self.assertFalse(
+            barrier.observe(
+                400_173,
+                playing=True,
+                rate=10.0,
+                now=11.1,
+            )
+        )
+        self.assertTrue(barrier.playback_confirmation_pending())
         self.assertTrue(
-            barrier.observe(400_173, playing=True, rate=10.0, now=11.1)
+            barrier.observe(400_173, playing=True, rate=10.0, now=11.31)
         )
         self.assertFalse(barrier.playback_confirmation_pending())
         self.assertTrue(barrier.target_is_ready(400_173))
@@ -63,6 +81,27 @@ class PlaybackSeekBarrierTest(unittest.TestCase):
             barrier.observe(500_000, playing=True, rate=1.0, now=10.1)
         )
         self.assertTrue(barrier.playback_confirmation_pending())
+
+    def test_new_seek_discards_the_previous_target_settle_period(self) -> None:
+        barrier = PlaybackSeekBarrier()
+        barrier.request(100_000, playing=False, now=10.0)
+        self.assertFalse(
+            barrier.observe(100_000, playing=False, rate=1.0, now=10.1)
+        )
+
+        barrier.request(200_000, playing=False, now=10.15)
+
+        self.assertFalse(
+            barrier.observe(100_000, playing=False, rate=1.0, now=10.2)
+        )
+        self.assertFalse(
+            barrier.observe(200_000, playing=False, rate=1.0, now=10.25)
+        )
+        self.assertTrue(
+            barrier.observe(200_000, playing=False, rate=1.0, now=10.46)
+        )
+        self.assertEqual(barrier.confirmed_target_ms, 200_000)
+        self.assertEqual(barrier.confirmation_serial, 1)
 
     def test_timeout_releases_barrier_without_confirmation(self) -> None:
         barrier = PlaybackSeekBarrier()

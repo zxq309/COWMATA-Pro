@@ -8,6 +8,7 @@ class PlaybackSeekBarrier:
 
     POSITION_TOLERANCE_MS = 100.0
     CONFIRM_TIMEOUT_S = 8.0
+    TARGET_SETTLE_S = 0.20
 
     def __init__(self) -> None:
         self.target_ms: float | None = None
@@ -16,6 +17,7 @@ class PlaybackSeekBarrier:
         self.confirmation_serial = 0
         self.confirmed_target_ms: float | None = None
         self.confirmed_video_ms: float | None = None
+        self.near_target_since = 0.0
 
     def reset(self) -> None:
         self.target_ms = None
@@ -23,6 +25,7 @@ class PlaybackSeekBarrier:
         self.deadline = 0.0
         self.confirmed_target_ms = None
         self.confirmed_video_ms = None
+        self.near_target_since = 0.0
 
     def request(
         self,
@@ -35,6 +38,7 @@ class PlaybackSeekBarrier:
         self.target_ms = max(0.0, float(target_ms))
         self.confirmed_target_ms = None
         self.confirmed_video_ms = None
+        self.near_target_since = 0.0
         self.phase = "verifying" if playing else "waiting"
         self.deadline = moment + self.CONFIRM_TIMEOUT_S
 
@@ -57,7 +61,10 @@ class PlaybackSeekBarrier:
         return self.phase == "paused_ready"
 
     def playback_confirmation_pending(self) -> bool:
-        return self.target_ms is not None and self.phase == "verifying"
+        return self.target_ms is not None and self.phase in {
+            "verifying",
+            "settling",
+        }
 
     def expire(self, now: float | None = None) -> bool:
         """Release a stale confirmation even when VLC's time is unchanged."""
@@ -100,8 +107,15 @@ class PlaybackSeekBarrier:
         tolerance = self.POSITION_TOLERANCE_MS
         if not playing:
             if abs(value - target) <= tolerance:
-                self._confirm(value)
-                return True
+                if self.near_target_since <= 0.0:
+                    self.near_target_since = moment
+                    self.phase = "settling"
+                    return False
+                if moment - self.near_target_since >= self.TARGET_SETTLE_S:
+                    self._confirm(value)
+                    return True
+                return False
+            self.near_target_since = 0.0
             return False
 
         self.phase = "verifying"
@@ -110,12 +124,19 @@ class PlaybackSeekBarrier:
         # much farther away and must not escape to the UI.
         upper_window = max(5_000.0, max(0.05, float(rate)) * 1_000.0)
         if value < target - tolerance or value > target + upper_window:
+            self.near_target_since = 0.0
             return False
-        # Reaching the requested position is itself a valid confirmation.
-        # Requiring a second, later VLC timestamp made the UI wait forever
-        # on streams whose picture advances while get_time() stays frozen.
-        self._confirm(value)
-        return True
+        if value > target + tolerance:
+            self._confirm(value)
+            return True
+        if self.near_target_since <= 0.0:
+            self.near_target_since = moment
+            self.phase = "settling"
+            return False
+        if moment - self.near_target_since >= self.TARGET_SETTLE_S:
+            self._confirm(value)
+            return True
+        return False
 
 
 __all__ = ["PlaybackSeekBarrier"]

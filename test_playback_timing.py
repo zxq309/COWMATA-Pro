@@ -233,6 +233,18 @@ class PlaybackTimingTest(unittest.TestCase):
 
         self.assertGreater(window.video_timeline.position, 2_800.0)
 
+    def test_smooth_clock_waits_instead_of_running_ahead_of_decoder(self) -> None:
+        window = _SmoothHarness(rate=10.0)
+        window._smooth_display_video_ms = 50_000.0
+        window._smooth_last_tick_monotonic = 10.97
+        window._smooth_last_raw_video_ms = 47_000.0
+        window._smooth_last_raw_monotonic = 10.9
+
+        with patch("smooth_playhead_mixin.time.monotonic", return_value=11.0):
+            window._smooth_playhead_tick()
+
+        self.assertEqual(window.video_timeline.position, 50_000.0)
+
     def test_smooth_calibration_does_not_move_cursor_while_playing(self) -> None:
         window = _SmoothHarness(rate=1.0)
         window.video_timeline.position = 1_000.0
@@ -273,15 +285,27 @@ class PlaybackTimingTest(unittest.TestCase):
 
     def test_linked_pause_preserves_continuous_position(self) -> None:
         window = _SmoothHarness(rate=1.0)
-        window._smooth_display_video_ms = 3_000.0
+        window._smooth_display_video_ms = 4_000.0
         window.media.video_ms = 1_000.0
         window.media.playing = False
 
         with patch("smooth_playhead_mixin.time.monotonic", return_value=12.0):
             window._on_playing_changed(False)
 
-        self.assertEqual(window._smooth_display_video_ms, 3_000.0)
-        self.assertEqual(window.video_timeline.position, 3_000.0)
+        self.assertEqual(window._smooth_display_video_ms, 4_000.0)
+        self.assertEqual(window.video_timeline.position, 4_000.0)
+
+    def test_linked_pause_reconciles_small_decoder_difference(self) -> None:
+        window = _SmoothHarness(rate=1.0)
+        window._smooth_display_video_ms = 3_000.0
+        window.media.video_ms = 2_850.0
+        window.media.playing = False
+
+        with patch("smooth_playhead_mixin.time.monotonic", return_value=12.0):
+            window._on_playing_changed(False)
+
+        self.assertEqual(window._smooth_display_video_ms, 2_850.0)
+        self.assertEqual(window.video_timeline.position, 2_850.0)
 
     def test_unlinked_pause_uses_independent_video_position(self) -> None:
         window = _SmoothHarness(rate=1.0)

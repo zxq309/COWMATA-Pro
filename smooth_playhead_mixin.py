@@ -13,6 +13,8 @@ class SmoothPlayheadMixin:
 
     SMOOTH_CORRECTION_GAIN = 0.5
     SMOOTH_MAX_CORRECTION_FRACTION = 0.12
+    SMOOTH_MAX_CLOCK_ERROR_MS = 300.0
+    SMOOTH_PAUSE_RECONCILE_MAX_MS = 2_000.0
 
     def __init__(self) -> None:
         now = time.monotonic()
@@ -97,7 +99,17 @@ class SmoothPlayheadMixin:
             self._smooth_timer.stop()
             if self.media is not None:
                 if self._preserve_smooth_position_on_pause(was_smoothing):
-                    paused_position = self._smooth_display_video_ms
+                    actual = float(self.media.get_time_ms())
+                    if (
+                        abs(actual - self._smooth_display_video_ms)
+                        <= self.SMOOTH_PAUSE_RECONCILE_MAX_MS
+                    ):
+                        paused_position = actual
+                    else:
+                        # Some malformed streams keep reporting an old clock
+                        # for seconds while their picture advances.  A large
+                        # discrepancy is therefore treated as stale metadata.
+                        paused_position = self._smooth_display_video_ms
                 else:
                     paused_position = float(self.media.get_time_ms())
                 self._reset_smooth_clock(paused_position, now)
@@ -196,6 +208,17 @@ class SmoothPlayheadMixin:
         video_ms = self._smooth_display_video_ms + elapsed * max(
             0.0, nominal_speed + correction_speed
         )
+        # Interpolation is presentation-only: it must never become a second
+        # authoritative clock.  Keep it close to VLC's latest timestamp plus
+        # the elapsed-time estimate.  When decoding temporarily falls behind,
+        # hold the cursor until the real video clock catches up rather than
+        # letting the pinned IMU timeline drift ahead of the visible frame.
+        lower_bound = raw_estimate_now - self.SMOOTH_MAX_CLOCK_ERROR_MS
+        upper_bound = raw_estimate_now + self.SMOOTH_MAX_CLOCK_ERROR_MS
+        if video_ms > upper_bound:
+            video_ms = max(self._smooth_display_video_ms, upper_bound)
+        elif video_ms < lower_bound:
+            video_ms = lower_bound
         self._smooth_anchor_video_ms = video_ms
         self._smooth_anchor_monotonic = now
         reached_boundary = self._present_smooth_position(video_ms)
