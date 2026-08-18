@@ -332,11 +332,64 @@ class AnnotationReviewCoreTests(unittest.TestCase):
             self.assertIn("FEEDING", report_text)
             self.assertIn("URINATION", report_text)
 
+            overwritten = export_review_results(
+                workspace,
+                overwrite_source=True,
+            )
+            self.assertIn(csv_path.resolve(), overwritten)
+            with csv_path.open(
+                "r", encoding="utf-8-sig", newline=""
+            ) as handle:
+                source_rows = list(csv.DictReader(handle))
+            self.assertEqual(len(source_rows), 1)
+            self.assertEqual(source_rows[0]["code"], "URINATION")
+            self.assertEqual(source_rows[0]["t_start_rel_ms"], "1200")
+            reloaded = load_events_csv(csv_path)
+            self.assertEqual(len(reloaded["events"]), 1)
+            self.assertEqual(reloaded["events"][0]["label_code"], "URINATION")
+            self.assertEqual(
+                (
+                    reloaded["events"][0]["t0"],
+                    reloaded["events"][0]["t1"],
+                ),
+                (1200.0, 2500.0),
+            )
+            self.assertTrue(
+                (root / "exports" / "session-001.events_meta.json").is_file()
+            )
+            overwritten_again = export_review_results(
+                workspace,
+                overwrite_source=True,
+            )
+            self.assertIn(
+                root / "exports" / "annotation_review_report.csv",
+                overwritten_again,
+            )
+            self.assertFalse(
+                (root / "exports" / "annotation_review_report_2.csv").exists()
+            )
+
             second = export_review_results(workspace, output)
             self.assertTrue(
                 (output / "session-001.reviewed.events_2.csv").is_file()
             )
             self.assertEqual(len(second), 3)
+
+    def test_overwrite_refuses_to_recreate_a_missing_source_csv(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "session-001.events.csv"
+            missing = root / "session-002.events.csv"
+            write_events_csv(first)
+            write_events_csv(missing, session_id="session-002")
+            workspace = new_workspace()
+            import_csv_files(workspace, [first, missing])
+            original_first = first.read_bytes()
+            missing.unlink()
+
+            with self.assertRaises(ReviewImportError):
+                export_review_results(workspace, overwrite_source=True)
+            self.assertEqual(first.read_bytes(), original_first)
 
     def test_build_meta_preserves_future_runtime_fields(self) -> None:
         with TemporaryDirectory() as directory:

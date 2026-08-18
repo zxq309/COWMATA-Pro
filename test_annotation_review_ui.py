@@ -6,13 +6,14 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("BOVINE_NO_MEDIA", "1")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
-from annotation_review import AnnotationReviewDialog
+from annotation_review import AnnotationReviewDialog, REVIEW_UID_ROLE
 from annotation_review_core import new_workspace
 from data_core import _synthetic_object
 from integrated_window import MainWindow
@@ -134,8 +135,10 @@ class AnnotationReviewWindowTests(unittest.TestCase):
             write_events_csv(csv_path)
             window = MainWindow()
             window._review_autosave_path = root / "autosave.review.json"
+            window.resize(1_280, 720)
             window.show()
             self.app.processEvents()
+            plot_height_before_review = window.plot.height()
             try:
                 window.import_review_csvs([str(csv_path)])
                 self.app.processEvents()
@@ -145,25 +148,54 @@ class AnnotationReviewWindowTests(unittest.TestCase):
                     ),
                     window.annotation_review_button,
                 )
-                self.assertIsNotNone(window._review_dialog)
-                self.assertFalse(window._review_dialog.isModal())
-                self.assertEqual(window._review_dialog.table.rowCount(), 2)
-                self.assertIsNotNone(window._review_dock)
-                self.assertFalse(window._review_dock.isFloating())
-                self.assertTrue(window._review_dock.isVisible())
+                self.assertIsNone(window._review_dialog)
+                self.assertIsNone(window._review_dock)
+                self.assertTrue(window.review_panel_container.isVisible())
+                self.assertTrue(window.review_panel_table.isVisible())
+                self.assertEqual(window.review_panel_table.rowCount(), 2)
+                self.assertFalse(window.event_table.isVisible())
                 self.assertTrue(window.plot.isVisible())
                 self.assertGreater(window.plot.height(), 240)
+                self.assertEqual(window.plot.height(), plot_height_before_review)
+                self.assertLessEqual(
+                    window.review_panel_container.sizeHint().width(),
+                    window.review_panel_container.width(),
+                )
                 actions = set(window.annotation_review_menu.actions())
                 self.assertIn(window.review_import_action, actions)
                 self.assertIn(window.review_export_action, actions)
+                self.assertEqual(
+                    window.review_export_action.text(),
+                    "覆盖保存复核 CSV",
+                )
                 self.assertTrue(window.review_open_action.isEnabled())
                 self.assertTrue(window.review_save_action.isEnabled())
-                window._review_dialog.close_btn.click()
+                first_event = window._review_workspace["sessions"][0][
+                    "events"
+                ][0]
+                first_event["t0"] = 1_250.0
+                first_event["reviewed_range"]["start"] = 1_250.0
+                first_event["review_status"] = "modified"
+                first_event["review_modified"] = True
+                with patch(
+                    "annotation_review.QMessageBox.warning",
+                    return_value=QMessageBox.StandardButton.Yes,
+                ):
+                    window.export_annotation_review()
+                with csv_path.open(
+                    "r", encoding="utf-8-sig", newline=""
+                ) as handle:
+                    overwritten_rows = list(csv.DictReader(handle))
+                self.assertEqual(
+                    overwritten_rows[0]["t_start_rel_ms"], "1250"
+                )
+                window.review_panel_close_btn.click()
                 self.app.processEvents()
-                self.assertFalse(window._review_dock.isVisible())
+                self.assertFalse(window.review_panel_container.isVisible())
+                self.assertTrue(window.event_table.isVisible())
                 window.show_annotation_review()
                 self.app.processEvents()
-                self.assertTrue(window._review_dock.isVisible())
+                self.assertTrue(window.review_panel_container.isVisible())
             finally:
                 window.close()
 
@@ -211,15 +243,47 @@ class AnnotationReviewWindowTests(unittest.TestCase):
                 first_uid = first["events"][0]["review_uid"]
                 second_uid = second["events"][0]["review_uid"]
 
+                self.assertEqual(window.review_panel_table.rowCount(), 2)
+                self.assertEqual(
+                    window.review_panel_table.horizontalHeaderItem(6).text(),
+                    "对应 JSON",
+                )
+                window.review_panel_table.selectRow(1)
+                self.app.processEvents()
+                self.assertEqual(
+                    window._review_active_session_key,
+                    second["key"],
+                )
+
                 window.locate_review_event(first_uid)
+                window._drag_history_snapshot = window._annotation_snapshot()
                 window.events[0]["t0"] = 5.0
-                window.events[0]["reviewed_range"]["start"] = 5.0
+                window._event_changed_on_plot(
+                    int(window.events[0]["id"]),
+                    5.0,
+                    window.events[0]["t1"],
+                )
+                self.assertEqual(first["events"][0]["review_status"], "modified")
                 window.locate_review_event(second_uid)
 
                 self.assertEqual(first["events"][0]["t0"], 5.0)
                 self.assertEqual(first["events"][0]["review_status"], "modified")
                 window.locate_review_event(first_uid)
                 self.assertEqual(window.events[0]["t0"], 5.0)
+                first_row = next(
+                    row
+                    for row in range(window.review_panel_table.rowCount())
+                    if str(
+                        window.review_panel_table.item(row, 0).data(
+                            REVIEW_UID_ROLE
+                        )
+                    )
+                    == first_uid
+                )
+                self.assertEqual(
+                    window.review_panel_table.item(first_row, 0).text(),
+                    "已修改",
+                )
                 self.assertTrue(window._review_autosave_path.is_file())
             finally:
                 window.close()

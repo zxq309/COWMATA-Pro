@@ -2,8 +2,8 @@
 
 This module deliberately has no Qt dependency.  It parses the tool's
 ``*.events.csv`` exports, resolves their source IMU JSON files, persists a
-batch review workspace, and writes corrected copies without overwriting the
-original exports.
+batch review workspace, and writes corrected rows atomically either to the
+original exports or to an explicitly requested output directory.
 """
 
 from __future__ import annotations
@@ -809,16 +809,66 @@ def _write_csv(path: Path, columns: list[str], rows: Iterable[Mapping[str, Any]]
 
 
 def export_review_results(
-    workspace: Mapping[str, Any], output_directory: str | os.PathLike[str]
+    workspace: Mapping[str, Any],
+    output_directory: str | os.PathLike[str] | None = None,
+    *,
+    overwrite_source: bool = False,
 ) -> list[Path]:
-    output = Path(output_directory).expanduser().resolve()
-    output.mkdir(parents=True, exist_ok=True)
+    """Persist reviewed event CSVs and an audit report.
+
+    ``overwrite_source=True`` writes each session back to the exact CSV that
+    was imported. The replacement is atomic, and its companion metadata file
+    is updated at the same path. The non-destructive output-directory mode
+    remains available for callers that explicitly need a separate copy.
+    """
+
+    requested_output = (
+        None if isinstance(output_directory, bool) else output_directory
+    )
+    output = (
+        Path(requested_output).expanduser().resolve()
+        if requested_output
+        else None
+    )
+    if not overwrite_source and output is None:
+        raise ValueError("非覆盖导出必须指定输出目录")
+    if output is not None:
+        output.mkdir(parents=True, exist_ok=True)
     created: list[Path] = []
     report_rows: list[dict[str, Any]] = []
+    report_directory: Path | None = output
+    sessions = [
+        session
+        for session in workspace.get("sessions", [])
+        if isinstance(session, dict)
+    ]
+    overwrite_targets: dict[int, Path] = {}
+    if overwrite_source:
+        seen_targets: set[str] = set()
+        for session in sessions:
+            source_csv = str(session.get("csv_path", "") or "").strip()
+            if not source_csv:
+                raise ReviewImportError(
+                    f"会话 {session.get('session_id', '')} 缺少原始 CSV 路径"
+                )
+            target = Path(source_csv).expanduser().resolve()
+            if not target.name.casefold().endswith(".events.csv"):
+                raise ReviewImportError(
+                    f"会话 {session.get('session_id', '')} 的 CSV 路径无效：{target}"
+                )
+            if not target.is_file():
+                raise ReviewImportError(
+                    f"会话 {session.get('session_id', '')} 的原始 CSV 不存在：{target}"
+                )
+            identity = os.path.normcase(str(target))
+            if identity in seen_targets:
+                raise ReviewImportError(f"复核队列中存在重复 CSV 路径：{target}")
+            seen_targets.add(identity)
+            overwrite_targets[id(session)] = target
+        if report_directory is None and overwrite_targets:
+            report_directory = next(iter(overwrite_targets.values())).parent
 
-    for session in workspace.get("sessions", []):
-        if not isinstance(session, dict):
-            continue
+    for session in sessions:
         active_events = [
             event
             for event in session.get("events", [])
@@ -827,8 +877,14 @@ def export_review_results(
         active_events.sort(
             key=lambda event: (float(event.get("t0", 0.0)), int(event.get("id", 0)))
         )
-        base_name = _safe_file_stem(session.get("session_id", "session"))
-        target = _unique_output_path(output / f"{base_name}.reviewed.events.csv")
+        if overwrite_source:
+            target = overwrite_targets[id(session)]
+        else:
+            assert output is not None
+            base_name = _safe_file_stem(session.get("session_id", "session"))
+            target = _unique_output_path(
+                output / f"{base_name}.reviewed.events.csv"
+            )
         columns = [str(value) for value in session.get("csv_columns", [])]
         if not columns:
             columns = list(EVENT_CSV_COLUMNS)
@@ -870,7 +926,11 @@ def export_review_results(
                 meta["source_json_fingerprint"] = source_file_fingerprint(json_path)
             except OSError:
                 pass
-        meta_target = Path(str(target.with_suffix("")) + "_meta.json")
+        meta_target = (
+            _meta_path_for_csv(target)
+            if overwrite_source
+            else Path(str(target.with_suffix("")) + "_meta.json")
+        )
         created.append(_atomic_json(meta_target, meta))
 
         for event in session.get("events", []):
@@ -903,7 +963,15 @@ def export_review_results(
                 }
             )
 
-    report_target = _unique_output_path(output / "annotation_review_report.csv")
+    if report_directory is None:
+        report_directory = Path.cwd()
+    report_target = (
+        report_directory / "annotation_review_report.csv"
+        if overwrite_source
+        else _unique_output_path(
+            report_directory / "annotation_review_report.csv"
+        )
+    )
     created.append(_write_csv(report_target, REVIEW_REPORT_COLUMNS, report_rows))
     return created
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 import numpy as np
-from PySide6.QtCore import QStandardPaths, QTimer, Qt
+from PySide6.QtCore import QStandardPaths, Qt
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -335,7 +335,7 @@ class AnnotationReviewDialog(QDialog):
         self.edit_btn = QPushButton("修改标签/时间/备注")
         self.approve_btn = QPushButton("确认通过并转到下一条")
         self.next_btn = QPushButton("下一条待复核")
-        self.export_btn = QPushButton("导出复核结果")
+        self.export_btn = QPushButton("覆盖保存复核 CSV")
         self.close_btn = QPushButton("关闭复核面板")
         self.locate_btn.clicked.connect(self._locate_selected)
         self.edit_btn.clicked.connect(self._edit_selected)
@@ -546,10 +546,10 @@ class AnnotationReviewMixin:
         self.review_import_action = QAction("导入事件 CSV…", self)
         self.review_import_folder_action = QAction("导入 CSV 文件夹…", self)
         self.review_json_root_action = QAction("设置原始 JSON 根目录…", self)
-        self.review_open_action = QAction("打开复核队列", self)
+        self.review_open_action = QAction("显示复核队列（事件面板）", self)
         self.review_restore_action = QAction("恢复上次自动保存的复核", self)
         self.review_save_action = QAction("另存复核工作区…", self)
-        self.review_export_action = QAction("导出复核结果…", self)
+        self.review_export_action = QAction("覆盖保存复核 CSV", self)
         self.review_clear_action = QAction("清空复核队列", self)
 
         self.review_import_action.triggered.connect(self.import_review_csvs)
@@ -597,7 +597,318 @@ class AnnotationReviewMixin:
             self.annotation_review_widget_action = toolbar.addWidget(
                 self.annotation_review_button
             )
+        self._install_review_event_panel_controls()
         self._refresh_review_actions()
+
+    def _install_review_event_panel_controls(self) -> None:
+        """Add the review table to the existing annotation event panel.
+
+        Review mode swaps the ordinary event table for this table in the same
+        group box.  The main window therefore keeps the waveform and the
+        current JSON visible; no second full-height review window is needed.
+        """
+
+        self.review_panel_container = QWidget(self.event_panel)
+        panel_layout = QVBoxLayout(self.review_panel_container)
+        panel_layout.setContentsMargins(0, 0, 0, 0)
+        panel_layout.setSpacing(2)
+        summary_bar = QHBoxLayout()
+        summary_bar.setSpacing(3)
+        action_bar = QHBoxLayout()
+        action_bar.setSpacing(3)
+
+        self.review_panel_toggle = QToolButton()
+        self.review_panel_toggle.setText("复核队列")
+        self.review_panel_toggle.setCheckable(True)
+        self.review_panel_toggle.setToolTip("在现有标注事件面板中显示批量复核队列")
+        self.review_panel_filter = QComboBox()
+        for text, value in STATUS_FILTERS:
+            self.review_panel_filter.addItem(text, value)
+        self.review_panel_filter.setMaximumWidth(132)
+        self.review_panel_status_label = QLabel("")
+        self.review_panel_status_label.setStyleSheet("color:#58677b;")
+        self.review_panel_locate_btn = QPushButton("定位")
+        self.review_panel_edit_btn = QPushButton("修改")
+        self.review_panel_approve_btn = QPushButton("通过+下一条")
+        self.review_panel_next_btn = QPushButton("下一条")
+        self.review_panel_save_btn = QPushButton("覆盖保存")
+        self.review_panel_close_btn = QToolButton()
+        self.review_panel_close_btn.setText("×")
+        self.review_panel_close_btn.setToolTip("收起复核队列（不会清空进度）")
+        self.review_panel_close_btn.setAutoRaise(True)
+
+        summary_bar.addWidget(self.review_panel_toggle)
+        summary_bar.addWidget(self.review_panel_filter)
+        summary_bar.addWidget(self.review_panel_status_label, 1)
+        summary_bar.addWidget(self.review_panel_close_btn)
+        for widget in (
+            self.review_panel_locate_btn,
+            self.review_panel_edit_btn,
+            self.review_panel_approve_btn,
+            self.review_panel_next_btn,
+        ):
+            action_bar.addWidget(widget)
+        action_bar.addStretch()
+        action_bar.addWidget(self.review_panel_save_btn)
+        panel_layout.addLayout(summary_bar)
+        panel_layout.addLayout(action_bar)
+        event_layout = self.event_panel.layout()
+        if event_layout is not None:
+            event_layout.insertWidget(0, self.review_panel_container)
+
+        self.review_panel_table = QTableWidget(0, 8, self.event_panel)
+        self.review_panel_table.setHorizontalHeaderLabels(
+            [
+                "状态",
+                "会话 / 设备",
+                "标签",
+                "开始",
+                "结束",
+                "时长",
+                "对应 JSON",
+                "来源 CSV",
+            ]
+        )
+        self.review_panel_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.review_panel_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.review_panel_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.review_panel_table.setAlternatingRowColors(True)
+        self.review_panel_table.setShowGrid(False)
+        self.review_panel_table.verticalHeader().setVisible(False)
+        self.review_panel_table.verticalHeader().setDefaultSectionSize(24)
+        review_header = self.review_panel_table.horizontalHeader()
+        for column in range(6):
+            review_header.setSectionResizeMode(
+                column, QHeaderView.ResizeMode.Interactive
+            )
+        review_header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        review_header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+        for column, width in enumerate((78, 150, 88, 110, 110, 80)):
+            self.review_panel_table.setColumnWidth(column, width)
+        if event_layout is not None:
+            event_layout.insertWidget(1, self.review_panel_table, 1)
+        self.review_panel_table.hide()
+        self.review_panel_container.hide()
+
+        self.review_panel_toggle.toggled.connect(
+            self._toggle_review_event_panel
+        )
+        self.review_panel_filter.currentIndexChanged.connect(
+            lambda _index: self._refresh_review_panel()
+        )
+        self.review_panel_table.itemSelectionChanged.connect(
+            self._review_panel_locate_selected
+        )
+        self.review_panel_locate_btn.clicked.connect(
+            self._review_panel_locate_selected
+        )
+        self.review_panel_edit_btn.clicked.connect(
+            self._review_panel_edit_selected
+        )
+        self.review_panel_approve_btn.clicked.connect(
+            self._review_panel_approve_selected
+        )
+        self.review_panel_next_btn.clicked.connect(
+            self._review_panel_next_selected
+        )
+        self.review_panel_save_btn.clicked.connect(
+            self.export_annotation_review
+        )
+        self.review_panel_close_btn.clicked.connect(
+            self._hide_review_event_panel
+        )
+
+    @staticmethod
+    def _review_status_matches_filter(display_status: str, value: str) -> bool:
+        if value == "all":
+            return True
+        if value == "pending":
+            return display_status == "待复核"
+        if value == "modified":
+            return display_status in {"已修改", "已删除"}
+        if value == "reviewed":
+            return display_status.startswith("已通过")
+        if value == "missing":
+            return display_status in {
+                "缺少 JSON",
+                "JSON 待选择",
+                "JSON 指纹不一致",
+            }
+        return True
+
+    def _show_review_event_panel(self) -> None:
+        if not self._review_workspace.get("sessions"):
+            self.review_panel_toggle.blockSignals(True)
+            self.review_panel_toggle.setChecked(False)
+            self.review_panel_toggle.blockSignals(False)
+            return
+        self.review_panel_container.show()
+        self.review_panel_table.show()
+        self.event_table.hide()
+        for widget in (
+            self.delete_event_btn,
+            self.clear_event_btn,
+            self.event_count_label,
+        ):
+            widget.hide()
+        self.review_panel_toggle.blockSignals(True)
+        self.review_panel_toggle.setChecked(True)
+        self.review_panel_toggle.blockSignals(False)
+        self.event_panel.setTitle("标注事件 · 批量复核")
+        self._refresh_review_panel()
+
+    def _hide_review_event_panel(self) -> None:
+        self.review_panel_container.hide()
+        self.review_panel_table.hide()
+        self.event_table.show()
+        for widget in (
+            self.delete_event_btn,
+            self.clear_event_btn,
+            self.event_count_label,
+        ):
+            widget.show()
+        self.review_panel_toggle.blockSignals(True)
+        self.review_panel_toggle.setChecked(False)
+        self.review_panel_toggle.blockSignals(False)
+        self.event_panel.setTitle("标注事件")
+
+    def _toggle_review_event_panel(self, checked: bool) -> None:
+        if checked:
+            self._show_review_event_panel()
+        else:
+            self._hide_review_event_panel()
+
+    def _review_panel_selected_uid(self) -> str:
+        table = getattr(self, "review_panel_table", None)
+        if table is None:
+            return ""
+        rows = table.selectionModel().selectedRows()
+        if not rows:
+            return ""
+        item = table.item(rows[0].row(), 0)
+        return str(item.data(REVIEW_UID_ROLE) or "") if item else ""
+
+    def _refresh_review_panel(self, selected_uid: str = "") -> None:
+        table = getattr(self, "review_panel_table", None)
+        if table is None:
+            return
+        workspace = self._review_workspace
+        if not workspace.get("sessions"):
+            table.setRowCount(0)
+            self.review_panel_status_label.setText("")
+            self._hide_review_event_panel()
+            return
+
+        previous_uid = (
+            selected_uid
+            or self._review_panel_selected_uid()
+            or str(workspace.get("last_event_uid", "") or "")
+        )
+        filter_value = str(
+            self.review_panel_filter.currentData() or "all"
+        )
+        rows: list[tuple[dict[str, Any], dict[str, Any], str]] = []
+        for session, event in iter_review_events(workspace):
+            status = review_display_status(session, event)
+            if not self._review_status_matches_filter(status, filter_value):
+                continue
+            rows.append((session, event, status))
+        rows.sort(
+            key=lambda item: (
+                str(item[0].get("session_id", "")),
+                float(item[1].get("t0", 0.0)),
+                str(item[1].get("review_uid", "")),
+            )
+        )
+
+        colors = {
+            "待复核": QColor("#9a5b00"),
+            "已修改": QColor("#9a5b00"),
+            "已删除": QColor("#9b2c2c"),
+            "已通过": QColor("#1f7a48"),
+            "已通过（修改）": QColor("#1f7a48"),
+            "缺少 JSON": QColor("#b42318"),
+            "JSON 待选择": QColor("#b42318"),
+            "JSON 指纹不一致": QColor("#b42318"),
+        }
+        table.blockSignals(True)
+        table.setSortingEnabled(False)
+        table.setRowCount(len(rows))
+        selected_row = -1
+        for row_index, (session, event, status) in enumerate(rows):
+            label = _event_label(session, event)
+            start = float(event.get("t0", 0.0))
+            end = event.get("t1")
+            json_path = str(session.get("json_path", "") or "")
+            session_text = " / ".join(
+                value
+                for value in (
+                    str(session.get("session_id", "")),
+                    str(session.get("device", "")),
+                )
+                if value
+            )
+            values = [
+                status,
+                session_text,
+                str(label.get("name", event.get("label_code", ""))),
+                format_relative(start),
+                "点" if end is None else format_relative(float(end)),
+                "点" if end is None else format_relative(float(end) - start),
+                Path(json_path).name if json_path else "—",
+                Path(str(session.get("csv_path", ""))).name,
+            ]
+            uid = str(event.get("review_uid", ""))
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                item.setData(REVIEW_UID_ROLE, uid)
+                if column == 0:
+                    item.setForeground(colors.get(status, QColor("#172033")))
+                table.setItem(row_index, column, item)
+            if uid == previous_uid:
+                selected_row = row_index
+        if selected_row < 0 and rows:
+            selected_row = 0
+        if selected_row >= 0:
+            table.selectRow(selected_row)
+        table.setSortingEnabled(True)
+        table.blockSignals(False)
+
+        counts = review_counts(workspace)
+        self.review_panel_status_label.setText(
+            f"待 {counts['pending']} · 改 {counts['modified']} · "
+            f"过 {counts['reviewed']} · 缺 {counts['missing_json']}"
+        )
+        has_uid = bool(self._review_panel_selected_uid())
+        table.setEnabled(bool(rows))
+        self.review_panel_locate_btn.setEnabled(has_uid)
+        self.review_panel_edit_btn.setEnabled(has_uid)
+        self.review_panel_approve_btn.setEnabled(has_uid)
+        self.review_panel_next_btn.setEnabled(bool(workspace.get("sessions")))
+
+    def _review_panel_locate_selected(self) -> None:
+        uid = self._review_panel_selected_uid()
+        if uid:
+            self.locate_review_event(uid)
+
+    def _review_panel_edit_selected(self) -> None:
+        uid = self._review_panel_selected_uid()
+        if uid:
+            self.edit_review_event(uid)
+
+    def _review_panel_approve_selected(self) -> None:
+        uid = self._review_panel_selected_uid()
+        if uid:
+            self.approve_review_event(uid)
+
+    def _review_panel_next_selected(self) -> None:
+        self.locate_next_pending_review(self._review_panel_selected_uid())
 
     def _refresh_review_actions(self) -> None:
         has_sessions = bool(self._review_workspace.get("sessions"))
@@ -741,53 +1052,12 @@ class AnnotationReviewMixin:
         if not self._review_workspace.get("sessions"):
             self.statusBar().showMessage("请先导入 *.events.csv", 3000)
             return
-        if self._review_dialog is None:
-            self._review_dialog = AnnotationReviewDialog(
-                self._workspace,
-                self.locate_review_event,
-                self.edit_review_event,
-                self.approve_review_event,
-                self.locate_next_pending_review,
-                self.choose_review_json_root,
-                self.export_annotation_review,
-                self,
-            )
-            # Keep the queue inside the main window so the waveform remains
-            # visible while a row is being reviewed. The dock can still be
-            # moved to another edge or floated from its title bar.
-            self._review_dialog.setWindowFlags(Qt.WindowType.Widget)
-            self._review_dock = QDockWidget("已导出标注批量复核", self)
-            self._review_dock.setObjectName("annotationReviewDock")
-            self._review_dock.setAllowedAreas(
-                Qt.DockWidgetArea.BottomDockWidgetArea
-                | Qt.DockWidgetArea.LeftDockWidgetArea
-                | Qt.DockWidgetArea.RightDockWidgetArea
-            )
-            self._review_dock.setFeatures(
-                QDockWidget.DockWidgetFeature.DockWidgetClosable
-                | QDockWidget.DockWidgetFeature.DockWidgetMovable
-                | QDockWidget.DockWidgetFeature.DockWidgetFloatable
-            )
-            self._review_dock.setMinimumSize(620, 280)
-            self._review_dock.setWidget(self._review_dialog)
-            self.addDockWidget(
-                Qt.DockWidgetArea.BottomDockWidgetArea,
-                self._review_dock,
-            )
-            initial_height = max(300, min(430, int(self.height() * 0.42)))
-            QTimer.singleShot(
-                0,
-                lambda height=initial_height: self._resize_review_dock(height),
-            )
-        self._review_dialog.refresh()
-        if self._review_dock is not None:
-            self._review_dock.show()
-            self._review_dock.raise_()
-            self._review_dock.activateWindow()
-        else:
-            self._review_dialog.show()
-            self._review_dialog.raise_()
-            self._review_dialog.activateWindow()
+        # Review rows live in the existing event panel.  Opening the review
+        # action must never create a second window or consume waveform space.
+        self._show_review_event_panel()
+        self._refresh_review_panel(
+            str(self._review_workspace.get("last_event_uid", "") or "")
+        )
 
     def _resize_review_dock(self, height: int) -> None:
         dock = self._review_dock
@@ -1192,7 +1462,7 @@ class AnnotationReviewMixin:
         self._refresh_events()
         self._autosave()
         self.locate_review_event(uid)
-        self.statusBar().showMessage("已修改导入标注，原始 CSV 值已保留", 4000)
+        self.statusBar().showMessage("已修改导入标注，原始值已记录", 4000)
 
     def _mark_review_event_modified(self, event_id: int) -> None:
         event = next(
@@ -1216,17 +1486,36 @@ class AnnotationReviewMixin:
     def _event_changed_on_plot(
         self, event_id: int, start_ms: float, end_ms: Any
     ) -> None:
-        before = next(
+        snapshot = getattr(self, "_drag_history_snapshot", None)
+        snapshot_events = (
+            snapshot.get("events", []) if isinstance(snapshot, dict) else []
+        )
+        original = next(
             (
-                (
-                    float(event.get("t0", 0.0)),
-                    event.get("t1"),
-                )
-                for event in self.events
+                event
+                for event in snapshot_events
                 if int(event.get("id", -1)) == int(event_id)
                 and event.get("review_source") == REVIEW_SOURCE
             ),
             None,
+        )
+        if original is None:
+            original = next(
+                (
+                    event
+                    for event in self.events
+                    if int(event.get("id", -1)) == int(event_id)
+                    and event.get("review_source") == REVIEW_SOURCE
+                ),
+                None,
+            )
+        before = (
+            None
+            if original is None
+            else (
+                float(original.get("t0", 0.0)),
+                original.get("t1"),
+            )
         )
         super()._event_changed_on_plot(event_id, start_ms, end_ms)
         current = next(
@@ -1331,9 +1620,14 @@ class AnnotationReviewMixin:
         self.locate_review_event(target)
 
     def _refresh_review_dialog(self, selected_uid: str = "") -> None:
+        """Refresh all review views (legacy dialog plus the inline table)."""
+
         self._refresh_review_actions()
         if self._review_dialog is not None:
             self._review_dialog.refresh(selected_uid=selected_uid)
+        if getattr(self, "review_panel_container", None) is not None:
+            if not self.review_panel_container.isHidden():
+                self._refresh_review_panel(selected_uid)
 
     def _save_review_workspace(self) -> None:
         if self._review_autosave_path is None or not self._review_workspace.get(
@@ -1411,44 +1705,75 @@ class AnnotationReviewMixin:
         self, output_directory: str | os.PathLike[str] | None = None
     ) -> None:
         self._sync_active_review_session()
+        sessions = [
+            session
+            for session in self._review_workspace.get("sessions", [])
+            if isinstance(session, dict)
+        ]
+        if not sessions:
+            self.statusBar().showMessage("请先导入 *.events.csv", 3000)
+            return
         counts = review_counts(self._review_workspace)
         unfinished = counts["pending"] + counts["modified"] + counts["missing_json"]
-        if unfinished and output_directory is None:
+        source_paths = sorted(
+            {
+                str(Path(str(session.get("csv_path", ""))).resolve())
+                for session in sessions
+                if str(session.get("csv_path", "") or "").strip()
+            }
+        )
+        invalid_sources = [
+            str(session.get("session_id", "") or "未命名会话")
+            for session in sessions
+            if not str(session.get("csv_path", "") or "").strip()
+            or not Path(str(session.get("csv_path", ""))).is_file()
+        ]
+        if invalid_sources or len(source_paths) != len(sessions):
+            detail = "、".join(invalid_sources[:8])
+            if not detail:
+                detail = "复核队列含重复的 CSV 路径"
+            self._show_error(
+                "无法覆盖保存：以下会话的原始 CSV 不可用：\n" + detail
+            )
+            return
+        if output_directory is None or isinstance(output_directory, bool):
+            warning_lines = [
+                f"将直接覆盖 {len(source_paths)} 个原始事件 CSV，保存后不可撤销。"
+            ]
+            if unfinished:
+                warning_lines.append(
+                    f"当前还有 {unfinished} 条待复核、已修改或缺少 JSON。"
+                )
+            warning_lines.append("确定继续覆盖保存吗？")
             answer = QMessageBox.warning(
                 self,
-                "仍有未完成复核",
-                f"还有 {unfinished} 条待复核、待确认或缺少 JSON。\n\n仍然导出当前结果？",
+                "覆盖保存复核结果",
+                "\n\n".join(warning_lines),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
-        if output_directory is None or isinstance(output_directory, bool):
-            default = self.settings.value("review_export_dir", "")
-            if not default:
-                sessions = self._review_workspace.get("sessions", [])
-                first_csv = (
-                    str(sessions[0].get("csv_path", ""))
-                    if sessions and isinstance(sessions[0], dict)
-                    else ""
-                )
-                default = str(Path(first_csv).parent / "复核结果") if first_csv else str(Path.cwd())
-            selected = QFileDialog.getExistingDirectory(
-                self, "选择复核结果输出目录", str(default)
-            )
-            output_directory = selected
-        if not output_directory:
-            return
+            output_directory = None
         try:
             created = export_review_results(
-                self._review_workspace, output_directory
+                self._review_workspace,
+                output_directory,
+                overwrite_source=True,
             )
         except (OSError, TypeError, ValueError) as exc:
             self._show_error(f"复核结果导出失败：\n{exc}")
             return
-        self.settings.setValue("review_export_dir", str(output_directory))
+        if output_directory:
+            self.settings.setValue("review_export_dir", str(output_directory))
         self._save_review_workspace()
+        self._refresh_review_dialog()
+        csv_count = sum(
+            1
+            for path in created
+            if path.name.casefold().endswith(".events.csv")
+        )
         self.statusBar().showMessage(
-            f"复核结果已导出 {len(created)} 个文件；原 CSV 未覆盖",
+            f"已覆盖保存 {csv_count} 个原始 CSV，并更新复核元数据",
             7000,
         )
 
@@ -1475,6 +1800,8 @@ class AnnotationReviewMixin:
             self._review_dialog.hide()
         if self._review_dock is not None:
             self._review_dock.hide()
+        if hasattr(self, "review_panel_container"):
+            self._hide_review_event_panel()
         self._refresh_review_actions()
 
     def _autosave(self) -> None:
@@ -1510,5 +1837,6 @@ class AnnotationReviewMixin:
 __all__ = [
     "AnnotationReviewDialog",
     "AnnotationReviewMixin",
+    "REVIEW_UID_ROLE",
     "ReviewEventEditDialog",
 ]
