@@ -8,3 +8,6 @@ __pycache__/
 # Runtime-generated review/index caches
 prediction_cache/
 video_index_cache.json
+
+# Windows shortcut links
+*.lnk
