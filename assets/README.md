@@ -12,3 +12,9 @@ The COWMATA names, marks, and logo artwork remain company brand assets. Their in
 ## Screenshots
 
 `screenshots/annotator-overview.jpg` was captured from a real local integration test of this application. The underlying video and sensor files are not included in the repository.
+
+`screenshots/annotation-interval-example.jpg` and `screenshots/annotation-multilabel-example.jpg` are reproducible Qt renders of the real 50 Hz waveform and production annotation widgets. Their injected labels are illustrative UI fixtures, not scientific ground truth. Regenerate them locally with:
+
+```powershell
+python scripts\capture_readme_screenshots.py "examples\sensor.json"
+```

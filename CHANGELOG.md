@@ -2,6 +2,18 @@
 
 All notable changes to COWMATA Tail-Ring Annotator are documented here.
 
+## [2.1.0] — 2026-08-21
+
+### Added
+
+- Root-level `START_ANNOTATOR.bat`: double-click setup on the first run and direct GUI launch afterwards.
+- Two reproducible annotation-example images covering interval-boundary review and overlapping protocol-v4 layers.
+- `scripts/capture_readme_screenshots.py` for regenerating UI examples from a local nine-axis JSON without publishing source data.
+
+### Changed
+
+- Expanded both READMEs with a one-click Windows path and a three-image product gallery.
+
 ## [2.0.0] — 2026-08-21
 
 ### Added
@@ -25,4 +37,5 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 - Duplicate historical launch/window modules, checked-in production weights, generated QA screenshots, and other obsolete repository artifacts.
 - Large/private example media from Git tracking; only local usage instructions remain.
 
+[2.1.0]: https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.1.0
 [2.0.0]: https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.0.0

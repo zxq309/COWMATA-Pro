@@ -7,7 +7,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v2.0.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.0.0)
+[![Release](https://img.shields.io/badge/release-v2.1.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.1.0)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -36,6 +36,26 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 - **可追溯输出** —— 稳定机器码、显示名称、绝对时间戳、来源字段与导出前结构校验。
 - **中英双语** —— 界面语言仅影响显示，不会改写落盘标签码或历史数据。
 
+## 标注示例
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/annotation-interval-example.jpg" alt="真实九轴波形上的站立区间边界复核"><br>
+      <strong>区间边界复核</strong><br>
+      <sub>选中区间同步覆盖九个通道，起止边界可拖动调整，并在事件表中保留可追溯记录。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/annotation-multilabel-example.jpg" alt="真实九轴波形上的多层 v4 标签"><br>
+      <strong>v4 多层标签示例</strong><br>
+      <sub>身体状态、尾部动作、姿态转换与同步点可以共存于同一绝对时间轴。</sub>
+    </td>
+  </tr>
+</table>
+
+> [!NOTE]
+> 两图使用真实 50 Hz 波形渲染器；其中标签与备注仅为界面功能演示，不代表该原始记录的科研真值。可在本地用 `python scripts/capture_readme_screenshots.py <sensor.json>` 复现。
+
 ## 环境要求
 
 - Windows 10 或 Windows 11
@@ -47,6 +67,14 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 应用主体采用 Python/Qt，但当前视频集成与正式测试以 Windows 为主。
 
 ## 快速开始
+
+### Windows 一键启动
+
+克隆或下载仓库后，直接双击项目主目录中的 [`START_ANNOTATOR.bat`](START_ANNOTATOR.bat)。首次启动会自动创建本地 `.venv`、安装基础标注依赖并打开纯标注模式；以后双击会直接打开图形界面。
+
+使用前仍需预先安装 VLC 3.x。在终端中调用时，启动器也接受普通参数，例如 `START_ANNOTATOR.bat --lang zh --json ... --video ...`。
+
+### 手动安装
 
 打开 PowerShell：
 
@@ -73,7 +101,7 @@ pip install -e ".[model]"
 cowmata-annotator --mode model-assist
 ```
 
-Windows 用户也可以先运行一次 `scripts\install.bat`，以后直接双击 `scripts\launch.bat`。需要查看控制台诊断信息时，运行 `scripts\launch-debug.bat`。
+`scripts/` 目录仍保留模型辅助和诊断启动方式；需要查看控制台信息时，运行 `scripts\launch-debug.bat`。
 
 ## 使用示例
 
@@ -167,6 +195,7 @@ cowmata-annotator --mode basic --lang zh `
 
 ```text
 cattle-tail-ring-annotator/
+├── START_ANNOTATOR.bat     # 主目录首次配置与一键启动入口
 ├── cowmata_tailring/       # 应用、界面、媒体、标注与推理代码
 ├── assets/                 # 授权品牌素材与 README 实测截图
 ├── docs/                   # 使用、模型辅助、架构与打包说明
@@ -185,7 +214,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-截图所示 v2.0.0 已在 Windows 环境完成真实联调：Python 3.12.13、VLC 3.0.23、真实样例对和自动化测试套件。版本说明见 [CHANGELOG.md](CHANGELOG.md)。
+截图所示 v2.1.0 已在 Windows 环境完成真实联调：Python 3.12.13、VLC 3.0.23、真实样例对和自动化测试套件。版本说明见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 关联仓库
 

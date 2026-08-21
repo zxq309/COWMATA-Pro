@@ -7,7 +7,7 @@
 **Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v2.0.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.0.0)
+[![Release](https://img.shields.io/badge/release-v2.1.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.1.0)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -36,6 +36,26 @@ COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synch
 - **Traceable output** — stable machine codes, display labels, timestamps, provenance fields, and validation-aware exports.
 - **Bilingual UI** — English and Simplified Chinese affect display only; persisted label codes remain stable.
 
+## Annotation examples
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/annotation-interval-example.jpg" alt="Selected standing interval over real nine-axis waveforms"><br>
+      <strong>Interval boundary review</strong><br>
+      <sub>A selected interval is shaded across all nine channels, with draggable start/end boundaries and a traceable event-table row.</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="assets/screenshots/annotation-multilabel-example.jpg" alt="Overlapping protocol-v4 labels over real nine-axis waveforms"><br>
+      <strong>Multi-layer protocol-v4 annotation</strong><br>
+      <sub>Body state, tail action, posture transition, and a synchronization point coexist on one absolute timeline.</sub>
+    </td>
+  </tr>
+</table>
+
+> [!NOTE]
+> These two images use the real 50 Hz waveform renderer. Their labels and notes are illustrative UI fixtures, not scientific ground truth for the source recording. Reproduce them locally with `python scripts/capture_readme_screenshots.py <sensor.json>`.
+
 ## Requirements
 
 - Windows 10 or 11
@@ -47,6 +67,14 @@ COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synch
 The application source is cross-platform Python/Qt, but the current video integration and test target are Windows-first.
 
 ## Quick start
+
+### One-click Windows launch
+
+After cloning or downloading the repository, double-click [`START_ANNOTATOR.bat`](START_ANNOTATOR.bat) in the project root. On the first launch it creates the local `.venv`, installs the base annotator dependencies, and then opens basic annotation mode. Later launches open the GUI directly.
+
+VLC 3.x must already be installed. The launcher also accepts the normal command-line arguments when called from a terminal, for example `START_ANNOTATOR.bat --lang en --json ... --video ...`.
+
+### Manual installation
 
 Open PowerShell:
 
@@ -73,7 +101,7 @@ pip install -e ".[model]"
 cowmata-annotator --mode model-assist
 ```
 
-Windows users can also run `scripts\install.bat` once and then double-click `scripts\launch.bat`. Use `scripts\launch-debug.bat` when console diagnostics are needed.
+The scripts under `scripts/` remain available for model-assisted and diagnostic launches. Use `scripts\launch-debug.bat` when console output is needed.
 
 ## Usage example
 
@@ -167,6 +195,7 @@ The interface language never rewrites stored annotations. Machine keys such as `
 
 ```text
 cattle-tail-ring-annotator/
+├── START_ANNOTATOR.bat     # Root-level first-run setup and one-click launcher
 ├── cowmata_tailring/       # Application, UI, media, annotation, and inference code
 ├── assets/                 # Authorized brand assets and README screenshot
 ├── docs/                   # Usage, model-assist, architecture, and packaging notes
@@ -185,7 +214,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-Version 2.0.0 shown above was integration-tested on Windows with Python 3.12.13, VLC 3.0.23, the real example pair, and the automated test suite. See [CHANGELOG.md](CHANGELOG.md) for release details.
+Version 2.1.0 shown above was integration-tested on Windows with Python 3.12.13, VLC 3.0.23, the real example pair, and the automated test suite. See [CHANGELOG.md](CHANGELOG.md) for release details.
 
 ## Related repositories
 

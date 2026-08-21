@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 PKG_ROOT = Path(__file__).resolve().parent.parent / "cowmata_tailring"
+REPO_ROOT = PKG_ROOT.parent
 PKG = "cowmata_tailring"
 
 
@@ -151,3 +152,12 @@ def test_single_entry_point() -> None:
     """Exactly one module defines the application entry point."""
     entries = [p for p in _python_files() if p.name == "main.py" and p.parent.name == "app"]
     assert len(entries) == 1, f"expected one app/main.py, found {entries}"
+
+
+def test_root_one_click_launcher() -> None:
+    """The documented root launcher bootstraps and opens basic mode."""
+    launcher = REPO_ROOT / "START_ANNOTATOR.bat"
+    text = launcher.read_text(encoding="utf-8")
+    assert 'set "VENV=%ROOT%.venv"' in text
+    assert '-m pip install -e "%ROOT%"' in text
+    assert "-m cowmata_tailring --mode basic %*" in text
