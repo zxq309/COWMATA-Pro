@@ -1,0 +1,5 @@
+# Model-assisted prediction extras.
+# xgboost is pinned: the shipped GBDT joblib artefact only loads on this version.
+torch>=2.3
+pytorch-tcn>=1.2,<2
+xgboost==3.2.0

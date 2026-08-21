@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cowmata-tailring-annotator"
+dynamic = ["version"]
+description = "Video and nine-axis IMU annotation workstation for cattle behaviour"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "zxq309" }]
+keywords = ["annotation", "imu", "cattle", "behaviour", "video", "pyside6"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+
+dependencies = [
+    "PySide6>=6.6",
+    "numpy>=1.26,<3",
+    "scipy>=1.12",
+    "pandas>=2.2,<4",
+    "scikit-learn>=1.4",
+    "joblib>=1.4,<2",
+]
+
+[project.optional-dependencies]
+# Model-assisted prediction. xgboost is pinned: the shipped GBDT joblib
+# artefact only deserialises against this exact version.
+model = [
+    "torch>=2.3",
+    "pytorch-tcn>=1.2,<2",
+    "xgboost==3.2.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/zxq309/cattle-tail-ring-annotator"
+Documentation = "https://github.com/zxq309/cattle-tail-ring-annotator#readme"
+Repository = "https://github.com/zxq309/cattle-tail-ring-annotator"
+Issues = "https://github.com/zxq309/cattle-tail-ring-annotator/issues"
+Algorithm = "https://github.com/zxq309/cowmata-tailring"
+
+[project.scripts]
+cowmata-annotator = "cowmata_tailring.app.main:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "cowmata_tailring.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["cowmata_tailring*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "E501",  # UI text and translation catalogue intentionally keep readable strings intact.
+    "B023",  # Flagged closures are consumed synchronously within their current loop iteration.
+    "B905",  # The codebase supports Python 3.10; explicit zip(strict=) is not required here.
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

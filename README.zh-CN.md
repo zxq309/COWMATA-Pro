@@ -1,60 +1,212 @@
-# 牛尾环九轴标注台
+<div align="center">
 
-牛尾佩戴式九轴（加速度/角速度/磁场）+ 温度传感数据的离线桌面标注工具：视频与曲线统一播放头同步，支持区间/点事件标注、CSV/BORIS 导出、双人盲标 IRR 一致性检验，以及 20260816 模型辅助预测（GBDT + 深度模型）。
+<a href="https://www.cowmata.com/"><img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300"></a>
 
-> 本工具只读取原始九轴 JSON、视频和模型，不修改训练数据或训练结果。所有模型输出必须经过人工复核后才能进入标注表。
+# COWMATA 牛尾环标注工具
 
-## 启动与依赖
+**面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
-双击 `正式桌面版入口\【双击启动】模型辅助标注工具.bat`（模型辅助版）。首次使用 20260816 模型前运行 `【安装依赖】模型辅助标注工具.bat`；GBDT 序列化文件要求 `xgboost==3.2.0`。完整操作与界面说明见 [`正式桌面版入口/使用说明.md`](正式桌面版入口/使用说明.md)。
+[![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## 20260816 模型包
+[English](README.md) · [简体中文](README.zh-CN.md) · [主工程算法仓库](https://github.com/zxq309/cowmata-tailring)
 
-“模型辅助 → 模型包设置…”选择一个目录。目录契约如下：
+</div>
 
-- `gbdt_full.joblib`：必需。提供六类事件，并在深度模型未完成时提供姿态/行走回退。
-- `best.pt`：可选。训练完成后直接放入同一目录，必须是 `OfflineMultiTaskTCN`。工具下次预测会自动使用它负责站立、躺卧、行走，不需要重新设置。
-- `inference_config.json`：可选，仅用于包外新 JSON 的全局传感器换算覆盖；PredictFull 的事件阈值和候选规则固定按指南执行，不接受这里覆盖。
+![COWMATA 牛尾环标注工具：同步显示牛舍视频与九轴 IMU 波形](assets/screenshots/annotator-overview.jpg)
 
-默认目录是 `预测\20260816\复现实验\final_model`。当前只有 GBDT 时工具仍可正常预测，并在复核窗口明确显示“等待 best.pt”；不会把 GBDT 回退伪装成已完成的深度模型。
+<p align="center"><sub>真实联调截图：59 分 59.859 秒、179,378 个采样点、50 Hz 九轴记录与奶牛视频同步加载；原始素材仅保留在本地，不上传 GitHub。</sub></p>
 
-## 算法与标签口径
+## 项目简介
 
-1. 深度模型负责互斥姿态 `UPRIGHT/LYING` 和独立的行走概率；六类事件始终使用 104 维离线手工特征 GBDT。
-2. 深度模型未就绪时，`gbdt_full.joblib` 中的 `POSTURE_LYING/WALKING` 自动接管身体行为。
-3. 不增加状态机：姿态直接取 `UPRIGHT/LYING` 概率较高者；`WALKING >= 0.5` 时只覆盖直立状态，形成互斥的站立、躺卧、行走显示区间。
-4. 六类事件为抬尾、甩尾、起立、卧倒、排尿、排便，全部严格使用 `概率 >= 0.5`；相邻阳性 2 Hz 点的时间差大于 5000 ms 才拆成两个候选，不增加最短时长、迟滞或分类别规则。
-5. 50 Hz 缓存、104 维特征和深度上下文严格遵守缓存中的 segments；事件候选边界严格使用指南脚本的 `首个阳性中心` 到 `末个阳性中心 + 500 ms`。
-6. `best.pt` 内的事件阈值以及原工具的后处理配置均不参与六类 GBDT 候选生成。
-7. 按指南，甩尾仅有 4 个事件/1 头牛，作为研究性候选且默认不勾选；所有候选仍须结合视频人工确认。
-8. 采食和其他不作为模型标签；努责和分娩节点继续只支持人工标注。
+COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复核奶牛视频与连续九轴尾环 IMU 数据。它在一个界面内提供共用时间轴、v4 标注协议、安全工程保存、逐条复核和科研数据导出。
 
-## 任意原始 JSON
+> [!IMPORTANT]
+> 本仓库负责**数据标注与人工复核**；模型训练、实验评估和当前算法工程基线位于 [COWMATA Tail-Sensor Intelligence 主工程](https://github.com/zxq309/cowmata-tailring)。两个仓库互为配套，可直接跳转使用。
 
-预测入口直接接收工具当前打开的 V2 原始 JSON。工具先按设备 MAC 和会话名查找指南使用的 `cache_key`：找到时直接读取对应 `features.npy/metadata.json`，确保与官方 `predict_full.py` 的输入完全相同；找不到才按指南第 6 节为新会话生成等价的 50 Hz、13 通道输入。
+### 核心能力
 
-处理步骤沿用新版算法中可复现的接口：恢复 22 字节帧相位、识别时间复位/缺口、逐段 50 Hz 重采样、磁力计坐标旋转、13 通道物理量、逐会话安装姿态自校准、104 维离线特征和 2 Hz 决策点。传感器换算按下述实际统一参数执行，不再依赖交付资料中未包含的校准清单。
+- **视频—九轴共时间轴** —— 播放、定位、缩放并同时检查加速度计、陀螺仪和磁力计九个通道。
+- **先对齐、后标注** —— 视频与传感器时间轴完成钉住前，正式标注保持锁定，避免无声错位。
+- **内置 v4 协议** —— 15 项行为/分娩标签，另含一个不参与训练的同步锚点。
+- **人控模型辅助** —— 模型只生成候选项；未经过人工确认，不会成为正式标签。
+- **可追溯输出** —— 稳定机器码、显示名称、绝对时间戳、来源字段与导出前结构校验。
+- **中英双语** —— 界面语言仅影响显示，不会改写落盘标签码或历史数据。
 
-生产设备使用相同固件和相同传感器参数，不保存逐设备零偏。标注工具因此不再按 MAC 分支，所有已有设备、未来新增设备以及未填写 MAC 的包外 V2 JSON 都统一使用：
+## 环境要求
 
-- 加速度除数 `4096`，零偏置 `[0, 0, 0]`；
-- 陀螺仪除数 `32`，零偏置 `[0, 0, 0]`；
-- 磁力计除数 `1000`，并保持新版算法规定的坐标旋转。
+- Windows 10 或 Windows 11
+- Python 3.10 及以上
+- 系统已安装 [VLC media player 3.x](https://www.videolan.org/vlc/)，用于视频播放
+- Git
+- 可选：FFmpeg/ffprobe，用于特殊监控视频的探测或转封装流程
 
-MAC 仅作为数据来源标识，不参与预处理选择。尾环佩戴角度继续由新版算法的低运动样本会话自校准自动处理。模型包如需覆盖传感器参数，只允许在 `inference_config.json` 中提供一套全局 `sensor_calibration`，该套参数同样应用于所有设备。
+应用主体采用 Python/Qt，但当前视频集成与正式测试以 Windows 为主。
 
-## 人工复核流程
+## 快速开始
 
-1. 打开真实九轴 JSON，并按需要打开、校准同步视频。
-2. 点击顶部“模型辅助 → 开始模型预测”。
-3. 在复核窗口按置信度排序、定位视频，必要时先修改标签或起止时间。
-4. 只勾选可信建议并导入；导入项统一标记为“待人工复核”。
-5. 在事件表选择预测项后，可在真实九轴波形上拖动左右边界；`Ctrl+E` 可重新聚焦。
-6. 根据视频修正或删除误报，再点击“确认已复核”。
-7. 按原流程保存工程和导出训练样本。未经人工确认的候选不得作为金标准。
+打开 PowerShell：
 
-每次预测还会在 `prediction_cache` 中生成指南规定的 `*_dense.csv` 和 `*_candidates.csv`，同时保存标注工具的预测摘要。预测记录包含原始模型目录、模型状态、GBDT/深度权重哈希、算法版本、固定阈值、输入 cache_key、置信度和人工调整历史。添加或替换 `best.pt`，或者改变新 JSON 的全局传感器参数后，模型指纹都会变化，不会覆盖旧结果。
+```powershell
+git clone https://github.com/zxq309/cattle-tail-ring-annotator.git
+cd cattle-tail-ring-annotator
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e .
+cowmata-annotator --mode basic
+```
 
-## 回滚
+不依赖命令行入口时，可用等价模块命令：
 
-迁移前 Git 标签为 `before-20260816-hybrid-interface`。旧 20260815 因果运行代码仍保留在 `model_runtime/imu_behavior`，但当前界面的默认流程只选择 20260816 模型包。
+```powershell
+python -m cowmata_tailring --mode basic
+```
+
+需要模型辅助复核时：
+
+```powershell
+pip install -e ".[model]"
+cowmata-annotator --mode model-assist
+```
+
+Windows 用户也可以先运行一次 `scripts\install.bat`，以后直接双击 `scripts\launch.bat`。需要查看控制台诊断信息时，运行 `scripts\launch-debug.bat`。
+
+## 使用示例
+
+把自己的九轴 JSON 和对应视频放入本地 `examples/` 目录，然后在启动时一次性打开：
+
+```powershell
+cowmata-annotator --mode basic --lang zh `
+  --json "examples\2026-08-08 10_44_34.json" `
+  --video "examples\hiv00102.mp4"
+```
+
+本次截图使用的视频为 256 MiB，九轴 JSON 约 5 MiB，二者均已通过 `.gitignore` 排除，不会上传 GitHub。具体见 [examples/README.md](examples/README.md)。
+
+## 使用指南
+
+1. **打开九轴 JSON** —— 核对采样数、频率、时间范围、缺口与九通道真实波形。
+2. **打开视频** —— 加载对应录像，并检查工具识别的真实时长。
+3. **对齐并钉住** —— 将视频与 IMU 定位到同一可观察事件，再点击“钉住”；完成后才允许正式标注。
+4. **创建标签** —— 按标签快捷键；点标签落在当前播放头，区间标签通过拖动波形创建。
+5. **复核、保存与导出** —— 校正边界、补充备注、撤销/重做；通过结构校验后保存工程并导出。
+
+工程文件采用原子写入，意外中断不会用半截文件覆盖已有有效工程。
+
+## 快捷键
+
+### 编辑与导航
+
+| 功能 | 快捷键 |
+| --- | --- |
+| 播放 / 暂停 | `Space` |
+| 保存工程 | `Ctrl+S` |
+| 撤销 | `Ctrl+Z` |
+| 重做 | `Ctrl+Y` 或 `Ctrl+Shift+Z` |
+| 删除选中事件 | `Delete` 或 `Backspace` |
+| 上一帧 / 下一帧 | `[` / `]` |
+| 播放头前后移动 100 ms | `←` / `→` |
+| 上一个 / 下一个活动 | `P` / `N` |
+| 显示完整信号范围 | `F` |
+| 视频全屏 | `F11` 或双击视频 |
+| 退出全屏 / 取消待建区间 | `Esc` |
+| 校准选中的模型区间 | `Ctrl+E`（模型辅助模式） |
+
+### v4 标签协议
+
+| 快捷键 | 中文标签 | 机器码 | 类型 |
+| --- | --- | --- | --- |
+| `1` | 站立 | `STANDING` | 区间 |
+| `2` | 躺卧 | `LYING` | 区间 |
+| `3` | 行走 | `WALKING` | 区间 |
+| `4` | 努责首次出现 | `STRAINING_ONSET` | 点 |
+| `5` | 努责区间 | `STRAINING_BOUT` | 区间 |
+| `6` | 胎膜囊（水囊）首次可见 | `AMNIOTIC_SAC_FIRST_VISIBLE` | 点 |
+| `7` | 胎儿首个部位首次可见 | `FETAL_PART_FIRST_VISIBLE` | 点 |
+| `8` | 犊牛完全娩出（T0） | `CALF_FULLY_EXPELLED` | 点 |
+| `9` | 胎膜完全排出 | `FETAL_MEMBRANES_FULLY_EXPELLED` | 点 |
+| `Q` | 抬尾 | `TAIL_RAISED` | 区间 |
+| `W` | 甩尾 | `TAIL_WAGGING` | 区间 |
+| `E` | 起立过程 | `STANDING_UP` | 区间 |
+| `R` | 卧倒过程 | `LYING_DOWN` | 区间 |
+| `A` | 排尿 | `URINATION` | 区间 |
+| `S` | 排便 | `DEFECATION` | 区间 |
+| `0` | 同步敲击锚点 | `SYNC_ANCHOR` | 点，不参与训练 |
+
+## 模型辅助复核
+
+模型文件不纳入本仓库版本管理。通过“模型辅助 → 模型包设置…”选择本地目录：
+
+| 文件 | 是否必需 | 用途 |
+| --- | --- | --- |
+| `gbdt_full.joblib` | 必需 | 六类事件，并提供姿态/行走回退 |
+| `best.pt` | 可选 | `OfflineMultiTaskTCN`，负责站立、躺卧与行走 |
+| `inference_config.json` | 可选 | 对包外 JSON 提供传感器换算覆盖 |
+
+为保持模型文件兼容，`xgboost` 固定为 `3.2.0`。模型建议导入后状态为“待复核”，会保留原始类别、边界、得分及后续人工修改记录。完整契约见 [模型辅助标注文档](docs/model-assist.md)；当前训练与评估流程请以[主工程算法仓库](https://github.com/zxq309/cowmata-tailring)为准。
+
+## 输入、工程与导出
+
+| 项目 | 用途 |
+| --- | --- |
+| 九轴 JSON | 连续加速度计、陀螺仪、磁力计与时间戳数据 |
+| 视频 | MP4 及 VLC 支持的其他奶牛录像 |
+| 工程 JSON | 对齐关系、源文件、协议、标签、事件、备注与复核状态 |
+| 事件 CSV + 元数据 JSON | 含 `label`、`code`、`en` 字段的扁平事件交换格式 |
+| 聚合 / BORIS CSV | 兼容点事件与区间事件的汇总格式 |
+| 训练样本 CSV | 基于时间戳的多热样本；导出前必须填写真实 `cow_id` |
+| IRR CSV | 标注者间一致性报告 |
+
+界面语言不会改写历史数据；`STANDING`、`TAIL_RAISED` 等机器键在中英文会话中保持一致。
+
+## 仓库结构
+
+```text
+cattle-tail-ring-annotator/
+├── cowmata_tailring/       # 应用、界面、媒体、标注与推理代码
+├── assets/                 # 授权品牌素材与 README 实测截图
+├── docs/                   # 使用、模型辅助、架构与打包说明
+├── examples/               # 仅本地保留的样例数据说明
+├── scripts/                # Windows 与 shell 启动脚本
+├── tests/                  # 自动化测试
+└── .github/                # CI、Issue 表单与 PR 模板
+```
+
+## 开发与验证
+
+```powershell
+pip install -e ".[dev]"
+ruff check cowmata_tailring tests
+pytest -q
+python -m cowmata_tailring --version
+```
+
+截图所示发布候选版本已在 Windows 环境完成真实联调：Python 3.12.13、VLC 3.0.23、真实样例对和自动化测试套件。
+
+## 关联仓库
+
+| 仓库 | 作用 |
+| --- | --- |
+| [zxq309/cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | 本桌面标注与人工复核工具 |
+| [zxq309/cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | COWMATA 尾部传感器算法、实验与工程基线 |
+
+## 贡献、安全与引用
+
+- 提交 PR 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 安全问题请按 [SECURITY.md](SECURITY.md) 私下报告，不要公开提交 Issue。
+- 软件引用信息见 [CITATION.cff](CITATION.cff)。
+- 可复现缺陷与边界明确的功能建议请提交到 [GitHub Issues](https://github.com/zxq309/cattle-tail-ring-annotator/issues)。
+
+## 团队
+
+- **张相清（Xiangqing Zhang）** —— 杨凌园上园智能科技有限公司 CTO；延安大学
+- **张亚龙（Yalong Zhang）** —— 杨凌园上园智能科技有限公司创始人
+- **焦腾宇（Tengyu Jiao）** —— 延安大学
+- **赵亚晨（Yachen Zhao）** —— 延安大学
+
+## 许可证与品牌素材
+
+源代码按 [MIT License](LICENSE) 发布。`assets/brand/` 内的 COWMATA 名称与 Logo 为公司品牌资产，不因 MIT 许可证而重新授权；详见 [NOTICE](NOTICE) 与 [assets/README.md](assets/README.md)。

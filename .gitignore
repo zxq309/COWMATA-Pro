@@ -1,13 +1,46 @@
+# Byte-compiled / cache
 __pycache__/
 *.py[cod]
-*.log
+*.egg-info/
+build/
+dist/
+
+# Tooling caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
-# Runtime-generated review/index caches
+# Environments
+.venv/
+venv/
+env/
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
+
+# Logs
+*.log
+
+# Runtime-generated caches and outputs
 prediction_cache/
 video_index_cache.json
 
-# Windows shortcut links
-*.lnk
+# Local/private demo data. Keep only the instructions tracked.
+examples/*
+!examples/README.md
+
+# Local model packages and common large media/data formats
+model_packages/
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.jsonl
+
+# Model weights are distributed via GitHub Releases, not tracked in git
+*.pt
+!tests/**/*.pt

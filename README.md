@@ -1,114 +1,212 @@
+<div align="center">
+
+<a href="https://www.cowmata.com/"><img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300"></a>
+
 # COWMATA Tail-Ring Annotator
 
-Offline desktop annotation tool for tail-worn nine-axis (accelerometer / gyroscope /
-magnetometer) + temperature sensor data: video and waveforms share one playback head,
-with interval/point event annotation, CSV/BORIS export, two-annotator blind IRR
-consistency checks, and 20260816 model-assisted prediction (GBDT + deep model).
+**Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
-> The tool only reads raw nine-axis JSON, video and model files; it never modifies
-> training data or training results. Every model output must pass human review before
-> it can enter the annotation table.
+[![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## Launch and dependencies
+[English](README.md) · [简体中文](README.zh-CN.md) · [Algorithm repository](https://github.com/zxq309/cowmata-tailring)
 
-Double-click `正式桌面版入口\【双击启动】模型辅助标注工具.bat` (model-assisted build).
-Run `【安装依赖】模型辅助标注工具.bat` before the first use of the 20260816 model;
-the GBDT bundle requires `xgboost==3.2.0`. Full operation and UI details are in
-[`正式桌面版入口/使用说明.md`](正式桌面版入口/使用说明.md) (Chinese).
+</div>
 
-## 20260816 model bundle
+![COWMATA Tail-Ring Annotator showing synchronized barn video and nine-axis IMU waveforms](assets/screenshots/annotator-overview.jpg)
 
-"Model assist → Model bundle settings…" selects a directory with this contract:
+<p align="center"><sub>Real integration test: a 59 min 59.859 s, 179,378-sample, 50 Hz IMU record synchronized with cattle video. Source media stays local and is not committed.</sub></p>
 
-- `gbdt_full.joblib`: required. Produces the six event classes and provides a
-  posture/walking fallback while the deep model is unavailable.
-- `best.pt`: optional. Drop the trained checkpoint into the same directory once
-  available; it must be an `OfflineMultiTaskTCN`. The tool picks it up on the next
-  prediction for standing / lying / walking with no further configuration.
-- `inference_config.json`: optional, a global sensor-conversion override for raw JSON
-  outside the bundle; event thresholds and candidate rules always follow the guide
-  and are not overridable here.
+## Overview
 
-The default directory is `预测\20260816\复现实验\final_model`. With only the GBDT
-present the tool still predicts normally and the review window explicitly shows
-"waiting for best.pt"; the GBDT fallback is never disguised as a finished deep model.
+COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synchronized cattle video and continuous nine-axis tail-ring IMU data. It combines a shared timeline, protocol-v4 labels, safe project persistence, review tools, and research-ready exports in one interface.
 
-## Algorithm and label conventions
+> [!IMPORTANT]
+> This repository is the **data annotation and review tool**. Model training, evaluation, and the current algorithm engineering baseline live in [COWMATA Tail-Sensor Intelligence](https://github.com/zxq309/cowmata-tailring). The two repositories are designed to be used together.
 
-1. The deep model produces the mutually exclusive posture `UPRIGHT/LYING` and an
-   independent walking probability; the six event classes always use the 104-dim
-   offline hand-crafted GBDT.
-2. While the deep model is unavailable, `POSTURE_LYING/WALKING` from
-   `gbdt_full.joblib` take over body behaviour automatically.
-3. No state machine is added: posture takes the higher of `UPRIGHT/LYING`
-   probabilities; `WALKING >= 0.5` only overrides the upright state, yielding
-   mutually exclusive standing / lying / walking display intervals.
-4. The six event classes are tail-raised, tail-wagging, standing-up, lying-down,
-   urination and defecation, all strictly `probability >= 0.5`; adjacent positive
-   2 Hz points split into two candidates only when more than 5000 ms apart. No
-   minimum duration, hysteresis or per-class rules are added.
-5. The 50 Hz cache, 104-dim features and deep context respect the cache `segments`
-   strictly; candidate boundaries use the guide script's `first positive centre` to
-   `last positive centre + 500 ms`.
-6. Event thresholds inside `best.pt` and the original tool's post-processing
-   configuration do not participate in the six-class GBDT candidate generation.
-7. Per the guide, tail-wagging has only 4 events on 1 cow; it is a research candidate
-   and unchecked by default. All candidates still require video confirmation.
-8. Feeding and other behaviours are not model labels; straining and calving nodes
-   remain manual-only annotations.
+### Why this tool
 
-## Arbitrary raw JSON
+- **Video and IMU in one timeline** — seek, play, zoom, and inspect nine channels without switching applications.
+- **Alignment before annotation** — formal annotation remains locked until the video and sensor timelines are pinned.
+- **Protocol v4 built in** — 15 behaviour/calving labels plus a non-trainable synchronization anchor.
+- **Human-controlled model assistance** — candidates enter a review queue and never become labels without confirmation.
+- **Traceable output** — stable machine codes, display labels, timestamps, provenance fields, and validation-aware exports.
+- **Bilingual UI** — English and Simplified Chinese affect display only; persisted label codes remain stable.
 
-Prediction accepts the currently opened V2 raw JSON directly. The tool first maps the
-device MAC and session name to the guide's `cache_key`: when found it reads the
-corresponding `features.npy/metadata.json` directly, so the input is byte-for-byte the
-official `predict_full.py` input; only when not found does it build the equivalent
-50 Hz, 13-channel input for a new session per guide section 6.
+## Requirements
 
-Processing reuses the reproducible interfaces of the current algorithm: 22-byte frame
-phase recovery, time-reset/gap detection, per-segment 50 Hz resampling, magnetometer
-coordinate rotation, 13-channel physical values, per-session mounting-pose
-self-calibration, 104-dim offline features and 2 Hz decision points. Sensor conversion
-uses the fixed unified parameters below, independent of any calibration manifest not
-included in the delivery material.
+- Windows 10 or 11
+- Python 3.10 or newer
+- [VLC media player 3.x](https://www.videolan.org/vlc/) installed on the system for video playback
+- Git
+- Optional: FFmpeg/ffprobe for unusual surveillance-video probing or remux workflows
 
-Production devices share one firmware and one sensor parameter set; no per-device bias
-is stored. The tool therefore no longer branches on MAC — every existing device,
-future device, and out-of-bundle V2 JSON without a MAC uses:
+The application source is cross-platform Python/Qt, but the current video integration and test target are Windows-first.
 
-- accelerometer divisor `4096`, bias `[0, 0, 0]`;
-- gyroscope divisor `32`, bias `[0, 0, 0]`;
-- magnetometer divisor `1000`, with the coordinate rotation defined by the current
-  algorithm.
+## Quick start
 
-MAC serves only as a data-source identifier. Mounting angle continues to be handled by
-the algorithm's low-motion session self-calibration. A bundle may override sensor
-parameters only via one global `sensor_calibration` block in `inference_config.json`,
-applied to all devices alike.
+Open PowerShell:
 
-## Human review workflow
+```powershell
+git clone https://github.com/zxq309/cattle-tail-ring-annotator.git
+cd cattle-tail-ring-annotator
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e .
+cowmata-annotator --mode basic
+```
 
-1. Open a real nine-axis JSON, then open and calibrate the synchronised video if needed.
-2. Click "Model assist → Start model prediction".
-3. In the review window, sort by confidence and locate the video; adjust labels or
-   boundaries first if necessary.
-4. Import only trustworthy suggestions; imported items are uniformly marked
-   "pending human review".
-5. Select a prediction in the event table to drag its left/right boundary on the real
-   waveform; `Ctrl+E` refocuses.
-6. Correct or delete false positives against the video, then click "confirm reviewed".
-7. Save the project and export training samples as usual. Unconfirmed candidates must
-   never serve as ground truth.
+The equivalent module command is:
 
-Each prediction also writes the guide-mandated `*_dense.csv` and `*_candidates.csv`
-into `prediction_cache`, together with an annotation-tool prediction summary. The
-record includes the source model directory, model state, GBDT/deep weight hashes,
-algorithm version, fixed thresholds, input cache_key, confidence and the history of
-manual adjustments. Adding or replacing `best.pt`, or changing the global sensor
-parameters, changes the model fingerprint and never overwrites older results.
+```powershell
+python -m cowmata_tailring --mode basic
+```
 
-## Rollback
+For model-assisted review:
 
-The pre-migration Git tag is `before-20260816-hybrid-interface`. The legacy 20260815
-causal runtime remains under `model_runtime/imu_behavior`, but the current interface
-selects only the 20260816 bundle by default.
+```powershell
+pip install -e ".[model]"
+cowmata-annotator --mode model-assist
+```
+
+Windows users can also run `scripts\install.bat` once and then double-click `scripts\launch.bat`. Use `scripts\launch-debug.bat` when console diagnostics are needed.
+
+## Usage example
+
+Place your own sensor JSON and matching video under the local `examples/` directory, then open both at startup:
+
+```powershell
+cowmata-annotator --mode basic --lang zh `
+  --json "examples\2026-08-08 10_44_34.json" `
+  --video "examples\hiv00102.mp4"
+```
+
+The media used for the screenshot is intentionally excluded from Git because the video is 256 MiB and the sensor JSON is about 5 MiB. See [examples/README.md](examples/README.md) for the local-data policy.
+
+## Annotation workflow
+
+1. **Open IMU JSON** — confirm sample count, frequency, time range, gaps, and the rendered nine-axis waveforms.
+2. **Open video** — load the matching recording and inspect its real duration.
+3. **Align and pin** — seek both timelines to the same observable event, then choose **Pin**. Annotation is enabled only after alignment.
+4. **Create labels** — press a label shortcut. Point labels are placed at the playhead; interval labels are created by dragging over the waveform.
+5. **Review and save** — adjust boundaries, add notes, undo/redo, save the project, and export only after validation succeeds.
+
+Project saves are written atomically so an interrupted write does not replace a valid project with a partial file.
+
+## Keyboard shortcuts
+
+### Editing and navigation
+
+| Action | Shortcut |
+| --- | --- |
+| Play / pause | `Space` |
+| Save project | `Ctrl+S` |
+| Undo | `Ctrl+Z` |
+| Redo | `Ctrl+Y` or `Ctrl+Shift+Z` |
+| Delete selected event | `Delete` or `Backspace` |
+| Previous / next frame | `[` / `]` |
+| Move playhead by 100 ms | `←` / `→` |
+| Previous / next activity | `P` / `N` |
+| Show the full signal range | `F` |
+| Video fullscreen | `F11` or double-click video |
+| Exit fullscreen / cancel pending interval | `Esc` |
+| Calibrate selected model interval | `Ctrl+E` (model-assist mode) |
+
+### Protocol-v4 labels
+
+| Shortcut | Label | Machine code | Type |
+| --- | --- | --- | --- |
+| `1` | Standing | `STANDING` | Interval |
+| `2` | Lying | `LYING` | Interval |
+| `3` | Walking | `WALKING` | Interval |
+| `4` | Straining onset | `STRAINING_ONSET` | Point |
+| `5` | Straining bout | `STRAINING_BOUT` | Interval |
+| `6` | Amniotic sac first visible | `AMNIOTIC_SAC_FIRST_VISIBLE` | Point |
+| `7` | First fetal part visible | `FETAL_PART_FIRST_VISIBLE` | Point |
+| `8` | Calf fully expelled (T0) | `CALF_FULLY_EXPELLED` | Point |
+| `9` | Fetal membranes fully expelled | `FETAL_MEMBRANES_FULLY_EXPELLED` | Point |
+| `Q` | Tail raised | `TAIL_RAISED` | Interval |
+| `W` | Tail wagging | `TAIL_WAGGING` | Interval |
+| `E` | Standing up | `STANDING_UP` | Interval |
+| `R` | Lying down | `LYING_DOWN` | Interval |
+| `A` | Urination | `URINATION` | Interval |
+| `S` | Defecation | `DEFECATION` | Interval |
+| `0` | Synchronization anchor | `SYNC_ANCHOR` | Point, non-trainable |
+
+## Model-assisted review
+
+Model files are not tracked in this repository. Select a local package through **Model assist → Model package settings…**:
+
+| File | Required | Role |
+| --- | --- | --- |
+| `gbdt_full.joblib` | Yes | Six event classes and posture/walking fallback |
+| `best.pt` | No | `OfflineMultiTaskTCN` for standing, lying, and walking |
+| `inference_config.json` | No | Sensor-scaling overrides for JSON outside the package |
+
+`xgboost` is pinned to `3.2.0` for artifact compatibility. Suggestions are imported as **Pending review** and retain their original class, boundaries, scores, and later human edits. See [Model-assisted annotation](docs/model-assist.md) for the full contract. For current training and evaluation workflows, use the [algorithm repository](https://github.com/zxq309/cowmata-tailring).
+
+## Inputs, projects, and exports
+
+| Item | Purpose |
+| --- | --- |
+| Nine-axis JSON | Continuous accelerometer, gyroscope, magnetometer, and timestamp data |
+| Video | MP4 and other VLC-supported cattle recordings |
+| Project JSON | Alignment, source references, protocol, labels, events, notes, and review state |
+| Events CSV + metadata JSON | Flat event exchange with `label`, `code`, and `en` fields |
+| Aggregated / BORIS CSV | Interoperable interval/point event summary |
+| Training-sample CSV | Timestamped multi-hot samples; set the real `cow_id` before export |
+| IRR CSV | Inter-rater reliability report |
+
+The interface language never rewrites stored annotations. Machine keys such as `STANDING` and `TAIL_RAISED` remain unchanged across English and Chinese sessions.
+
+## Repository layout
+
+```text
+cattle-tail-ring-annotator/
+├── cowmata_tailring/       # Application, UI, media, annotation, and inference code
+├── assets/                 # Authorized brand assets and README screenshot
+├── docs/                   # Usage, model-assist, architecture, and packaging notes
+├── examples/               # Local-only sample data instructions
+├── scripts/                # Windows and shell launch helpers
+├── tests/                  # Automated tests
+└── .github/                # CI, issue forms, and pull-request template
+```
+
+## Development and verification
+
+```powershell
+pip install -e ".[dev]"
+ruff check cowmata_tailring tests
+pytest -q
+python -m cowmata_tailring --version
+```
+
+The release candidate shown above was integration-tested on Windows with Python 3.12.13, VLC 3.0.23, the real example pair, and the automated test suite.
+
+## Related repositories
+
+| Repository | Role |
+| --- | --- |
+| [zxq309/cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | This desktop annotation and human-review tool |
+| [zxq309/cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | COWMATA tail-sensor algorithms, experiments, and engineering baseline |
+
+## Contributing, security, and citation
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- Report vulnerabilities through the process in [SECURITY.md](SECURITY.md), not a public issue.
+- Cite the software with [CITATION.cff](CITATION.cff).
+- Use [GitHub Issues](https://github.com/zxq309/cattle-tail-ring-annotator/issues) for reproducible bugs and scoped feature requests.
+
+## Team
+
+- **Xiangqing Zhang** — CTO, Yangling Yuanshangyuan Intelligent Technology Co., Ltd.; Yan'an University
+- **Yalong Zhang** — Founder, Yangling Yuanshangyuan Intelligent Technology Co., Ltd.
+- **Tengyu Jiao** — Yan'an University
+- **Yachen Zhao** — Yan'an University
+
+## License and brand assets
+
+Source code is released under the [MIT License](LICENSE). The COWMATA names and logo files in `assets/brand/` are company brand assets and are not relicensed by MIT; see [NOTICE](NOTICE) and [assets/README.md](assets/README.md).

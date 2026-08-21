@@ -1,7 +1,0 @@
-{
-  "status": "completed",
-  "completed_at": "2026-08-11T17:44:56.557551",
-  "best_model": "D:\\whc\\Machine Learning\\models\\20260811_172711\\best_model.pt",
-  "best_epoch": 18,
-  "smoke_test": false
-}

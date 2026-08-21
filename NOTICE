@@ -1,0 +1,15 @@
+COWMATA Tail-Ring Annotator
+Copyright (c) 2026 COWMATA contributors
+
+The source code is licensed under the MIT License in LICENSE.
+
+The COWMATA name, company name, marks, and logo artwork under assets/brand/
+are proprietary brand assets of Yangling Yuanshangyuan Intelligent Technology
+Co., Ltd. They are included for this authorized project and are not relicensed
+under the MIT License. Reuse outside an authorized COWMATA context requires
+permission from the rights holder.
+
+Third-party dependencies retain their own licenses. In particular, PySide6 is
+distributed by The Qt Company under its applicable LGPL/GPL/commercial terms,
+and VLC is distributed by VideoLAN under GPL terms. Review those licenses when
+redistributing packaged binaries.

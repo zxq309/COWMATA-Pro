@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use COWMATA Tail-Ring Annotator in research, please cite this software."
+title: "COWMATA Tail-Ring Annotator"
+type: software
+version: 1.0.0
+date-released: 2026-08-21
+license: MIT
+repository-code: "https://github.com/zxq309/cattle-tail-ring-annotator"
+url: "https://github.com/zxq309/cattle-tail-ring-annotator"
+authors:
+  - family-names: Zhang
+    given-names: Xiangqing
+    affiliation: "Yangling Yuanshangyuan Intelligent Technology Co., Ltd.; Yan'an University"
+  - family-names: Zhang
+    given-names: Yalong
+    affiliation: "Yangling Yuanshangyuan Intelligent Technology Co., Ltd."
+  - family-names: Jiao
+    given-names: Tengyu
+    affiliation: "Yan'an University"
+  - family-names: Zhao
+    given-names: Yachen
+    affiliation: "Yan'an University"
+keywords:
+  - cattle behaviour
+  - calving
+  - annotation
+  - inertial measurement unit
+  - video
