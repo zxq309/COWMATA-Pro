@@ -7,6 +7,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/release-v2.0.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.0.0)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -184,7 +185,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-截图所示发布候选版本已在 Windows 环境完成真实联调：Python 3.12.13、VLC 3.0.23、真实样例对和自动化测试套件。
+截图所示 v2.0.0 已在 Windows 环境完成真实联调：Python 3.12.13、VLC 3.0.23、真实样例对和自动化测试套件。版本说明见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 关联仓库
 

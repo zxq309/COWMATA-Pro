@@ -7,6 +7,7 @@
 **Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/release-v2.0.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.0.0)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -184,7 +185,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-The release candidate shown above was integration-tested on Windows with Python 3.12.13, VLC 3.0.23, the real example pair, and the automated test suite.
+Version 2.0.0 shown above was integration-tested on Windows with Python 3.12.13, VLC 3.0.23, the real example pair, and the automated test suite. See [CHANGELOG.md](CHANGELOG.md) for release details.
 
 ## Related repositories
 
