@@ -37,6 +37,7 @@ from cowmata_tailring.media.timeline import (
 )
 
 TIMELINE_DURATION_TOLERANCE_MS = 2_000
+DAHUA_STREAM_RELEASE_GRACE_S = 0.25
 
 
 def _continuous_packet_timeline_overrides_player(
@@ -177,8 +178,13 @@ class SafeMediaEngine(MediaEngine):
 
     def open(self, path: str | os.PathLike[str]) -> bool:
         normalized = os.path.abspath(os.fspath(path))
-        if self._dahua_stream is not None:
-            self._retired_dahua_streams.append(self._dahua_stream)
+        old_dahua_stream = self._dahua_stream
+        if old_dahua_stream is not None:
+            if not self._prepare_dahua_stream_release(old_dahua_stream):
+                return self._fail(
+                    "乐橙旧播放流未能安全结束，已取消切换以避免播放器崩溃"
+                )
+            self._retired_dahua_streams.append(old_dahua_stream)
             self._dahua_stream = None
         self._timeline_probe_generation += 1
         self._timeline_index = None
@@ -196,6 +202,8 @@ class SafeMediaEngine(MediaEngine):
         self._pending_seek_ms = None
         self._seek_barrier.reset()
         if self._player and self._media:
+            if old_dahua_stream is None:
+                self._prepare_standard_media_release()
             # Detach the old media without waiting synchronously for the
             # Hikvision decoder's occasionally slow stop path.
             self._lib.libvlc_media_player_set_pause(self._player, 1)
@@ -356,6 +364,16 @@ class SafeMediaEngine(MediaEngine):
 
         old_media = self._media
         old_stream = self._dahua_stream
+        if old_stream is not None and not self._prepare_dahua_stream_release(
+            old_stream
+        ):
+            self._lib.libvlc_media_release(media)
+            stream.close()
+            return self._fail(
+                "乐橙旧播放流未能安全结束，已取消跳转以避免播放器崩溃"
+            )
+        if old_stream is None and old_media is not None:
+            self._prepare_standard_media_release()
         self._lib.libvlc_media_player_set_pause(self._player, 1)
         self._lib.libvlc_media_player_set_media(self._player, None)
         if old_media:
@@ -371,6 +389,38 @@ class SafeMediaEngine(MediaEngine):
         self._reset_poll_cache()
         self._set_status("ready")
         return True
+
+    def _prepare_dahua_stream_release(
+        self,
+        stream: DahuaPlaybackStream,
+    ) -> bool:
+        """Quiesce callback-backed VLC media before detaching it."""
+
+        stream.close()
+        if not self._player:
+            return True
+        result = self._lib.libvlc_media_player_play(self._player)
+        if result != 0:
+            return False
+        # libVLC reads the short virtual segment ahead, so an input EOF cannot
+        # prove that the decoder has left the ctypes callback media. Resuming
+        # the closed stream and holding this measured quiescence window lets
+        # the demux/decoder stack unwind before its media pointer is replaced.
+        time.sleep(DAHUA_STREAM_RELEASE_GRACE_S)
+        return True
+
+    def _prepare_standard_media_release(self) -> None:
+        """Let a regular VLC decoder settle before replacing its media."""
+
+        if not self._player:
+            return
+        state_code = int(
+            self._lib.libvlc_media_player_get_state(self._player)
+        )
+        if state_code not in {1, 2, 3, 4}:  # opening/buffering/playing/paused
+            return
+        self._lib.libvlc_media_player_set_pause(self._player, 1)
+        time.sleep(DAHUA_STREAM_RELEASE_GRACE_S)
 
     def _start_dahua_seek(self, target_ms: int, *, resume: bool) -> bool:
         if not self._replace_dahua_stream(target_ms):
@@ -1028,6 +1078,10 @@ class SafeMediaEngine(MediaEngine):
     def close(self) -> None:
         if self._closed or self._closing_async:
             return
+        if self._dahua_stream is not None:
+            self._prepare_dahua_stream_release(self._dahua_stream)
+        elif self._media is not None:
+            self._prepare_standard_media_release()
         self._closing_async = True
         self._poll_timer.stop()
         if self._player:

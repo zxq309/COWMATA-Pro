@@ -801,6 +801,8 @@ ZH_TO_EN: dict[str, str] = {
     'FFprobe乐橙时长扫描失败：': 'FFprobe Imou duration scan failed: ',
     '乐橙分段时钟': 'Imou segment clock',
     '乐橙分段时钟续接完成：九轴已定位到 ': 'Imou segment-clock continuation complete: nine-axis data moved to ',
+    '乐橙旧播放流未能安全结束，已取消切换以避免播放器崩溃': 'The previous Imou playback stream could not stop safely; source switching was cancelled to prevent a player crash',
+    '乐橙旧播放流未能安全结束，已取消跳转以避免播放器崩溃': 'The previous Imou playback stream could not stop safely; seeking was cancelled to prevent a player crash',
     '已跳过空占位视频：': 'Skipped empty placeholder videos: ',
     '空占位文件': 'Empty placeholder file',
     '空文件': 'Empty file',
