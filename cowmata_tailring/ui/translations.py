@@ -797,6 +797,15 @@ ZH_TO_EN: dict[str, str] = {
     '；等待视频定位确认后点击“钉住”': '; wait for the video seek to be confirmed, then click “Pin”',
     '；请增大 frame_step_ms': '; increase frame_step_ms',
     '；调整完成后点击“钉住”': '; click “Pin” when the adjustment is done',
+    'FFprobe乐橙时长扫描失败：': 'FFprobe Imou duration scan failed: ',
+    '乐橙录像没有可用的相邻文件时间或视频帧时长': 'The Imou recording has neither a usable adjacent-file time nor a video-frame duration',
+    '乐橙视频时长和跳转索引已校正：': 'Imou video duration and seek index corrected: ',
+    '乐橙视频时长已校正：': 'Imou video duration corrected: ',
+    '乐橙视频时长校验失败，暂时使用播放器原始时长': "Imou video duration validation failed; using the player's raw duration for now",
+    '乐橙视频跳转流创建失败': 'Could not create the Imou video seek stream',
+    '乐橙视频跳转流创建失败：': 'Could not create the Imou video seek stream: ',
+    '文件不是乐橙/Dahua MPEG-PS录像': 'The file is not an Imou/Dahua MPEG-PS recording',
+    '正在校验乐橙视频时长…': 'Validating Imou video duration…',
 }
 
 

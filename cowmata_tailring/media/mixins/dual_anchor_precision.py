@@ -97,6 +97,9 @@ class DualAnchorPrecisionV2Mixin:
         self.video_timeline.seekRequested.connect(
             self._queue_video_timeline_seek
         )
+        self.video_timeline.seekCommitted.connect(
+            self._queue_video_timeline_seek
+        )
         if self.media is not None:
             self.video_timeline.set_duration(self.media.duration_ms())
 

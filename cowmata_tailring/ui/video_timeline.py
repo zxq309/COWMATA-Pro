@@ -9,6 +9,7 @@ from cowmata_tailring.ui.helpers import format_relative
 
 class VideoTimelineWidget(QWidget):
     seekRequested = Signal(float)
+    seekCommitted = Signal(float)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -86,6 +87,11 @@ class VideoTimelineWidget(QWidget):
             self.seekRequested.emit(value)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton:
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._dragging
+        ):
+            value = self._time_for_x(event.position().x())
+            self.set_position(value)
             self._dragging = False
-
+            self.seekCommitted.emit(value)

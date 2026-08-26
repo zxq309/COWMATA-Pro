@@ -9,6 +9,21 @@ from typing import Any
 
 from PySide6.QtCore import QStandardPaths, Signal
 
+from cowmata_tailring.media.dahua_duration import (
+    DahuaDurationIndex,
+    DahuaDurationProbeError,
+    is_dahua_program_stream,
+    load_duration_cache,
+    probe_dahua_duration,
+    save_duration_cache,
+)
+from cowmata_tailring.media.dahua_stream import (
+    DahuaCloseCallback,
+    DahuaOpenCallback,
+    DahuaPlaybackStream,
+    DahuaReadCallback,
+    DahuaSeekCallback,
+)
 from cowmata_tailring.media.engine import MediaEngine
 from cowmata_tailring.media.ffmpeg_tools import FFmpegToolError, find_ffmpeg
 from cowmata_tailring.media.seek_barrier import PlaybackSeekBarrier
@@ -107,18 +122,32 @@ class SafeMediaEngine(MediaEngine):
     timeline_correction_changed = Signal(int, int, int)
     timeline_analysis_message = Signal(str, int)
     _timeline_probe_completed = Signal(int, str, object, str)
+    _dahua_duration_probe_completed = Signal(int, str, object, str)
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         # Choose avformat per file instead of forcing it for every container.
         kwargs["force_avformat"] = False
         super().__init__(*args, **kwargs)
         self._lib.libvlc_media_player_set_time.restype = None
+        self._lib.libvlc_media_new_callbacks.argtypes = [
+            ctypes.c_void_p,
+            DahuaOpenCallback,
+            DahuaReadCallback,
+            DahuaSeekCallback,
+            DahuaCloseCallback,
+            ctypes.c_void_p,
+        ]
+        self._lib.libvlc_media_new_callbacks.restype = ctypes.c_void_p
         self._pending_seek_ms: int | None = None
         self._seek_barrier = PlaybackSeekBarrier()
         self._requested_rate = 1.0
         self._closing_async = False
         self._release_thread: threading.Thread | None = None
         self._timeline_index: MediaTimelineIndex | None = None
+        self._dahua_duration_index: DahuaDurationIndex | None = None
+        self._dahua_stream: DahuaPlaybackStream | None = None
+        self._retired_dahua_streams: list[DahuaPlaybackStream] = []
+        self._dahua_pause_when_ready = False
         self._timeline_segment_hint = 0
         self._timeline_probe_generation = 0
         self._timeline_probe_thread: threading.Thread | None = None
@@ -132,6 +161,9 @@ class SafeMediaEngine(MediaEngine):
         self._timeline_probe_completed.connect(
             self._finish_timeline_probe
         )
+        self._dahua_duration_probe_completed.connect(
+            self._finish_dahua_duration_probe
+        )
 
     @staticmethod
     def _is_hikvision_program_stream(path: str) -> bool:
@@ -144,8 +176,12 @@ class SafeMediaEngine(MediaEngine):
 
     def open(self, path: str | os.PathLike[str]) -> bool:
         normalized = os.path.abspath(os.fspath(path))
+        if self._dahua_stream is not None:
+            self._retired_dahua_streams.append(self._dahua_stream)
+            self._dahua_stream = None
         self._timeline_probe_generation += 1
         self._timeline_index = None
+        self._dahua_duration_index = None
         self._timeline_segment_hint = 0
         self._timeline_probe_pending = False
         self._normalized_seek_time_offset_ms = 0.0
@@ -153,7 +189,9 @@ class SafeMediaEngine(MediaEngine):
         self._timeline_gap_active = False
         self._timeline_logical_end_reached = False
         self._pause_requested = False
+        self._dahua_pause_when_ready = False
         self._force_avformat = self._is_hikvision_program_stream(normalized)
+        dahua_program_stream = is_dahua_program_stream(normalized)
         self._pending_seek_ms = None
         self._seek_barrier.reset()
         if self._player and self._media:
@@ -162,7 +200,9 @@ class SafeMediaEngine(MediaEngine):
             self._lib.libvlc_media_player_set_pause(self._player, 1)
             self._lib.libvlc_media_player_set_media(self._player, None)
         opened = super().open(normalized)
-        if opened and self._force_avformat:
+        if opened and dahua_program_stream:
+            self._start_dahua_duration_probe(normalized)
+        elif opened and self._force_avformat:
             self._start_timeline_probe(normalized)
         return opened
 
@@ -174,6 +214,165 @@ class SafeMediaEngine(MediaEngine):
         if not root:
             root = str(Path.home() / ".bovine-motion-workbench" / "cache")
         return Path(root) / "video-timeline"
+
+    @staticmethod
+    def _dahua_duration_cache_directory() -> Path:
+        root = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.CacheLocation
+        )
+        if not root:
+            root = str(Path.home() / ".bovine-motion-workbench" / "cache")
+        return Path(root) / "dahua-duration"
+
+    def _start_dahua_duration_probe(self, path: str) -> None:
+        generation = self._timeline_probe_generation
+        cache_directory = self._dahua_duration_cache_directory()
+        try:
+            cached = load_duration_cache(cache_directory, path)
+        except OSError:
+            cached = None
+        if cached is not None:
+            self._apply_dahua_duration_index(cached)
+            return
+
+        self._timeline_probe_pending = True
+        self.timeline_analysis_message.emit("正在校验乐橙视频时长…", 0)
+
+        def probe() -> None:
+            index: DahuaDurationIndex | None = None
+            error = ""
+            try:
+                with self._timeline_probe_lock:
+                    if (
+                        self._closed
+                        or generation != self._timeline_probe_generation
+                    ):
+                        return
+                    _ffmpeg, ffprobe = find_ffmpeg()
+                    index = probe_dahua_duration(path, ffprobe)
+                    try:
+                        save_duration_cache(cache_directory, index)
+                    except (OSError, ValueError):
+                        pass
+            except (
+                DahuaDurationProbeError,
+                FFmpegToolError,
+                OSError,
+            ) as exc:
+                error = str(exc)
+            self._dahua_duration_probe_completed.emit(
+                generation, path, index, error
+            )
+
+        self._timeline_probe_thread = threading.Thread(
+            target=probe,
+            name="dahua-duration-probe",
+            daemon=True,
+        )
+        self._timeline_probe_thread.start()
+
+    def _finish_dahua_duration_probe(
+        self,
+        generation: int,
+        path: str,
+        index: object,
+        error: str,
+    ) -> None:
+        if (
+            self._closed
+            or generation != self._timeline_probe_generation
+            or os.path.normcase(path) != os.path.normcase(self._path)
+        ):
+            return
+        self._timeline_probe_pending = False
+        if isinstance(index, DahuaDurationIndex):
+            self._apply_dahua_duration_index(index)
+        elif error:
+            self.timeline_analysis_message.emit(
+                "乐橙视频时长校验失败，暂时使用播放器原始时长",
+                6000,
+            )
+
+    def _apply_dahua_duration_index(self, index: DahuaDurationIndex) -> None:
+        player_duration = super().duration_ms()
+        previous_status = self.current_status
+        resume_playback = bool(
+            previous_status in {"opening", "buffering", "playing"}
+            and not self._pause_requested
+        )
+        pending_target = self._pending_seek_ms
+        current_target = max(0, int(MediaEngine.get_time_ms(self)))
+        target = current_target if pending_target is None else pending_target
+        self._dahua_duration_index = index
+        self._timeline_index = None
+        self._timeline_duration_overrides_player = False
+        self._last_duration = -1
+        if index.has_seek_index:
+            if self._replace_dahua_stream(target):
+                self._pending_seek_ms = None
+                if resume_playback:
+                    MediaEngine.play(self)
+                elif previous_status == "paused" or pending_target is not None:
+                    self._dahua_pause_when_ready = True
+                    self._pause_requested = True
+                    self._seek_barrier.request(target, playing=False)
+                    MediaEngine.play(self)
+        self.timeline_analysis_message.emit(
+            f"乐橙视频时长和跳转索引已校正：{player_duration} ms → {index.duration_ms} ms",
+            8000,
+        )
+
+    def _replace_dahua_stream(self, target_ms: int | float) -> bool:
+        index = self._dahua_duration_index
+        if index is None or not index.has_seek_index or not self._player:
+            return False
+        try:
+            stream = DahuaPlaybackStream(index, target_ms)
+        except (OSError, ValueError) as exc:
+            return self._fail(f"乐橙视频跳转流创建失败：{exc}")
+
+        media = self._lib.libvlc_media_new_callbacks(
+            self._instance,
+            stream.open_callback,
+            stream.read_callback,
+            stream.seek_callback,
+            stream.close_callback,
+            None,
+        )
+        if not media:
+            return self._fail(self._format_error("乐橙视频跳转流创建失败"))
+        self._lib.libvlc_media_add_option(media, b":demux=avformat")
+        self._lib.libvlc_media_add_option(media, b":file-caching=300")
+
+        old_media = self._media
+        old_stream = self._dahua_stream
+        self._lib.libvlc_media_player_set_pause(self._player, 1)
+        self._lib.libvlc_media_player_set_media(self._player, None)
+        if old_media:
+            self._lib.libvlc_media_release(old_media)
+        if old_stream is not None:
+            self._retired_dahua_streams.append(old_stream)
+
+        self._lib.libvlc_media_player_set_media(self._player, media)
+        self._media = media
+        self._dahua_stream = stream
+        self._dahua_pause_when_ready = False
+        self._last_error = ""
+        self._reset_poll_cache()
+        self._set_status("ready")
+        return True
+
+    def _start_dahua_seek(self, target_ms: int, *, resume: bool) -> bool:
+        if not self._replace_dahua_stream(target_ms):
+            return False
+        self._pending_seek_ms = None
+        self._dahua_pause_when_ready = not resume
+        self._pause_requested = not resume
+        self._seek_barrier.request(target_ms, playing=resume)
+        if MediaEngine.play(self):
+            return True
+        self._dahua_pause_when_ready = False
+        return False
 
     def _start_timeline_probe(self, path: str) -> None:
         generation = self._timeline_probe_generation
@@ -383,6 +582,8 @@ class SafeMediaEngine(MediaEngine):
         """
 
         rate = max(0.05, float(self.get_rate()))
+        if self._dahua_stream is not None:
+            return 1000.0 * rate
         return 1000.0 * rate * self._timeline_public_clock_scale()
 
     @property
@@ -392,6 +593,9 @@ class SafeMediaEngine(MediaEngine):
         return bool(self._timeline_gap_active)
 
     def get_time_ms(self) -> int:
+        if self._dahua_stream is not None:
+            raw_time_ms = MediaEngine.get_time_ms(self)
+            return self._dahua_stream.public_time_ms(raw_time_ms)
         if (
             self._timeline_logical_end_reached
             and self._timeline_index is not None
@@ -401,11 +605,29 @@ class SafeMediaEngine(MediaEngine):
         return self._raw_to_public_time_ms(raw_time_ms)
 
     def duration_ms(self) -> int:
+        if self._dahua_duration_index is not None:
+            return max(0, int(self._dahua_duration_index.duration_ms))
         player_duration = super().duration_ms()
         self._refresh_timeline_duration_mode(player_duration)
         return _effective_timeline_duration_ms(
             player_duration,
             self._timeline_index,
+        )
+
+    def is_seekable(self) -> bool:
+        if (
+            self._dahua_duration_index is not None
+            and self._dahua_duration_index.has_seek_index
+        ):
+            return True
+        return super().is_seekable()
+
+    def defers_timeline_seek_while_dragging(self) -> bool:
+        """Return whether a seek should be committed only on mouse release."""
+
+        return bool(
+            self._dahua_duration_index is not None
+            and self._dahua_duration_index.has_seek_index
         )
 
     def player_duration_ms(self) -> int:
@@ -414,6 +636,15 @@ class SafeMediaEngine(MediaEngine):
         return super().duration_ms()
 
     def _apply_decoder_seek(self, target_ms: int) -> None:
+        if (
+            self._dahua_duration_index is not None
+            and self._dahua_duration_index.has_seek_index
+        ):
+            self._start_dahua_seek(
+                target_ms,
+                resume=bool(self.is_playing() and not self._pause_requested),
+            )
+            return
         index = self._timeline_index
         player_duration = super().duration_ms()
         self._refresh_timeline_duration_mode(player_duration)
@@ -466,6 +697,14 @@ class SafeMediaEngine(MediaEngine):
             target = min(target, duration)
         playing = self.is_playing()
         pause_pending = bool(self._pause_requested)
+        if (
+            self._dahua_duration_index is not None
+            and self._dahua_duration_index.has_seek_index
+        ):
+            return self._start_dahua_seek(
+                target,
+                resume=bool(playing and not pause_pending),
+            )
         self._seek_barrier.request(
             target,
             playing=bool(playing and not pause_pending),
@@ -505,6 +744,16 @@ class SafeMediaEngine(MediaEngine):
     def replay_from_ms(self, value: int | float = 0) -> bool:
         """Reopen an ended stream and start it from ``value`` milliseconds."""
 
+        if (
+            self._dahua_duration_index is not None
+            and self._dahua_duration_index.has_seek_index
+        ):
+            target = max(0, int(round(value)))
+            target = min(
+                target,
+                max(0, int(self._dahua_duration_index.duration_ms) - 1),
+            )
+            return self._start_dahua_seek(target, resume=True)
         path = self._path
         if not path:
             return self._fail("No media is available for replay")
@@ -524,6 +773,16 @@ class SafeMediaEngine(MediaEngine):
 
     def play(self) -> bool:
         self._pause_requested = False
+        if (
+            self._dahua_duration_index is not None
+            and self._dahua_duration_index.has_seek_index
+        ):
+            self._dahua_pause_when_ready = False
+            self._seek_barrier.playback_started()
+            if self._dahua_stream is None:
+                if not self._replace_dahua_stream(self.get_time_ms()):
+                    return False
+            return MediaEngine.play(self)
         target = self._seek_barrier.playback_started()
         if target is not None:
             # Apply once after VLC enters a genuinely seekable playback state.
@@ -576,6 +835,27 @@ class SafeMediaEngine(MediaEngine):
             else 0
         )
         if (
+            state_code == 6  # ended
+            and self._dahua_stream is not None
+            and self._dahua_duration_index is not None
+            and self._dahua_stream.segment_end_ms
+            < float(self._dahua_duration_index.duration_ms) - 1.0
+        ):
+            next_target = int(round(self._dahua_stream.segment_end_ms))
+            self._start_dahua_seek(next_target, resume=True)
+            state_code = int(
+                self._lib.libvlc_media_player_get_state(self._player)
+            )
+        if (
+            self._dahua_pause_when_ready
+            and self._dahua_stream is not None
+            and state_code == 3  # playing
+        ):
+            raw_time_ms = MediaEngine.get_time_ms(self)
+            if raw_time_ms >= self._dahua_stream.ready_raw_time_ms:
+                self._lib.libvlc_media_player_set_pause(self._player, 1)
+                self._dahua_pause_when_ready = False
+        if (
             self._pending_seek_ms is not None
             and self._player
             and not self._timeline_probe_pending
@@ -627,6 +907,12 @@ class SafeMediaEngine(MediaEngine):
             current = float(snapshot.get("rate", 1.0))
             if abs(current - self._requested_rate) > 1e-3:
                 super().set_rate(self._requested_rate)
+        if self._retired_dahua_streams:
+            self._retired_dahua_streams = [
+                stream
+                for stream in self._retired_dahua_streams
+                if not stream.is_closed
+            ]
         return snapshot
 
     def _ignored_tail_playback_end_due(self, state_code: int) -> bool:
@@ -744,10 +1030,20 @@ class SafeMediaEngine(MediaEngine):
         media = self._media
         instance = self._instance
         dll_handle = self._dll_directory_handle
+        dahua_streams = tuple(
+            stream
+            for stream in [
+                self._dahua_stream,
+                *self._retired_dahua_streams,
+            ]
+            if stream is not None
+        )
         self._player = None
         self._media = None
         self._instance = None
         self._dll_directory_handle = None
+        self._dahua_stream = None
+        self._retired_dahua_streams = []
         self._closed = True
 
         def release() -> None:
@@ -762,6 +1058,8 @@ class SafeMediaEngine(MediaEngine):
                 if instance:
                     lib.libvlc_release(instance)
             finally:
+                for stream in dahua_streams:
+                    stream.close()
                 if dll_handle is not None:
                     try:
                         dll_handle.close()

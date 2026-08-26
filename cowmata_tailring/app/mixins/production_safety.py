@@ -52,6 +52,9 @@ class ProductionSafetyMixin:
         self.video_timeline.seekRequested.connect(
             self._queue_video_timeline_seek
         )
+        self.video_timeline.seekCommitted.connect(
+            self._queue_video_timeline_seek
+        )
         self._history_suspended = False
         self._rebuild_shortcuts()
 
@@ -341,6 +344,18 @@ class ProductionSafetyMixin:
 
     def _queue_video_timeline_seek(self, video_ms: float) -> None:
         self._pending_video_seek_ms = float(video_ms)
+        defer_during_drag = getattr(
+            self.media,
+            "defers_timeline_seek_while_dragging",
+            None,
+        )
+        if (
+            bool(getattr(self.video_timeline, "_dragging", False))
+            and callable(defer_during_drag)
+            and defer_during_drag()
+        ):
+            self._video_seek_timer.stop()
+            return
         self._video_seek_timer.start()
 
     def _flush_video_timeline_seek(self) -> None:
