@@ -799,6 +799,8 @@ ZH_TO_EN: dict[str, str] = {
     '；调整完成后点击“钉住”': '; click “Pin” when the adjustment is done',
     'FFprobe不可用，已使用内置MPEG-PS扫描校正乐橙视频': 'FFprobe is unavailable; corrected the Imou video with the built-in MPEG-PS scanner',
     'FFprobe乐橙时长扫描失败：': 'FFprobe Imou duration scan failed: ',
+    '乐橙分段时钟': 'Imou segment clock',
+    '乐橙分段时钟续接完成：九轴已定位到 ': 'Imou segment-clock continuation complete: nine-axis data moved to ',
     '已跳过空占位视频：': 'Skipped empty placeholder videos: ',
     '空占位文件': 'Empty placeholder file',
     '空文件': 'Empty file',
@@ -814,6 +816,7 @@ ZH_TO_EN: dict[str, str] = {
     '视频文件为空，无法播放：\n': 'The video file is empty and cannot be played:\n',
     '视频文件疑似全零占位，已阻止打开：\n': 'The video file appears to be a zero-filled placeholder and was not opened:\n',
     '正在校验乐橙视频时长…': 'Validating Imou video duration…',
+    '正在按乐橙分段时钟切换视频：九轴定位到 ': 'Switching video with the Imou segment clock: nine-axis data moving to ',
 }
 
 

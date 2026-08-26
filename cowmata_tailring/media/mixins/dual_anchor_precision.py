@@ -9,6 +9,9 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QComboBox, QLabel
 
 from cowmata_tailring.annotation import core as annotation_core
+from cowmata_tailring.media.dahua_segment_clock import (
+    dahua_segment_clock_delta_ms,
+)
 from cowmata_tailring.ui.helpers import format_relative
 from cowmata_tailring.ui.i18n import t
 from cowmata_tailring.ui.precision_timeline import (
@@ -375,11 +378,11 @@ class DualAnchorPrecisionV2Mixin:
             self.plot.set_view(float(view[0]), float(view[1]))
         self._set_timelines_linked(bool(snapshot.get("linked", False)))
         self._update_alignment_status()
-        self.statusBar().showMessage(
-            "视频分段续接完成：九轴位置保持在 "
-            + format_relative(data_ms),
-            5000,
-        )
+        if snapshot.get("segment_clock_used"):
+            message = t("乐橙分段时钟续接完成：九轴已定位到 ")
+        else:
+            message = t("视频分段续接完成：九轴位置保持在 ")
+        self.statusBar().showMessage(message + format_relative(data_ms), 5000)
 
     def _schedule_video_source_switch_recovery(self, path: str) -> None:
         """Finish a switch if VLC omits the paused-state transition."""
@@ -518,6 +521,9 @@ class DualAnchorPrecisionV2Mixin:
             self.media.current_path if self.media is not None else ""
         )
         previous_primed = getattr(self, "_media_primed", False)
+        previous_duration_ms = (
+            float(self.media.duration_ms()) if self.media is not None else 0.0
+        )
         switching = bool(
             not self._restoring_project
             and self.data is not None
@@ -537,6 +543,9 @@ class DualAnchorPrecisionV2Mixin:
                 self._cancel_source_switch()
             raise
         current = self.media.current_path if self.media is not None else ""
+        current_duration_ms = (
+            float(self.media.duration_ms()) if self.media is not None else 0.0
+        )
         opened = (
             bool(current)
             and bool(self.video_path)
@@ -579,16 +588,42 @@ class DualAnchorPrecisionV2Mixin:
                 snapshot.get("data_ms", self.playhead_ms)
             )
             preserved_view = snapshot.get("view", self.plot.view_range)
-            self.video_start_wall_ms = int(
-                round(self.data_create_time_ms + preserved_playhead)
-            )
-            self.align_method = "continuation"
+            saved_wall = snapshot.get("video_start_wall_ms")
+            segment_delta_ms = None
+            if bool(snapshot.get("linked", False)) and saved_wall is not None:
+                segment_delta_ms = dahua_segment_clock_delta_ms(
+                    previous_media,
+                    current,
+                    previous_duration_ms,
+                    current_duration_ms,
+                )
+            switch_playhead = preserved_playhead
+            if segment_delta_ms is not None and saved_wall is not None:
+                self.video_start_wall_ms = int(saved_wall) + segment_delta_ms
+                switch_playhead = float(
+                    self.video_start_wall_ms - self.data_create_time_ms
+                )
+                if self.data_duration_ms > 0:
+                    switch_playhead = min(
+                        self.data_duration_ms,
+                        max(0.0, switch_playhead),
+                    )
+                else:
+                    switch_playhead = max(0.0, switch_playhead)
+                self.align_method = "segment_clock"
+                self._source_switch_snapshot["data_ms"] = switch_playhead
+                self._source_switch_snapshot["segment_clock_used"] = True
+            else:
+                self.video_start_wall_ms = int(
+                    round(self.data_create_time_ms + preserved_playhead)
+                )
+                self.align_method = "continuation"
             self._source_switch_mapping_committed = True
             self._timelines_linked = bool(snapshot.get("linked", False))
             self._sync_pin_button()
             self._reset_pending_pair(cancel_queued_seek=True)
             self._update_alignment_status()
-            self.set_playhead(preserved_playhead, seek_video=True)
+            self.set_playhead(switch_playhead, seek_video=True)
             if (
                 isinstance(preserved_view, (tuple, list))
                 and len(preserved_view) == 2
@@ -596,9 +631,14 @@ class DualAnchorPrecisionV2Mixin:
                 self.plot.set_view(
                     float(preserved_view[0]), float(preserved_view[1])
                 )
+            if segment_delta_ms is not None:
+                switch_message = t(
+                    "正在按乐橙分段时钟切换视频：九轴定位到 "
+                )
+            else:
+                switch_message = t("正在续接下一段视频：九轴冻结在 ")
             self.statusBar().showMessage(
-                "正在续接下一段视频：九轴冻结在 "
-                + format_relative(preserved_playhead),
+                switch_message + format_relative(switch_playhead),
                 5000,
             )
             if getattr(self, "_media_primed", False):

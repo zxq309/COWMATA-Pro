@@ -9,6 +9,7 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 - Prevent copied-file mtime deltas from overriding complete Dahua/Imou frame scans, and invalidate duration caches created by the unsafe arbitration rule.
 - Recover Dahua/Imou duration and seek indexes with the built-in MPEG-PS scanner when ffprobe is missing or fails.
 - Reject empty or zero-filled video placeholders before VLC opens them, and skip them during previous/next navigation.
+- Preserve pinned Dahua/Imou alignment across adjacent files with a validated relative segment clock instead of rebasing every file at the current playhead.
 
 ## [2.1.0] — 2026-08-21
 

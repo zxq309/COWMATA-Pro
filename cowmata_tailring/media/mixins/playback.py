@@ -289,6 +289,7 @@ class PlaybackMixin:
             "corner": "画面角标",
             "manual": "人工微调",
             "continuation": "分段续接",
+            "segment_clock": "乐橙分段时钟",
             "data_continuation": "JSON 续接",
             "default": "零偏移待校准",
         }
