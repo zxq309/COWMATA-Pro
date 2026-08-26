@@ -14,7 +14,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-CACHE_SCHEMA = 2
+CACHE_SCHEMA = 3
 MAX_ADJACENT_DURATION_MS = 6 * 60 * 60 * 1000
 MIN_ADJACENT_DURATION_MS = 1_000
 MIN_COMPLETE_PACKET_COVERAGE = 0.90
@@ -518,12 +518,13 @@ def build_dahua_duration_index(
         packet_scan_is_partial = bool(
             packets.packet_coverage < MIN_COMPLETE_PACKET_COVERAGE and program_scan is None
         )
-        packet_scan_is_not_longer = bool(packet_duration_ms <= adjacent_duration_ms + tolerance_ms)
+        # File mtimes are recording metadata only while the files remain on
+        # the recorder. Copy tools can replace them with per-file copy times,
+        # so they must never override a complete scan of the file contents.
         if (
             packet_duration_ms <= 0
             or packet_matches
             or packet_scan_is_partial
-            or not packet_scan_is_not_longer
         ):
             duration_ms = adjacent_duration_ms
             basis = "adjacent_file_validated" if packet_matches else "adjacent_file"
@@ -653,6 +654,27 @@ def duration_cache_path(
     return Path(cache_directory) / f"{digest}.dahua-duration.json"
 
 
+def _legacy_cache_requires_reprobe(index: DahuaDurationIndex) -> bool:
+    if index.basis != "adjacent_file":
+        return False
+    frame_count = index.frame_count
+    if (
+        frame_count <= 0
+        and index.packets.packet_coverage >= MIN_COMPLETE_PACKET_COVERAGE
+    ):
+        frame_count = index.packets.packet_count
+    if frame_count <= 0:
+        return False
+    scanned_duration_ms = int(
+        round(frame_count * index.packets.frame_duration_ms)
+    )
+    tolerance_ms = max(
+        DURATION_MATCH_ABSOLUTE_MS,
+        int(round(index.duration_ms * DURATION_MATCH_RELATIVE)),
+    )
+    return abs(scanned_duration_ms - index.duration_ms) > tolerance_ms
+
+
 def load_duration_cache(
     cache_directory: str | os.PathLike[str],
     source_path: str | os.PathLike[str],
@@ -661,6 +683,12 @@ def load_duration_cache(
     path = duration_cache_path(cache_directory, source)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return None
+        legacy_schema = int(payload.get("schema", 0)) == 2
+        if legacy_schema:
+            payload = dict(payload)
+            payload["schema"] = CACHE_SCHEMA
         index = DahuaDurationIndex.from_dict(payload)
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
         return None
@@ -673,16 +701,26 @@ def load_duration_cache(
 
     current_next = find_next_recording(source)
     if current_next is None:
-        return index if index.next_path is None else None
-    if index.next_path is None:
-        return None
-    next_path, next_size, next_mtime_ns = _source_identity(current_next)
-    if (
-        os.path.normcase(index.next_path) != os.path.normcase(next_path)
-        or index.next_size != next_size
-        or index.next_mtime_ns != next_mtime_ns
-    ):
-        return None
+        if index.next_path is not None:
+            return None
+    else:
+        if index.next_path is None:
+            return None
+        next_path, next_size, next_mtime_ns = _source_identity(current_next)
+        if (
+            os.path.normcase(index.next_path) != os.path.normcase(next_path)
+            or index.next_size != next_size
+            or index.next_mtime_ns != next_mtime_ns
+        ):
+            return None
+
+    if legacy_schema:
+        if _legacy_cache_requires_reprobe(index):
+            return None
+        try:
+            save_duration_cache(cache_directory, index)
+        except OSError:
+            pass
     return index
 
 

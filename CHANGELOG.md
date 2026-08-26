@@ -2,6 +2,12 @@
 
 All notable changes to COWMATA Tail-Ring Annotator are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- Prevent copied-file mtime deltas from overriding complete Dahua/Imou frame scans, and invalidate duration caches created by the unsafe arbitration rule.
+
 ## [2.1.0] — 2026-08-21
 
 ### Added

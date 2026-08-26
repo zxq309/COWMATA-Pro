@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -278,6 +279,35 @@ def test_complete_packet_scan_rejects_a_large_inter_file_gap(
     assert index.basis == "packet_scan"
 
 
+def test_complete_scans_reject_implausibly_short_mtime_deltas(
+    tmp_path: Path,
+) -> None:
+    current = tmp_path / "imou00000.mp4"
+    next_source = tmp_path / "imou00001.mp4"
+    start_ns = 1_000_000_000_000
+    complete_program_scan = DahuaProgramScan(
+        frame_count=30_177,
+        keyframes=(),
+        timestamps=(),
+    )
+
+    for adjacent_duration_ms in (1_000, 2_600, 30_000):
+        _write_dahua(current, mtime_ns=start_ns)
+        _write_dahua(
+            next_source,
+            mtime_ns=start_ns + adjacent_duration_ms * 1_000_000,
+        )
+        for program_scan in (None, complete_program_scan):
+            index = build_dahua_duration_index(
+                current,
+                _packets(count=30_177, coverage=0.98),
+                program_scan,
+            )
+
+            assert index.duration_ms == 2_011_800
+            assert index.basis == "packet_scan"
+
+
 def test_packet_scan_is_used_for_the_last_recording(tmp_path: Path) -> None:
     source = tmp_path / "imou00156.mp4"
     _write_dahua(source, mtime_ns=1_000_000_000_000)
@@ -314,4 +344,54 @@ def test_cache_is_invalidated_when_next_recording_changes(
 
     changed_ns = start_ns + 1_990_000_000_000
     os.utime(next_source, ns=(changed_ns, changed_ns))
+    assert load_duration_cache(cache, current) is None
+
+
+def test_safe_schema_two_duration_cache_is_migrated(tmp_path: Path) -> None:
+    source = tmp_path / "imou00156.mp4"
+    _write_dahua(source, mtime_ns=1_000_000_000_000)
+    index = build_dahua_duration_index(
+        source,
+        _packets(count=30_000),
+    )
+    cache = tmp_path / "cache"
+    save_duration_cache(cache, index)
+    cache_path = next(cache.glob("*.dahua-duration.json"))
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    payload["schema"] = 2
+    cache_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert load_duration_cache(cache, source) == index
+    migrated = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert migrated["schema"] == 3
+
+
+def test_unsafe_schema_two_duration_cache_is_invalidated(
+    tmp_path: Path,
+) -> None:
+    current = tmp_path / "imou00000.mp4"
+    next_source = tmp_path / "imou00001.mp4"
+    start_ns = 1_000_000_000_000
+    _write_dahua(current, mtime_ns=start_ns)
+    _write_dahua(
+        next_source,
+        mtime_ns=start_ns + 2_600_000_000,
+    )
+    index = build_dahua_duration_index(
+        current,
+        _packets(count=30_177, coverage=0.98),
+    )
+    cache = tmp_path / "cache"
+    save_duration_cache(cache, index)
+    cache_path = next(cache.glob("*.dahua-duration.json"))
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    payload.update(
+        {
+            "schema": 2,
+            "durationMs": 2_600,
+            "basis": "adjacent_file",
+        }
+    )
+    cache_path.write_text(json.dumps(payload), encoding="utf-8")
+
     assert load_duration_cache(cache, current) is None
