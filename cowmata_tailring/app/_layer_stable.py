@@ -6,6 +6,7 @@ from cowmata_tailring.annotation.mixins.annotation import AnnotationMixin
 from cowmata_tailring.app.mixins.activity import ActivityMixin
 from cowmata_tailring.media.mixins.playback import PlaybackMixin
 from cowmata_tailring.media.stable_engine import StableMediaEngine
+from cowmata_tailring.ui.i18n import t
 from cowmata_tailring.ui.interactive_plot import InteractiveSignalPlotWidget
 from cowmata_tailring.ui.main_window import MainWindow as BaseMainWindow
 from cowmata_tailring.ui.video_timeline import VideoTimelineWidget
@@ -73,6 +74,9 @@ class MainWindow(
         self.media.duration_changed.connect(self._on_media_duration)
         self.media.playing_changed.connect(self._on_playing_changed)
         self.media.ended.connect(self._on_media_ended)
+        self.media.timeline_analysis_message.connect(
+            self._on_timeline_analysis_message
+        )
         self.activity_times_ms = __import__("numpy").empty(0)
         self.activity_values = __import__("numpy").empty(0)
         self.static_g = float("nan")
@@ -115,6 +119,11 @@ class MainWindow(
         super()._on_media_duration(duration_ms)
         self.video_timeline.set_duration(duration_ms)
 
+    def _on_timeline_analysis_message(
+        self, message: str, timeout_ms: int
+    ) -> None:
+        self.statusBar().showMessage(t(message), max(0, int(timeout_ms)))
+
     def _on_media_time(self, video_time_ms: int) -> None:
         super()._on_media_time(video_time_ms)
         self.video_timeline.set_position(video_time_ms)
@@ -124,4 +133,3 @@ class MainWindow(
         if self.media is not None:
             self.media.close()
         event.accept()
-

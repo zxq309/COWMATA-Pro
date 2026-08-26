@@ -11,6 +11,7 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 - Reject empty or zero-filled video placeholders before VLC opens them, and skip them during previous/next navigation.
 - Preserve pinned Dahua/Imou alignment across adjacent files with a validated relative segment clock instead of rebasing every file at the current playhead.
 - Drain the active Dahua/Imou callback reader before replacing its VLC media, preventing native crashes during repeated seeks and source changes.
+- Hide unvalidated Hikvision durations, publish only the corrected packet timeline, and disable seeking when timeline validation fails.
 
 ## [2.1.0] — 2026-08-21
 

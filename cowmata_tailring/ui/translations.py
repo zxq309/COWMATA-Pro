@@ -721,6 +721,8 @@ ZH_TO_EN: dict[str, str] = {
     '视频文件名不含日期时间。海康 hiv 文件请使用“钉住”或输入画面角标时间。': 'The video filename contains no date and time. For Hikvision hiv files, use “Pin” or enter the frame overlay time.',
     '视频时间轴校验失败，暂时使用播放器原始时长': "Video timeline validation failed; using the player's raw duration for now",
     '视频时间轴校验正常': 'Video timeline validated',
+    '海康视频时间轴校验失败，已禁用时长和跳转；请检查 FFprobe 或视频文件': 'Hikvision timeline validation failed; duration and seeking are disabled. Check FFprobe or the video file',
+    '时间轴扫描没有返回可用索引': 'Timeline scan returned no usable index',
     '视频未加载或未对齐（同步偏移缺失）': 'The video is not loaded or not aligned (sync offset missing)',
     '视频流没有可用的PTS/DTS时间戳': 'The video stream has no usable PTS/DTS timestamps',
     '视频身份校验失败：\n': 'Video identity validation failed:\n',

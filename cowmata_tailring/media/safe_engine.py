@@ -118,6 +118,15 @@ def _ignored_tail_stop_target_ms(
     return max(0, int(round(index.playable_last_frame_raw_ms)))
 
 
+def _timeline_transport_blocked(
+    validation_required: bool,
+    index: MediaTimelineIndex | None,
+) -> bool:
+    """Keep unvalidated recorder timestamps out of UI transport controls."""
+
+    return bool(validation_required and index is None)
+
+
 class SafeMediaEngine(MediaEngine):
     """Compatibility and lifecycle fixes for the installed libVLC 3.x."""
 
@@ -155,6 +164,9 @@ class SafeMediaEngine(MediaEngine):
         self._timeline_probe_thread: threading.Thread | None = None
         self._timeline_probe_lock = threading.Lock()
         self._timeline_probe_pending = False
+        self._timeline_validation_required = False
+        self._timeline_validation_failed = False
+        self._timeline_validation_error = ""
         self._normalized_seek_time_offset_ms = 0.0
         self._timeline_duration_overrides_player = False
         self._timeline_gap_active = False
@@ -191,6 +203,9 @@ class SafeMediaEngine(MediaEngine):
         self._dahua_duration_index = None
         self._timeline_segment_hint = 0
         self._timeline_probe_pending = False
+        self._timeline_validation_required = False
+        self._timeline_validation_failed = False
+        self._timeline_validation_error = ""
         self._normalized_seek_time_offset_ms = 0.0
         self._timeline_duration_overrides_player = False
         self._timeline_gap_active = False
@@ -199,6 +214,9 @@ class SafeMediaEngine(MediaEngine):
         self._dahua_pause_when_ready = False
         self._force_avformat = self._is_hikvision_program_stream(normalized)
         dahua_program_stream = is_dahua_program_stream(normalized)
+        self._timeline_validation_required = bool(
+            self._force_avformat and not dahua_program_stream
+        )
         self._pending_seek_ms = None
         self._seek_barrier.reset()
         if self._player and self._media:
@@ -466,6 +484,8 @@ class SafeMediaEngine(MediaEngine):
                         pass
             except (FFmpegToolError, OSError, TimelineProbeError) as exc:
                 error = str(exc)
+            except Exception as exc:  # Thread boundary: never leave validation pending.
+                error = f"{type(exc).__name__}: {exc}"
             self._timeline_probe_completed.emit(
                 generation, path, index, error
             )
@@ -498,15 +518,34 @@ class SafeMediaEngine(MediaEngine):
                 and not self._timeline_duration_overrides_player
             ):
                 self.timeline_analysis_message.emit("视频时间轴校验正常", 2500)
-        elif error:
-            self._timeline_probe_pending = False
-            self.timeline_analysis_message.emit(
-                "视频时间轴校验失败，暂时使用播放器原始时长", 6000
+        else:
+            self._reject_unvalidated_timeline(
+                error or "时间轴扫描没有返回可用索引"
             )
+
+    def _reject_unvalidated_timeline(self, error: str) -> None:
+        """Freeze transport instead of exposing a known-untrusted VLC clock."""
+
+        self._timeline_probe_pending = False
+        self._timeline_validation_failed = True
+        self._timeline_validation_error = error
+        self._pending_seek_ms = None
+        self._seek_barrier.reset()
+        self._pause_requested = True
+        if self._player:
+            self._lib.libvlc_media_player_set_pause(self._player, 1)
+        self._last_duration = -1
+        self.timeline_analysis_message.emit(
+            "海康视频时间轴校验失败，已禁用时长和跳转；"
+            "请检查 FFprobe 或视频文件",
+            0,
+        )
 
     def _apply_timeline_index(self, index: MediaTimelineIndex) -> None:
         player_duration = super().duration_ms()
         self._timeline_index = index
+        self._timeline_validation_failed = False
+        self._timeline_validation_error = ""
         self._timeline_segment_hint = 0
         self._install_ignored_tail_stop_option(index)
         self._refresh_timeline_duration_mode(player_duration)
@@ -667,6 +706,11 @@ class SafeMediaEngine(MediaEngine):
     def duration_ms(self) -> int:
         if self._dahua_duration_index is not None:
             return max(0, int(self._dahua_duration_index.duration_ms))
+        if _timeline_transport_blocked(
+            self._timeline_validation_required,
+            self._timeline_index,
+        ):
+            return 0
         player_duration = super().duration_ms()
         self._refresh_timeline_duration_mode(player_duration)
         return _effective_timeline_duration_ms(
@@ -675,6 +719,11 @@ class SafeMediaEngine(MediaEngine):
         )
 
     def is_seekable(self) -> bool:
+        if _timeline_transport_blocked(
+            self._timeline_validation_required,
+            self._timeline_index,
+        ):
+            return False
         if (
             self._dahua_duration_index is not None
             and self._dahua_duration_index.has_seek_index
@@ -747,6 +796,8 @@ class SafeMediaEngine(MediaEngine):
 
     def set_time_ms(self, value: int | float) -> bool:
         self._ensure_media()
+        if self._timeline_validation_failed:
+            return False
         requested_target = max(0, int(round(value)))
         probe_pending = bool(
             self._timeline_probe_pending and self._timeline_index is None
@@ -832,6 +883,8 @@ class SafeMediaEngine(MediaEngine):
         return self.play()
 
     def play(self) -> bool:
+        if self._timeline_validation_failed:
+            return False
         self._pause_requested = False
         if (
             self._dahua_duration_index is not None
@@ -863,6 +916,10 @@ class SafeMediaEngine(MediaEngine):
         if (
             self._pending_seek_ms is None
             or self._timeline_probe_pending
+            or _timeline_transport_blocked(
+                self._timeline_validation_required,
+                self._timeline_index,
+            )
             or not seekable
             or state_code not in {3, 4}  # playing / paused
             or (self._pause_requested and state_code != 4)
