@@ -1,5 +1,7 @@
 # 高邮牧场三个摄像头目录 · 视频播放与兼容性审查报告
 
+> **状态说明（2026-08-26）**：本文记录的是修复前审计基线，其中若干“当前”结论已被后续提交修复或被真实 QWidget/HWND 复测推翻。不要只根据本文判断现版本；提交、回滚标签、真实跳转和画面验证结果见 [`change-records/20260826-07-playback-remediation-status.md`](change-records/20260826-07-playback-remediation-status.md)。
+
 **审查日期**：2026-08-26
 **审查对象**：
 
