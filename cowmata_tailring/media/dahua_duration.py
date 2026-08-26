@@ -11,7 +11,7 @@ import statistics
 import subprocess
 import zlib
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 CACHE_SCHEMA = 3
@@ -20,6 +20,7 @@ MIN_ADJACENT_DURATION_MS = 1_000
 MIN_COMPLETE_PACKET_COVERAGE = 0.90
 DURATION_MATCH_ABSOLUTE_MS = 5_000
 DURATION_MATCH_RELATIVE = 0.08
+DEFAULT_FFPROBE_TIMEOUT_SECONDS = 30.0
 FORWARD_OUTLIER_MS = 300_000.0
 BACKWARD_RESET_MS = -1_000.0
 
@@ -89,6 +90,7 @@ class DahuaProgramScan:
     frame_count: int
     keyframes: tuple[tuple[int, int], ...]
     timestamps: tuple[tuple[int, float, bool, bool], ...]
+    frame_duration_ms: float = 0.0
 
 
 def _append_varint(payload: bytearray, value: int) -> None:
@@ -378,6 +380,47 @@ def _timestamp_flags(data: mmap.mmap, position: int) -> int:
     return (int(data[position + 7]) >> 6) & 0x03
 
 
+def _decode_mpeg_timestamp(data: mmap.mmap, position: int) -> int | None:
+    if position < 0 or position + 5 > len(data):
+        return None
+    value = data[position : position + 5]
+    if not (value[0] & 1 and value[2] & 1 and value[4] & 1):
+        return None
+    return (
+        ((value[0] >> 1) & 0x07) << 30
+        | value[1] << 22
+        | ((value[2] >> 1) & 0x7F) << 15
+        | value[3] << 7
+        | ((value[4] >> 1) & 0x7F)
+    )
+
+
+def _infer_frame_duration_ms(
+    samples: Iterable[tuple[float, int]],
+) -> float:
+    total_ticks = 0.0
+    total_frames = 0.0
+    valid_intervals = 0
+    sample_list = list(samples)
+    for (previous_frame, previous_ticks), (current_frame, current_ticks) in zip(
+        sample_list,
+        sample_list[1:],
+    ):
+        frame_delta = float(current_frame) - float(previous_frame)
+        tick_delta = int(current_ticks) - int(previous_ticks)
+        if frame_delta <= 0.0 or tick_delta <= 0:
+            continue
+        duration_ms = tick_delta / (90.0 * frame_delta)
+        if not 5.0 <= duration_ms <= 250.0:
+            continue
+        total_ticks += tick_delta
+        total_frames += frame_delta
+        valid_intervals += 1
+    if valid_intervals < 2 or total_frames <= 0.0:
+        return 0.0
+    return total_ticks / (90.0 * total_frames)
+
+
 def scan_dahua_program_stream(
     source_path: str | os.PathLike[str],
 ) -> DahuaProgramScan:
@@ -387,6 +430,7 @@ def scan_dahua_program_stream(
     frame_positions: list[int] = []
     keyframes: list[tuple[int, int]] = []
     video_timestamps: list[tuple[int, float, bool, bool]] = []
+    video_clock_samples: list[tuple[float, int]] = []
 
     with source.open("rb") as handle:
         data = mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ)
@@ -431,6 +475,9 @@ def scan_dahua_program_stream(
                         else max(0, len(frame_positions) - 1)
                     )
                     video_timestamps.append((position + 9, coordinate, flags == 3, True))
+                    clock_ticks = _decode_mpeg_timestamp(data, position + 9)
+                    if clock_ticks is not None:
+                        video_clock_samples.append((coordinate, clock_ticks))
                 position = packet_end
 
             audio_positions: list[tuple[int, bool]] = []
@@ -477,6 +524,7 @@ def scan_dahua_program_stream(
         frame_count=len(frame_positions),
         keyframes=tuple(deduplicated_keyframes),
         timestamps=tuple(timestamps),
+        frame_duration_ms=_infer_frame_duration_ms(video_clock_samples),
     )
 
 
@@ -599,7 +647,7 @@ def probe_dahua_duration(
     source_path: str | os.PathLike[str],
     ffprobe_path: str | os.PathLike[str],
     *,
-    timeout_seconds: float = 120.0,
+    timeout_seconds: float = DEFAULT_FFPROBE_TIMEOUT_SECONDS,
 ) -> DahuaDurationIndex:
     source = Path(source_path).resolve()
     if not is_dahua_program_stream(source):
@@ -630,17 +678,56 @@ def probe_dahua_duration(
             check=False,
             creationflags=creation_flags,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise DahuaDurationProbeError(f"FFprobe乐橙时长扫描失败：{exc}") from exc
+    except (OSError, subprocess.TimeoutExpired):
+        return probe_dahua_program_stream_duration(source)
     if process.returncode != 0:
-        detail = process.stderr.strip() or f"退出码 {process.returncode}"
-        raise DahuaDurationProbeError(f"FFprobe乐橙时长扫描失败：{detail}")
+        return probe_dahua_program_stream_duration(source)
     packets = parse_ffprobe_packet_summary(
         process.stdout.splitlines(),
         source.stat().st_size,
     )
     program_scan = scan_dahua_program_stream(source)
+    if packets.packet_count <= 0 or packets.frame_duration_ms <= 0.0:
+        return _build_dahua_program_stream_duration(source, program_scan)
     return build_dahua_duration_index(source, packets, program_scan)
+
+
+def _build_dahua_program_stream_duration(
+    source: Path,
+    program_scan: DahuaProgramScan,
+) -> DahuaDurationIndex:
+    if program_scan.frame_count <= 0:
+        raise DahuaDurationProbeError("乐橙内置扫描没有找到视频帧")
+    if program_scan.frame_duration_ms <= 0.0:
+        raise DahuaDurationProbeError("乐橙内置扫描无法确定视频帧率")
+    source_size = source.stat().st_size
+    packets = DahuaPacketSummary(
+        packet_count=program_scan.frame_count,
+        frame_duration_ms=program_scan.frame_duration_ms,
+        maximum_position=source_size,
+        packet_coverage=1.0,
+        backward_resets=0,
+        forward_outliers=0,
+    )
+    index = build_dahua_duration_index(source, packets, program_scan)
+    basis = (
+        "program_scan_adjacent_validated"
+        if index.basis == "adjacent_file_validated"
+        else "program_scan"
+    )
+    return replace(index, basis=basis)
+
+
+def probe_dahua_program_stream_duration(
+    source_path: str | os.PathLike[str],
+) -> DahuaDurationIndex:
+    source = Path(source_path).resolve()
+    if not is_dahua_program_stream(source):
+        raise DahuaDurationProbeError("文件不是乐橙/Dahua MPEG-PS录像")
+    return _build_dahua_program_stream_duration(
+        source,
+        scan_dahua_program_stream(source),
+    )
 
 
 def duration_cache_path(
@@ -754,6 +841,7 @@ __all__ = [
     "load_duration_cache",
     "parse_ffprobe_packet_summary",
     "probe_dahua_duration",
+    "probe_dahua_program_stream_duration",
     "save_duration_cache",
     "scan_dahua_program_stream",
 ]

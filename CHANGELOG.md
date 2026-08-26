@@ -7,6 +7,7 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 ### Fixed
 
 - Prevent copied-file mtime deltas from overriding complete Dahua/Imou frame scans, and invalidate duration caches created by the unsafe arbitration rule.
+- Recover Dahua/Imou duration and seek indexes with the built-in MPEG-PS scanner when ffprobe is missing or fails.
 
 ## [2.1.0] — 2026-08-21
 

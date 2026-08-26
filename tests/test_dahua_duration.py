@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 from cowmata_tailring.media.dahua_duration import (
@@ -14,6 +15,8 @@ from cowmata_tailring.media.dahua_duration import (
     is_dahua_program_stream,
     load_duration_cache,
     parse_ffprobe_packet_summary,
+    probe_dahua_duration,
+    probe_dahua_program_stream_duration,
     save_duration_cache,
     scan_dahua_program_stream,
 )
@@ -41,8 +44,29 @@ def _packets(
     )
 
 
-def _video_pes(nal_type_byte: int) -> bytes:
-    timestamp_header = b"\x80\xc0\x0a" + b"\x00" * 10
+def _encode_timestamp(value: int, prefix: int) -> bytes:
+    return bytes(
+        (
+            (prefix << 4) | (((value >> 30) & 0x07) << 1) | 1,
+            (value >> 22) & 0xFF,
+            (((value >> 15) & 0x7F) << 1) | 1,
+            (value >> 7) & 0xFF,
+            ((value & 0x7F) << 1) | 1,
+        )
+    )
+
+
+def _video_pes(
+    nal_type_byte: int,
+    timestamp_ticks: int | None = None,
+) -> bytes:
+    timestamps = b"\x00" * 10
+    if timestamp_ticks is not None:
+        timestamps = _encode_timestamp(
+            timestamp_ticks,
+            3,
+        ) + _encode_timestamp(timestamp_ticks, 1)
+    timestamp_header = b"\x80\xc0\x0a" + timestamps
     payload = b"\x00\x00\x00\x01" + bytes((nal_type_byte, 1, 0x80, 0, 0, 0))
     body = timestamp_header + payload
     return b"\x00\x00\x01\xe0" + len(body).to_bytes(2, "big") + body
@@ -50,6 +74,17 @@ def _video_pes(nal_type_byte: int) -> bytes:
 
 def _pack() -> bytes:
     return b"\x00\x00\x01\xba" + b"\x00" * 12 + b"DHAV" + b"\x00" * 8
+
+
+def _write_timed_dahua(path: Path, frame_count: int = 300) -> None:
+    ticks = 90_000
+    chunks: list[bytes] = []
+    intervals = (4_500, 4_500, 9_000)
+    for frame_index in range(frame_count):
+        nal_type = 0x26 if frame_index % 15 == 0 else 0x02
+        chunks.append(_pack() + _video_pes(nal_type, ticks))
+        ticks += intervals[frame_index % len(intervals)]
+    path.write_bytes(b"".join(chunks))
 
 
 def _decode_timestamp(value: bytes) -> int:
@@ -118,6 +153,74 @@ def test_program_stream_scan_finds_frames_keyframes_and_timestamps(
     assert len(scan.timestamps) == 3
     assert scan.keyframes[0] == (0, 0)
     assert scan.keyframes[1][0] == 2
+
+
+def test_program_stream_scan_infers_frame_duration_from_pts(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "imou00024.mp4"
+    timestamps = (90_000, 94_500, 99_000, 108_000)
+    source.write_bytes(
+        b"".join(
+            _pack() + _video_pes(0x26 if index == 0 else 0x02, ticks)
+            for index, ticks in enumerate(timestamps)
+        )
+    )
+
+    scan = scan_dahua_program_stream(source)
+
+    assert scan.frame_count == 4
+    assert abs(scan.frame_duration_ms - (1000.0 / 15.0)) < 0.001
+
+
+def test_missing_ffprobe_uses_program_stream_fallback(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "imou00156.mp4"
+    _write_timed_dahua(source)
+
+    index = probe_dahua_duration(source, tmp_path / "missing-ffprobe.exe")
+
+    assert index.basis == "program_scan"
+    assert 19_900 <= index.duration_ms <= 20_100
+    assert index.has_seek_index
+
+
+def test_ffprobe_timeout_uses_program_stream_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "imou00156.mp4"
+    _write_timed_dahua(source)
+
+    def timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired("ffprobe", 30.0)
+
+    monkeypatch.setattr(
+        "cowmata_tailring.media.dahua_duration.subprocess.run",
+        timeout,
+    )
+
+    index = probe_dahua_duration(source, "ffprobe")
+
+    assert index.basis == "program_scan"
+    assert 19_900 <= index.duration_ms <= 20_100
+    assert index.has_seek_index
+
+
+def test_program_stream_fallback_rejects_short_copy_mtime(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "imou00000.mp4"
+    next_source = tmp_path / "imou00001.mp4"
+    _write_timed_dahua(source)
+    _write_dahua(next_source, mtime_ns=1_002_600_000_000)
+    os.utime(source, ns=(1_000_000_000_000, 1_000_000_000_000))
+
+    index = probe_dahua_program_stream_duration(source)
+
+    assert index.basis == "program_scan"
+    assert 19_900 <= index.duration_ms <= 20_100
 
 
 def test_seek_index_round_trips_through_cache(tmp_path: Path) -> None:

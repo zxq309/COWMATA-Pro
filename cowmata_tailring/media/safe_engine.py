@@ -15,6 +15,7 @@ from cowmata_tailring.media.dahua_duration import (
     is_dahua_program_stream,
     load_duration_cache,
     probe_dahua_duration,
+    probe_dahua_program_stream_duration,
     save_duration_cache,
 )
 from cowmata_tailring.media.dahua_stream import (
@@ -248,8 +249,12 @@ class SafeMediaEngine(MediaEngine):
                         or generation != self._timeline_probe_generation
                     ):
                         return
-                    _ffmpeg, ffprobe = find_ffmpeg()
-                    index = probe_dahua_duration(path, ffprobe)
+                    try:
+                        _ffmpeg, ffprobe = find_ffmpeg()
+                    except FFmpegToolError:
+                        index = probe_dahua_program_stream_duration(path)
+                    else:
+                        index = probe_dahua_duration(path, ffprobe)
                     try:
                         save_duration_cache(cache_directory, index)
                     except (OSError, ValueError):
@@ -287,6 +292,11 @@ class SafeMediaEngine(MediaEngine):
         self._timeline_probe_pending = False
         if isinstance(index, DahuaDurationIndex):
             self._apply_dahua_duration_index(index)
+            if index.basis.startswith("program_scan"):
+                self.timeline_analysis_message.emit(
+                    "FFprobe不可用，已使用内置MPEG-PS扫描校正乐橙视频",
+                    6000,
+                )
         elif error:
             self.timeline_analysis_message.emit(
                 "乐橙视频时长校验失败，暂时使用播放器原始时长",
