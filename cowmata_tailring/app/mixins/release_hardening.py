@@ -7,6 +7,10 @@ from typing import Any
 from PySide6.QtWidgets import QFileDialog
 
 from cowmata_tailring.annotation import core as annotation_core
+from cowmata_tailring.media.video_file_health import (
+    EMPTY_VIDEO_FILE,
+    video_placeholder_issue,
+)
 from cowmata_tailring.ui.i18n import t
 
 
@@ -40,6 +44,21 @@ class ReleaseHardeningMixin:
             path = selected
 
         normalized = os.path.abspath(path)
+        placeholder_issue = video_placeholder_issue(normalized)
+        if placeholder_issue is not None:
+            status = t(
+                "空文件"
+                if placeholder_issue == EMPTY_VIDEO_FILE
+                else "空占位文件"
+            )
+            self.video_status.setText(f"{Path(normalized).name} · {status}")
+            message = t(
+                "视频文件为空，无法播放：\n"
+                if placeholder_issue == EMPTY_VIDEO_FILE
+                else "视频文件疑似全零占位，已阻止打开：\n"
+            )
+            self._show_error(message + normalized)
+            return
         super().open_video(normalized)
         opened = (
             self.media is not None

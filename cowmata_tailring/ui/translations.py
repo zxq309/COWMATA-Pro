@@ -799,6 +799,9 @@ ZH_TO_EN: dict[str, str] = {
     '；调整完成后点击“钉住”': '; click “Pin” when the adjustment is done',
     'FFprobe不可用，已使用内置MPEG-PS扫描校正乐橙视频': 'FFprobe is unavailable; corrected the Imou video with the built-in MPEG-PS scanner',
     'FFprobe乐橙时长扫描失败：': 'FFprobe Imou duration scan failed: ',
+    '已跳过空占位视频：': 'Skipped empty placeholder videos: ',
+    '空占位文件': 'Empty placeholder file',
+    '空文件': 'Empty file',
     '乐橙内置扫描无法确定视频帧率': 'The built-in Imou scanner could not determine the video frame rate',
     '乐橙内置扫描没有找到视频帧': 'The built-in Imou scanner found no video frames',
     '乐橙录像没有可用的相邻文件时间或视频帧时长': 'The Imou recording has neither a usable adjacent-file time nor a video-frame duration',
@@ -808,6 +811,8 @@ ZH_TO_EN: dict[str, str] = {
     '乐橙视频跳转流创建失败': 'Could not create the Imou video seek stream',
     '乐橙视频跳转流创建失败：': 'Could not create the Imou video seek stream: ',
     '文件不是乐橙/Dahua MPEG-PS录像': 'The file is not an Imou/Dahua MPEG-PS recording',
+    '视频文件为空，无法播放：\n': 'The video file is empty and cannot be played:\n',
+    '视频文件疑似全零占位，已阻止打开：\n': 'The video file appears to be a zero-filled placeholder and was not opened:\n',
     '正在校验乐橙视频时长…': 'Validating Imou video duration…',
 }
 

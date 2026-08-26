@@ -18,6 +18,9 @@ from PySide6.QtWidgets import (
 
 from cowmata_tailring.annotation.defaults import DEFAULT_LABELS, DEFAULT_PROTOCOL
 from cowmata_tailring.media.engine import MediaEngine, MediaEngineError
+from cowmata_tailring.media.video_file_health import (
+    neighboring_playable_video_paths,
+)
 from cowmata_tailring.ui.helpers import (
     as_dict,
     format_relative,
@@ -385,7 +388,18 @@ class MainWindow(QMainWindow):
         return previous_file, next_file
 
     def _neighboring_video_paths(self) -> tuple[Path | None, Path | None]:
-        return self._neighboring_file_paths(
+        previous, following, _previous_skipped, _following_skipped = (
+            neighboring_playable_video_paths(
+                self.video_path,
+                self._videos_in_current_directory(),
+            )
+        )
+        return previous, following
+
+    def _neighboring_video_candidates(
+        self,
+    ) -> tuple[Path | None, Path | None, int, int]:
+        return neighboring_playable_video_paths(
             self.video_path,
             self._videos_in_current_directory(),
         )
@@ -399,14 +413,28 @@ class MainWindow(QMainWindow):
     def _open_neighboring_video(self, direction: int) -> None:
         if getattr(self, "_source_switch_active", False):
             return
-        previous_video, next_video = self._neighboring_video_paths()
+        (
+            previous_video,
+            next_video,
+            previous_skipped,
+            next_skipped,
+        ) = self._neighboring_video_candidates()
         target = previous_video if direction < 0 else next_video
+        skipped = previous_skipped if direction < 0 else next_skipped
         if target is None:
             boundary = "上一个" if direction < 0 else "下一个"
             self._refresh_enabled()
-            self.statusBar().showMessage(f"当前没有{boundary}视频", 3000)
+            message = f"当前没有{boundary}视频"
+            if skipped:
+                message += f"；{t('已跳过空占位视频：')}{skipped}"
+            self.statusBar().showMessage(message, 3000)
             return
         self.open_video(str(target))
+        if skipped:
+            self.statusBar().showMessage(
+                f"{t('已跳过空占位视频：')}{skipped}",
+                3000,
+            )
 
     def open_previous_video(self, _checked: bool = False) -> None:
         self._open_neighboring_video(-1)
