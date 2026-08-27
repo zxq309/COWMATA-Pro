@@ -236,6 +236,8 @@ class MediaEngine(QObject):
         lib.libvlc_media_player_stop.restype = None
         lib.libvlc_media_player_is_playing.argtypes = [void_p]
         lib.libvlc_media_player_is_playing.restype = ctypes.c_int
+        lib.libvlc_media_player_has_vout.argtypes = [void_p]
+        lib.libvlc_media_player_has_vout.restype = ctypes.c_uint
         lib.libvlc_media_player_get_state.argtypes = [void_p]
         lib.libvlc_media_player_get_state.restype = ctypes.c_int
         lib.libvlc_media_player_get_time.argtypes = [void_p]
@@ -446,6 +448,16 @@ class MediaEngine(QObject):
         if self._closed or not self._player:
             return False
         return bool(self._lib.libvlc_media_player_is_playing(self._player))
+
+    def video_output_count(self) -> int:
+        """Return the number of video outputs created for the current media."""
+
+        if self._closed or not self._player:
+            return 0
+        return max(
+            0,
+            int(self._lib.libvlc_media_player_has_vout(self._player)),
+        )
 
     def is_seekable(self) -> bool:
         if self._closed or not self._player:

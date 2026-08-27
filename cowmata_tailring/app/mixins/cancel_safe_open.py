@@ -35,6 +35,11 @@ class CancelSafeOpenMixin:
             self._queued_play_after_prime,
             self._prime_pending_seek_ms,
             self._prime_pending_seek_is_initial,
+            self._prime_generation,
+            self._prime_duration_ready,
+            self._prime_decoder_started,
+            self._prime_frame_ready,
+            self._prime_pause_requested,
         )
         super().open_video(normalized)
         opened = (
@@ -49,4 +54,9 @@ class CancelSafeOpenMixin:
                 self._queued_play_after_prime,
                 self._prime_pending_seek_ms,
                 self._prime_pending_seek_is_initial,
+                self._prime_generation,
+                self._prime_duration_ready,
+                self._prime_decoder_started,
+                self._prime_frame_ready,
+                self._prime_pause_requested,
             ) = state

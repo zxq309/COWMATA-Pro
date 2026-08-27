@@ -77,10 +77,13 @@ class PlaybackMixin:
             return
         if self._autopause_on_load and self.media is not None:
             self._autopause_on_load = False
-            QTimer.singleShot(
-                80, lambda: self.media and self.media.pause(True)
-            )
+            self._schedule_load_autopause()
         self._refresh_enabled()
+
+    def _schedule_load_autopause(self) -> None:
+        """Pause ordinary players shortly after their duration becomes ready."""
+
+        QTimer.singleShot(80, lambda: self.media and self.media.pause(True))
 
     def _on_media_time(self, video_time_ms: int) -> None:
         self.video_clock_label.setText(
