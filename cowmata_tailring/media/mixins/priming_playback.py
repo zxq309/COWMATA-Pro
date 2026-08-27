@@ -14,6 +14,7 @@ class PrimingPlaybackMixin:
         self._media_primed = False
         self._queued_play_after_prime = False
         self._prime_pending_seek_ms: float | None = None
+        self._prime_pending_seek_is_initial = False
         super().__init__()
 
     def open_video(self, path: str | None = None) -> None:
@@ -21,8 +22,15 @@ class PrimingPlaybackMixin:
         self._media_primed = False
         self._queued_play_after_prime = False
         self._prime_pending_seek_ms = None
+        self._prime_pending_seek_is_initial = False
         super().open_video(path)
-        if self.video_path == previous_path and not self.video_path:
+        if self.video_path:
+            # VLC must play briefly to initialise HEVC. Restore the requested
+            # starting frame after that priming playback instead of exposing
+            # however far the decoder advanced while metadata was scanned.
+            self._prime_pending_seek_ms = 0.0
+            self._prime_pending_seek_is_initial = True
+        elif self.video_path == previous_path:
             self._media_primed = True
 
     def toggle_play(self) -> None:
@@ -58,6 +66,7 @@ class PrimingPlaybackMixin:
                 ),
             )
             self._prime_pending_seek_ms = target
+            self._prime_pending_seek_is_initial = False
             self.video_timeline.set_position(target)
             self.video_status.setText(
                 f"{Path(self.video_path).name} · 初始化后同步定位"
@@ -83,9 +92,27 @@ class PrimingPlaybackMixin:
             QTimer.singleShot(0, self._finish_media_priming)
 
     def _finish_media_priming(self) -> None:
-        if self._prime_pending_seek_ms is not None:
-            self._prime_pending_seek_ms = None
-            super()._seek_video_to_playhead()
+        target = self._prime_pending_seek_ms
+        restore_initial_position = self._prime_pending_seek_is_initial
+        self._prime_pending_seek_ms = None
+        self._prime_pending_seek_is_initial = False
+        if target is not None:
+            if (
+                restore_initial_position
+                and self.media is not None
+                and self.video_path
+            ):
+                arm_ui_seek = getattr(self, "_arm_ui_seek", None)
+                if callable(arm_ui_seek):
+                    arm_ui_seek(target)
+                elif hasattr(self, "video_timeline"):
+                    self.video_timeline.set_position(target)
+                self.media.set_time_ms(target)
+            else:
+                # A source switch may replace the default zero target with a
+                # synchronized data/video target. Keep its existing overlap
+                # checks and seek-confirmation chain intact.
+                super()._seek_video_to_playhead()
         if self._queued_play_after_prime:
             self._queued_play_after_prime = False
             QTimer.singleShot(100, self._play_after_priming)

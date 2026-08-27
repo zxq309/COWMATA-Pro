@@ -22,6 +22,7 @@ class TimerShutdownMixin:
         self._desktop_closing = True
         self._queued_play_after_prime = False
         self._prime_pending_seek_ms = None
+        self._prime_pending_seek_is_initial = False
         self._ui_pending_seek_video_ms = None
         self._smooth_playing = False
         for name in (
