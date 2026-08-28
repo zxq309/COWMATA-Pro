@@ -25,6 +25,14 @@ class PrimingPlaybackMixin:
         self._prime_frame_ready = False
         self._prime_pause_requested = False
         super().__init__()
+        media = getattr(self, "media", None)
+        time_changed = getattr(media, "time_changed", None)
+        connect = getattr(time_changed, "connect", None)
+        if callable(connect):
+            # UI layers intentionally suppress time presentation while a data
+            # or video source is switching. Observe the engine signal directly
+            # so that suppression cannot also block first-frame detection.
+            connect(self._observe_priming_frame)
 
     def open_video(self, path: str | None = None) -> None:
         previous_path = self.video_path

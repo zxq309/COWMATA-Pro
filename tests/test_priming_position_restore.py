@@ -24,8 +24,21 @@ class _Timeline:
         self.positions.append(float(value))
 
 
+class _Signal:
+    def __init__(self) -> None:
+        self.callbacks: list[object] = []
+
+    def connect(self, callback: object) -> None:
+        self.callbacks.append(callback)
+
+    def emit(self, value: int) -> None:
+        for callback in self.callbacks:
+            callback(value)
+
+
 class _Media:
     def __init__(self) -> None:
+        self.time_changed = _Signal()
         self.current_path = ""
         self.time_ms = 1_345
         self.duration = 704_425
@@ -108,6 +121,23 @@ class _PrimingBase:
 
 
 class _PrimingHarness(PrimingPlaybackMixin, _PrimingBase):
+    pass
+
+
+class _TimePresentationBlocker:
+    def __init__(self) -> None:
+        self.blocked_time_calls = 0
+        super().__init__()
+
+    def _on_media_time(self, _video_time_ms: int) -> None:
+        self.blocked_time_calls += 1
+
+
+class _BlockedTimeHarness(
+    _TimePresentationBlocker,
+    PrimingPlaybackMixin,
+    _PrimingBase,
+):
     pass
 
 
@@ -244,6 +274,28 @@ def test_cold_probe_can_finish_after_first_frame_is_already_paused() -> None:
     player.media.duration = 704_425
     player._schedule_load_autopause()
 
+    assert player._media_primed
+    assert player.media.set_time_calls == [0.0]
+
+
+def test_direct_time_observer_bypasses_switch_presentation_blocker() -> None:
+    player = _BlockedTimeHarness()
+    player.open_video("switched.mp4")
+    player._schedule_load_autopause()
+    player.media.playing = True
+    player.media.video_outputs = 1
+    player.media.time_ms = 228
+
+    player._on_media_time(228)
+
+    assert player.blocked_time_calls == 1
+    assert not player._prime_frame_ready
+    assert player.media.pause_calls == []
+
+    player.media.time_changed.emit(228)
+
+    assert player._prime_frame_ready
+    assert player.media.pause_calls == [True]
     assert player._media_primed
     assert player.media.set_time_calls == [0.0]
 
