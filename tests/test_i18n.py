@@ -82,3 +82,21 @@ def test_default_labels_all_carry_display_pair() -> None:
         assert label["name"], f"missing Chinese name: {label['code']}"
         assert label["en"], f"missing English name: {label['code']}"
         assert label["code"], f"missing code: {label['name']}"
+
+
+def test_manual_calving_assistance_label_contract() -> None:
+    """Manual assistance is a trainable interval and keeps sync anchor last."""
+    from cowmata_tailring.annotation.defaults import DEFAULT_LABELS
+
+    labels = {label["code"]: label for label in DEFAULT_LABELS}
+    assistance = labels["MANUAL_CALVING_ASSISTANCE"]
+
+    assert assistance["name"] == "人工辅助产犊"
+    assert assistance["en"] == "manual calving assistance"
+    assert assistance["key"] == "D"
+    assert assistance["type"] == "interval"
+    assert assistance["layer"] == "calving_process"
+    assert assistance["overlap"] is True
+    assert assistance["specialty"] is True
+    assert assistance["trainable"] is True
+    assert DEFAULT_LABELS[-1]["code"] == "SYNC_ANCHOR"

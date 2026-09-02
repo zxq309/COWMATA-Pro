@@ -2,7 +2,17 @@
 
 All notable changes to COWMATA Tail-Ring Annotator are documented here.
 
-## [Unreleased]
+## [2.2.0] — 2026-09-02
+
+### Added
+
+- Imou/Dahua MPEG-PS playback support: content-scanned duration and keyframe seek indexes cross-validated with ffprobe packet scans and adjacent-file recording times, plus a timestamp-normalized virtual playback stream for precise seeking.
+- Built-in MPEG-PS fallback scanner that recovers Imou/Dahua duration and seek indexes when ffprobe is missing, failing, empty, or timing out.
+- Zero-filled video placeholder detection: empty or all-zero recorder slots are rejected before VLC opens them and are skipped during previous/next navigation.
+- Pinned segment-clock continuation for adjacent Imou/Dahua files, with automatic fallback to the previous playhead-based behaviour when validation fails.
+- Hikvision duration validation gate: unvalidated VLC raw durations are never published; seeking is disabled until the packet timeline is validated, and validation failure freezes playback with a persistent reason instead of keeping the untrusted duration.
+- Protocol-v4 support for the `MANUAL_CALVING_ASSISTANCE` interval label, including bilingual display text, a stable machine code, and the `D` shortcut.
+- In-progress intervals now appear immediately in the annotation table without being persisted, exported, or treated as completed events.
 
 ### Fixed
 
@@ -12,6 +22,7 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 - Preserve pinned Dahua/Imou alignment across adjacent files with a validated relative segment clock instead of rebasing every file at the current playhead.
 - Drain the active Dahua/Imou callback reader before replacing its VLC media, preventing native crashes during repeated seeks and source changes.
 - Hide unvalidated Hikvision durations, publish only the corrected packet timeline, and disable seeking when timeline validation fails.
+- Preserve unfinished annotation intervals while unpinning for recalibration; users can resume them after re-pinning or cancel them explicitly.
 
 ## [2.1.0] — 2026-08-21
 
@@ -48,5 +59,6 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 - Duplicate historical launch/window modules, checked-in production weights, generated QA screenshots, and other obsolete repository artifacts.
 - Large/private example media from Git tracking; only local usage instructions remain.
 
+[2.2.0]: https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.2.0
 [2.1.0]: https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.1.0
 [2.0.0]: https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.0.0

@@ -36,7 +36,7 @@ def _label(
     }
 
 
-# 标注协议 v4：15 项正式标签；SYNC_ANCHOR 仅用于时间同步。
+# 标注协议 v4：16 项正式标签；SYNC_ANCHOR 仅用于时间同步。
 DEFAULT_LABELS: list[dict[str, Any]] = [
     _label(
         "站立", "standing", "STANDING", "1", "#5f86b3", "body_state",
@@ -112,6 +112,12 @@ DEFAULT_LABELS: list[dict[str, Any]] = [
     _label(
         "排便", "defecation", "DEFECATION", "S", "#bd7b40",
         "objective_event", "从明确排便动作或粪便出现到排出结束的区间。",
+    ),
+    _label(
+        "人工辅助产犊", "manual calving assistance",
+        "MANUAL_CALVING_ASSISTANCE", "D", "#be185d", "calving_process",
+        "从人工开始直接接触母牛或胎儿实施助产，到该次人工干预结束；多次分开的干预分别标注，可与其他分娩过程标签重叠。",
+        specialty=True,
     ),
     _label(
         "敲击", "sync anchor", "SYNC_ANCHOR", "0", "#111827", "sync_anchor",

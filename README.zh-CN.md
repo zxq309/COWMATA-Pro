@@ -7,7 +7,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v2.1.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.1.0)
+[![Release](https://img.shields.io/badge/release-v2.2.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.2.0)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -31,7 +31,7 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 
 - **视频—九轴共时间轴** —— 播放、定位、缩放并同时检查加速度计、陀螺仪和磁力计九个通道。
 - **先对齐、后标注** —— 视频与传感器时间轴完成钉住前，正式标注保持锁定，避免无声错位。
-- **内置 v4 协议** —— 15 项行为/分娩标签，另含一个不参与训练的同步锚点。
+- **内置 v4 协议** —— 16 项行为/分娩标签，另含一个不参与训练的同步锚点。
 - **人控模型辅助** —— 模型只生成候选项；未经过人工确认，不会成为正式标签。
 - **可追溯输出** —— 稳定机器码、显示名称、绝对时间戳、来源字段与导出前结构校验。
 - **中英双语** —— 界面语言仅影响显示，不会改写落盘标签码或历史数据。
@@ -163,6 +163,7 @@ cowmata-annotator --mode basic --lang zh `
 | `R` | 卧倒过程 | `LYING_DOWN` | 区间 |
 | `A` | 排尿 | `URINATION` | 区间 |
 | `S` | 排便 | `DEFECATION` | 区间 |
+| `D` | 人工辅助产犊 | `MANUAL_CALVING_ASSISTANCE` | 区间 |
 | `0` | 同步敲击锚点 | `SYNC_ANCHOR` | 点，不参与训练 |
 
 ## 模型辅助复核
@@ -214,7 +215,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-截图所示 v2.1.0 已在 Windows 环境完成真实联调：Python 3.12.13、VLC 3.0.23、真实样例对和自动化测试套件。版本说明见 [CHANGELOG.md](CHANGELOG.md)。
+v2.2.0 为当前发布版本，已通过自动化测试与 [CHANGELOG.md](CHANGELOG.md) 所述的发布验证。
 
 ## 关联仓库
 

@@ -1101,12 +1101,9 @@ class DualAnchorPrecisionV2Mixin:
             else not bool(self._timelines_linked)
         )
         if not requested:
-            if getattr(self, "pending_intervals", {}):
-                self._sync_pin_button()
-                self.statusBar().showMessage(
-                    t("请先结束或取消正在标注的区间，再解除钉住"), 5000
-                )
-                return
+            has_pending_intervals = bool(
+                getattr(self, "pending_intervals", {})
+            )
             if self.media is not None and self.media.is_playing():
                 self.media.pause(True)
             self._pending_data_anchor_ms = float(self.playhead_ms)
@@ -1120,6 +1117,13 @@ class DualAnchorPrecisionV2Mixin:
             )
             self._set_timelines_linked(False)
             self._show_pending_pair()
+            if has_pending_intervals:
+                self.statusBar().showMessage(
+                    t(
+                        "已解除钉住；未结束区间已保留，重新钉住后可继续或按 Esc 取消"
+                    ),
+                    5000,
+                )
             autosave = getattr(self, "_autosave", None)
             if callable(autosave):
                 autosave()

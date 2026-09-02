@@ -34,7 +34,7 @@ MAIN_OPERATION_CODES = {
     "AMNIOTIC_SAC_FIRST_VISIBLE", "FETAL_PART_FIRST_VISIBLE",
     "CALF_FULLY_EXPELLED", "FETAL_MEMBRANES_FULLY_EXPELLED",
     "TAIL_RAISED", "TAIL_WAGGING", "STANDING_UP", "LYING_DOWN",
-    "URINATION", "DEFECATION",
+    "URINATION", "DEFECATION", "MANUAL_CALVING_ASSISTANCE",
 }
 
 
@@ -250,12 +250,14 @@ class AnnotationMixin:
                     self._add_event(label_index, start, self.playhead_ms)
                 else:
                     self.statusBar().showMessage(t("同一时刻未生成空区间"), 2500)
+                    self._refresh_events()
                 return
             for previous_index, start in active_body:
                 self.pending_intervals.pop(previous_index, None)
                 if self.playhead_ms > start:
                     self._add_event(previous_index, start, self.playhead_ms)
             self.pending_intervals[label_index] = self.playhead_ms
+            self._refresh_events()
             self.statusBar().showMessage(
                 f"{label.get('name')}：已开始；切换身体行为会自动结束上一段",
                 4000,
@@ -263,6 +265,7 @@ class AnnotationMixin:
             return
         if label_index not in self.pending_intervals:
             self.pending_intervals[label_index] = self.playhead_ms
+            self._refresh_events()
             self.statusBar().showMessage(
                 f"{label.get('name')}：已记录开始，再按 {label.get('key')} 结束"
             )
@@ -276,11 +279,31 @@ class AnnotationMixin:
 
     def _cancel_pending(self) -> None:
         self.pending_intervals.clear()
+        self._refresh_events()
         self.statusBar().showMessage(t("已取消待闭合区间"))
 
     def _refresh_events(self) -> None:
         self.event_table.blockSignals(True)
-        self.event_table.setRowCount(len(self.events))
+        display_rows: list[tuple[float, int, dict[str, Any], bool]] = [
+            (
+                float(event.get("t0", 0.0)),
+                int(event.get("id", row + 1)),
+                event,
+                False,
+            )
+            for row, event in enumerate(self.events)
+        ]
+        for label_index, start in self.pending_intervals.items():
+            display_rows.append(
+                (
+                    float(start),
+                    -(int(label_index) + 1),
+                    {"li": int(label_index), "t0": float(start)},
+                    True,
+                )
+            )
+        display_rows.sort(key=lambda value: (value[0], value[1]))
+        self.event_table.setRowCount(len(display_rows))
         select_row = -1
         record_start_ms = int(
             getattr(self, "data_create_time_ms", 0) or 0
@@ -291,7 +314,9 @@ class AnnotationMixin:
                 return format_wall(record_start_ms + relative_ms)
             return format_relative(relative_ms)
 
-        for row, event in enumerate(self.events):
+        for row, (_sort_time, row_id, event, is_pending) in enumerate(
+            display_rows
+        ):
             label_index = int(event.get("li", -1))
             label = (
                 self.labels[label_index]
@@ -299,28 +324,45 @@ class AnnotationMixin:
                 else {}
             )
             start = float(event.get("t0", 0))
-            end = event.get("t1")
+            end = None if is_pending else event.get("t1")
             duration = (
                 ""
-                if end is None
+                if is_pending or end is None
                 else format_relative(float(end) - start)
             )
+            shortcut = str(label.get("key", "")).strip()
+            pending_note = (
+                f"{t('进行中')} · {t('再次按快捷键结束')}: {shortcut}"
+                if is_pending and shortcut
+                else t("进行中") if is_pending else ""
+            )
             values = [
-                str(event.get("id", row + 1)),
+                "…" if is_pending else str(event.get("id", row + 1)),
                 LAYER_NAMES.get(
                     str(label.get("layer", "")), str(label.get("layer", ""))
                 ),
                 str(label.get("name", f"#{label_index}")),
                 display_event_time(start),
-                "点" if end is None else display_event_time(float(end)),
+                (
+                    ""
+                    if is_pending
+                    else "点" if end is None else display_event_time(float(end))
+                ),
                 duration,
-                str(event.get("note", "")),
+                pending_note if is_pending else str(event.get("note", "")),
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
-                item.setData(256, int(event.get("id", row + 1)))
+                item.setData(256, row_id)
+                if is_pending:
+                    item.setBackground(QColor("#fff4d8"))
+                    if column in (0, 2, 6):
+                        item.setForeground(QColor("#a15c00"))
+                    item.setToolTip(
+                        t("该区间尚未结束；再次按标签快捷键结束，或按 Esc 取消")
+                    )
                 self.event_table.setItem(row, column, item)
-            if int(event.get("id", -1)) == self.selected_event_id:
+            if row_id == self.selected_event_id:
                 select_row = row
         if select_row >= 0:
             # Refreshing the table selects the current event for display only.
@@ -328,7 +370,11 @@ class AnnotationMixin:
             # mistaken for a user click and seek both timelines back to t0.
             self.event_table.selectRow(select_row)
         self.event_table.blockSignals(False)
-        self.event_count_label.setText(f"{len(self.events)} 条")
+        pending_count = len(self.pending_intervals)
+        count_text = f"{len(self.events)} {t('条')}"
+        if pending_count:
+            count_text += f" · {pending_count} {t('进行中')}"
+        self.event_count_label.setText(count_text)
         self.plot.set_events(self.labels, self.events)
         self._sync_plot_event_selection()
         self._refresh_enabled()
@@ -350,7 +396,22 @@ class AnnotationMixin:
         item = self.event_table.item(row, 0)
         if item is None:
             return
-        self.selected_event_id = int(item.data(256))
+        row_id = int(item.data(256))
+        if row_id < 0:
+            label_index = -row_id - 1
+            start = self.pending_intervals.get(label_index)
+            self.selected_event_id = row_id
+            self._sync_plot_event_selection()
+            if start is not None and 0 <= label_index < len(self.labels):
+                self.selected_label = label_index
+                self._set_visible_label(label_index)
+                self.set_playhead(float(start))
+                self.statusBar().showMessage(
+                    t("该区间尚未结束；再次按标签快捷键结束，或按 Esc 取消"),
+                    4000,
+                )
+            return
+        self.selected_event_id = row_id
         self._sync_plot_event_selection()
         event = next(
             (e for e in self.events if int(e["id"]) == self.selected_event_id),
@@ -401,9 +462,12 @@ class AnnotationMixin:
         self._autosave()
 
     def _event_double_clicked(self, row: int, _column: int) -> None:
-        if not (0 <= row < len(self.events)):
+        if not (0 <= row < self.event_table.rowCount()):
             return
         event_id = int(self.event_table.item(row, 0).data(256))
+        if event_id < 0:
+            self._event_selected()
+            return
         event = next(
             (e for e in self.events if int(e["id"]) == event_id), None
         )
@@ -423,6 +487,14 @@ class AnnotationMixin:
     def delete_selected_event(self) -> None:
         if self.selected_event_id is None:
             return
+        if self.selected_event_id < 0:
+            label_index = -self.selected_event_id - 1
+            removed = self.pending_intervals.pop(label_index, None)
+            self.selected_event_id = None
+            self._refresh_events()
+            if removed is not None:
+                self.statusBar().showMessage(t("已取消选中的待闭合区间"), 3000)
+            return
         self.events = [
             event
             for event in self.events
@@ -433,7 +505,7 @@ class AnnotationMixin:
         self._autosave()
 
     def clear_events(self) -> None:
-        if not self.events:
+        if not self.events and not self.pending_intervals:
             return
         if (
             QMessageBox.question(self, t("清空标注"), t("确定删除全部标注事件？"))

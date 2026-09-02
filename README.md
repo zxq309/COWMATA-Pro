@@ -7,7 +7,7 @@
 **Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v2.1.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.1.0)
+[![Release](https://img.shields.io/badge/release-v2.2.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.2.0)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -31,7 +31,7 @@ COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synch
 
 - **Video and IMU in one timeline** — seek, play, zoom, and inspect nine channels without switching applications.
 - **Alignment before annotation** — formal annotation remains locked until the video and sensor timelines are pinned.
-- **Protocol v4 built in** — 15 behaviour/calving labels plus a non-trainable synchronization anchor.
+- **Protocol v4 built in** — 16 behaviour/calving labels plus a non-trainable synchronization anchor.
 - **Human-controlled model assistance** — candidates enter a review queue and never become labels without confirmation.
 - **Traceable output** — stable machine codes, display labels, timestamps, provenance fields, and validation-aware exports.
 - **Bilingual UI** — English and Simplified Chinese affect display only; persisted label codes remain stable.
@@ -163,6 +163,7 @@ Project saves are written atomically so an interrupted write does not replace a 
 | `R` | Lying down | `LYING_DOWN` | Interval |
 | `A` | Urination | `URINATION` | Interval |
 | `S` | Defecation | `DEFECATION` | Interval |
+| `D` | Manual calving assistance | `MANUAL_CALVING_ASSISTANCE` | Interval |
 | `0` | Synchronization anchor | `SYNC_ANCHOR` | Point, non-trainable |
 
 ## Model-assisted review
@@ -214,7 +215,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-Version 2.1.0 shown above was integration-tested on Windows with Python 3.12.13, VLC 3.0.23, the real example pair, and the automated test suite. See [CHANGELOG.md](CHANGELOG.md) for release details.
+Version 2.2.0 is the current release. It passed the automated test suite and the release validation described in [CHANGELOG.md](CHANGELOG.md).
 
 ## Related repositories
 
