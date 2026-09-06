@@ -12,13 +12,25 @@
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [主工程算法仓库](https://github.com/zxq309/cowmata-tailring)
+[English](README.md) · [简体中文](README.zh-CN.md) · [行为与事件识别仓库](https://github.com/zxq309/cowmata-tailring)
 
 </div>
 
 ![COWMATA 牛尾环标注工具：同步显示牛舍视频与九轴 IMU 波形](assets/screenshots/annotator-overview.jpg)
 
 <p align="center"><sub>真实联调截图：59 分 59.859 秒、179,378 个采样点、50 Hz 九轴记录与奶牛视频同步加载；原始素材仅保留在本地，不上传 GitHub。</sub></p>
+
+## 在总体项目中的职责
+
+| 仓库 | 职责 |
+|---|---|
+| [cowmata](https://github.com/zxq309/cowmata) | 总体架构、路线图与组件版本 |
+| [cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | 行为与事件识别：训练、推理与评估 |
+| [cowmata-risk](https://github.com/zxq309/cowmata-risk) | 综合决策与产犊辅助证据（私有，需授权） |
+| [cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | 标注、候选复核与导出 |
+
+本仓保持独立标注工具职责；模型训练在识别仓，预警融合在决策仓。可标注标签集合可以大于模型训练集合，跨仓导出需显式核对协议与标签映射。
+
 
 ## 项目简介
 
@@ -176,7 +188,7 @@ cowmata-annotator --mode basic --lang zh `
 | `best.pt` | 可选 | `OfflineMultiTaskTCN`，负责站立、躺卧与行走 |
 | `inference_config.json` | 可选 | 对包外 JSON 提供传感器换算覆盖 |
 
-为保持模型文件兼容，`xgboost` 固定为 `3.2.0`。模型建议导入后状态为“待复核”，会保留原始类别、边界、得分及后续人工修改记录。完整契约见 [模型辅助标注文档](docs/model-assist.md)；当前训练与评估流程请以[主工程算法仓库](https://github.com/zxq309/cowmata-tailring)为准。
+为保持模型文件兼容，`xgboost` 固定为 `3.2.0`。模型建议导入后状态为“待复核”，会保留原始类别、边界、得分及后续人工修改记录。完整契约见 [模型辅助标注文档](docs/model-assist.md)；当前训练与评估流程请以[行为与事件识别仓库](https://github.com/zxq309/cowmata-tailring)为准。
 
 ## 输入、工程与导出
 

@@ -2,6 +2,10 @@
 
 All notable changes to COWMATA Tail-Ring Annotator are documented here.
 
+## Unreleased — 2026-09-07
+
+- Clarify the four-repository boundaries and add system/decision navigation in both READMEs.
+
 ## [2.2.0] — 2026-09-02
 
 ### Added

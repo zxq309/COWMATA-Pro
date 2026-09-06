@@ -20,6 +20,18 @@
 
 <p align="center"><sub>Real integration test: a 59 min 59.859 s, 179,378-sample, 50 Hz IMU record synchronized with cattle video. Source media stays local and is not committed.</sub></p>
 
+## Role in the COWMATA project
+
+| Repository | Responsibility |
+|---|---|
+| [cowmata](https://github.com/zxq309/cowmata) | System architecture, roadmap and component versions |
+| [cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | Behavior/event training, inference and evaluation |
+| [cowmata-risk](https://github.com/zxq309/cowmata-risk) | Risk decisions and calving evidence (private; authorized access) |
+| [cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | Annotation, candidate review and export |
+
+This remains an independent annotation application. Training belongs in the recognition repository and warning fusion belongs in the decision repository. Annotatable labels may exceed a model's supported classes; export adapters must explicitly check protocol and label mappings.
+
+
 ## Overview
 
 COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synchronized cattle video and continuous nine-axis tail-ring IMU data. It combines a shared timeline, protocol-v4 labels, safe project persistence, review tools, and research-ready exports in one interface.
