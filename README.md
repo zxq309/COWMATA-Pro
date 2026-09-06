@@ -1,6 +1,6 @@
 <div align="center">
 
-> **Windows offline app:** ordinary users download the Setup EXE or portable ZIP from
+> **Windows offline app:** ordinary users download the complete offline Setup EXE from
 > [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases).
 > No Python, pip, VLC, CUDA toolkit, or model setup is required. The automatically
 > generated **Source code.zip is not the runnable application**.
@@ -21,9 +21,9 @@
 
 </div>
 
-![COWMATA Tail-Ring Annotator showing synchronized barn video and nine-axis IMU waveforms](assets/screenshots/annotator-overview.jpg)
+[![Real running workstation: three cameras and IMU](assets/screenshots/workspace-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/01-multiview.mp4)
 
-<p align="center"><sub>Real integration test: a 59 min 59.859 s, 179,378-sample, 50 Hz IMU record synchronized with cattle video. Source media stays local and is not committed.</sub></p>
+<p align="center"><sub>Click to watch the real application. Three distinct surveillance scenes, a real IMU record and actual model inference; demo alignment and labels illustrate the workflow, not verified scientific ground truth.</sub></p>
 
 ## Overview
 
@@ -38,25 +38,17 @@ COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synch
 - **Traceable output** — stable machine codes, display labels, timestamps, provenance fields, and validation-aware exports.
 - **Bilingual UI** — English and Simplified Chinese affect display only; persisted label codes remain stable.
 
-## Annotation examples
+## Real application demos
 
-<table>
-  <tr>
-    <td width="50%" align="center">
-      <img src="assets/screenshots/annotation-interval-example.jpg" alt="Selected standing interval over real nine-axis waveforms"><br>
-      <strong>Interval boundary review</strong><br>
-      <sub>A selected interval is shaded across all nine channels, with draggable start/end boundaries and a traceable event-table row.</sub>
-    </td>
-    <td width="50%" align="center">
-      <img src="assets/screenshots/annotation-multilabel-example.jpg" alt="Overlapping protocol-v4 labels over real nine-axis waveforms"><br>
-      <strong>Multi-layer protocol-v4 annotation</strong><br>
-      <sub>Body state, tail action, posture transition, and a synchronization point coexist on one absolute timeline.</sub>
-    </td>
-  </tr>
-</table>
+Click a thumbnail to watch/download its short recording. These are native application captures, not design mockups. Videos are Release assets; raw recordings and IMU files are not committed to Git.
 
-> [!NOTE]
-> These two images use the real 50 Hz waveform renderer. Their labels and notes are illustrative UI fixtures, not scientific ground truth for the source recording. Reproduce them locally with `python scripts/capture_readme_screenshots.py <sensor.json>`.
+| Multiview and continuous playback | Actual model candidate review |
+| --- | --- |
+| [![A/B/C layouts, main view, precise pause and next recording](assets/screenshots/multiview-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/01-multiview.mp4) | [![Five-model inference and review queue](assets/screenshots/candidates-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/02-candidates.mp4) |
+| Label and single-file export | Independent snippet history |
+| [![Interval marking, explicit confirmation and traceable export](assets/screenshots/labels-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/03-label-export.mp4) | [![Reopen a snippet and locate its original video](assets/screenshots/history-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/04-history.mp4) |
+
+The isolated DEMO copies use illustrative alignment and labels, never field truth. Candidates require human review; low-rate auxiliary previews do not replace precise paused original frames. See [capture scope](docs/live-demos.md).
 
 ## Requirements
 

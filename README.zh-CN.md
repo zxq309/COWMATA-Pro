@@ -20,9 +20,9 @@
 
 </div>
 
-![COWMATA 牛尾环标注工具：同步显示牛舍视频与九轴 IMU 波形](assets/screenshots/annotator-overview.jpg)
+ [![新版工作台真实运行：三路监控与九轴](assets/screenshots/workspace-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/01-multiview.mp4)
 
-<p align="center"><sub>真实联调截图：59 分 59.859 秒、179,378 个采样点、50 Hz 九轴记录与奶牛视频同步加载；原始素材仅保留在本地，不上传 GitHub。</sub></p>
+<p align="center"><sub>点击图片看真实操作录屏。三个不同监控的真实画面、真实九轴和模型实际运行；演示工程的同步关系及标签仅用于展示操作，不是该牛已核实的科研真值。</sub></p>
 
 ## 项目简介
 
@@ -37,25 +37,17 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 - **可追溯输出** —— 稳定机器码、显示名称、绝对时间戳、来源字段与导出前结构校验。
 - **中英双语** —— 界面语言仅影响显示，不会改写落盘标签码或历史数据。
 
-## 标注示例
+## 真实操作小演示
 
-<table>
-  <tr>
-    <td width="50%" align="center">
-      <img src="assets/screenshots/annotation-interval-example.jpg" alt="真实九轴波形上的站立区间边界复核"><br>
-      <strong>区间边界复核</strong><br>
-      <sub>选中区间同步覆盖九个通道，起止边界可拖动调整，并在事件表中保留可追溯记录。</sub>
-    </td>
-    <td width="50%" align="center">
-      <img src="assets/screenshots/annotation-multilabel-example.jpg" alt="真实九轴波形上的多层 v4 标签"><br>
-      <strong>v4 多层标签示例</strong><br>
-      <sub>身体状态、尾部动作、姿态转换与同步点可以共存于同一绝对时间轴。</sub>
-    </td>
-  </tr>
-</table>
+点击缩略图观看或下载短视频。全部由实际 Windows 程序录屏，不是设计效果图；视频作为 Release 附件保存，不把原始数据提交到 Git。
 
-> [!NOTE]
-> 两图使用真实 50 Hz 波形渲染器；其中标签与备注仅为界面功能演示，不代表该原始记录的科研真值。可在本地用 `python scripts/capture_readme_screenshots.py <sensor.json>` 复现。
+| 多视角观察与连续播放 | 模型候选需人工复核 |
+| --- | --- |
+| [![切换 A/B/C、主视角、精确暂停与跨文件续播](assets/screenshots/multiview-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/01-multiview.mp4) | [![真实五类模型扫描及候选队列](assets/screenshots/candidates-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/02-candidates.mp4) |
+| 标注与单文件导出 | 历史片段独立回看 |
+| [![记录区间、确认、导出追溯文件](assets/screenshots/labels-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/03-label-export.mp4) | [![打开历史片段自动定位录像](assets/screenshots/history-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/04-history.mp4) |
+
+演示刻意使用标明 DEMO 的独立副本及示例同步关系。原始记录未被修改；候选不是真值，辅路低频预览也不能代替暂停后的原片精确帧。详见 [录屏范围与复现说明](docs/live-demos.md)。
 
 ## 环境要求
 

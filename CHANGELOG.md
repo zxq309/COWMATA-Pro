@@ -19,6 +19,7 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 
 ## [3.1.0rc1] — 2026-09-07
 
+- Replace the README's legacy examples with actual modern-workstation recordings: three-camera layouts/continuation, real five-model inference, traceable label export and independent history. Clearly mark demonstration alignment and labels as non-ground-truth; keep videos in Release assets, not Git source history.
 - Make the self-contained Setup.exe the primary end-user download: guided, per-user, offline installation with optional launch on completion. The compressed installer contains the complete private runtime, not an online bootstrapper.
 - Fix Python 3.10 SQLite corrupt-index recovery without misclassifying I/O or locking errors as corruption; preserve original recordings and human annotations.
 - Batch modern multiview geometry updates without replacing native video handles or changing the shared playhead.

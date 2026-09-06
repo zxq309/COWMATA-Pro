@@ -59,10 +59,10 @@ def main():
         runtime_ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "objects-*")
         shutil.copytree(source / name, destination / name,
                         ignore=runtime_ignore if name in {"runtime", "model_runtime_20260906"} else ignore)
-    for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
+    for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(source / name, destination / name)
     (destination / "docs").mkdir()
-    for name in ("workspace-acceptance.md", "portable-components.md", "algorithm-phase1-acceptance.md", "ui-next-stage-proposal.md", "ui-phase2-acceptance.md", "ui-performance-acceptance.md", "annotation-history-acceptance.md", "event-models-acceptance.md", "windows-distribution.md", "ocr-lightweight-integration.md"):
+    for name in ("workspace-acceptance.md", "portable-components.md", "algorithm-phase1-acceptance.md", "ui-next-stage-proposal.md", "ui-phase2-acceptance.md", "ui-performance-acceptance.md", "annotation-history-acceptance.md", "event-models-acceptance.md", "windows-distribution.md", "ocr-lightweight-integration.md", "live-demos.md"):
         shutil.copy2(source / "docs" / name, destination / "docs" / name)
     (destination / "scripts").mkdir()
     for name in ("portable_self_test.py", "build_portable.py", "verify_label_history.py", "verify_event_models.py", "verify_candidate_ui.py", "register_event_pack.py"):
