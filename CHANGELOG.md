@@ -2,6 +2,11 @@
 
 All notable changes to this repository are recorded here.
 
+## Unreleased — 2026-09-07
+
+- Clarify the four-repository boundaries and add system/decision navigation in both READMEs.
+- Normalize the model directory from a name with a trailing carriage return to `weights`, fixing Windows checkout and documented model paths; artifact bytes are unchanged.
+
 ## [0.3.1] - 2026-08-18
 
 - First real-data training run of the 20260819 baseline: MS-TCN++ 8-fold strict LOCO

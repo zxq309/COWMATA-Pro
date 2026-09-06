@@ -3,9 +3,9 @@
     <img src="assets/brand/cowmata-logo.svg" width="420" alt="COWMATA">
   </a>
 
-  <h1>COWMATA Tail-Sensor Intelligence</h1>
+  <h1>COWMATA Behavior & Event Recognition</h1>
 
-  <p><strong>Continuous cattle behavior and reproductive-event intelligence from tail-mounted multimodal sensing.</strong></p>
+  <p><strong>Continuous cattle posture, behavior and event recognition from tail-mounted sensing.</strong></p>
   <p>A research and engineering baseline for 50 Hz IMU processing, video-aligned annotation, cow-independent evaluation, event candidate mining, and production-oriented inference.</p>
 
   <p>
@@ -27,6 +27,18 @@
 
 > [!TIP]
 > Need to create or review synchronized video/IMU labels? Use the companion [COWMATA Tail-Ring Annotator](https://github.com/zxq309/cattle-tail-ring-annotator), which implements the protocol-v4 desktop annotation and human-review workflow used alongside this algorithm repository.
+
+## Role in the COWMATA project
+
+| Repository | Responsibility |
+|---|---|
+| [cowmata](https://github.com/zxq309/cowmata) | System architecture, roadmap and component versions |
+| [cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | Behavior/event training, inference and evaluation |
+| [cowmata-risk](https://github.com/zxq309/cowmata-risk) | Risk decisions and calving evidence (private; authorized access) |
+| [cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | Annotation, candidate review and export |
+
+This repository focuses on posture and event recognition. New reproductive and health-risk decisions belong in cowmata-risk. Existing `cowmata/daily.py` remains a legacy research interface; it has not been migrated or validated as online alerting. The overall product roadmap belongs in cowmata.
+
 
 ## Changelog
 

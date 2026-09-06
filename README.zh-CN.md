@@ -3,9 +3,9 @@
     <img src="assets/brand/cowmata-logo.svg" width="420" alt="COWMATA">
   </a>
 
-  <h1>COWMATA 尾环传感器智能</h1>
+  <h1>COWMATA 牛只行为与事件识别</h1>
 
-  <p><strong>基于尾端多模态传感的奶牛行为与繁殖事件连续智能分析。</strong></p>
+  <p><strong>基于尾环传感的奶牛姿态、行为与事件连续识别。</strong></p>
   <p>面向 50 Hz IMU 处理、视频对齐标注、跨奶牛独立评估、事件候选挖掘与生产级推理的研究与工程基线。</p>
 
   <p>
@@ -27,6 +27,18 @@
 
 > [!TIP]
 > 需要创建或复核视频—九轴同步标签时，请使用配套的 [COWMATA 牛尾环标注工具](https://github.com/zxq309/cattle-tail-ring-annotator)。该桌面工具实现 v4 标注协议与人工复核流程，并与本算法仓库直接配套。
+
+## 在总体项目中的职责
+
+| 仓库 | 职责 |
+|---|---|
+| [cowmata](https://github.com/zxq309/cowmata) | 总体架构、路线图与组件版本 |
+| [cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | 行为与事件识别：训练、推理与评估 |
+| [cowmata-risk](https://github.com/zxq309/cowmata-risk) | 综合决策与产犊辅助证据（私有，需授权） |
+| [cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | 标注、候选复核与导出 |
+
+本仓聚焦姿态和事件识别。新增产犊、发情、妊娠与健康风险决策在决策仓维护；现有 `cowmata/daily.py` 暂作历史研究接口保留，尚未迁移或验证为在线预警。总体产品愿景与路线图见总体仓。
+
 
 ## 更新记录
 
