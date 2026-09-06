@@ -10,8 +10,8 @@
 
 ### 2.1 新增：乐橙（Imou/Dahua）MPEG-PS 专用支持
 
-- 新增 [dahua_duration.py](cowmata_tailring/media/dahua_duration.py)（847 行）：内容级程序流扫描（HEVC 帧计数、关键帧位置、PES 时间戳），配合 ffprobe 包扫描与相邻文件 mtime 差三重交叉验证，产出真实时长与跳转索引。
-- 新增 [dahua_stream.py](cowmata_tailring/media/dahua_stream.py)（267 行）：时间戳归一化的回调式虚拟播放流，将乐橙文件中不可用的 DTS/PTS 现场修补为单调时钟，并以内置关键帧索引实现精确跳转。
+- 新增 [dahua_duration.py](../cowmata_tailring/media/dahua_duration.py)（847 行）：内容级程序流扫描（HEVC 帧计数、关键帧位置、PES 时间戳），配合 ffprobe 包扫描与相邻文件 mtime 差三重交叉验证，产出真实时长与跳转索引。
+- 新增 [dahua_stream.py](../cowmata_tailring/media/dahua_stream.py)（267 行）：时间戳归一化的回调式虚拟播放流，将乐橙文件中不可用的 DTS/PTS 现场修补为单调时钟，并以内置关键帧索引实现精确跳转。
 - **效果**：乐橙文件在 v2.1.0 下显示 VLC 的 662 s（或 0），现为正确的 2 010 000 ms（33.5 min），跳转落点误差 0 ms（真实窗口实测）。
 
 ### 2.2 修复：时长仲裁不再被拷贝破坏的 mtime 覆盖
@@ -31,7 +31,7 @@
 
 `08e532d`（标签 `fix/zero-video-placeholders-20260826`）
 
-- 新增 [video_file_health.py](cowmata_tailring/media/video_file_health.py)：空文件与首/中/尾三点抽样全零占位识别。
+- 新增 [video_file_health.py](../cowmata_tailring/media/video_file_health.py)：空文件与首/中/尾三点抽样全零占位识别。
 - 打开前拦截并提示"空占位文件，已阻止打开"；上一个/下一个视频导航自动跳过占位并提示跳过数量。
 - 实测：右1 的 mb00236~mb00260（25 个）、海康的 hiv00438~hiv00470（33 个）均被正确识别；正常文件不受影响。
 
@@ -39,7 +39,7 @@
 
 `eb3cdeb`（标签 `fix/dahua-segment-clock-20260826`）
 
-- 新增 [dahua_segment_clock.py](cowmata_tailring/media/dahua_segment_clock.py)：已钉住状态下切换相邻乐橙文件时，用"与内容时长互相印证"的 mtime 差计算新片段的精确墙钟起点（`align_method = "segment_clock"`），九轴定位到新文件真实起点；校验不通过自动回退旧的"冻结当前位置"逻辑。
+- 新增 [dahua_segment_clock.py](../cowmata_tailring/media/dahua_segment_clock.py)：已钉住状态下切换相邻乐橙文件时，用"与内容时长互相印证"的 mtime 差计算新片段的精确墙钟起点（`align_method = "segment_clock"`），九轴定位到新文件真实起点；校验不通过自动回退旧的"冻结当前位置"逻辑。
 - 实测：imou00024→00025 前向差值 = 1 988 000 ms，与文件 24 内容时长 0.0% 偏差。
 
 ### 2.6 修复：乐橙回调媒体交接的稳定性
@@ -51,7 +51,7 @@
 
 ### 2.7 修复：海康未校验时长的隔离（本次最新改动）
 
-`21d9c2c`（标签 `fix/hikvision-duration-gate-20260826`，详见 [change-records/20260826-08-hikvision-duration-validation-gate.md](docs/change-records/20260826-08-hikvision-duration-validation-gate.md)）
+`21d9c2c`（标签 `fix/hikvision-duration-gate-20260826`，详见 [change-records/20260826-08-hikvision-duration-validation-gate.md](../docs/change-records/20260826-08-hikvision-duration-validation-gate.md)）
 
 - 问题现象：切换海康文件时进度条右侧短暂显示 08:33:41 之类的原始值，约半秒后跳回 00:19:15 真实值；扫描失败时垃圾值永久保留。
 - 修改：非 Dahua 的 MPEG-PS 文件打开后进入"时长未校验"状态——公开时长固定为 0、`is_seekable()` 为 False、内部同步定位排队；校验成功后一次性发布校正时长；**校验失败时冻结**（暂停、清除待执行跳转、拒绝播放与跳转、状态栏持久提示），不再回退不可信时长；后台线程捕获全部异常，杜绝"永远停在正在校验"。
@@ -71,7 +71,7 @@
 | 时长交叉验证 | 乐橙 2 010 000 ms（帧扫描与 mtime 双源印证）、右1 1 169 317 ms、海康 958 364 ms / 1 155 872 ms（按文件） |
 | 九轴钉住方程 | 不依赖时长，钉住操作数值自洽（详见审计文档） |
 
-> 注意：原审计文档 [video-playback-compatibility-audit.md](docs/video-playback-compatibility-audit.md) 第 3 节的"每次拖动卡 8 秒、落点偏 2~3 秒"结论是在 headless 引擎（`--vout=dummy`）下测得的假象，真实窗口复测已推翻，未做代码修改。请以 [playback-remediation-status.md](docs/change-records/20260826-07-playback-remediation-status.md) 与本文为准。
+> 注意：原审计文档 [video-playback-compatibility-audit.md](../docs/video-playback-compatibility-audit.md) 第 3 节的"每次拖动卡 8 秒、落点偏 2~3 秒"结论是在 headless 引擎（`--vout=dummy`）下测得的假象，真实窗口复测已推翻，未做代码修改。请以 [playback-remediation-status.md](../docs/change-records/20260826-07-playback-remediation-status.md) 与本文为准。
 
 ## 4. 已知限制（沿用至本版本）
 

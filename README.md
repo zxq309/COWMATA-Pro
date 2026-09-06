@@ -20,6 +20,10 @@
 
 <p align="center"><sub>Real integration test: a 59 min 59.859 s, 179,378-sample, 50 Hz IMU record synchronized with cattle video. Source media stays local and is not committed.</sub></p>
 
+## Latest update
+
+**2026-09-07** — Clarified four-repository navigation and synchronized bilingual update summaries. Latest software release remains v2.2.0 (2026-09-02); desktop behavior and model interfaces are unchanged by this documentation maintenance. [Full changelog](CHANGELOG.md).
+
 ## Role in the COWMATA project
 
 | Repository | Responsibility |

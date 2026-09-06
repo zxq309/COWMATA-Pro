@@ -31,3 +31,7 @@ Do not commit real farm videos, raw sensor exports, model weights, generated cac
 ## Bug reports
 
 Include the operating system, Python version, VLC version, launch command, traceback or log excerpt, and minimal reproduction steps. Do not include confidential recordings or credentials.
+
+## Documentation maintenance dates
+
+Update CHANGELOG.md and both README latest-update summaries together for user-visible changes. Date maintenance separately from tagged software releases; retain historical release dates unless primary release evidence supports a correction.

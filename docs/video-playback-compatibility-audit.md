@@ -31,7 +31,7 @@
 
 | 目录 | 视频编码 | 厂商标记 | 处理分支 | ffprobe 自报时长 | 工具实际得出 |
 |---|---|---|---|---|---|
-| 乐橙 | HEVC 2560×1440，~15 fps | `DHAV` / `DHES` | Dahua 探测（[safe_engine.py:203](cowmata_tailring/media/safe_engine.py:203)） | 662 s（**短 3 倍**） | **2 010 000 ms**（33.5 min）✓ |
+| 乐橙 | HEVC 2560×1440，~15 fps | `DHAV` / `DHES` | Dahua 探测（[safe_engine.py:203](../cowmata_tailring/media/safe_engine.py#L203)） | 662 s（**短 3 倍**） | **2 010 000 ms**（33.5 min）✓ |
 | 右1 | H.264 1920×1080，15 fps，无音轨 | `[dsp]` / `bc7`，无 DHAV | 时间轴探测 | **N/A** | **1 169 317 ms**（19.5 min）✓ |
 | 海康 | HEVC 2560×1440，~12.5 fps，pcm_alaw 音频 | `HK` / `GEND` | 时间轴探测 | 958 s | **958 364 ms**（16.0 min）✓ |
 
@@ -43,7 +43,7 @@
 
 ### 关键事实：VLC 对三种格式时长全部报 0
 
-所有正确时长均来自探测子系统。乐橙分支为 `if dahua … elif force_avformat …`（[safe_engine.py:203-206](cowmata_tailring/media/safe_engine.py:203)），因此乐橙**没有任何后备探测**：Dahua 探测一旦失败，直接退回 VLC 的 0 / 662 s。
+所有正确时长均来自探测子系统。乐橙分支为 `if dahua … elif force_avformat …`（[safe_engine.py:203-206](../cowmata_tailring/media/safe_engine.py#L203)），因此乐橙**没有任何后备探测**：Dahua 探测一旦失败，直接退回 VLC 的 0 / 662 s。
 
 ---
 
@@ -51,8 +51,8 @@
 
 工具内存在两套互相矛盾的跳转确认逻辑：
 
-- [seek_confirmation.py:63-90](cowmata_tailring/media/mixins/seek_confirmation.py:63)：走引擎的 seek barrier，对长 GOP 宽容（MRO 第 19 层）；
-- [dual_anchor_precision.py:849-862](cowmata_tailring/media/mixins/dual_anchor_precision.py:849)：在**未钉住的校准模式**下用 [`SEEK_CONFIRM_TOLERANCE_MS = 50.0`](cowmata_tailring/app/mixins/release_hardening.py:17) 硬判，不满足即 `return`，**不调用 super**（MRO 第 2 层，先执行）。
+- [seek_confirmation.py:63-90](../cowmata_tailring/media/mixins/seek_confirmation.py#L63)：走引擎的 seek barrier，对长 GOP 宽容（MRO 第 19 层）；
+- [dual_anchor_precision.py:849-862](../cowmata_tailring/media/mixins/dual_anchor_precision.py#L849)：在**未钉住的校准模式**下用 [`SEEK_CONFIRM_TOLERANCE_MS = 50.0`](../cowmata_tailring/app/mixins/release_hardening.py#L17) 硬判，不满足即 `return`，**不调用 super**（MRO 第 2 层，先执行）。
 
 宽容的那套在校准模式下被完全绕过——而校准模式正是用户要"钉住"的时候。
 
@@ -79,7 +79,7 @@ mb            8     2831      2854      2882      0/8      0/8
 
 1. 松手后画面、视频时钟、进度条**都不动**，持续约 8 秒；
 2. 状态栏弹出 **"视频定位超时，将按播放器实际位置配对"**；
-3. 这 8 秒里点"钉住"被挡住，提示 **"视频定位仍在确认，请等待画面到位后再点击钉住"**（[dual_anchor_precision.py:1093](cowmata_tailring/media/mixins/dual_anchor_precision.py:1093)）；
+3. 这 8 秒里点"钉住"被挡住，提示 **"视频定位仍在确认，请等待画面到位后再点击钉住"**（[dual_anchor_precision.py:1093](../cowmata_tailring/media/mixins/dual_anchor_precision.py#L1093)）；
 4. 8 秒后画面跳到实际位置——**比点击位置靠后 2~3 秒**。
 
 即：**每次想钉住前至少浪费 8 秒，且钉的帧不是点的位置。**
@@ -98,7 +98,7 @@ mb            8     2831      2854      2882      0/8      0/8
 
 当前乐橙文件的 mtime 完好（相邻文件差 2010 秒），故显示 33.5 分钟正确。但该结果**依赖拷贝不破坏 mtime**——右1、海康目录的 mtime 已被拷贝抹平成全部相同（右1 全是 08:24:42，海康全是 16:07:12），说明这套工作流确实会动 mtime。
 
-[时长仲裁](cowmata_tailring/media/dahua_duration.py:507)存在反向的安全判断：当 `packet_duration > adjacent + tolerance` 时会**丢弃完整帧扫描结果、改用 mtime 差**。实测（真实帧数 30 177 × 66.667 ms，真值 2010 s）：
+[时长仲裁](../cowmata_tailring/media/dahua_duration.py#L507)存在反向的安全判断：当 `packet_duration > adjacent + tolerance` 时会**丢弃完整帧扫描结果、改用 mtime 差**。实测（真实帧数 30 177 × 66.667 ms，真值 2010 s）：
 
 ```
 相邻 mtime 差                  仲裁后时长        判定
@@ -121,7 +121,7 @@ mb            8     2831      2854      2882      0/8      0/8
 右1 目录有 **25 个**、海康目录有 **33 个** 256 MiB 全零占位文件，另有 7 个 hiv 文件头部损坏（ffprobe 报 `moov atom not found`）。打开它们：
 
 - 黑屏，点播放无反应（时长为 0，播放被内部守卫挡住）；
-- 进度条不可点（[video_timeline.py:73](cowmata_tailring/ui/video_timeline.py:73) 要求时长 > 0）；
+- 进度条不可点（[video_timeline.py:73](../cowmata_tailring/ui/video_timeline.py#L73) 要求时长 > 0）；
 - 文件列表无任何标记区分真录像与空占位，只能逐个试错。
 
 ### 4.5 首次打开文件的 0.5~1.2 秒不能播放（可忽略）
@@ -134,7 +134,7 @@ mb            8     2831      2854      2882      0/8      0/8
 
 设计总体合理：
 
-- 钉住方程 `video_start_wall_ms = data_create_time_ms + data_ms - video_ms`（[dual_anchor_precision.py:924](cowmata_tailring/media/mixins/dual_anchor_precision.py:924)）**不依赖时长**，时长只进入共同覆盖区间的上界 `min(media_duration, …)`（[production_safety.py:296](cowmata_tailring/app/mixins/production_safety.py:296)）。时长错了会截断可达范围、让九轴游标提前停住，但不会污染已保存的对齐值。
+- 钉住方程 `video_start_wall_ms = data_create_time_ms + data_ms - video_ms`（[dual_anchor_precision.py:924](../cowmata_tailring/media/mixins/dual_anchor_precision.py#L924)）**不依赖时长**，时长只进入共同覆盖区间的上界 `min(media_duration, …)`（[production_safety.py:296](../cowmata_tailring/app/mixins/production_safety.py#L296)）。时长错了会截断可达范围、让九轴游标提前停住，但不会污染已保存的对齐值。
 - 8 秒超时后待配对的视频锚点会刷新为实际落点，数值上自洽（见 4.1/4.2 的直观代价）。
 - 乐橙的 60 秒虚拟分段串流实测跨界播放：25.0 秒墙钟内时钟推进 25.4 秒，0 次回跳，跨 60 000 ms 边界无缝。
 - **设计局限**：跨文件切换用 continuation 策略——把新片段起点直接设为当前九轴游标位置，假设用户正好停在上一段末尾。乐橙的 mtime 差恰好等于各文件时长，本可计算每段精确的绝对起点，但代码未利用，因此每次切段积累漂移，需重新钉住。
@@ -145,8 +145,8 @@ mb            8     2831      2854      2882      0/8      0/8
 
 | 事项 | 说明 |
 |---|---|
-| VLC 发现路径 | [engine.py:159-168](cowmata_tailring/media/engine.py:159) 硬编码 `F:\Applications\VLC`（F: 正是数据盘）；本机靠 `VLC_HOME` 才找到 `D:\VideoLAN\VLC`。换机器/盘符即启动失败 |
-| seekCommitted 信号 | `production_safety` 与 `dual_anchor_precision` 均连接了该信号，看似重复，但前者连接的是随后被替换的旧控件（[dual_anchor_precision.py:94](cowmata_tailring/media/mixins/dual_anchor_precision.py:94)），实际不会重复触发 |
+| VLC 发现路径 | [engine.py:159-168](../cowmata_tailring/media/engine.py#L159) 硬编码 `F:\Applications\VLC`（F: 正是数据盘）；本机靠 `VLC_HOME` 才找到 `D:\VideoLAN\VLC`。换机器/盘符即启动失败 |
+| seekCommitted 信号 | `production_safety` 与 `dual_anchor_precision` 均连接了该信号，看似重复，但前者连接的是随后被替换的旧控件（[dual_anchor_precision.py:94](../cowmata_tailring/media/mixins/dual_anchor_precision.py#L94)），实际不会重复触发 |
 | 乐橙拖动期间 | 拖动过程延迟到松手才跳转（`defers_timeline_seek_while_dragging`），拖动时无画面预览，属设计取舍 |
 | 海康尾部碎片 | 20 个采样文件中有 11 个存在 8~17 小时 PTS 跳变 + 尾部碎片（raw 30 000~61 000 s，实际内容 950~5 400 s），`has_ignored_trailing_tail` 抑制逻辑工作正常 |
 | 探测性能 | ffprobe 全包扫描约 1 秒，远低于 120 秒超时；F: 盘顺序读约 3.2 GiB/s |

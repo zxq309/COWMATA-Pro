@@ -2,7 +2,13 @@
 
 All notable changes to COWMATA Tail-Ring Annotator are documented here.
 
-## Unreleased — 2026-09-07
+## Documentation presentation — 2026-09-07
+
+- Added dated latest-update summaries to both READMEs so main-branch maintenance is visible alongside the latest software release.
+- Repaired relative source-document links in historical update notes and the playback audit without rewriting their historical dates.
+
+
+## Main-branch maintenance — 2026-09-07
 
 - Clarify the four-repository boundaries and add system/decision navigation in both READMEs.
 
