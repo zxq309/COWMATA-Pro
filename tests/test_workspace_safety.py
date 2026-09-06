@@ -154,6 +154,46 @@ def test_corrupt_index_quarantined_without_losing_human_work(tmp_path):
         restored.close()
 
 
+@pytest.mark.parametrize("message, recover", [("file is not a database", True),
+                                             ("database disk image is malformed", True),
+                                             ("disk I/O error", False), ("database is locked", False)])
+def test_legacy_sqlite_error_without_result_code(tmp_path, monkeypatch, message, recover):
+    import sqlite3
+
+    from cowmata_tailring.workspace import catalog as module
+    catalog = seed(tmp_path)
+    index = catalog.meta / "index.sqlite"
+    catalog.close()
+    before = index.read_bytes()
+    connect = sqlite3.connect
+
+    class FailedConnection:
+        def execute(self, *_):
+            raise sqlite3.DatabaseError(message)
+
+        def close(self):
+            pass
+
+    calls = []
+
+    def legacy_connect(*args, **kwargs):
+        calls.append(True)
+        return FailedConnection() if len(calls) == 1 else connect(*args, **kwargs)
+
+    monkeypatch.setattr(module.sqlite3, "connect", legacy_connect)
+    if recover:
+        restored = Catalog(tmp_path)
+        try:
+            assert restored.recovered_index.read_bytes() == before
+        finally:
+            restored.close()
+    else:
+        with pytest.raises(RuntimeError, match=message):
+            Catalog(tmp_path)
+        assert index.read_bytes() == before
+        assert not list(index.parent.glob("index.corrupt.*"))
+
+
 def test_window_confirm_export_revision_gate_and_reopen(tmp_path, app, monkeypatch):
     catalog = seed(tmp_path)
     window = MainWindow()

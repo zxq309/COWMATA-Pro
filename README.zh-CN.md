@@ -1,7 +1,7 @@
 <div align="center">
 
 > **普通用户直接使用离线 EXE：** 到 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
-> 下载 Setup.exe 或完整便携 ZIP，无须配置 Python、pip、VLC、CUDA 工具包或模型。
+> 下载完整离线安装版 **Setup.exe**，按向导安装，无须配置 Python、pip、VLC、CUDA 工具包或模型。
 > GitHub 自动生成的 **Source code.zip 是源码，不是可直接运行的软件包**。
 
 <img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300">
@@ -69,7 +69,7 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 
 ### Windows 一键启动
 
-下载安装版 `COWMATA-...-Setup.exe`，安装后在开始菜单打开 COWMATA；或完整解压 `COWMATA-...-Windows-x64.zip`，双击 `COWMATA.exe`。不要在 ZIP 内直接运行，不要只拷贝一个 EXE。BAT 备用入口保留，但不再安装任何依赖。
+下载完整离线安装版 `COWMATA-...-Setup.exe` → 阅读许可 → 选择新的空软件目录 → 安装 → 启动。以后从开始菜单打开 COWMATA，选择数据工程即可。整个过程不要求联网或配置依赖。便携 ZIP 若提供，仅作备用，不必重复下载。BAT 备用入口保留，但不再安装任何依赖。
 
 新版包含 A/B/C 布局、1–8 路可选视角、GPU 播放、跨小录像续接、原片精确帧回看、离线 RapidOCR PP-OCRv6 medium、20260906 五类版本化候选模型、带完整九轴的单文件标注及独立历史回看。模型结果只是候选，不能自动当作录像真值。操作见 [使用说明](使用说明.txt)。
 

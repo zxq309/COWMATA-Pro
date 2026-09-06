@@ -19,6 +19,10 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 
 ## [3.1.0rc1] — 2026-09-07
 
+- Make the self-contained Setup.exe the primary end-user download: guided, per-user, offline installation with optional launch on completion. The compressed installer contains the complete private runtime, not an online bootstrapper.
+- Fix Python 3.10 SQLite corrupt-index recovery without misclassifying I/O or locking errors as corruption; preserve original recordings and human annotations.
+- Batch modern multiview geometry updates without replacing native video handles or changing the shared playhead.
+- Keep restored or jumped IMU positions visible in the waveform while preserving the user's zoom; recenter only when the playhead leaves the current view.
 - Offline Windows executable launcher and per-user installer; source-only Git layout and separate Release binary assets. No first-run pip, system Python or CUDA toolkit setup.
 - Full original IMU JSON bytes accompany a single annotation export; original identity, parent offsets, calibration versions, video index clues and model provenance remain traceable.
 - Five reviewed 20260906 event CLI models use a bundled, isolated compatible runtime. Human review is mandatory; empty predictions and quality rejection never create negative truth.

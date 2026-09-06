@@ -96,8 +96,13 @@ class Catalog:
                 raise sqlite3.DatabaseError("Index integrity check failed")
         except sqlite3.DatabaseError as exc:
             self.db.close()
-            code = getattr(exc, "sqlite_errorcode", sqlite3.SQLITE_CORRUPT) & 255
-            if self.readonly or code not in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}:
+            # Python 3.10 exposes neither result-code constants nor errorcode.
+            # SQLite's primary CORRUPT / NOTADB codes are 11 / 26. In the older
+            # API, accept only its known corruption messages, never I/O/locks.
+            code = getattr(exc, "sqlite_errorcode", None)
+            corrupt = (code & 255 in {11, 26}) if code is not None else str(exc) in {
+                "file is not a database", "database disk image is malformed", "Index integrity check failed"}
+            if self.readonly or not corrupt:
                 self.lock.close()
                 raise RuntimeError(str(exc)) from exc
             # Quarantine only the rebuildable index. Human work and original

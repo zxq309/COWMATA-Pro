@@ -70,7 +70,7 @@ The source and pure logic tests also run outside Windows, but native playback an
 
 ### One-click Windows launch
 
-Download `COWMATA-...-Setup.exe`, install into a new application directory, then launch COWMATA from the Start menu. Alternatively, fully extract `COWMATA-...-Windows-x64.zip` and run `COWMATA.exe`. Do not run inside the ZIP. Keep all runtime/vendor folders together. `START_ANNOTATOR.bat` remains a fallback and does not install anything.
+Download the complete offline **`COWMATA-...-Setup.exe`** → review the license → choose a new, empty application directory → install → launch. Thereafter, use the Start menu and open your data project. The installer includes all private runtimes and models; it is not an online bootstrapper. A portable ZIP, if provided, is only an alternative; do not download both. `START_ANNOTATOR.bat` remains an offline fallback.
 
 The application provides A/B/C layouts, 1–8 selectable views, GPU playback, cross-file continuation, exact original-frame review, offline RapidOCR PP-OCRv6 medium, five versioned 20260906 candidate models, self-contained IMU annotation export, and independent history review. Predictions are candidates, never automatic ground truth. See [usage](使用说明.txt).
 

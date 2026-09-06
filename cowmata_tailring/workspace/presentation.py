@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtCore import QPoint, Qt, QTimer, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QScrollBar, QVBoxLayout, QWidget
 
 from .adaptive_playback import AdaptiveVideoBoard
@@ -41,6 +41,24 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         self.relayout()
 
     def relayout(self):
+        if getattr(self, "_laying_out", False):
+            self._layout_pending = True
+            return
+        if getattr(self, "_closing", False):
+            return
+        self._laying_out = True
+        self._layout_pending = False
+        updates = self.updatesEnabled()
+        self.setUpdatesEnabled(False)
+        try:
+            self._relayout_geometry()
+        finally:
+            self.setUpdatesEnabled(updates)
+            self._laying_out = False
+        if self._layout_pending:
+            QTimer.singleShot(0, self.relayout)
+
+    def _relayout_geometry(self):
         if not hasattr(self, "aux_scroll"):
             return
         while self.grid.count():

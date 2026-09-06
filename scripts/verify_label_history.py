@@ -39,6 +39,8 @@ def main():
     if settings.get("fixture") is not True:
         raise ValueError("Only an explicitly marked isolated fixture is permitted")
     work = SessionWork.from_dict(json.loads((root / META_DIR / "annotations" / (settings["current_asset"] + ".json")).read_text(encoding="utf-8")))
+    if not work.clock.anchors or not {f"CAM{i:02d}" for i in range(1, 9)}.issubset({r["metadata"].get("camera") for r in rows if r["kind"] == "video"}):
+        raise ValueError("This native stress test requires the calibrated stress_multiview fixture (CAM01–CAM08), not an uncalibrated source project")
     row = next(r for r in rows if r["kind"] == "imu" and r["asset_id"] == work.asset_id)
     motion = load_motion_json(root / row["path"])
     # These synthetic annotations test coordinates and MUST NOT enter datasets.

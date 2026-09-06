@@ -2,7 +2,9 @@
 
 ## 普通用户
 
-从本仓库 Releases 下载安装版 `COWMATA-3.1.0-rc.1-Setup.exe`，或者免安装版 `COWMATA-3.1.0-rc.1-Windows-x64.zip`。前者只在安装时解压一次；后者完整解压后运行 `COWMATA.exe`。不需要 Python、pip、VLC 或 CUDA 工具包。完整应用目录约 2 GB，实际压缩体积以 Release 附件为准。
+从本仓库 Releases 下载完整离线安装版 `COWMATA-3.1.0-rc.1-Setup.exe`。这是主推的普通用户下载入口，不是联网安装器；Python、Qt、VLC、FFmpeg、OCR 和事件模型运行环境都已包含。安装时解压一次，完整应用目录约 2 GB，实际压缩体积以 Release 附件为准。不需要另配 Python、pip、VLC 或 CUDA 工具包。
+
+安装步骤：双击 Setup.exe → 阅读许可 → 选择新的空软件目录 → 安装 → 完成页勾选启动。以后从 Windows 开始菜单启动。工程数据放在软件目录之外，打开工程即可使用。便携 ZIP 如随版本提供，仅供免安装使用或维护者备用，不需要与安装版重复下载。
 
 `COWMATA.exe` 是 Windows 启动程序，调用相邻的私有 Python/Qt 运行库；不是把几 GB 内容每次重新解压的单文件 Python 程序。不要只复制 EXE。Windows 10/11 自带的 .NET Framework 4.x 用于小型启动器，主界面仍在包内 Python 3.13 上运行。
 
@@ -18,10 +20,10 @@ Git 只跟踪应用/算法源代码、测试、文档、模型配置/身份清�
 
 ## 完整离线源码运行
 
-1. 克隆源码并切换到与便携 ZIP 相同的 tag。
-2. 下载该 tag 的完整便携 ZIP 和 `.zip.sha256`，在本地核对 SHA-256 后解压到另一个空目录。
-3. 将便携包中的 `runtime/`、`model_runtime_20260906/`、`vendor/` 复制到源码根目录；不要覆盖现有开发环境。
-4. 将便携包 `assets/ocr/ppocrv6_medium/` 中的 `.onnx` 文件，以及 `assets/event_models/20260906/` 下的 `.pkl/.joblib` 权重，按原相对位置放入源码。清单/模型代码使用相同 tag，不混合不同版本。
+1. 克隆源码并切换到与离线安装版相同的 tag。
+2. 下载该 tag 的 Setup.exe 和 `.exe.sha256`，核对 SHA-256 后安装到一个新目录；若该版本提供便携 ZIP，也可完整解压。
+3. 将安装/解压目录中的 `runtime/`、`model_runtime_20260906/`、`vendor/` 复制到源码根目录；不要覆盖现有开发环境。
+4. 将安装/解压目录 `assets/ocr/ppocrv6_medium/` 中的 `.onnx` 文件，以及 `assets/event_models/20260906/` 下的 `.pkl/.joblib` 权重，按原相对位置放入源码。清单/模型代码使用相同 tag，不混合不同版本。
 5. 在源码根目录运行 `runtime\python.exe portable_start.py`。运行库不会进入 Git 提交。
 
 若只修改纯 Python 逻辑，也可用自己的 Python 3.10+：`python -m venv .venv`，再用该环境 `python -m pip install -e ".[dev,ocr]"`。原生播放还需要上述私有 VLC/FFmpeg；离线 OCR 权重及事件旧运行库仍须匹配。旧 `[model]` 可选依赖仅对应旧单视频模型辅助入口，不替代五类新候选包。
@@ -33,7 +35,7 @@ Git 只跟踪应用/算法源代码、测试、文档、模型配置/身份清�
 1. 准备上述运行库与权重，固定版本见 `requirements-portable.txt`、`requirements-events-20260906.txt`。不修改模型原代码/文件 hash。
 2. 用开发环境运行全量 `pytest`、`ruff check cowmata_tailring tests`，并用私有运行库做实际原片/模型/多路压力测试。
 3. `powershell -File scripts/build_launcher.ps1` 生成根目录 `COWMATA.exe`；编译器是 Windows 自带 Framework64 的 csc，已有输出时拒绝覆盖。
-4. `python scripts/build_portable.py --out <全新输出目录>` 生成便携文件夹、ZIP、清单和 SHA-256。
+4. `python scripts/build_portable.py --out <全新输出目录> --no-zip` 生成干净安装载荷和文件哈希清单；需要便携 ZIP 时去掉 `--no-zip`。
 5. 使用 NSIS 3.12 便携编译器：`python scripts/build_installer.py --package <便携目录> --compiler <makensis.exe> --version 3.1.0-rc.1 --out <全新Setup.exe>`。
 6. 核验复制包的离线自检、EXE/BAT 原生启动、八路播放/历史回看、安装及卸载保留用户文件，再发布。源码测试不替代包内测试；未过门槛不得发布为稳定版。
 

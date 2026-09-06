@@ -100,6 +100,27 @@ def test_main_width_control_relayouts_without_seek(window, app):
     assert abs(window.board.tiles["A"].width() / window.board.width() - .60) < .02
 
 
+def test_layout_batches_updates_and_restores_disabled_state(window, monkeypatch):
+    board = window.board
+    observed = []
+    monkeypatch.setattr(board, "_relayout_geometry", lambda: observed.append(board.updatesEnabled()))
+    board.relayout()
+    assert observed == [False] and board.updatesEnabled()
+    board.setUpdatesEnabled(False)
+    board.relayout()
+    assert not board.updatesEnabled()
+    board.setUpdatesEnabled(True)
+
+
+def test_layout_exception_restores_updates_and_reentry_guard(window, monkeypatch):
+    def fail():
+        raise ValueError("layout test")
+    monkeypatch.setattr(window.board, "_relayout_geometry", fail)
+    with pytest.raises(ValueError, match="layout test"):
+        window.board.relayout()
+    assert window.board.updatesEnabled() and not window.board._laying_out
+
+
 def test_pip_enlarge_really_opens_main_view_without_reload(window):
     window.board.select(["A", "B"])
     before = window.board.generation
@@ -183,4 +204,22 @@ def test_many_events_scroll_without_squeezing_waveform(app):
     assert panel.track.height() == 20 * 26
     assert panel.scroll.height() <= 56
     assert len(panel.wave._events) == 20
+    panel.close()
+
+
+def test_playhead_follows_restored_position_without_changing_zoom_or_samples(app):
+    panel = SignalPanel()
+    times = np.arange(0, 600001, 20, dtype=float)
+    values = np.sin(times / 1000)
+    panel.set_data([PlotSeries("ax", "AX", "g", "#159c8d", times, values)], 600000)
+    panel.set_view(0, 120000)
+    panel.set_playhead(490000)
+    lo, hi = panel.view_range
+    assert lo <= 490000 <= hi and hi - lo == 120000
+    panel.set_playhead(491000)
+    assert panel.view_range == (lo, hi)
+    panel.set_playhead(599999)
+    assert panel.view_range[1] == 600000
+    assert np.array_equal(times, np.arange(0, 600001, 20, dtype=float))
+    assert np.array_equal(values, np.sin(times / 1000))
     panel.close()

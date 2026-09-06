@@ -22,6 +22,8 @@ VIAddVersionKey "LegalCopyright" "COWMATA contributors"
 !insertmacro MUI_PAGE_LICENSE "${PACKAGE}\LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_FINISHPAGE_RUN "$INSTDIR\COWMATA.exe"
+!define MUI_FINISHPAGE_RUN_TEXT "启动 COWMATA / Launch COWMATA"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -29,6 +31,7 @@ VIAddVersionKey "LegalCopyright" "COWMATA contributors"
 !insertmacro MUI_LANGUAGE "English"
 
 Function .onInit
+  SetShellVarContext current
   ${IfNot} ${RunningX64}
     MessageBox MB_ICONSTOP "COWMATA requires Windows 10/11 x64."
     Abort

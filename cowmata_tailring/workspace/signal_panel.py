@@ -304,6 +304,9 @@ class SignalPanel(QWidget):
 
     def set_playhead(self, when):
         self.wave.set_playhead(when)
+        # Restored sessions, typed positions and long playback must keep the
+        # current sample visible. Preserve zoom and avoid recentering each frame.
+        self.wave.center_on(self.wave._playhead_ms)
         self.track.update()
 
     def set_selected_event(self, identifier):
