@@ -1,5 +1,5 @@
 <div align="center">
-<a href="https://www.cowmata.com/"><img src="assets/brand/cowmata-logo.svg" width="360" alt="COWMATA"></a>
+<img src="assets/brand/cowmata-logo.svg" width="360" alt="COWMATA">
 
 # COWMATA · Behavior & Event Recognition
 
@@ -9,19 +9,15 @@
 ![Documentation updated](https://img.shields.io/badge/docs-2026--09--07-0A7EA4)
 ![Scope](https://img.shields.io/badge/COWMATA-project-92C142)
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [COWMATA](https://github.com/zxq309/cowmata)
+[English](README.md) · [简体中文](README.zh-CN.md) · [Project overview](https://github.com/zxq309/cowmata)
 
 </div>
 
 ![Recognition pipeline](assets/figures/recognition-en.svg)
 
-## Latest update
-
-**2026-09-07** — Focused recognition documentation and bilingual pipeline diagrams; overall product imagery moved to [cowmata](https://github.com/zxq309/cowmata). Windows model-path repair retained. [Full changelog](CHANGELOG.md). Latest tagged software: [v0.3.1](https://github.com/zxq309/cowmata-tailring/releases/tag/v0.3.1); this documentation update does not retrain models.
-
 ## Scope and outputs
 
-This repository owns continuous behavior recognition: preprocessing, feature/model training, inference, event assembly and cow-independent evaluation. Reproductive/health decisions belong in [cowmata-risk](https://github.com/zxq309/cowmata-risk); the product roadmap belongs in [cowmata](https://github.com/zxq309/cowmata).
+Train and run continuous IMU behavior models: preprocessing, feature extraction, temporal inference, event assembly and cow-independent evaluation.
 
 | Output | Codes / format |
 |---|---|
@@ -31,7 +27,7 @@ This repository owns continuous behavior recognition: preprocessing, feature/mod
 | Research heads | `MOUNTING`, `MOUNTED_BY`; dataset support does not imply validated performance |
 | Files | Dense probabilities + candidate event intervals |
 
-`TAIL_WAGGING` remains readable for compatibility but is excluded from current training. Candidates require human review in the [annotator](https://github.com/zxq309/cattle-tail-ring-annotator).
+`TAIL_WAGGING` remains readable for compatibility but is excluded from current training. Candidates require human confirmation before use as labels.
 
 ## Quick start
 
@@ -85,5 +81,9 @@ cowmata predict --cache-key demo_session_60s --data-root examples/demo_data --ou
 - `cowmata/`: recognition package; `configs/`, `tests/`: configuration and checks.
 - `weights/`: versioned models; `datasets/`: metadata and local data instructions.
 - [Quick start](docs/QUICKSTART.en.md) · [Reference radar](docs/REFERENCE_PROJECTS.md).
-- Legacy `cowmata/daily.py` and `experiments/fusion.py` stay for compatibility and historical reproducibility; they are not a new online decision service. New decision work belongs in cowmata-risk.
+- Legacy `cowmata/daily.py` and `experiments/fusion.py` stay for compatibility and historical reproducibility; they are not a new online decision service.
 - [Contributing](CONTRIBUTING.md) · [Citation](CITATION.cff) · [Security](SECURITY.md) · [Notice](NOTICE).
+
+## Latest update
+
+**2026-09-07** — Focused this page on functionality, usage and validation; software and model versions are unchanged. [Full changelog](CHANGELOG.md).

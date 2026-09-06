@@ -1,5 +1,5 @@
 <div align="center">
-<a href="https://www.cowmata.com/"><img src="assets/brand/cowmata-logo.svg" width="360" alt="COWMATA"></a>
+<img src="assets/brand/cowmata-logo.svg" width="360" alt="COWMATA">
 
 # COWMATA · 牛只行为与事件识别
 
@@ -9,19 +9,15 @@
 ![Documentation updated](https://img.shields.io/badge/docs-2026--09--07-0A7EA4)
 ![Scope](https://img.shields.io/badge/COWMATA-project-92C142)
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [COWMATA](https://github.com/zxq309/cowmata)
+[English](README.md) · [简体中文](README.zh-CN.md) · [项目总览](https://github.com/zxq309/cowmata)
 
 </div>
 
 ![Recognition pipeline](assets/figures/recognition-zh.svg)
 
-## 最新更新
-
-**2026-09-07** — 首页聚焦行为事件识别，新增双语流水线图；总体产品图文迁至 [cowmata](https://github.com/zxq309/cowmata)，保留 Windows 模型路径修复。[完整更新记录](CHANGELOG.md)。最近的软件发布版本仍为 [v0.3.1](https://github.com/zxq309/cowmata-tailring/releases/tag/v0.3.1)，本次文档更新没有重训模型。
-
 ## 识别范围与输出
 
-本仓负责连续行为识别：预处理、特征与模型训练、推理、事件组装以及按牛独立评估。繁殖与健康决策在 [cowmata-risk](https://github.com/zxq309/cowmata-risk) 维护，总体产品路线图在 [cowmata](https://github.com/zxq309/cowmata) 维护。
+训练和运行连续 IMU 行为模型，完成预处理、特征提取、时序推理、事件组装和按牛独立评估。
 
 | 输出 | 代码／格式 |
 |---|---|
@@ -31,7 +27,7 @@
 | 研究任务头 | `MOUNTING`、`MOUNTED_BY`；接口支持不代表已验证性能 |
 | 输出文件 | 稠密概率＋候选事件区间 |
 
-`TAIL_WAGGING` 为兼容旧标签保留读取能力，不进入当前训练。候选需在[标注工具](https://github.com/zxq309/cattle-tail-ring-annotator)中人工确认。
+`TAIL_WAGGING` 为兼容旧标签保留读取能力，不进入当前训练。候选经人工确认后才能作为标签使用。
 
 ## 快速开始
 
@@ -85,5 +81,9 @@ cowmata predict --cache-key demo_session_60s --data-root examples/demo_data --ou
 - `cowmata/`：识别包；`configs/`、`tests/`：配置与检查。
 - `weights/`：版本化模型；`datasets/`：元数据与本地数据说明。
 - [快速开始](docs/QUICKSTART.zh.md) · [参考项目](docs/REFERENCE_PROJECTS.md)。
-- 历史 `cowmata/daily.py` 和 `experiments/fusion.py` 为兼容与复现暂留，不作为新的在线决策服务；新增决策工作统一进入 cowmata-risk。
+- 历史 `cowmata/daily.py` 和 `experiments/fusion.py` 为兼容与复现暂留，不作为新的在线决策服务。
 - [贡献](CONTRIBUTING.md) · [引用](CITATION.cff) · [安全](SECURITY.md) · [权利声明](NOTICE)。
+
+## 最新更新
+
+**2026-09-07** — 精简首页，集中呈现功能、使用与验证；软件及模型版本保持不变。[完整更新记录](CHANGELOG.md)。
