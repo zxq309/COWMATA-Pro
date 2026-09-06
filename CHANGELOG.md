@@ -2,7 +2,13 @@
 
 All notable changes to this repository are recorded here.
 
-## Unreleased — 2026-09-07
+## Documentation presentation — 2026-09-07
+
+- Focused both landing pages on behavior/event recognition; moved overall product artwork to the system hub.
+- Preserved dataset delivery links, expanded quick-start guides, model artifacts and experiment documentation.
+
+
+## Main-branch maintenance — 2026-09-07
 
 - Clarify the four-repository boundaries and add system/decision navigation in both READMEs.
 - Normalize the model directory from a name with a trailing carriage return to `weights`, fixing Windows checkout and documented model paths; artifact bytes are unchanged.

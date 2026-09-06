@@ -1,29 +1,9 @@
-# Asset Provenance
+# Asset provenance
 
-## Official COWMATA assets
+The official COWMATA brand files are retained for this component. Brand/logo sources: `https://www.cowmata.com/assets/dist/img/logo_cowmata.svg` and `https://www.cowmata.com/assets/dist/img/logo.png`.
 
-The following files were retrieved from the official COWMATA English website on 2026-08-18 and are included as proprietary company materials:
+Overall concept art, product photographs and historical system framework images now live in [the system hub](https://github.com/zxq309/cowmata/tree/main/assets). Their migration hashes are recorded there. They remain available in this repository's prior Git history.
 
-| Repository file | Official source |
-|---|---|
-| `brand/cowmata-logo.svg` | `https://www.cowmata.com/assets/dist/img/logo_cowmata.svg` |
-| `brand/cowmata-company-logo.png` | `https://www.cowmata.com/assets/dist/img/logo.png` |
-| `product/tail-sensor-farm.png` | `https://www.cowmata.com/assets/dist/img/pro_01.png` |
-| `product/tail-sensor-vet.png` | `https://www.cowmata.com/assets/dist/img/pro_02.png` |
+`figures/recognition-en.svg` and `figures/recognition-zh.svg` show only the behavior/event recognition pipeline. Their reproducible generator and design tokens live in the [hub](https://github.com/zxq309/cowmata/blob/main/scripts/build_diagrams.py).
 
-Do not reuse these brand or product assets outside company-authorized contexts.
-
-## Original repository visual
-
-`figures/cowmata-ai-pipeline-hero.png` was produced for this repository on 2026-08-18.
-
-Content: a wide scientific illustration of a dairy cow with a compact tail-root sensor,
-continuous multichannel IMU/PPG/temperature signals, a temporal AI pipeline,
-behavior/event outputs, and farm-monitoring dashboards. The image intentionally
-contains no text, logo, percentage, or clinical-performance claim.
-
-The visual is conceptual. It does not define hardware dimensions, sensor placement instructions, validated model performance, or a regulatory-approved user interface.
-
-`figures/cowmata-framework-en.png` and `figures/cowmata-framework-zh.png` are the English
-and Simplified Chinese overall-framework diagrams, prepared on 2026-08-18 for the
-system-architecture section of each README.
+See [NOTICE](../NOTICE) for company asset terms.

@@ -32,3 +32,7 @@ Use OAuth, SSH, or a personal access token. Never store account passwords or tok
 ## Access
 
 For the first private-repository phase, repository access is granted by the maintainer. Licensing and public-release terms require company approval.
+
+## Documentation maintenance dates
+
+Update CHANGELOG.md and both README latest-update summaries together for user-visible changes. Date maintenance separately from tagged software releases; retain historical release dates unless primary release evidence supports a correction.

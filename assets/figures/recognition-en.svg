@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-labelledby="title desc">
+<title id="title">Continuous sensing → behavior timelines</title><desc id="desc">Solid arrows: current component flow. Dashed arrows: planned integration. No validated fused alert is claimed.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#59716b"/></marker><marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#0a7ea4"/></marker><marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#0a7ea4"/></marker></defs>
+<style>text{font-family:'Segoe UI','Microsoft YaHei','Noto Sans CJK SC',sans-serif;fill:#17352e}.tag{font-size:12px;letter-spacing:1px;fill:#59716b}.sub{font-size:16px;fill:#59716b}.name{font-size:24px;font-weight:600}.path{fill:none;stroke:#59716b;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1200" height="680" fill="#f7faf8"/>
+<rect x="40" y="36" width="8" height="24" fill="#92c142"/>
+<text x="64" y="56" class="tag">COWMATA / RECOGNITION / 2026-09-07</text>
+<text x="40" y="104" font-size="32" font-weight="600">Continuous sensing → behavior timelines</text>
+<path d="M376 248 H432" class="path"/>
+<path d="M768 248 H824" class="path"/>
+<path d="M992 312 V424" class="path"/>
+<path d="M824 488 H768" class="path"/>
+<path d="M432 488 H376" class="path"/>
+<g><rect x="40" y="184" width="336" height="128" rx="8" fill="#ffffff" stroke="#b8ccc4" stroke-width="2"/><text x="60" y="212" class="tag">INPUT</text><text x="60" y="248" class="name">Continuous IMU</text><text x="60" y="276" class="sub">Absolute time · quality · gaps</text></g>
+<g><rect x="432" y="184" width="336" height="128" rx="8" fill="#ffffff" stroke="#b8ccc4" stroke-width="2"/><text x="452" y="212" class="tag">PREPROCESS</text><text x="452" y="248" class="name">Safe segments</text><text x="452" y="276" class="sub">Calibrate before windowing</text></g>
+<g><rect x="824" y="184" width="336" height="128" rx="8" fill="#edf7fa" stroke="#0a7ea4" stroke-width="2"/><text x="844" y="212" class="tag">MODEL</text><text x="844" y="248" class="name">Temporal models</text><text x="844" y="276" class="sub">GBDT / MS-TCN++</text></g>
+<g><rect x="824" y="424" width="336" height="128" rx="8" fill="#ffffff" stroke="#b8ccc4" stroke-width="2"/><text x="844" y="452" class="tag">POSTPROCESS</text><text x="844" y="488" class="name">Event assembly</text><text x="844" y="516" class="sub">Thresholds · state logic</text></g>
+<g><rect x="432" y="424" width="336" height="128" rx="8" fill="#edf7fa" stroke="#0a7ea4" stroke-width="2"/><text x="452" y="452" class="tag">OUTPUT</text><text x="452" y="488" class="name">Behavior timeline</text><text x="452" y="516" class="sub">States · intervals · scores</text></g>
+<g><rect x="40" y="424" width="336" height="128" rx="8" fill="#ffffff" stroke="#b8ccc4" stroke-width="2"/><text x="60" y="452" class="tag">REVIEW</text><text x="60" y="488" class="name">Human confirmation</text><text x="60" y="516" class="sub">Candidate queue → annotator</text></g>
+<line x1="40" y1="616" x2="1160" y2="616" stroke="#cfddd7"/><text x="40" y="648" class="sub">Solid: current component flow   ·   Dashed: planned integration   ·   Evidence is not a calibrated risk probability</text></svg>
