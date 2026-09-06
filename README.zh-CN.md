@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="https://www.cowmata.com/"><img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300"></a>
+<img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300">
 
 # COWMATA 牛尾环标注工具
 
@@ -12,7 +12,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [行为与事件识别仓库](https://github.com/zxq309/cowmata-tailring)
+[English](README.md) · [简体中文](README.zh-CN.md) · [项目总览](https://github.com/zxq309/cowmata)
 
 </div>
 
@@ -20,28 +20,9 @@
 
 <p align="center"><sub>真实联调截图：59 分 59.859 秒、179,378 个采样点、50 Hz 九轴记录与奶牛视频同步加载；原始素材仅保留在本地，不上传 GitHub。</sub></p>
 
-## 最新更新
-
-**2026-09-07** — 更新四仓职责与入口，同步中英文首页更新摘要。最近的软件发布仍为 v2.2.0（2026-09-02）；桌面功能与模型接口未因本次文档整理改变。[完整更新记录](CHANGELOG.md)。
-
-## 在总体项目中的职责
-
-| 仓库 | 职责 |
-|---|---|
-| [cowmata](https://github.com/zxq309/cowmata) | 总体架构、路线图与组件版本 |
-| [cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | 行为与事件识别：训练、推理与评估 |
-| [cowmata-risk](https://github.com/zxq309/cowmata-risk) | 综合决策与产犊辅助证据（私有，需授权） |
-| [cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | 标注、候选复核与导出 |
-
-本仓保持独立标注工具职责；模型训练在识别仓，预警融合在决策仓。可标注标签集合可以大于模型训练集合，跨仓导出需显式核对协议与标签映射。
-
-
 ## 项目简介
 
 COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复核奶牛视频与连续九轴尾环 IMU 数据。它在一个界面内提供共用时间轴、v4 标注协议、安全工程保存、逐条复核和科研数据导出。
-
-> [!IMPORTANT]
-> 本仓库负责**数据标注与人工复核**；模型训练、实验评估和当前算法工程基线位于 [COWMATA Tail-Sensor Intelligence 主工程](https://github.com/zxq309/cowmata-tailring)。两个仓库互为配套，可直接跳转使用。
 
 ### 核心能力
 
@@ -192,7 +173,7 @@ cowmata-annotator --mode basic --lang zh `
 | `best.pt` | 可选 | `OfflineMultiTaskTCN`，负责站立、躺卧与行走 |
 | `inference_config.json` | 可选 | 对包外 JSON 提供传感器换算覆盖 |
 
-为保持模型文件兼容，`xgboost` 固定为 `3.2.0`。模型建议导入后状态为“待复核”，会保留原始类别、边界、得分及后续人工修改记录。完整契约见 [模型辅助标注文档](docs/model-assist.md)；当前训练与评估流程请以[行为与事件识别仓库](https://github.com/zxq309/cowmata-tailring)为准。
+为保持模型文件兼容，`xgboost` 固定为 `3.2.0`。模型建议导入后状态为“待复核”，会保留原始类别、边界、得分及后续人工修改记录。完整契约见 [模型辅助标注文档](docs/model-assist.md)。
 
 ## 输入、工程与导出
 
@@ -233,13 +214,6 @@ python -m cowmata_tailring --version
 
 v2.2.0 为当前发布版本，已通过自动化测试与 [CHANGELOG.md](CHANGELOG.md) 所述的发布验证。
 
-## 关联仓库
-
-| 仓库 | 作用 |
-| --- | --- |
-| [zxq309/cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | 本桌面标注与人工复核工具 |
-| [zxq309/cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | COWMATA 尾部传感器算法、实验与工程基线 |
-
 ## 贡献、安全与引用
 
 - 提交 PR 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
@@ -247,13 +221,10 @@ v2.2.0 为当前发布版本，已通过自动化测试与 [CHANGELOG.md](CHANGE
 - 软件引用信息见 [CITATION.cff](CITATION.cff)。
 - 可复现缺陷与边界明确的功能建议请提交到 [GitHub Issues](https://github.com/zxq309/cattle-tail-ring-annotator/issues)。
 
-## 团队
-
-- **张相清（Xiangqing Zhang）** —— 杨凌园上园智能科技有限公司 CTO；延安大学
-- **张亚龙（Yalong Zhang）** —— 杨凌园上园智能科技有限公司创始人
-- **焦腾宇（Tengyu Jiao）** —— 延安大学
-- **赵亚晨（Yachen Zhao）** —— 延安大学
-
 ## 许可证与品牌素材
 
 源代码按 [MIT License](LICENSE) 发布。`assets/brand/` 内的 COWMATA 名称与 Logo 为公司品牌资产，不因 MIT 许可证而重新授权；详见 [NOTICE](NOTICE) 与 [assets/README.md](assets/README.md)。
+
+## 最新更新
+
+**2026-09-07** — 精简首页，集中呈现功能、使用与验证；软件及模型版本保持不变。[完整更新记录](CHANGELOG.md)。

@@ -35,3 +35,7 @@ Include the operating system, Python version, VLC version, launch command, trace
 ## Documentation maintenance dates
 
 Update CHANGELOG.md and both README latest-update summaries together for user-visible changes. Date maintenance separately from tagged software releases; retain historical release dates unless primary release evidence supports a correction.
+
+## Project information ownership
+
+Products, company, team, application context and cross-repository navigation are maintained in the cowmata system overview. Specialist READMEs keep one project-overview link and focus on their own functionality, interfaces, usage and validation; preserve component licenses and citation records.

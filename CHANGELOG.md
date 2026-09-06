@@ -1,5 +1,9 @@
 # Changelog
 
+## Repository responsibility cleanup — 2026-09-07
+
+- Removed repeated project/team/navigation sections from both READMEs; kept one project-overview link and direct component functionality, usage and validation.
+
 All notable changes to COWMATA Tail-Ring Annotator are documented here.
 
 ## Documentation presentation — 2026-09-07

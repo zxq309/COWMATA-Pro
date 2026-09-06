@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="https://www.cowmata.com/"><img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300"></a>
+<img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300">
 
 # COWMATA Tail-Ring Annotator
 
@@ -12,7 +12,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [Algorithm repository](https://github.com/zxq309/cowmata-tailring)
+[English](README.md) · [简体中文](README.zh-CN.md) · [Project overview](https://github.com/zxq309/cowmata)
 
 </div>
 
@@ -20,28 +20,9 @@
 
 <p align="center"><sub>Real integration test: a 59 min 59.859 s, 179,378-sample, 50 Hz IMU record synchronized with cattle video. Source media stays local and is not committed.</sub></p>
 
-## Latest update
-
-**2026-09-07** — Clarified four-repository navigation and synchronized bilingual update summaries. Latest software release remains v2.2.0 (2026-09-02); desktop behavior and model interfaces are unchanged by this documentation maintenance. [Full changelog](CHANGELOG.md).
-
-## Role in the COWMATA project
-
-| Repository | Responsibility |
-|---|---|
-| [cowmata](https://github.com/zxq309/cowmata) | System architecture, roadmap and component versions |
-| [cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | Behavior/event training, inference and evaluation |
-| [cowmata-risk](https://github.com/zxq309/cowmata-risk) | Risk decisions and calving evidence (private; authorized access) |
-| [cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | Annotation, candidate review and export |
-
-This remains an independent annotation application. Training belongs in the recognition repository and warning fusion belongs in the decision repository. Annotatable labels may exceed a model's supported classes; export adapters must explicitly check protocol and label mappings.
-
-
 ## Overview
 
 COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synchronized cattle video and continuous nine-axis tail-ring IMU data. It combines a shared timeline, protocol-v4 labels, safe project persistence, review tools, and research-ready exports in one interface.
-
-> [!IMPORTANT]
-> This repository is the **data annotation and review tool**. Model training, evaluation, and the current algorithm engineering baseline live in [COWMATA Tail-Sensor Intelligence](https://github.com/zxq309/cowmata-tailring). The two repositories are designed to be used together.
 
 ### Why this tool
 
@@ -192,7 +173,7 @@ Model files are not tracked in this repository. Select a local package through *
 | `best.pt` | No | `OfflineMultiTaskTCN` for standing, lying, and walking |
 | `inference_config.json` | No | Sensor-scaling overrides for JSON outside the package |
 
-`xgboost` is pinned to `3.2.0` for artifact compatibility. Suggestions are imported as **Pending review** and retain their original class, boundaries, scores, and later human edits. See [Model-assisted annotation](docs/model-assist.md) for the full contract. For current training and evaluation workflows, use the [algorithm repository](https://github.com/zxq309/cowmata-tailring).
+`xgboost` is pinned to `3.2.0` for artifact compatibility. Suggestions are imported as **Pending review** and retain their original class, boundaries, scores, and later human edits. See [Model-assisted annotation](docs/model-assist.md) for the full contract.
 
 ## Inputs, projects, and exports
 
@@ -233,13 +214,6 @@ python -m cowmata_tailring --version
 
 Version 2.2.0 is the current release. It passed the automated test suite and the release validation described in [CHANGELOG.md](CHANGELOG.md).
 
-## Related repositories
-
-| Repository | Role |
-| --- | --- |
-| [zxq309/cattle-tail-ring-annotator](https://github.com/zxq309/cattle-tail-ring-annotator) | This desktop annotation and human-review tool |
-| [zxq309/cowmata-tailring](https://github.com/zxq309/cowmata-tailring) | COWMATA tail-sensor algorithms, experiments, and engineering baseline |
-
 ## Contributing, security, and citation
 
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
@@ -247,13 +221,10 @@ Version 2.2.0 is the current release. It passed the automated test suite and the
 - Cite the software with [CITATION.cff](CITATION.cff).
 - Use [GitHub Issues](https://github.com/zxq309/cattle-tail-ring-annotator/issues) for reproducible bugs and scoped feature requests.
 
-## Team
-
-- **Xiangqing Zhang** — CTO, Yangling Yuanshangyuan Intelligent Technology Co., Ltd.; Yan'an University
-- **Yalong Zhang** — Founder, Yangling Yuanshangyuan Intelligent Technology Co., Ltd.
-- **Tengyu Jiao** — Yan'an University
-- **Yachen Zhao** — Yan'an University
-
 ## License and brand assets
 
 Source code is released under the [MIT License](LICENSE). The COWMATA names and logo files in `assets/brand/` are company brand assets and are not relicensed by MIT; see [NOTICE](NOTICE) and [assets/README.md](assets/README.md).
+
+## Latest update
+
+**2026-09-07** — Focused this page on functionality, usage and validation; software and model versions are unchanged. [Full changelog](CHANGELOG.md).
