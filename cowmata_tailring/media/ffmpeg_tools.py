@@ -19,7 +19,7 @@ class FFmpegToolError(RuntimeError):
 
 def _candidate_dirs() -> list[Path]:
     """Places to look for ffmpeg.exe/ffprobe.exe, most specific first."""
-    dirs: list[Path] = []
+    dirs: list[Path] = [Path(__file__).resolve().parents[2] / "vendor" / "ffmpeg"]
     for env_name in ("FFMPEG_HOME", "FFMPEG_DIR"):
         value = os.environ.get(env_name)
         if value:
@@ -50,11 +50,7 @@ def find_ffmpeg() -> tuple[Path, Path]:
     if not ffprobe.is_file():
         ffprobe = Path(shutil.which("ffprobe") or "")
     if not ffmpeg.is_file() or not ffprobe.is_file():
-        raise FFmpegToolError(
-            "未找到 ffmpeg.exe/ffprobe.exe：可把 ffmpeg 放进 "
-            r"F:\Applications、C:\Applications，或加入 PATH，"
-            "或设置 FFMPEG_HOME 环境变量"
-        )
+        raise FFmpegToolError("便携包缺少 ffmpeg.exe/ffprobe.exe，请重新解压完整软件包（vendor/ffmpeg），无需安装系统依赖")
     return ffmpeg, ffprobe
 
 
@@ -79,6 +75,7 @@ def probe_media(path: str | os.PathLike[str]) -> dict[str, Any]:
         errors="replace",
         timeout=30,
         check=False,
+        creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
     )
     if process.returncode != 0:
         raise FFmpegToolError(
@@ -123,4 +120,3 @@ def streamcopy_command(
         "copy",
         os.fspath(target),
     ]
-

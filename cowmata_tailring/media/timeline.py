@@ -521,6 +521,7 @@ def probe_media_timeline(
     ffprobe_path: str | os.PathLike[str],
     *,
     timeout_seconds: float = 120.0,
+    cancelled=None,
 ) -> MediaTimelineIndex:
     command = [
         os.fspath(ffprobe_path),
@@ -541,16 +542,16 @@ def probe_media_timeline(
         else 0
     )
     try:
-        process = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout_seconds,
-            check=False,
-            creationflags=creation_flags,
-        )
+        if cancelled is not None:
+            from .subprocess_tools import run_cancellable
+            process = run_cancellable(command, timeout=timeout_seconds, cancelled=cancelled)
+            process.stdout = process.stdout.decode("utf-8", "replace")
+            process.stderr = process.stderr.decode("utf-8", "replace")
+        else:
+            process = subprocess.run(
+                command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout_seconds, check=False, creationflags=creation_flags,
+            )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise TimelineProbeError(f"FFprobe时间轴扫描失败：{exc}") from exc
     if process.returncode != 0:

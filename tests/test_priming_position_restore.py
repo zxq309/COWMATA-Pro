@@ -2,10 +2,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from cowmata_tailring.app.mixins.cancel_safe_open import CancelSafeOpenMixin
 from cowmata_tailring.media.engine import MediaEngine
 from cowmata_tailring.media.mixins import priming_playback
 from cowmata_tailring.media.mixins.priming_playback import PrimingPlaybackMixin
+
+
+@pytest.fixture(autouse=True)
+def synchronous_harness(monkeypatch):
+    # These pure fakes have no event loop. Do not depend on whether an earlier
+    # widget test happened to create the process-global QApplication.
+    class NoApplication:
+        @staticmethod
+        def instance():
+            return None
+
+    monkeypatch.setattr(priming_playback, "QCoreApplication", NoApplication)
 
 
 class _TextWidget:
@@ -326,6 +340,35 @@ def test_priming_watchdogs_schedule_retry_and_timeout(monkeypatch) -> None:
     player.open_video("watchdogs.mp4")
 
     assert [delay for delay, _callback in scheduled] == [3_000, 7_000]
+
+
+def test_active_event_loop_defers_restore_until_queued_callback(monkeypatch):
+    scheduled = []
+
+    class Application:
+        @staticmethod
+        def instance():
+            return object()
+
+    class Timer:
+        @staticmethod
+        def singleShot(delay, callback):  # noqa: N802
+            scheduled.append((delay, callback))
+
+    monkeypatch.setattr(priming_playback, "QCoreApplication", Application)
+    monkeypatch.setattr(priming_playback, "QTimer", Timer)
+    player = _PrimingHarness()
+    player.open_video("queued.mp4")
+    player._schedule_load_autopause()
+    player.media.playing = True
+    player.media.video_outputs = 1
+    player.media.time_ms = 67
+    player._on_media_time(67)
+    assert player.media.set_time_calls == []
+    callbacks = [callback for delay, callback in scheduled if delay == 0]
+    assert len(callbacks) == 1
+    callbacks[0]()
+    assert player.media.set_time_calls == [0.0]
 
 
 def test_retry_restarts_decoder_only_for_current_open() -> None:

@@ -1,5 +1,9 @@
 <div align="center">
 
+> **普通用户直接使用离线 EXE：** 到 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
+> 下载 Setup.exe 或完整便携 ZIP，无须配置 Python、pip、VLC、CUDA 工具包或模型。
+> GitHub 自动生成的 **Source code.zip 是源码，不是可直接运行的软件包**。
+
 <img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300">
 
 # COWMATA 牛尾环标注工具
@@ -7,7 +11,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v2.2.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.2.0)
+[![Release](https://img.shields.io/badge/release-3.1.0--rc.1-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -55,23 +59,23 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 
 ## 环境要求
 
-- Windows 10 或 Windows 11
-- Python 3.10 及以上
-- 系统已安装 [VLC media player 3.x](https://www.videolan.org/vlc/)，用于视频播放
-- Git
-- 可选：FFmpeg/ffprobe，用于特殊监控视频的探测或转封装流程
+- Windows 10/11 **64 位 x64**，显卡驱动正常。
+- 留出软件解压空间（约 2 GB），以及工程索引和可选缓存空间。
+- 默认尝试 GPU 硬件解码，保留软件兼容解码选项；不保证所有显卡、编码和八路高倍速均不卡顿。
 
-应用主体采用 Python/Qt，但当前视频集成与正式测试以 Windows 为主。
+纯逻辑源码/测试可跨平台，当前原生录像播放与交付 EXE 面向 Windows。详见 [下载、源码运行与打包说明](docs/windows-distribution.md)。
 
 ## 快速开始
 
 ### Windows 一键启动
 
-克隆或下载仓库后，直接双击项目主目录中的 [`START_ANNOTATOR.bat`](START_ANNOTATOR.bat)。首次启动会自动创建本地 `.venv`、安装基础标注依赖并打开纯标注模式；以后双击会直接打开图形界面。
+下载安装版 `COWMATA-...-Setup.exe`，安装后在开始菜单打开 COWMATA；或完整解压 `COWMATA-...-Windows-x64.zip`，双击 `COWMATA.exe`。不要在 ZIP 内直接运行，不要只拷贝一个 EXE。BAT 备用入口保留，但不再安装任何依赖。
 
-使用前仍需预先安装 VLC 3.x。在终端中调用时，启动器也接受普通参数，例如 `START_ANNOTATOR.bat --lang zh --json ... --video ...`。
+新版包含 A/B/C 布局、1–8 路可选视角、GPU 播放、跨小录像续接、原片精确帧回看、离线 RapidOCR PP-OCRv6 medium、20260906 五类版本化候选模型、带完整九轴的单文件标注及独立历史回看。模型结果只是候选，不能自动当作录像真值。操作见 [使用说明](使用说明.txt)。
 
-### 手动安装
+### 源码开发（普通标注人员不需要）
+
+Git 仓库只放源码、测试和小型必要资源；运行库、权重、录像、原始九轴、缓存和安装包不进入 Git 历史。完整离线工作台开发请按 [开发与构建说明](docs/windows-distribution.md) 配合相同版本 Release 运行库。以下只适用于旧单视频基础模式：自行安装 Python 3.10+ 与 VLC 3.x 后执行。
 
 打开 PowerShell：
 
@@ -99,6 +103,14 @@ cowmata-annotator --mode model-assist
 ```
 
 `scripts/` 目录仍保留模型辅助和诊断启动方式；需要查看控制台信息时，运行 `scripts\launch-debug.bat`。
+
+## 工程工作台操作主线
+
+打开现有数据工程目录 → 后台索引九轴设备和录像视角 → 选择设备、牛号及 1–8 路视角 → 核对同步锚点 → 根据原片判定真值并标注原九轴区间 → 导出内置九轴记录的单个标注 JSON。以后可单独打开该 JSON，按记录身份和同步关系找录像，不靠标签文件名。
+
+四路及以上播放同时运行候选模型时，主路优先保护交互；辅路明确标为预览，不能作为当前真值。暂停后各路核对原片精确帧。详见 [GPU 与打包说明](docs/windows-distribution.md) 和 [OCR 改进说明](docs/ocr-lightweight-integration.md)。
+
+以下单视频例子、快捷键与旧模型包约定用于兼容 `--mode basic` / `--mode model-assist`；EXE 默认打开的是工程工作台。
 
 ## 使用示例
 
@@ -193,7 +205,7 @@ cowmata-annotator --mode basic --lang zh `
 
 ```text
 cattle-tail-ring-annotator/
-├── START_ANNOTATOR.bat     # 主目录首次配置与一键启动入口
+├── START_ANNOTATOR.bat     # 离线备用入口，不安装任何依赖
 ├── cowmata_tailring/       # 应用、界面、媒体、标注与推理代码
 ├── assets/                 # 授权品牌素材与 README 实测截图
 ├── docs/                   # 使用、模型辅助、架构与打包说明
@@ -212,7 +224,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-v2.2.0 为当前发布版本，已通过自动化测试与 [CHANGELOG.md](CHANGELOG.md) 所述的发布验证。
+当前分支准备 3.1.0-rc.1；实际发布附件和验收证据见 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)，2.x 历史记录保留在 [CHANGELOG.md](CHANGELOG.md)。纯源码 CI 有意跳过五项二进制模型包完整性检查，这五项必须在便携包验收中执行。
 
 ## 贡献、安全与引用
 
@@ -227,4 +239,4 @@ v2.2.0 为当前发布版本，已通过自动化测试与 [CHANGELOG.md](CHANGE
 
 ## 最新更新
 
-**2026-09-07** — 精简首页，集中呈现功能、使用与验证；软件及模型版本保持不变。[完整更新记录](CHANGELOG.md)。
+**2026-09-07** — 准备 3.1.0-rc.1：离线 EXE、多视角 GPU 播放、内置九轴的历史标注、已核对的 20260906 候选模型及 OCR 轻量改进 v2；保留首页职责精简和历史链接修复。[完整更新记录](CHANGELOG.md)。

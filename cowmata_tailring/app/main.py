@@ -16,7 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--mode",
-        choices=("model-assist", "basic"),
+        choices=("model-assist", "basic", "workspace"),
         default="model-assist",
         help="Window to launch: model-assisted review (default) or basic annotation.",
     )
@@ -37,6 +37,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Open a synchronized video file after launch.",
     )
     parser.add_argument("--version", action="store_true", help="Print version and exit.")
+    parser.add_argument("--project", metavar="DIRECTORY", help="Open a multiview data project directory.")
+    parser.add_argument("--annotations", metavar="PATH", help="Open one annotation JSON for independent read-only review; --project can relink its sources.")
+    parser.add_argument("--workspace-ui", choices=("modern", "classic"), default="modern",
+                        help="Workspace presentation; classic remains available for comparison.")
     return parser
 
 
@@ -48,6 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.version:
         print(f"cowmata-annotator {__version__}")
         return 0
+
+    from cowmata_tailring.app.resources import prioritize_ui
+    print("COWMATA scheduling: " + prioritize_ui(), flush=True)
 
     from PySide6.QtCore import QCoreApplication, Qt, QTimer
     from PySide6.QtWidgets import QApplication
@@ -65,7 +72,18 @@ def main(argv: list[str] | None = None) -> int:
     application = QApplication(sys.argv[:1])
     application.setStyle("Fusion")
 
-    if args.mode == "basic":
+    if args.annotations:
+        from cowmata_tailring.workspace.history_window import HistoryWindow
+        window = HistoryWindow(args.annotations, args.project)
+        window.show()
+        return application.exec()
+
+    if (args.mode == "workspace" and not (args.json or args.video)) or args.project:
+        if args.workspace_ui == "classic":
+            from cowmata_tailring.workspace.window import MainWindow
+        else:
+            from cowmata_tailring.workspace.modern_window import MainWindow
+    elif args.mode in {"basic", "workspace"}:
         from cowmata_tailring.app.basic_window import MainWindow
     else:
         from cowmata_tailring.app.model_assist_window import MainWindow
@@ -74,12 +92,15 @@ def main(argv: list[str] | None = None) -> int:
     window.show()
 
     def open_startup_files() -> None:
+        if args.project:
+            window.open_project(args.project)
+            return
         if args.json:
             window.open_json(args.json)
         if args.video:
             window.open_video(args.video)
 
-    if args.json or args.video:
+    if args.project or args.json or args.video:
         QTimer.singleShot(0, open_startup_files)
     return application.exec()
 

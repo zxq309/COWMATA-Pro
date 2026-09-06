@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.bat text eol=crlf
+# Reviewed algorithms use exact source hashes. Never normalize their bytes.
+assets/event_models/** -text -whitespace
+*.png -text
+*.jpg -text
+*.ico -text

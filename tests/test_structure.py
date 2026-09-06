@@ -155,9 +155,14 @@ def test_single_entry_point() -> None:
 
 
 def test_root_one_click_launcher() -> None:
-    """The documented root launcher bootstraps and opens basic mode."""
+    """The requested offline launcher uses its embedded runtime, never a venv."""
     launcher = REPO_ROOT / "START_ANNOTATOR.bat"
     text = launcher.read_text(encoding="utf-8")
-    assert 'set "VENV=%ROOT%.venv"' in text
-    assert '-m pip install -e "%ROOT%"' in text
-    assert "-m cowmata_tailring --mode basic %*" in text
+    assert 'runtime\\pythonw.exe' in text
+    assert 'portable_start.py" %*' in text
+    assert "vendor\\vlc\\libvlc.dll" in text
+    assert "vendor\\ffmpeg\\bin\\ffprobe.exe" in text
+    assert "pip install" not in text
+    assert 'set "VENV=' not in text
+    start = (REPO_ROOT / "portable_start.py").read_text(encoding="utf-8")
+    assert '["--mode", "workspace", *args]' in start

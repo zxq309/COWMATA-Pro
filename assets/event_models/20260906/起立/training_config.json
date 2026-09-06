@@ -1,0 +1,29 @@
+{
+  "threshold": 0.8999999999999998,
+  "threshold_status": "pure-cow out-of-fold calibration",
+  "profiles": {
+    "12": {
+      "threshold": 0.9749999999999998,
+      "alerts": 71,
+      "macro_clean_f1": 0.7667209333876001,
+      "macro_clean_recall": 0.6806878306878308,
+      "inner_alert_limit": 88.49829152777777
+    },
+    "24": {
+      "threshold": 0.8999999999999998,
+      "alerts": 118,
+      "macro_clean_f1": 0.894579945799458,
+      "macro_clean_recall": 0.8551587301587301,
+      "inner_alert_limit": 176.99658305555553
+    },
+    "48": {
+      "threshold": 0.8999999999999998,
+      "alerts": 118,
+      "macro_clean_f1": 0.894579945799458,
+      "macro_clean_recall": 0.8551587301587301,
+      "inner_alert_limit": 353.99316611111107
+    }
+  },
+  "experimental": true,
+  "validation_note": "independent outer-cow full-JSON replay; same development cows as earlier rounds, no new blind cohort"
+}

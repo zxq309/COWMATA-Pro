@@ -29,9 +29,12 @@ dependencies = [
     "pandas>=2.2,<4",
     "scikit-learn>=1.4",
     "joblib>=1.4,<2",
+    "Pillow>=10",
+    "opencv-python>=4.8",
 ]
 
 [project.optional-dependencies]
+ocr = ["rapidocr>=3.9,<4", "onnxruntime>=1.20"]
 # Model-assisted prediction. xgboost is pinned: the shipped GBDT joblib
 # artefact only deserialises against this exact version.
 model = [

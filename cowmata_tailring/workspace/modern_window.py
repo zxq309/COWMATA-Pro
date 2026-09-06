@@ -1,0 +1,384 @@
+"""Observation-first shell; the tested workspace controller remains the owner.
+
+Only initial construction reparents the empty board. Subsequent layout changes
+use geometry alone and retain native handles, source identity and playhead.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import QEvent, QSize, Qt
+from PySide6.QtGui import QIcon, QPainter
+from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPlainTextEdit,
+    QPushButton,
+    QSizePolicy,
+    QSplitter,
+    QTextEdit,
+    QToolBar,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .materials import GLASS_STYLE, FrostedCanvas, apply_mica
+from .presentation import PresentationVideoBoard, WorkspaceStage
+from .signal_panel import SignalPanel
+from .theme import STYLE
+from .window import MainWindow as ControllerWindow
+
+
+class ElidingLabel(QLabel):
+    """Full text remains available to the controller, tooltip and accessibility."""
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def setText(self, value):
+        super().setText(value)
+        self.setToolTip(value)
+        self.setAccessibleName(value)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setPen(self.palette().windowText().color())
+        p.drawText(self.contentsRect(), Qt.AlignmentFlag.AlignVCenter,
+                   self.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideMiddle, self.width()))
+
+
+class MainWindow(ControllerWindow):
+    def create_plot(self):
+        return SignalPanel()
+
+    def create_board(self):
+        return PresentationVideoBoard()
+
+    def _build_ui(self):
+        super()._build_ui()
+        # Reuse controller-created controls and connections, before opening any
+        # project or creating a native media engine. Retire only empty shells.
+        old = self.takeCentralWidget()
+        self.resize(1600, 1000)
+        self.setMinimumSize(1080, 720)
+        self.setStyleSheet(STYLE)
+        self.setWindowTitle("COWMATA · 行为真值标注")
+        central = FrostedCanvas()
+        self.shell = central
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(14, 8, 14, 8)
+        outer.setSpacing(7)
+        header = QHBoxLayout()
+        brand = QLabel("COWMATA")
+        brand.setObjectName("brand")
+        header.addWidget(brand)
+        self._icon_button("Folder Open", "打开工程", self.choose_project, header)
+        self.root_label = ElidingLabel("九轴与多视角录像 · 原始文件保持不变")
+        header.addWidget(self.root_label, 1)
+        self.source_toggle = self._icon_button("Panel Left", "素材", self.toggle_sources, header)
+        self.source_toggle.setCheckable(True)
+        self.layout_buttons = QButtonGroup(self)
+        for i, title in enumerate(("A 观察", "B 多视角", "C 波形")):
+            button = QPushButton(title)
+            button.setCheckable(True)
+            button.setObjectName("layout" + "ABC"[i])
+            button.setToolTip(("大主视频 + 辅视角 + 底部九轴", "多视角网格 + 底部九轴", "大波形 + 可拖动画中画")[i])
+            self.layout_buttons.addButton(button, i)
+            header.addWidget(button)
+        self.layout_buttons.idClicked.connect(lambda i: self.set_presentation("ABC"[i]))
+        more = QToolButton()
+        more.setText("更多")
+        more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu = QMenu(more)
+        for action in self.menuBar().actions():
+            menu.addAction(action)
+        menu.addSeparator()
+        menu.addAction("界面与播放设置…", self.presentation_settings)
+        more.setMenu(menu)
+        header.addWidget(more)
+        self.menuBar().hide()
+        for toolbar in self.findChildren(QToolBar):
+            self.removeToolBar(toolbar)
+            toolbar.deleteLater()
+        outer.addLayout(header)
+        self.banner.setStyleSheet("background:#e1eeea; color:#3d645e; padding:5px 9px; border-radius:6px; font-size:11px")
+        outer.addWidget(self.banner)
+        self.coverage_label.setStyleSheet("color:#9a6132; font-size:11px")
+        outer.addWidget(self.coverage_label)
+
+        self.body = QSplitter(Qt.Orientation.Horizontal)
+        self.source_panel = QFrame()
+        self.source_panel.setObjectName("sourcePanel")
+        sources = QVBoxLayout(self.source_panel)
+        sources.addWidget(self._heading("设备与九轴记录"))
+        sources.addWidget(self.devices)
+        sources.addWidget(self.records, 3)
+        sources.addWidget(self.cow)
+        sources.addWidget(self._heading("视角 · 勾选并拖动排序"))
+        sources.addWidget(self.cameras, 2)
+        source_actions = QHBoxLayout()
+        self._button("刷新", self.refresh_sources, source_actions)
+        self._button("索引核验", self.source_manager, source_actions)
+        sources.addLayout(source_actions)
+        self.source_panel.setMinimumWidth(220)
+        self.source_panel.setMaximumWidth(360)
+        self.body.addWidget(self.source_panel)
+
+        center = QWidget()
+        review = QVBoxLayout(center)
+        review.setContentsMargins(0, 0, 0, 0)
+        review.setSpacing(5)
+        self.stage = WorkspaceStage(self.board, self.plot)
+        self.board.focusRequested.connect(self.focus_video)
+        self.plot.setMinimumSize(300, 160)
+        self.imu_position.setMaximumWidth(140)
+        self.imu_position.setToolTip("九轴文件内的位置，不等于服务器收包时间")
+        self.plot.toolbar.addWidget(self.imu_position)
+        self.plot.toolbar.addWidget(self.link)
+        self._icon_button("Pin", "对齐", self.pin, self.plot.toolbar)
+        review.addWidget(self.stage, 1)
+        self.alignment_label.setStyleSheet("font-size:11px; color:#7b693d")
+        review.addWidget(self.alignment_label)
+        review.addWidget(self.video_slider)
+        transport = QHBoxLayout()
+        transport.setSpacing(5)
+        self._button("−10s", lambda: self.board.seek(self.board.reference_ms - 10000), transport)
+        self._button("‹ 帧", lambda: self.board.step(-1), transport)
+        self.play_button.setObjectName("primary")
+        self.play_button.setMinimumWidth(80)
+        transport.addWidget(self.play_button)
+        self._button("帧 ›", lambda: self.board.step(1), transport)
+        self._button("+10s", lambda: self.board.seek(self.board.reference_ms + 10000), transport)
+        self.speed.setMaximumWidth(75)
+        transport.addWidget(self.speed)
+        self.playback_policy = QComboBox()
+        self.playback_policy.addItems(["八路全速", "主路优先 · 辅路预览"])
+        self.playback_policy.setToolTip("辅路预览不作当前真值；暂停后读取原片精确帧，点击辅路切为全速主视角")
+        self.playback_policy.currentIndexChanged.connect(self.change_playback_policy)
+        self.board.policyChanged.connect(lambda policy: self.playback_policy.setCurrentIndex(1 if policy == "balanced" else 0))
+        transport.addWidget(self.playback_policy)
+        transport.addStretch(1)
+        self.wall_input.setMaximumWidth(235)
+        self.wall_input.setMinimumWidth(205)
+        transport.addWidget(self.wall_input)
+        self._button("跳转", self.jump_wall, transport)
+        review.addLayout(transport)
+        annotation = QHBoxLayout()
+        annotation.addWidget(self.labels, 1)
+        self.mark_button.setObjectName("primary")
+        annotation.addWidget(self.mark_button)
+        self.event_toggle = self._icon_button("Text Bullet List", "标注列表", self.toggle_events, annotation)
+        self.event_toggle.setCheckable(True)
+        self._icon_button("Save", "保存", self.save_current, annotation)
+        review.addLayout(annotation)
+        self.event_status.setStyleSheet("font-size:11px; color:#6b8179")
+        self.event_status.setWordWrap(True)
+        review.addWidget(self.event_status)
+        self.body.addWidget(center)
+
+        self.event_panel = QFrame()
+        self.event_panel.setObjectName("eventPanel")
+        details = QVBoxLayout(self.event_panel)
+        details.addWidget(self._heading("标注与视频草稿"))
+        self.events.setAlternatingRowColors(True)
+        self.events.verticalHeader().hide()
+        for col, width in enumerate((75, 110, 145, 145, 100, 170)):
+            self.events.setColumnWidth(col, width)
+        details.addWidget(self.events, 1)
+        for title, handler in (("所选九轴区间 → 候选标注", self.mark_selection),
+                               ("确认所选草稿为真值", self.confirm_selected),
+                               ("编辑标签 / 边界 / 备注", self.edit_selected),
+                               ("补充当前画面证据", self.update_evidence),
+                               ("回看所选结束点", lambda: self.review_selected(at_end=True)),
+                               ("删除所选", self.delete_selected)):
+            self._button(title, handler, details)
+        self.event_panel.setMinimumWidth(300)
+        self.body.addWidget(self.event_panel)
+        self.body.setSizes([245, 1100, 380])
+        self.body.setCollapsible(1, False)
+        outer.addWidget(self.body, 1)
+        # Infrequent options retain the exact controller widgets/connections.
+        self.options = QDialog(self)
+        self.options.setWindowTitle("界面与播放设置")
+        options = QVBoxLayout(self.options)
+        options.addWidget(self._heading("播放与索引"))
+        options.addWidget(self.strict)
+        options.addWidget(self.compatibility)
+        self.glass = QCheckBox("磨砂玻璃质感 / 系统 Mica（支持时）")
+        self.glass.setChecked(True)
+        self.glass.toggled.connect(self.set_glass)
+        options.addWidget(self.glass)
+        self.layout_choice.setParent(self.options)
+        self.layout_choice.hide()  # legacy indices remain persisted separately
+        self.pip_size = QComboBox()
+        self.pip_size.addItems(["画中画 · 小", "画中画 · 中", "画中画 · 大"])
+        self.pip_size.setCurrentIndex(1)
+        self.pip_size.currentIndexChanged.connect(self.resize_pip)
+        options.addWidget(self.pip_size)
+        self.wave_size = QComboBox()
+        self.wave_size.addItems(["底部波形 · 紧凑", "底部波形 · 标准", "底部波形 · 较大"])
+        self.wave_size.setCurrentIndex(1)
+        self.wave_size.currentIndexChanged.connect(self.resize_wave)
+        options.addWidget(self.wave_size)
+        self._button("重置画中画位置", self.reset_pip, options)
+        self._button("性能与索引诊断…", self.diagnostics, options)
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        box.rejected.connect(self.options.reject)
+        options.addWidget(box)
+        self.setCentralWidget(central)
+        self.set_glass(True)
+        self.source_panel.hide()
+        self.event_panel.hide()
+        old.deleteLater()
+        self.set_presentation("A", persist=False)
+        # Scope shortcut protection to our input widgets. A process-wide Qt
+        # filter also intercepts native decoder/widget teardown and is unsafe
+        # when several old/new windows coexist.
+        for control in self.findChildren(QWidget):
+            if isinstance(control, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
+                control.installEventFilter(self)
+
+    def _heading(self, text):
+        label = QLabel(text)
+        label.setObjectName("sectionTitle")
+        return label
+
+    def set_glass(self, enabled):
+        self.shell.set_effects(enabled)
+        self.setStyleSheet(STYLE + (GLASS_STYLE if enabled else ""))
+        self.material_result = apply_mica(int(self.winId()), enabled)
+        if self.catalog:
+            self.dirty = True
+
+    def change_playback_policy(self, index):
+        policy = "balanced" if index else "full"
+        self.board.set_policy(policy)
+        self.strict.setToolTip("预览模式只等待主路原片；辅路预览不参与同步真值确认")
+        if self.catalog:
+            self.dirty = True
+
+    def _icon_button(self, name, title, handler, layout):
+        button = self._button(title, handler, layout)
+        path = Path(__file__).resolve().parents[2] / "assets" / "fluent" / (name.lower().replace(" ", "_") + ".svg")
+        if path.is_file():
+            button.setIcon(QIcon(str(path)))
+            button.setIconSize(QSize(18, 18))
+        button.setAccessibleName(title)
+        return button
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.ShortcutOverride:
+            focus = QApplication.focusWidget()
+            if focus and focus.window() == self and isinstance(focus, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
+                modifiers = event.modifiers()
+                if not modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier):
+                    event.accept()
+                    return True
+        return False
+
+    def toggle_sources(self):
+        visible = not self.source_panel.isVisible()
+        self.source_panel.setVisible(visible)
+        self.source_toggle.setChecked(visible)
+
+    def toggle_events(self):
+        visible = not self.event_panel.isVisible()
+        self.event_panel.setVisible(visible)
+        self.event_toggle.setChecked(visible)
+
+    def set_presentation(self, mode, *, persist=True):
+        self.stage.set_mode(mode)
+        self.layout_buttons.button("ABC".index(mode)).setChecked(True)
+        if persist and self.catalog:
+            self.dirty = True
+
+    def presentation_settings(self):
+        self.options.exec()
+
+    def focus_video(self, camera):
+        self.set_presentation("A")
+        self.board.expanded = None
+        self.board.enlarge(camera)
+
+    def set_two_view_ratio(self):
+        ratio, ok = QInputDialog.getInt(self, "双画面主视角宽度", "A 观察布局中，两路画面的主视角宽度百分比",
+                                        self.board.observation_ratio, 50, 85, 5)
+        if ok:
+            self.board.observation_ratio = ratio
+            self.board.relayout()
+            self.dirty = True
+            self.save_current()
+
+    def resize_pip(self, i):
+        self.stage.pip_scale = [.26, .34, .46][i]
+        self.stage.arrange()
+        if self.catalog:
+            self.dirty = True
+
+    def resize_wave(self, i):
+        self.stage.wave_ratio = [.25, .32, .43][i]
+        self.stage.arrange()
+        if self.catalog:
+            self.dirty = True
+
+    def reset_pip(self):
+        self.stage.pip_position = (1.0, 0.0)
+        self.stage.arrange()
+
+    def open_project(self, root):
+        super().open_project(root)
+        if not self.catalog:
+            return
+        self.restore_presentation(self.settings.get("presentation", {}))
+
+    def restore_presentation(self, prefs):
+        prefs = prefs if isinstance(prefs, dict) else {}
+        def index(key, default, maximum):
+            value = prefs.get(key, default)
+            return value if isinstance(value, int) and 0 <= value <= maximum else default
+        mode = prefs.get("mode", "A")
+        self.set_presentation(mode if isinstance(mode, str) and mode in {"A", "B", "C"} else "A", persist=False)
+        self.pip_size.setCurrentIndex(index("pip_size", 1, 2))
+        self.wave_size.setCurrentIndex(index("wave_size", 1, 2))
+        self.plot.group.setCurrentIndex(index("signal_group", 0, 4))
+        self.playback_policy.setCurrentIndex(index("playback_policy", 0, 1))
+        self.glass.setChecked(prefs.get("glass", True) is not False)
+        ratio = prefs.get("observation_ratio", 75)
+        self.board.observation_ratio = ratio if isinstance(ratio, int) and 50 <= ratio <= 85 else 75
+        self.stage.pip_position = (1.0, 0.0)
+        pos = prefs.get("pip_position", [1.0, 0.0])
+        if isinstance(pos, (list, tuple)) and len(pos) == 2 and all(isinstance(v, (int, float)) for v in pos):
+            self.stage.pip_position = tuple(max(0, min(1, v)) for v in pos)
+        self.source_panel.setVisible(prefs.get("sources_open") is True)
+        self.source_toggle.setChecked(self.source_panel.isVisible())
+        self.event_panel.setVisible(prefs.get("events_open") is True)
+        self.event_toggle.setChecked(self.event_panel.isVisible())
+        self.stage.arrange()
+
+    def save_current(self, *_, background=False):
+        if hasattr(self, "stage") and self.catalog and not self.catalog.readonly:
+            self.settings["presentation"] = {
+                "mode": self.stage.mode, "pip_size": self.pip_size.currentIndex(),
+                "wave_size": self.wave_size.currentIndex(), "pip_position": self.stage.pip_position,
+                "signal_group": self.plot.group.currentIndex(),
+                "observation_ratio": self.board.observation_ratio,
+                "playback_policy": self.playback_policy.currentIndex(), "glass": self.glass.isChecked(),
+                "sources_open": not self.source_panel.isHidden(), "events_open": not self.event_panel.isHidden(),
+            }
+        super().save_current(background=background)
+
+    def playback_changed(self, playing):
+        super().playback_changed(playing)
+        self.play_button.setToolTip("空格播放 / 暂停；输入文字时不会触发标注快捷键")

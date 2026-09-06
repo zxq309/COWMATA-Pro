@@ -44,3 +44,24 @@ model_packages/
 # Model weights are distributed via GitHub Releases, not tracked in git
 *.pt
 !tests/**/*.pt
+
+# Portable distributions / local build inputs (Release assets, never Git blobs)
+/runtime/
+/model_runtime_*/
+/vendor/
+/logs/
+/COWMATA.exe
+*.exe
+*.dll
+*.pyd
+*.onnx
+*.pkl
+*.pickle
+*.joblib
+*.npz
+*.zip
+*.7z
+*.nupkg
+*.partial
+*.sha256
+/assets/brand/cowmata.ico

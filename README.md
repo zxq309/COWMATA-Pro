@@ -1,5 +1,10 @@
 <div align="center">
 
+> **Windows offline app:** ordinary users download the Setup EXE or portable ZIP from
+> [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases).
+> No Python, pip, VLC, CUDA toolkit, or model setup is required. The automatically
+> generated **Source code.zip is not the runnable application**.
+
 <img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300">
 
 # COWMATA Tail-Ring Annotator
@@ -7,7 +12,7 @@
 **Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v2.2.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.2.0)
+[![Release](https://img.shields.io/badge/release-3.1.0--rc.1-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -55,23 +60,23 @@ COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synch
 
 ## Requirements
 
-- Windows 10 or 11
-- Python 3.10 or newer
-- [VLC media player 3.x](https://www.videolan.org/vlc/) installed on the system for video playback
-- Git
-- Optional: FFmpeg/ffprobe for unusual surveillance-video probing or remux workflows
+- Windows 10/11 **x64**, with the normal graphics driver installed.
+- Enough local space for the application (approximately 2 GB extracted), project indexes and optional caches.
+- Hardware decoding is automatically attempted; software compatibility mode remains available.
 
-The application source is cross-platform Python/Qt, but the current video integration and test target are Windows-first.
+The source and pure logic tests also run outside Windows, but native playback and the delivered executable are Windows-only. See [distribution and build instructions](docs/windows-distribution.md).
 
 ## Quick start
 
 ### One-click Windows launch
 
-After cloning or downloading the repository, double-click [`START_ANNOTATOR.bat`](START_ANNOTATOR.bat) in the project root. On the first launch it creates the local `.venv`, installs the base annotator dependencies, and then opens basic annotation mode. Later launches open the GUI directly.
+Download `COWMATA-...-Setup.exe`, install into a new application directory, then launch COWMATA from the Start menu. Alternatively, fully extract `COWMATA-...-Windows-x64.zip` and run `COWMATA.exe`. Do not run inside the ZIP. Keep all runtime/vendor folders together. `START_ANNOTATOR.bat` remains a fallback and does not install anything.
 
-VLC 3.x must already be installed. The launcher also accepts the normal command-line arguments when called from a terminal, for example `START_ANNOTATOR.bat --lang en --json ... --video ...`.
+The application provides A/B/C layouts, 1–8 selectable views, GPU playback, cross-file continuation, exact original-frame review, offline RapidOCR PP-OCRv6 medium, five versioned 20260906 candidate models, self-contained IMU annotation export, and independent history review. Predictions are candidates, never automatic ground truth. See [usage](使用说明.txt).
 
-### Manual installation
+### Source development (not required for annotators)
+
+The Git repository intentionally excludes runtimes, model weights, local recordings, sensor data, caches and installers. For complete offline workspace development, use the matching Release runtime as described in [the developer guide](docs/windows-distribution.md). For the legacy basic interface only, install Python 3.10+ and VLC 3.x, then:
 
 Open PowerShell:
 
@@ -99,6 +104,14 @@ cowmata-annotator --mode model-assist
 ```
 
 The scripts under `scripts/` remain available for model-assisted and diagnostic launches. Use `scripts\launch-debug.bat` when console output is needed.
+
+## Project-workspace workflow
+
+Open the existing data-project folder → let the background index discover IMU devices and video views → choose the device/cow and 1–8 views → verify clock anchors → review actual video and label the original IMU interval → export a self-contained annotation JSON. Open that JSON independently later; original recording identities and calibration locate the video, not the annotation filename.
+
+While four or more views and candidate inference run together, main-camera priority protects interaction; auxiliary frames are clearly marked previews, not current evidence. Pause to verify exact original frames across views. See [Windows distribution and GPU details](docs/windows-distribution.md) and [OCR integration](docs/ocr-lightweight-integration.md).
+
+The following single-video examples, shortcuts and legacy model-package contract remain for compatibility with `--mode basic` / `--mode model-assist`; the EXE defaults to the project workspace.
 
 ## Usage example
 
@@ -193,7 +206,7 @@ The interface language never rewrites stored annotations. Machine keys such as `
 
 ```text
 cattle-tail-ring-annotator/
-├── START_ANNOTATOR.bat     # Root-level first-run setup and one-click launcher
+├── START_ANNOTATOR.bat     # Offline backup launcher; never installs dependencies
 ├── cowmata_tailring/       # Application, UI, media, annotation, and inference code
 ├── assets/                 # Authorized brand assets and README screenshot
 ├── docs/                   # Usage, model-assist, architecture, and packaging notes
@@ -212,7 +225,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-Version 2.2.0 is the current release. It passed the automated test suite and the release validation described in [CHANGELOG.md](CHANGELOG.md).
+This branch prepares 3.1.0-rc.1. Current release artifacts and acceptance evidence are in [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases); older 2.x records remain in [CHANGELOG.md](CHANGELOG.md). Source-only CI deliberately skips the five binary-pack integrity cases; those are required in portable-package acceptance.
 
 ## Contributing, security, and citation
 
@@ -227,4 +240,4 @@ Source code is released under the [MIT License](LICENSE). The COWMATA names and 
 
 ## Latest update
 
-**2026-09-07** — Focused this page on functionality, usage and validation; software and model versions are unchanged. [Full changelog](CHANGELOG.md).
+**2026-09-07** — Prepared 3.1.0-rc.1: offline EXE, multiview GPU playback, self-contained annotation history, reviewed 20260906 candidate models and OCR lightweight v2. Kept this page focused on component usage and preserved the documentation-link cleanup. [Full changelog](CHANGELOG.md).

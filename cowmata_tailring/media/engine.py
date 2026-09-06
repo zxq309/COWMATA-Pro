@@ -150,6 +150,7 @@ class MediaEngine(QObject):
         candidates: list[Path] = []
         if configured_path:
             candidates.append(Path(configured_path))
+        candidates.append(Path(__file__).resolve().parents[2] / "vendor" / "vlc")
 
         for name in ("VLC_HOME", "VLC_PATH"):
             value = os.environ.get(name)

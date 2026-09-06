@@ -15,6 +15,25 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 ## Main-branch maintenance — 2026-09-07
 
 - Clarify the four-repository boundaries and add system/decision navigation in both READMEs.
+- Integrate frozen OCR lightweight v2, reject cached-profile date conflicts, and queue obsolete automatic indexes without deleting human work.
+
+## [3.1.0rc1] — 2026-09-07
+
+- Offline Windows executable launcher and per-user installer; source-only Git layout and separate Release binary assets. No first-run pip, system Python or CUDA toolkit setup.
+- Full original IMU JSON bytes accompany a single annotation export; original identity, parent offsets, calibration versions, video index clues and model provenance remain traceable.
+- Five reviewed 20260906 event CLI models use a bundled, isolated compatible runtime. Human review is mandatory; empty predictions and quality rejection never create negative truth.
+- GPU video decode remains enabled by default. Lossless BMP in-memory frame transport and a bounded exact-frame RAM cache reduce repeated review work; changed sources/clocks cannot reuse stale frames. OCR input transport is unchanged.
+- Multiview background-inference load protection, fixed decoder/preview worker limits, independent history review and A/B/C glass-style layouts are retained.
+- Removed the separate data-organization document and packaging references. The tool reads existing projects without moving raw data.
+- This is a release candidate, not a claim of zero defects or universal eight-stream performance. Native test scope and limitations are published with the release.
+
+## [3.1.0a4] — 2026-09-06
+
+- Default export is one portable annotation JSON, with parent-source identity, calibrated time and relevant video index snapshot. Training-format batch export is now explicitly optional.
+- Selected IMU snippets retain exact v0/v1/v2 frames and parent-relative timestamps; unknown server clock semantics never manufacture synchronization.
+- Independent read-only history review supports source relocation by SHA-256, archived calibration, multiview playback across recording boundaries, and end-of-snippet pause. Original files and active human work remain unchanged.
+- Added export guards, missing/changed-source warnings, corrupt-index snapshot fallback and history regression/native playback checks. Preserved the a3 interface and adaptive playback policies.
+- The five 20260906 candidate models are not yet integrated or included in this phased a4 release.
 
 ## [2.2.0] — 2026-09-02
 

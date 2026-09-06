@@ -208,6 +208,10 @@ class InteractiveSignalPlotWidget(CachedSignalPlotWidget):
             )
             if hit is not None:
                 target, mode = hit
+                if not getattr(self, "event_editable", True):
+                    self.eventSelected.emit(int(target.get("id", -1)))
+                    event.accept()
+                    return
                 self._event_drag = {
                     "event": target,
                     "mode": mode,

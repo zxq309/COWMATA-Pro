@@ -13,3 +13,9 @@ Third-party dependencies retain their own licenses. In particular, PySide6 is
 distributed by The Qt Company under its applicable LGPL/GPL/commercial terms,
 and VLC is distributed by VideoLAN under GPL terms. Review those licenses when
 redistributing packaged binaries.
+
+The five SVG interface icons in assets/fluent/ are from Microsoft's Fluent UI
+System Icons, revision 5bae3fb7771054c252a54b1d9210e9c03439fa1b, under the MIT
+License. The original license and per-file provenance/hashes are included in
+assets/fluent/LICENSE.txt and assets/fluent/provenance.json. Icons are local;
+the annotation application never downloads them at runtime.
