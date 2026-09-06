@@ -42,7 +42,12 @@ class WorkspaceEngine(StableMediaEngine):
     def __init__(self, widget, *, metadata, cache, parent=None, software=False, no_audio=False):
         self.metadata_provider = metadata
         self.project_cache = cache
-        options = ["--avcodec-hw=none"] if software else []
+        # Keep GPU decoding automatic, but use the bundled D3D9 presentation
+        # backend for embedded multiview HWNDs. The D3D11 presentation path
+        # showed intermittent long layout/reopen stalls in native stress tests.
+        options = ["--vout=direct3d9"]
+        if software:
+            options.append("--avcodec-hw=none")
         if no_audio:
             options.append("--no-audio")
         super().__init__(widget, parent=parent, instance_options=options)
@@ -167,7 +172,9 @@ class VideoTile(QFrame):
         self.scale_frame()
 
     def scale_frame(self):
-        if self.frame_image is not None:
+        # Native playback leaves the last precise frame cached. Resizing eight
+        # live views must not resample these hidden full-resolution pixmaps.
+        if self.frame_image is not None and self.stack.currentWidget() is self.frame_view:
             self.frame_view.setPixmap(QPixmap.fromImage(self.frame_image).scaled(self.stack.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
 

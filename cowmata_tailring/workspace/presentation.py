@@ -41,6 +41,23 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         self.relayout()
 
     def relayout(self):
+        if getattr(self, "_closing", False):
+            return
+        if getattr(self, "playing", False) and getattr(self, "playback_policy", "full") == "full":
+            # A layout choice and main-camera change can arrive in one UI turn.
+            # Apply their final geometry once, not two costly native resizes.
+            if not getattr(self, "_live_layout_queued", False):
+                self._live_layout_queued = True
+                QTimer.singleShot(0, self._flush_live_layout)
+            return
+        self._apply_layout()
+
+    def _flush_live_layout(self):
+        self._live_layout_queued = False
+        if not getattr(self, "_closing", False):
+            self._apply_layout()
+
+    def _apply_layout(self):
         if getattr(self, "_laying_out", False):
             self._layout_pending = True
             return
@@ -49,11 +66,17 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         self._laying_out = True
         self._layout_pending = False
         updates = self.updatesEnabled()
-        self.setUpdatesEnabled(False)
+        # Parent repaint suppression also affects embedded native surfaces.
+        # Full-playback tests found long stalls when toggling it around GPU
+        # layout changes. Keep live full renderers enabled; batch other layouts.
+        batch = not (getattr(self, "playing", False) and getattr(self, "playback_policy", "full") == "full")
+        if batch:
+            self.setUpdatesEnabled(False)
         try:
             self._relayout_geometry()
         finally:
-            self.setUpdatesEnabled(updates)
+            if batch:
+                self.setUpdatesEnabled(updates)
             self._laying_out = False
         if self._layout_pending:
             QTimer.singleShot(0, self.relayout)

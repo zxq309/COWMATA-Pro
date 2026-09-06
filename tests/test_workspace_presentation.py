@@ -121,6 +121,56 @@ def test_layout_exception_restores_updates_and_reentry_guard(window, monkeypatch
     assert window.board.updatesEnabled() and not window.board._laying_out
 
 
+def test_live_full_layout_does_not_toggle_native_renderer_updates(window, app, monkeypatch):
+    board = window.board
+    board.playing = True
+    board.playback_policy = "full"
+    observed = []
+    monkeypatch.setattr(board, "_relayout_geometry", lambda: observed.append(board.updatesEnabled()))
+    toggles = []
+    monkeypatch.setattr(board, "setUpdatesEnabled", lambda enabled: toggles.append(enabled))
+    board.relayout()
+    app.processEvents()
+    assert observed == [True] and toggles == []
+    board.playing = False
+
+
+def test_live_full_layout_coalesces_requests_and_ignores_closed_board(window, app, monkeypatch):
+    board = window.board
+    board.playing = True
+    board.playback_policy = "full"
+    applied = []
+    monkeypatch.setattr(board, "_relayout_geometry", lambda: applied.append(board.main_camera))
+    board.main_camera = "A"
+    board.relayout()
+    board.main_camera = "B"
+    board.relayout()
+    assert applied == []
+    app.processEvents()
+    assert applied == ["B"]
+    board.relayout()
+    board._closing = True
+    app.processEvents()
+    assert applied == ["B"]
+    board._closing = False
+    board.playing = False
+
+
+def test_live_video_resize_does_not_resample_hidden_original_frame(window):
+    from PySide6.QtGui import QImage
+
+    window.board.select(["A"])
+    tile = window.board.tiles["A"]
+    tile.stack.setCurrentWidget(tile.surface)
+    tile.frame_image = object()  # would fail if passed to QPixmap.fromImage
+    tile.scale_frame()
+    tile.frame_image = QImage(640, 360, QImage.Format.Format_RGB888)
+    tile.frame_image.fill(Qt.GlobalColor.red)
+    tile.stack.setCurrentWidget(tile.frame_view)
+    tile.scale_frame()
+    assert not tile.frame_view.pixmap().isNull()
+
+
 def test_pip_enlarge_really_opens_main_view_without_reload(window):
     window.board.select(["A", "B"])
     before = window.board.generation

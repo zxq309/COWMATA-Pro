@@ -5,13 +5,30 @@ from PySide6.QtWidgets import QApplication
 
 from cowmata_tailring.media.timeline import MediaTimelineIndex, TimelineSegment
 from cowmata_tailring.workspace.ocr import parse_stamp, valid_roi
-from cowmata_tailring.workspace.playback import VideoBoard
+from cowmata_tailring.workspace.playback import VideoBoard, WorkspaceEngine
 from cowmata_tailring.workspace.probe import build_observed_intervals
 
 
 @pytest.fixture(scope="module")
 def app():
     return QApplication.instance() or QApplication([])
+
+
+@pytest.mark.parametrize("software", [False, True])
+@pytest.mark.parametrize("no_audio", [False, True])
+def test_workspace_renderer_preserves_decode_and_audio_choices(monkeypatch, tmp_path, software, no_audio):
+    from cowmata_tailring.media.stable_engine import StableMediaEngine
+
+    options = []
+    def capture(self, widget, **kwargs):
+        options.extend(kwargs["instance_options"])
+        raise RuntimeError("captured before native initialization")
+    monkeypatch.setattr(StableMediaEngine, "__init__", capture)
+    with pytest.raises(RuntimeError, match="captured before"):
+        WorkspaceEngine(None, metadata=None, cache=tmp_path, software=software, no_audio=no_audio)
+    assert "--vout=direct3d9" in options
+    assert ("--avcodec-hw=none" in options) == software
+    assert ("--no-audio" in options) == no_audio
 
 
 def index():
