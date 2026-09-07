@@ -74,7 +74,7 @@ class MainWindow(ControllerWindow):
         self.resize(1600, 1000)
         self.setMinimumSize(1080, 720)
         self.setStyleSheet(STYLE)
-        self.setWindowTitle("COWMATA · 行为真值标注")
+        self.setWindowTitle("COWMATA Annotator · 行为真值标注")
         central = FrostedCanvas()
         self.shell = central
         outer = QVBoxLayout(central)
@@ -106,6 +106,8 @@ class MainWindow(ControllerWindow):
             menu.addAction(action)
         menu.addSeparator()
         menu.addAction("界面与播放设置…", self.presentation_settings)
+        from cowmata_tailring.ui.about import show_about
+        menu.addAction("关于 COWMATA Annotator…", lambda: show_about(self))
         more.setMenu(menu)
         header.addWidget(more)
         self.menuBar().hide()
@@ -201,6 +203,7 @@ class MainWindow(ControllerWindow):
                                ("确认所选草稿为真值", self.confirm_selected),
                                ("编辑标签 / 边界 / 备注", self.edit_selected),
                                ("补充当前画面证据", self.update_evidence),
+                               ("留存多视角证据图…", self.capture_evidence),
                                ("回看所选结束点", lambda: self.review_selected(at_end=True)),
                                ("删除所选", self.delete_selected)):
             self._button(title, handler, details)

@@ -10,6 +10,8 @@ from pathlib import Path
 
 
 def main():
+    # Also protect direct script launches (the EXE/BAT pass -B before startup).
+    sys.dont_write_bytecode = True
     root = Path(__file__).resolve().parent
     os.environ["VLC_PLUGIN_PATH"] = str(root / "vendor" / "vlc" / "plugins")
     os.environ["OMP_NUM_THREADS"] = "2"

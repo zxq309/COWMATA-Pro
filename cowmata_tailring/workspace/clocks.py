@@ -43,6 +43,7 @@ class ClockMap:
     revision: str = field(default_factory=lambda: uuid.uuid4().hex)
     # Breaks are source-clock ranges explicitly declared unconfirmed.
     breaks: list[tuple[float, float]] = field(default_factory=list)
+    basis: str = "manual"
 
     def __post_init__(self):
         self.anchors.sort(key=lambda a: a.source_ms)
@@ -60,14 +61,26 @@ class ClockMap:
     def from_dict(cls, data: dict):
         return cls([Anchor(**a) for a in data.get("anchors", [])],
                    data.get("revision") or uuid.uuid4().hex,
-                   [tuple(b) for b in data.get("breaks", [])])
+                   [tuple(b) for b in data.get("breaks", [])], data.get("basis", "manual"))
 
     def to_dict(self):
         return {"anchors": [asdict(a) for a in self.anchors], "revision": self.revision,
-                "breaks": self.breaks}
+                "breaks": self.breaks, "basis": self.basis}
+
+    @classmethod
+    def from_capture(cls, motion, timezone_offset_minutes=480):
+        # Epoch is UTC; the video index stores local, naive calendar milliseconds.
+        offset = int(timezone_offset_minutes)
+        if not -840 <= offset <= 840:
+            raise ValueError("Invalid project timezone offset")
+        return cls([Anchor(0, motion.epoch_at(0) + offset * 60000,
+                           {"capture_timing": motion.capture_timing(), "timezone_offset_minutes": offset})],
+                   basis="device_clock" if motion.version == 2 else "legacy_estimate")
 
     def with_anchor(self, source_ms: float, reference_ms: float, evidence: dict):
-        remaining = [a for a in self.anchors if abs(a.source_ms - source_ms) > 0.001]
+        # An automatic origin is not a human observation; do not combine it
+        # with one human pin and accidentally certify a two-point calibration.
+        remaining = [a for a in self.anchors if abs(a.source_ms - source_ms) > 0.001] if self.basis == "manual" else []
         return ClockMap(remaining + [Anchor(source_ms, reference_ms, evidence)], breaks=self.breaks.copy())
 
     def map(self, value: float, *, inverse: bool = False) -> float:
@@ -85,6 +98,8 @@ class ClockMap:
             return "estimated"
         if any(a <= source_ms < b for a, b in self.breaks):
             return "unconfirmed"
+        if self.basis != "manual":
+            return self.basis
         if len(self.anchors) == 1:
             return "single_anchor"
         if self.anchors[0].source_ms <= source_ms <= self.anchors[-1].source_ms:

@@ -149,6 +149,7 @@ def test_delivered_handoff_keeps_video_clock_layout_and_play_state(tmp_path, app
     monkeypatch.setattr(window.board, "play", lambda *_: calls.append("play"))
     monkeypatch.setattr(window.board, "select", lambda *_: calls.append("select"))
     motion = SimpleNamespace(device="D", uid=1, duration_ms=10000, create_time_ms=0,
+        capture_timing=lambda: {"revision": 1},
         times_ms=np.arange(0, 10001, 1000), plot_series=lambda: [],
         nearest_sample_index=lambda value: int(round(value / 1000)))
     window._motion_loaded((window.load_generation, target, motion, "test-stamp", True))

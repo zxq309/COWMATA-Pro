@@ -8,7 +8,7 @@ if not exist "%~dp0vendor\ffmpeg\bin\ffprobe.exe" goto missing
 set PYTHONHOME=
 set PYTHONPATH=
 set PYTHONUTF8=1
-start "" "%~dp0runtime\pythonw.exe" "%~dp0portable_start.py" %*
+start "" "%~dp0runtime\pythonw.exe" -I -B "%~dp0portable_start.py" %*
 exit /b 0
 :missing
 echo [ERROR] This portable package is incomplete.

@@ -133,6 +133,15 @@ class Catalog:
                     path TEXT NOT NULL, asset_id TEXT, replaced_at REAL NOT NULL);
             """)
             self.db.commit()
+            # Re-probe only legacy IMU metadata. Human work and expensive video
+            # OCR remain untouched; source identities remain content hashes.
+            with self.db:
+                for row in self.db.execute("SELECT id,metadata FROM assets WHERE kind='imu'").fetchall():
+                    metadata = json.loads(row["metadata"])
+                    if not metadata.get("ignored") and metadata.get("capture_timing", {}).get("revision") != 1:
+                        metadata["recheck"] = True
+                        self.db.execute("UPDATE assets SET metadata=? WHERE id=?", (json.dumps(metadata), row["id"]))
+                        self.db.execute("UPDATE locations SET state='pending',attempt_at=0 WHERE asset_id=? AND state IN ('ready','review')", (row["id"],))
 
     def _write_check(self):
         if self.readonly:

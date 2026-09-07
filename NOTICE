@@ -19,3 +19,9 @@ System Icons, revision 5bae3fb7771054c252a54b1d9210e9c03439fa1b, under the MIT
 License. The original license and per-file provenance/hashes are included in
 assets/fluent/LICENSE.txt and assets/fluent/provenance.json. Icons are local;
 the annotation application never downloads them at runtime.
+
+The cow glyph in assets/app-icon/ is from Phosphor Icons, revision
+2b75f3ad12b420c9504ef05df8d2564a28f8500e, MIT licensed. LICENSE.txt and
+provenance.json in that folder retain the upstream license and hashes.
+The Windows tile recolors this glyph on a teal-blue background; existing
+proprietary corporate brand artwork is unchanged. No runtime downloads.

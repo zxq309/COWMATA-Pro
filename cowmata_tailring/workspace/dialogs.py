@@ -233,11 +233,13 @@ class MappingDialog(QDialog):
         tip = QLabel("每行一对人工对应点。相邻点之间分段线性插值；首尾之外是外推。保存修订不会移动已有标签，已有真值需复核。")
         tip.setWordWrap(True)
         layout.addWidget(tip)
-        self.table = QTableWidget(len(mapping.anchors), 2)
+        # Device-clock origins are not human calibration observations.
+        manual_anchors = mapping.anchors if mapping.basis == "manual" else []
+        self.table = QTableWidget(len(manual_anchors), 2)
         self.table.setHorizontalHeaderLabels(["相机画面时间" if camera else "九轴内部秒数", "录像参考时间"])
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setColumnWidth(0, 310)
-        for i, anchor in enumerate(mapping.anchors):
+        for i, anchor in enumerate(manual_anchors):
             self.table.setItem(i, 0, QTableWidgetItem(wall_text(anchor.source_ms) if camera else str(anchor.source_ms / 1000)))
             self.table.setItem(i, 1, QTableWidgetItem(wall_text(anchor.reference_ms)))
         layout.addWidget(self.table)

@@ -1,0 +1,14 @@
+{
+  "source": "https://github.com/phosphor-icons/core",
+  "revision": "2b75f3ad12b420c9504ef05df8d2564a28f8500e",
+  "source_path": "assets/duotone/cow-duotone.svg",
+  "license": "MIT; see LICENSE.txt",
+  "adaptation": "White cow on teal-blue rounded tile; existing corporate marks unchanged.",
+  "sha256": {
+    "cow-duotone.svg": "6ebaa8c42fb6a5c888c3634e257a672664eab835e206fe658541bb8798a63df0",
+    "LICENSE.txt": "b5b1f1da112d18ea2147decfd48ddc1bf2b5aeb6c265381579340e95b15a2bb2",
+    "cowmata.png": "d75087e5acde4740230f0df8ec9ae2a45b03c6309e5ad89bf2e87275f81f7c4f",
+    "cowmata.ico": "cbf3a51374575a08a956f847a5646be7107f8fac5a94dd557c4838e4d6a9d607",
+    "installer.bmp": "20e21c22b1ba26d92cf909d862538b94728b96b91f27a4abcafef14cf3619c13"
+  }
+}

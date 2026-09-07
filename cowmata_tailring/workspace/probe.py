@@ -150,7 +150,8 @@ class SourceInspector:
             return {"device": motion.device, "uid": motion.uid, "duration_ms": motion.duration_ms,
                     "samples": len(motion.times_ms), "create_time_ms": motion.create_time_ms,
                     "update_time_ms": motion.update_time_ms, "version": motion.version,
-                    "warnings": motion.warnings, "time_semantics": "unknown", "needs_review": False}
+                    "warnings": motion.warnings, "time_semantics": "device_acquisition_start",
+                    "capture_timing": motion.capture_timing(), "needs_review": False}
         return self.video(path, asset_id)
 
     def video(self, path: Path, asset_id: str, *, roi=None) -> dict:

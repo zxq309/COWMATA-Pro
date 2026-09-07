@@ -92,6 +92,8 @@ class MainWindow(QMainWindow):
         self._legacy_windows = []
         self._history_windows = []
         self._candidate_window = None
+        self._capture_dialog = None
+        self._archive_dialog = None
         self._export_running = False
         self._last_scan_complete = False
         self._coverage_second = None
@@ -147,6 +149,7 @@ class MainWindow(QMainWindow):
         self._action(materials, "素材与时间核验…", self.source_manager)
         self._action(materials, "新增唯一拷贝批次…", self.new_batch)
         self._action(materials, "全文件内容核验（耗时）", lambda: self.worker and self.worker.request("audit"))
+        self._action(materials, "录像归档副本核验（不删除原片）…", self.verify_video_archive)
         sync = self.menuBar().addMenu("同步")
         self._action(sync, "九轴同步锚点与未确认区间…", self.edit_mapping)
         self._action(sync, "当前主视角相机时钟校准…", self.edit_camera_mapping)
@@ -156,6 +159,7 @@ class MainWindow(QMainWindow):
         self._action(edit, "撤销", self.undo, "Ctrl+Z")
         self._action(edit, "重做", lambda: self.undo(True), "Ctrl+Y")
         self._action(edit, "确认所选草稿为九轴真值", self.confirm_selected)
+        self._action(edit, "留存多视角证据图（每视角一张）…", self.capture_evidence)
         self._action(edit, "删除所选标注/草稿", self.delete_selected)
         view = self.menuBar().addMenu("视图")
         self._action(view, "全屏 / 退出全屏", self.toggle_fullscreen, "F11")
@@ -245,7 +249,7 @@ class MainWindow(QMainWindow):
         imu_controls.addWidget(self.link)
         self._button("钉住对应点", self.pin, imu_controls)
         signal_layout.addLayout(imu_controls)
-        self.alignment_label = QLabel("create_time 只用于候选检索，尚未确认采集起点")
+        self.alignment_label = QLabel("设备采集时间自动定位；相机时钟偏差可人工校准")
         self.alignment_label.setWordWrap(True)
         signal_layout.addWidget(self.alignment_label)
         self.plot = self.create_plot()
@@ -517,7 +521,7 @@ class MainWindow(QMainWindow):
                 continue
             seen.add(row["asset_id"])
             item = QListWidgetItem(Path(row["path"]).stem)
-            item.setToolTip(row["path"] + "\ncreate_time 是检索线索，非已确认采集时间")
+            item.setToolTip(row["path"] + "\ncreate_time 为设备采集起点；update_time 仅为服务器收包时间")
             item.setData(Qt.ItemDataRole.UserRole, row)
             self.records.addItem(item)
             if row["asset_id"] == previous:
@@ -664,7 +668,15 @@ class MainWindow(QMainWindow):
             self.board.set_main(profile.get("main", self.settings.get("main_camera", self.board.main_camera)))
         self.work.project.source.update({"name": Path(row["path"]).name, "path": row["path"], "asset_id": row["asset_id"],
                                          "device": motion.device, "uid": motion.uid, "durationMs": motion.duration_ms,
-                                         "createTimeMs": motion.create_time_ms, "create_time_semantics": "unknown"})
+                                         "createTimeMs": motion.create_time_ms,
+                                         "create_time_semantics": "device_acquisition_start",
+                                         "capture_timing": motion.capture_timing()})
+        if not self.work.clock.anchors:
+            self.work.clock = ClockMap.from_capture(motion, self.settings.get("timezone_offset_minutes", 480))
+        elif self.work.clock.basis != "manual":
+            origin = ClockMap.from_capture(motion, self.settings.get("timezone_offset_minutes", 480))
+            if origin.map(0) != self.work.clock.map(0) or origin.basis != self.work.clock.basis:
+                self.work.set_clock(origin)
         self.cow.setText(self.work.project.cow_id)
         self.plot.set_data([PlotSeries(**series) for series in motion.plot_series()], motion.duration_ms)
         self.plot.set_view(0, min(motion.duration_ms, 120000))
@@ -686,14 +698,6 @@ class MainWindow(QMainWindow):
             self.tell("已自动续接下一份已校准九轴；视频位置、倍率和视角保持不变。")
         elif self.work.clock.anchors:
             self.board.seek(self.work.clock.map(self.imu_ms))
-        elif self.board.timeline.bounds():
-            # JSON epochs were normalized by the original loader; this is a
-            # browsing hint, not an asserted IMU-to-video correspondence.
-            from datetime import datetime, timedelta, timezone
-            zone = timezone(timedelta(minutes=self.settings.get("timezone_offset_minutes", 480)))
-            hint = wall_ms(datetime.fromtimestamp(motion.create_time_ms / 1000, zone).replace(tzinfo=None))
-            self.board.seek(float(self.work.progress.get("reference_ms") or hint))
-            self.tell("已按 create_time 粗定位候选录像；如无覆盖，可改时间或点“下一覆盖”。确认前仍是视频草稿。")
         if self.worker:
             self.worker.request("priority", [r["path"] for r in self.rows if r["kind"] == "video"
                                              and Path(row["path"]).stem[:10] in r["path"]])
@@ -793,7 +797,11 @@ class MainWindow(QMainWindow):
         if not self.work:
             return
         n = len(self.work.clock.anchors)
-        self.alignment_label.setText(f"同步锚点 {n} · {self.work.clock.quality(self.imu_ms)} · 版本 {self.work.clock.revision[:8]}；create_time 不参与拉伸")
+        if self.work.clock.basis != "manual":
+            self.alignment_label.setText("已按设备采集时间自动联动录像；相机时钟偏差尚未人工核对，不会自动确认标签或硬拼下一份九轴。"
+                                         + (" 旧协议首帧起点为估计。" if self.work.clock.basis == "legacy_estimate" else ""))
+        else:
+            self.alignment_label.setText(f"人工同步锚点 {n} · {self.work.clock.quality(self.imu_ms)} · 版本 {self.work.clock.revision[:8]}；保留原有校准")
 
     def video_time_changed(self, value):
         if not self.wall_input.hasFocus():
@@ -954,7 +962,7 @@ class MainWindow(QMainWindow):
     def video_revision(row):
         return hashlib.sha256(json.dumps(row["metadata"].get("intervals", []), sort_keys=True).encode()).hexdigest()
 
-    def validate_evidence(self, evidence):
+    def validate_evidence(self, evidence, *, allow_archived=False):
         usable = [e for e in evidence if e.get("frame_ready") and e.get("verified_interval")]
         if not usable:
             return False
@@ -969,6 +977,14 @@ class MainWindow(QMainWindow):
                     valid |= file_stamp(self.catalog.source_path(row["path"])) == row["stamp"] and self.video_revision(row) == item.get("video_revision")
                 except OSError:
                     pass
+            if not valid and allow_archived:
+                from .archive import archived_asset
+                # Only previously confirmed training exports may use an audited
+                # offline source. This never authorizes confirming a new draft.
+                matching = [r for r in self.rows if r["asset_id"] == item.get("asset_id")]
+                missing = bool(matching) and all(not self.catalog.source_path(r["path"]).exists() for r in matching)
+                valid = (missing and archived_asset(self.settings.get("video_archive", {}), item["asset_id"])
+                         and any(self.video_revision(r) == item.get("video_revision") for r in matching))
             if not valid:
                 return False
         return True
@@ -1076,12 +1092,14 @@ class MainWindow(QMainWindow):
                 if identifier is None:
                     raise ValueError("旧标注没有视频草稿锚点，请先回看并建立视频草稿，不能直接当成已校准真值")
             self.check_active_sources()
-            self.work.confirm_draft(identifier, self.motion.duration_ms, source_available=self.source_available,
-                                    evidence_validator=self.validate_evidence)
+            confirmed = self.work.confirm_draft(identifier, self.motion.duration_ms, source_available=self.source_available,
+                                                evidence_validator=self.validate_evidence)
             self.refresh_events()
             self.dirty = True
             self.save_current()
             self.tell("已确认九轴真值，保留视频资产、真实样本范围和同步版本。")
+            if self.isVisible():
+                self.capture_evidence(event=confirmed)
         except (ValueError, StopIteration) as exc:
             self.tell(str(exc))
 
@@ -1166,6 +1184,44 @@ class MainWindow(QMainWindow):
         self.dirty = True
         self.save_current()
         self.tell("已补充当前画面证据；区间动作请核对起止两端后再确认。")
+
+    def capture_evidence(self, *, event=None):
+        if not self.writable_work():
+            return
+        if event is None:
+            selected = self.selected_entry()
+            if not selected or selected[0] != "event":
+                self.tell("请先选择一条已确认标注；视频草稿需先核对同步并确认。")
+                return
+            event = next(e for e in self.work.project.events if e.id == selected[1])
+        if event.extras.get("confirmation") != "confirmed":
+            self.tell("该标签尚未确认或需要复核；请先完成视频真值核对。")
+            return
+        from .evidence_ui import CaptureDialog
+        if self._capture_dialog is not None:
+            if self._capture_dialog.future is not None and not self._capture_dialog.future.done():
+                self.tell("上一组截图还在处理，请等待完成。")
+                return
+            self._capture_dialog.close()
+            self._capture_dialog.deleteLater()
+        self._capture_dialog = CaptureDialog(self, event)
+        self._capture_dialog.show()
+
+    def verify_video_archive(self):
+        if not self.catalog or self.catalog.readonly:
+            self.tell("请先打开可写数据工程。")
+            return
+        from .evidence_ui import ArchiveDialog
+        if self._archive_dialog is not None:
+            if self._archive_dialog.future is not None and not self._archive_dialog.future.done():
+                self._archive_dialog.raise_()
+                return
+            self._archive_dialog.close()
+            self._archive_dialog.deleteLater()
+        self.save_current()
+        self.board.play(False)
+        self._archive_dialog = ArchiveDialog(self)
+        self._archive_dialog.show()
 
     def select_plot_event(self, identifier):
         for i in range(self.events.rowCount()):
@@ -1391,7 +1447,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
         work = SessionWork.from_dict(copy.deepcopy(self.work.to_dict()))
-        motion, root = self.motion, self.catalog.root
+        motion, root, evidence_root = self.motion, self.catalog.root, self.catalog.meta
         rows, settings = copy.deepcopy(self.rows), copy.deepcopy(self.settings)
         settings["selected_cameras"] = self.checked_cameras()
         selection = copy.deepcopy(self.selection) if snippet else None
@@ -1403,8 +1459,8 @@ class MainWindow(QMainWindow):
         def save():
             try:
                 document = build_label_file(work, motion, root, rows, settings, selection=selection)
-                save_label_file(path, document, protected=protected)
-                message = "标注已保存：" + path + "。未额外创建目录；可通过“打开历史标注回看”打开。"
+                save_label_file(path, document, protected=protected, evidence_root=evidence_root)
+                message = "标注已保存：" + path + "。已留存的截图一并复制到同级“证据”文件夹；移动成果时请一起带走。"
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 message = "标注导出失败：" + str(exc)
             if not self._closed:
@@ -1446,7 +1502,8 @@ class MainWindow(QMainWindow):
             return
         try:
             self.check_active_sources()
-            project = self.work.training_project(source_available=self.source_available, evidence_validator=self.validate_evidence)
+            project = self.work.training_project(source_available=self.source_available,
+                                                 evidence_validator=lambda e: self.validate_evidence(e, allow_archived=True))
             output = unique_batch(Path(directory), "COWMATA_" + self.work.asset_id[:8])
             atomic_json(output / "全部人工成果.json", self.work.to_dict())
             save_project(self.work.project, output / "兼容单视频工程.json")
@@ -1526,6 +1583,11 @@ class MainWindow(QMainWindow):
             atomic_json(self.catalog.meta / "playback_metrics.json", self.board.latencies)
 
     def closeEvent(self, event):
+        for dialog in (self._capture_dialog, self._archive_dialog):
+            if dialog is not None and dialog.future is not None and not dialog.future.done():
+                event.ignore()
+                self.tell("证据图片或归档核验正在处理，请完成或取消后再关闭。")
+                return
         if self._candidate_window is not None and self._candidate_window.running:
             self._candidate_window.cancel()
             self.tell("正在取消后台预测，结束后自动关闭；人工成果将正常保存。")

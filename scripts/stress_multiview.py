@@ -58,6 +58,12 @@ def make_fixture(source, root):
             start = base + part * common.duration_ms
             prepared[str(path.resolve())] = {"camera": f"CAM{view + 1:02d}", "duration_ms": common.duration_ms,
                 "format": "mov,mp4,m4a,3gp,3g2,mj2", "timeline": timeline.to_dict(), "needs_review": False,
+                # Controlled synthetic reference, never a field calibration.
+                # Explicit anchors keep OCR migrations from replacing the test
+                # clock with the unrelated timestamp visible in repeated clips.
+                "manual_readings": [{"media_ms": 0, "wall_ms": start, "source": "stress_fixture"},
+                                    {"media_ms": common.duration_ms, "wall_ms": start + common.duration_ms,
+                                     "source": "stress_fixture"}],
                 "intervals": [{"media_start": 0, "media_end": common.duration_ms, "wall_start": start,
                                "wall_end": start + common.duration_ms, "verified": True}]}
             hashes[str(path.relative_to(root))] = digest_file(path)
@@ -128,6 +134,12 @@ def main():
         settings["presentation"] = {}
         settings["main_camera"] = "CAM01"
         settings["device_profiles"] = {}
+        # This controlled benchmark always exercises eight views. A prior
+        # inspector/history trial may have deliberately persisted no views.
+        views = [f"CAM{i:02d}" for i in range(1, 9)]
+        settings["selected_cameras"] = views
+        settings["camera_order"] = views
+        settings["device_views"] = {str(settings["device"]): views}
         catalog.save_settings(settings)
         work_path = catalog.work_path(settings["current_asset"])
         saved = json.loads(work_path.read_text(encoding="utf-8"))

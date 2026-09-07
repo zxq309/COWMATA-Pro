@@ -6,12 +6,47 @@ import subprocess
 from pathlib import Path
 
 
+def uninstall_listing(files):
+    """Only shipped files and bytecode derived from shipped .py files are owned.
+
+    Never recursively delete an installation: clients may save a data project
+    inside it. Check ancestors before any deletion, including junctions.
+    """
+    directories = set()
+    caches = set()
+    deletions = []
+    for relative in files:
+        path = Path(relative)
+        if path.is_absolute() or '..' in path.parts or any(c in relative for c in '$\"\r\n*?'):
+            raise ValueError('Unsafe uninstall member')
+        native = str(path).replace('/', '\\')
+        deletions.append('Delete "$INSTDIR\\' + native + '"')
+        directories.update(str(p).replace('/', '\\') for p in path.parents if str(p) != '.')
+        if path.suffix == '.py':
+            cache = str(path.parent / '__pycache__').replace('/', '\\')
+            caches.add(cache)
+            deletions.append('Delete "$INSTDIR\\' + cache + '\\' + path.stem + '.*.pyc"')
+    directories.update(caches)
+    directories.add('logs')
+    checks = ['Push "$INSTDIR"', 'Call un.CheckDirectory']
+    for directory in sorted(directories):
+        checks += ['Push "$INSTDIR\\' + directory + '"', 'Call un.CheckDirectory']
+    deletions += ['Delete "$INSTDIR\\logs\\annotator.log"', 'Delete "$INSTDIR\\COWMATA.update-lock"']
+    checks += ['ClearErrors'] + deletions + ['Call un.CheckDeleteErrors']
+    checks += ['RMDir "$INSTDIR\\' + p + '"' for p in sorted(
+        directories, key=lambda x: (x.count('\\'), len(x)), reverse=True)]
+    # Non-empty directories contain unowned content and are deliberately kept.
+    return checks
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--package', type=Path, required=True)
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--version', required=True)
+    parser.add_argument('--compression', choices=('zlib', 'lzma'), default='zlib',
+                        help='zlib prioritizes installation speed; lzma is the smaller legacy build')
     args = parser.parse_args()
     root, output = args.package.resolve(), args.out.resolve()
     if output.exists():
@@ -27,8 +62,7 @@ def main():
         with path.open('rb') as stream:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != row['sha256']:
                 raise ValueError('Portable input changed: ' + row['path'])
-    directories = set()
-    lines, install = [], []
+    install = []
     previous_parent = None
     for relative in files:
         path = root / relative
@@ -44,9 +78,7 @@ def main():
             install.append('SetOutPath "$INSTDIR' + ('\\' + parent if parent != '.' else '') + '"')
             previous_parent = parent
         install.append('File "' + str(path) + '"')
-        lines.append('Delete "$INSTDIR\\' + relative.replace('/', '\\') + '"')
-        directories.update(str(p).replace('/', '\\') for p in Path(relative).parents if str(p) != '.')
-    lines += ['RMDir "$INSTDIR\\' + p + '"' for p in sorted(directories, key=lambda x: (x.count('\\'), len(x)), reverse=True)]
+    lines = uninstall_listing(files)
     listing = output.with_suffix('.uninstall.nsh')
     with listing.open('x', encoding='utf-8-sig') as stream:
         stream.write('\n'.join(lines) + '\n')
@@ -54,7 +86,8 @@ def main():
     with install_list.open('x', encoding='utf-8-sig') as stream:
         stream.write('\n'.join(install) + '\n')
     script = Path(__file__).resolve().parents[1] / 'packaging/installer.nsi'
-    result = subprocess.run([str(args.compiler.resolve()), '/V2', '/DVERSION=' + args.version,
+    result = subprocess.run([str(args.compiler.resolve()), '/INPUTCHARSET', 'UTF8', '/WX', '/V2',
+                             '/DCOMPRESSION=' + args.compression, '/DVERSION=' + args.version,
                              '/DPACKAGE=' + str(root), '/DOUTPUT=' + str(output),
                              '/DUNINSTALL_LIST=' + str(listing), '/DINSTALL_LIST=' + str(install_list), str(script)], creationflags=0x08000000)
     if result.returncode:
@@ -63,6 +96,12 @@ def main():
         digest = hashlib.file_digest(stream, 'sha256').hexdigest()
     with output.with_suffix('.exe.sha256').open('x', encoding='utf-8') as stream:
         stream.write(digest + '  ' + output.name + '\n')
+    descriptor = output.parent / 'cowmata-update.json'
+    with descriptor.open('x', encoding='utf-8') as stream:
+        json.dump({'schema': 1, 'product': 'cowmata-annotator', 'version': args.version,
+                   'installer': output.name, 'size': output.stat().st_size, 'sha256': digest,
+                   'package_sha256': hashlib.sha256((root / 'package-manifest.json').read_bytes()).hexdigest(),
+                   'unpacked_size': sum(row['size'] for row in manifest['files'])}, stream, indent=2)
     print(json.dumps({'file': str(output), 'bytes': output.stat().st_size, 'sha256': digest}), flush=True)
 
 

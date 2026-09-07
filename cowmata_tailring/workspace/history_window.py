@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -29,6 +30,8 @@ from cowmata_tailring.ui.widgets import PlotSeries
 
 from .catalog import file_stamp
 from .clocks import wall_text
+from .evidence import context_matches
+from .evidence_ui import EvidenceGallery
 from .label_file import contained, load_history
 from .materials import GLASS_STYLE, FrostedCanvas, apply_mica
 from .presentation import PresentationVideoBoard
@@ -60,6 +63,13 @@ class HistoryWindow(QMainWindow):
         self.relink = QPushButton("重新选择数据工程…")
         self.relink.clicked.connect(self.choose_root)
         bar.addWidget(self.relink)
+        self.archive_link = QPushButton("连接归档录像…")
+        self.archive_link.clicked.connect(self.choose_archive)
+        bar.addWidget(self.archive_link)
+        self.media_mode = QComboBox()
+        self.media_mode.addItems(["原录像", "留存证据图"])
+        self.media_mode.currentIndexChanged.connect(self.switch_media)
+        bar.addWidget(self.media_mode)
         self.view = QComboBox()
         self.view.addItems(["主画面 + 辅画面", "自动网格"])
         self.view.currentIndexChanged.connect(lambda i: self.board.set_presentation("B" if i else "A"))
@@ -93,7 +103,11 @@ class HistoryWindow(QMainWindow):
         self.board.policyChanged.connect(lambda policy: self.policy.setCurrentIndex(1 if policy == "balanced" else 0))
         self.board.timeChanged.connect(self.video_time)
         self.board.playbackChanged.connect(lambda playing: self.play_button.setText("暂停" if playing else "播放"))
-        panes.addWidget(self.board)
+        self.media_pages = QStackedWidget()
+        self.media_pages.addWidget(self.board)
+        self.evidence_gallery = EvidenceGallery()
+        self.media_pages.addWidget(self.evidence_gallery)
+        panes.addWidget(self.media_pages)
         self.plot = SignalPanel()
         self.plot.wave.event_editable = False
         self.plot.track.setToolTip("只读回看：单击标签定位，不能拖动修改历史边界")
@@ -136,12 +150,14 @@ class HistoryWindow(QMainWindow):
         self.board.play(False)
         self.board.select([])
         self.data = None
+        self.evidence_gallery.set_bundle(None)
         self.plot.clear_data()
         self.events.clear()
         self.cameras.clear()
         self.banner.setText("正在后台核对标注来源与录像身份…")
         self.play_button.setEnabled(False)
         self.relink.setEnabled(False)
+        self.archive_link.setEnabled(False)
         self.future = self.loader.submit(load_history, self.path, root, cancelled=self.cancellation.is_set)
 
     def choose_root(self):
@@ -149,11 +165,25 @@ class HistoryWindow(QMainWindow):
         if root:
             self.begin_load(root)
 
+    def choose_archive(self):
+        hint = self.data.document.get("video", {}).get("archive", {}).get("archive_root_hint", "") if self.data else ""
+        root = QFileDialog.getExistingDirectory(self, "选择录像归档目录（按内容身份核验，不改写归档）", hint)
+        if root:
+            self.begin_load(root)
+
+    def switch_media(self, index):
+        if not hasattr(self, "media_pages"):
+            return
+        self.board.play(False)
+        self.media_pages.setCurrentIndex(index)
+        self.play_button.setEnabled(index == 0 and bool(self.data and self.data.timeline.intervals))
+
     def poll_load(self):
         if self.future is None or not self.future.done():
             return
         future, self.future = self.future, None
         self.relink.setEnabled(True)
+        self.archive_link.setEnabled(True)
         try:
             data = future.result()
             if not self.closed:
@@ -199,6 +229,10 @@ class HistoryWindow(QMainWindow):
         self.select_cameras()
         self.play_button.setEnabled(bool(data.timeline.intervals))
         self.seek(self.bounds()[0])
+        self.media_mode.setCurrentIndex(0 if data.timeline.intervals else 1)
+        self.switch_media(self.media_mode.currentIndex())
+        if self.events.count():
+            self.events.setCurrentRow(0)
 
     def bounds(self):
         view = self.data.document["view"]
@@ -234,7 +268,8 @@ class HistoryWindow(QMainWindow):
             self.slider.setValue(round(10000 * (when - lo) / max(1, hi - lo)))
         quality = self.data.work.clock.quality(when)
         label = {"interpolated": "已校准范围", "estimated": "未校准", "single_anchor": "单点粗对齐",
-                 "unconfirmed": "未确认区间", "extrapolated": "超出校准范围"}[quality]
+                 "unconfirmed": "未确认区间", "extrapolated": "超出校准范围",
+                 "device_clock": "设备时钟候选定位", "legacy_estimate": "旧协议估计时间"}.get(quality, "未校准")
         self.position.setText(f"{when / 1000:.3f}s · {label}")
 
     def video_time(self, when):
@@ -275,13 +310,17 @@ class HistoryWindow(QMainWindow):
             self.banner.setText("录像缺失或已变化：" + "、".join(changed))
 
     def toggle_play(self):
-        if self.data and self.data.timeline.intervals:
+        if self.data and self.data.timeline.intervals and self.media_mode.currentIndex() == 0:
             self.board.play(not self.board.playing)
 
     def review_event(self, identifier):
         if self.data:
             event = next((e for e in self.data.work.project.events if e.id == identifier), None)
             if event:
+                bundle = event.extras.get("screenshots")
+                self.evidence_gallery.set_bundle(bundle, self.path.parent)
+                if bundle and not context_matches(bundle, self.data.work, event):
+                    self.statusBar().showMessage("证据图对应旧标签/同步版本，保留用于追溯，需重新核对。")
                 self.board.play(False)
                 self.plot.set_selected_event(event.id)
                 self.seek(event.t0)
@@ -293,6 +332,7 @@ class HistoryWindow(QMainWindow):
         if kind == "event":
             self.review_event(identifier)
         else:
+            self.evidence_gallery.set_bundle(None)
             draft = next(d for d in self.data.work.drafts if d["id"] == identifier)
             self.board.play(False)
             self.board.seek(draft["reference_start"])

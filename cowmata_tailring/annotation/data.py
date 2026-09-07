@@ -91,6 +91,24 @@ class MotionData:
     max_gap_ms: float
     warnings: tuple[str, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
+    first_frame_elapsed_ms: float = 0.0
+    coordinate_offset_ms: float = 0.0
+
+    def epoch_at(self, source_ms: float) -> float:
+        """Acquisition epoch; never derived from upload time or the filename."""
+        return self.create_time_ms + self.first_frame_elapsed_ms + source_ms - self.coordinate_offset_ms
+
+    def capture_timing(self) -> dict[str, Any]:
+        return {
+            "revision": 1, "create_time_semantics": "device_acquisition_start",
+            "update_time_semantics": "server_received",
+            "basis": "create_time+frame_counter" if self.version == 2 else "create_time+legacy_relative_estimate",
+            "first_frame_elapsed_ms": self.first_frame_elapsed_ms,
+            "coordinate_offset_ms": self.coordinate_offset_ms,
+            "sample_start_epoch_ms": self.epoch_at(float(self.times_ms[0])),
+            "sample_end_epoch_ms": self.epoch_at(float(self.times_ms[-1])),
+            "camera_alignment": "not_implied",
+        }
 
     @property
     def sample_count(self) -> int:
@@ -177,6 +195,7 @@ class MotionData:
             "version_inferred": self.version_inferred,
             "frame_bytes": self.frame_bytes,
             "timestamp_mode": self.timestamp_mode,
+            "capture_timing": self.capture_timing(),
             "sample_count": self.sample_count,
             "duration_ms": round(self.duration_ms, 3),
             "sample_rate_hz": round(self.sample_rate_hz, 6),
@@ -539,6 +558,9 @@ def parse_motion_object(
         max_gap_ms=max_gap_ms,
         warnings=tuple(warnings),
         metadata=metadata,
+        # The uint32 counter starts at create_time for each acquisition. Keep
+        # relative label coordinates unchanged, including the first-frame delay.
+        first_frame_elapsed_ms=float(struct.unpack_from("<I", imu_raw)[0]) if version == 2 else 0.0,
     )
 
 

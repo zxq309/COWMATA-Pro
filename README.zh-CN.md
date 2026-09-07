@@ -1,5 +1,7 @@
 <div align="center">
 
+> **3.1.0 — 2026-09-07：** 每视角一张证据图、离线回看标签/九轴/图片、外部录像归档核验；整合新旧 JSON 采集时间兼容、软件图标、安装修复与 GitHub 后台更新。见 [证据与归档](docs/evidence-archive.md)、[采集时间](docs/capture-timing.md)、[客户端更新](docs/client-updates.md) 和 [更新日志](CHANGELOG.md)。下方已有流程视频录制于 rc1。
+
 > **普通用户直接使用离线 EXE：** 到 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
 > 下载完整离线安装版 **Setup.exe**，按向导安装，无须配置 Python、pip、VLC、CUDA 工具包或模型。
 > GitHub 自动生成的 **Source code.zip 是源码，不是可直接运行的软件包**。
@@ -11,7 +13,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-3.1.0--rc.1-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
+[![Release](https://img.shields.io/badge/release-3.1.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -48,6 +50,12 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 | [![记录区间、确认、导出追溯文件](assets/screenshots/labels-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/03-label-export.mp4) | [![打开历史片段自动定位录像](assets/screenshots/history-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/04-history.mp4) |
 
 演示刻意使用标明 DEMO 的独立副本及示例同步关系。原始记录未被修改；候选不是真值，辅路低频预览也不能代替暂停后的原片精确帧。详见 [录屏范围与复现说明](docs/live-demos.md)。
+
+## 新增：截图留证与离线回看
+
+[![真实运行的证据图片与九轴历史回看](assets/screenshots/evidence-live.png)](docs/evidence-archive.md)
+
+每个选中视角保存一张图片，随标签携带；核验外部录像副本后可自行腾出本机空间。图片不进入九轴算法。此图来自实际程序及三个真实监控画面，**演示同步与标签仅用于说明操作，不是科研真值**。见 [操作与边界](docs/evidence-archive.md)。
 
 ## 环境要求
 

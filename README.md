@@ -1,5 +1,7 @@
 <div align="center">
 
+> **3.1.0 — 2026-09-07:** one evidence image per camera, offline label/IMU/image review and verified external-video archives. Includes new/legacy capture timestamps, native app icons, installer fixes and GitHub background updates. See [evidence and archiving](docs/evidence-archive.md), [capture timing](docs/capture-timing.md), [updates](docs/client-updates.md) and the [changelog](CHANGELOG.md). The existing workflow videos below were recorded with rc1.
+
 > **Windows offline app:** ordinary users download the complete offline Setup EXE from
 > [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases).
 > No Python, pip, VLC, CUDA toolkit, or model setup is required. The automatically
@@ -12,7 +14,7 @@
 **Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-3.1.0--rc.1-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
+[![Release](https://img.shields.io/badge/release-3.1.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -49,6 +51,12 @@ Click a thumbnail to watch/download its short recording. These are native applic
 | [![Interval marking, explicit confirmation and traceable export](assets/screenshots/labels-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/03-label-export.mp4) | [![Reopen a snippet and locate its original video](assets/screenshots/history-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/04-history.mp4) |
 
 The isolated DEMO copies use illustrative alignment and labels, never field truth. Candidates require human review; low-rate auxiliary previews do not replace precise paused original frames. See [capture scope](docs/live-demos.md).
+
+## New: evidence images and offline review
+
+[![Actual offline image/IMU history viewer](assets/screenshots/evidence-live.png)](docs/evidence-archive.md)
+
+Retain one still per selected camera, carry it with your labels, and verify external video copies before freeing laptop storage. Images never enter the IMU models. This native screenshot uses three real surveillance scenes with **illustrative DEMO clocks and labels, not scientifically synchronized ground truth**. See [the workflow and limits](docs/evidence-archive.md).
 
 ## Requirements
 

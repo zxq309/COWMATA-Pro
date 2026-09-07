@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 APP_ORG = "Cowmata"
 APP_NAME = "Cowmata TailRing"
@@ -57,11 +58,14 @@ def main(argv: list[str] | None = None) -> int:
     print("COWMATA scheduling: " + prioritize_ui(), flush=True)
 
     from PySide6.QtCore import QCoreApplication, Qt, QTimer
+    from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 
+    from cowmata_tailring.app.windows_identity import set_taskbar_identity
     from cowmata_tailring.ui.i18n import set_language
 
     set_language(args.lang)
+    set_taskbar_identity()  # Must precede QApplication and any native window.
 
     QCoreApplication.setOrganizationName(APP_ORG)
     QCoreApplication.setApplicationName(APP_NAME)
@@ -70,11 +74,16 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     application = QApplication(sys.argv[:1])
+    icon_path = Path(__file__).resolve().parents[2] / 'assets' / 'app-icon' / 'cowmata.ico'
+    if icon_path.is_file():
+        application.setWindowIcon(QIcon(str(icon_path)))
     application.setStyle("Fusion")
 
     if args.annotations:
         from cowmata_tailring.workspace.history_window import HistoryWindow
         window = HistoryWindow(args.annotations, args.project)
+        from cowmata_tailring.app.update_ui import UpdateController
+        window.updater = UpdateController(window)
         window.show()
         return application.exec()
 
@@ -89,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
         from cowmata_tailring.app.model_assist_window import MainWindow
 
     window = MainWindow()
+    from cowmata_tailring.app.update_ui import UpdateController
+    window.updater = UpdateController(window)
     window.show()
 
     def open_startup_files() -> None:

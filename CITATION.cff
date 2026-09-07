@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use COWMATA Tail-Ring Annotator in research, please cite this software."
 title: "COWMATA Tail-Ring Annotator"
 type: software
-version: 3.1.0rc1
+version: 3.1.0
 date-released: 2026-09-07
 license: MIT
 repository-code: "https://github.com/zxq309/cattle-tail-ring-annotator"

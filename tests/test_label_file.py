@@ -245,9 +245,13 @@ def test_legacy_formats_and_unknown_alignment_are_not_guessed(source, tmp_path):
         atomic_json(path, data)
         result = load_history(path, source[0])
         assert len(result.work.project.events) == 1
-        assert not result.work.clock.anchors
+        if result.motion is not None:
+            assert result.work.clock.basis == "device_clock"
+            assert result.work.clock.quality(100) != "interpolated"
+        else:
+            assert not result.work.clock.anchors
         assert not result.timeline.intervals
-        assert any("服务器" in w for w in result.warnings)
+        assert any("设备采集时间" in w or "服务器" in w for w in result.warnings)
 
 
 def test_export_ui_is_one_file_not_a_batch_directory(source, tmp_path, monkeypatch):

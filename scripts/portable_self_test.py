@@ -12,6 +12,12 @@ from pathlib import Path
 
 
 def main():
+    qt_errors = []
+    import traceback
+    def qt_exception(kind, error, trace):
+        qt_errors.append(str(error))
+        traceback.print_exception(kind, error, trace)
+    sys.excepthook = qt_exception
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--video")
@@ -96,7 +102,9 @@ def main():
             restored = load_history(label)
             expected = original.times_ms[(original.times_ms >= 1000) & (original.times_ms <= 5000)]
             assert numpy.array_equal(restored.motion.times_ms, expected)
-            assert not restored.work.clock.anchors
+            assert restored.work.clock.basis in {"device_clock", "legacy_estimate"}
+            assert restored.work.clock.quality(float(expected[0])) != "interpolated"
+            assert restored.motion.epoch_at(float(expected[0])) == original.epoch_at(float(expected[0]))
             from cowmata_tailring.workspace.history_window import HistoryWindow
             history = HistoryWindow(label)
             history.future.result(timeout=20)
@@ -130,6 +138,7 @@ def main():
         assert reader.readonly
         reader.close()
         catalog.close()
+    assert not qt_errors, "Unhandled Qt callback errors: " + repr(qt_errors)
     atomic_json(Path(args.out), result)
     print(json.dumps(result, ensure_ascii=True), flush=True)
 

@@ -104,12 +104,16 @@ class SessionWork:
         if evidence_validator is not None and not evidence_validator(evidence):
             raise ValueError("视频素材或相机校准版本已变化，请回看并更新画面证据")
         self.checkpoint()
-        event = Event(self.project.next_event_id, draft["label_index"], start, end,
+        previous = next((e for e in self.project.events if e.extras.get("draft_id") == draft_id), None)
+        event = Event(previous.id if previous else self.project.next_event_id, draft["label_index"], start, end,
                       note=draft.get("note", ""), ev="video",
                       extras={"confirmation": "confirmed", "mapping_revision": self.clock.revision,
                               "video_evidence": copy.deepcopy(evidence), "group_id": draft["group_id"],
                               "draft_id": draft_id, "asset_id": self.asset_id,
                               "reference_start": draft["reference_start"], "reference_end": draft["reference_end"]})
+        if previous and previous.extras.get("screenshots"):
+            # Keep the original provenance, even if later edits make it stale.
+            event.extras["screenshots"] = copy.deepcopy(previous.extras["screenshots"])
         self.project.events = [e for e in self.project.events if e.extras.get("draft_id") != draft_id]
         self.project.events.append(event)
         if draft.get("model_candidate"):
@@ -128,6 +132,8 @@ class SessionWork:
                           and (evidence_validator is None or evidence_validator(e.extras.get("video_evidence", [])))]
         if not project.events:
             raise ValueError("没有通过同步与人工复核的真值；视频草稿可另行导出")
+        for event in project.events:
+            event.extras.pop("screenshots", None)  # Human review only, never training inputs.
         project.align["workspaceClock"] = self.clock.to_dict()
         project.extras["unreviewed_is_negative"] = False
         project.extras["training_scope"] = "confirmed_events_only"

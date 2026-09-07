@@ -102,15 +102,17 @@ def build_label_file(work, motion, root, rows, settings, *, selection=None, incl
             "coordinates": "parent_imu_ms",
             "work": snapshot, "view": {"start_ms": lo, "end_ms": hi},
             "source": {"asset_id": work.asset_id, "path": motion.source_path.resolve().relative_to(root).as_posix(),
-                       "project_root_hint": str(root), "acc_scale": motion.acc_scale},
+                       "project_root_hint": str(root), "acc_scale": motion.acc_scale,
+                       "capture_timing": motion.capture_timing()},
             "video": {"rows": [copy.deepcopy(r) for r in rows if r["kind"] == "video" and r["asset_id"] in video_ids],
+                      "archive": copy.deepcopy(settings.get("video_archive", {})),
                       "camera_maps": copy.deepcopy(settings.get("camera_maps", {})),
                       "camera_overrides": copy.deepcopy(settings.get("camera_overrides", {})),
                       "selected_cameras": list(settings.get("selected_cameras", []))},
             "embedded_imu": embedded}
 
 
-def save_label_file(path, document, *, protected=()):
+def save_label_file(path, document, *, protected=(), evidence_root=None):
     path = Path(path).resolve()
     if path in {Path(p).resolve() for p in protected}:
         raise ValueError("Cannot overwrite an original source or working annotation")
@@ -120,6 +122,9 @@ def save_label_file(path, document, *, protected=()):
         existing = json.loads(path.read_text(encoding="utf-8-sig"))
         if not isinstance(existing, dict) or existing.get("format") != FORMAT or existing.get("source", {}).get("asset_id") != document["source"]["asset_id"]:
             raise ValueError("Refusing to overwrite raw data or another recording's annotation")
+    from .evidence import copy_evidence
+    document = copy.deepcopy(document)
+    copy_evidence(document, evidence_root, path.parent)
     atomic_json(path, document)
 
 
@@ -185,6 +190,12 @@ def load_history(path, root=None, *, cancelled=lambda: False):
     hint = doc["source"].get("project_root_hint", "")
     root = Path(root).resolve() if root else Path(hint).resolve() if hint and Path(hint).is_dir() else None
     warnings = []
+    from .evidence import evidence_summary
+    stills = evidence_summary(doc, Path(path).parent)
+    if stills["saved"]:
+        warnings.append(f"已校验证据图 {stills['saved']} 张（仅供人工回看，不参与算法）")
+    if stills["missing"]:
+        warnings.append(f"{stills['missing']} 张证据图缺失或损坏；请把标注 JSON 与“证据”文件夹一起复制")
     try:
         rows, settings = read_index(root) if root else ([], {})
     except (OSError, ValueError, sqlite3.Error):
@@ -207,7 +218,14 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         offset = float(embedded["parent_start_ms"])
         if offset != doc["view"]["start_ms"] or abs(offset + motion.duration_ms - doc["view"]["end_ms"]) > .001:
             raise ValueError("Snippet offset does not match its parent view range")
-        motion = replace(motion, times_ms=motion.times_ms + offset, duration_ms=offset + motion.duration_ms)
+        # Snippet counters retain their original absolute elapsed values. Shift
+        # only the label coordinate system, not the device epoch a second time.
+        timing = doc["source"].get("capture_timing", {})
+        if timing:
+            motion = replace(motion, first_frame_elapsed_ms=float(timing.get("first_frame_elapsed_ms", 0))
+                             + offset - float(timing.get("coordinate_offset_ms", 0)))
+        motion = replace(motion, times_ms=motion.times_ms + offset, duration_ms=offset + motion.duration_ms,
+                         coordinate_offset_ms=offset)
     elif root and len(work.asset_id) == 64:
         paths = [r["path"] for r in rows if r["kind"] == "imu" and r["asset_id"] == work.asset_id]
         paths.append(doc["source"].get("path", ""))
@@ -229,8 +247,12 @@ def load_history(path, root=None, *, cancelled=lambda: False):
                 continue
     if motion is None:
         warnings.append("未找到身份匹配的九轴原件；仍可查看标签，请重新选择数据工程。")
-    if not work.clock.anchors:
-        warnings.append("没有九轴校准锚点；不会用文件名或服务器时间自动对齐视频。")
+    if not work.clock.anchors and motion is not None:
+        work.clock = ClockMap.from_capture(motion, settings.get("timezone_offset_minutes", 480))
+    if work.clock.basis != "manual":
+        warnings.append("按设备采集时间定位候选录像；未替代人工相机校准，历史标签保持原状。")
+    elif not work.clock.anchors:
+        warnings.append("没有可用九轴采集时间或校准锚点；不会用文件名或服务器收包时间对齐视频。")
     saved = doc.get("video", {})
     maps = {k: ClockMap.from_dict(v) for k, v in {**settings.get("camera_maps", {}), **saved.get("camera_maps", {})}.items()}
     overrides = {**settings.get("camera_overrides", {}), **saved.get("camera_overrides", {})}
@@ -240,7 +262,10 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         for old in saved_rows:
             # Keep the archived clock/OCR mapping. Only relocate by content ID.
             matches = [r for r in rows if r["kind"] == "video" and r["asset_id"] == old["asset_id"]]
+            archive_matches = [r for r in saved.get("archive", {}).get("files", [])
+                               if r.get("asset_id") == old["asset_id"] and r.get("status") == "verified"]
             candidates.extend([{**old, "path": r["path"], "stamp": r["stamp"]} for r in matches] or [old])
+            candidates.extend({**old, "path": r["archive_path"], "stamp": "archive_requires_sha256"} for r in archive_matches)
         if saved.get("camera_maps", {}) != settings.get("camera_maps", {}):
             warnings.append("回看使用标注文件保存的相机校准版本，不会静默迁移历史标签。")
     else:
@@ -274,5 +299,5 @@ def load_history(path, root=None, *, cancelled=lambda: False):
             warnings.append("录像缺失或已变化：" + row["path"])
     timeline = VideoTimeline(intervals_from_rows(usable, overrides), maps)
     if not timeline.intervals:
-        warnings.append("没有可用录像覆盖；标签仍可回看，但不能据此补判视频真值。")
+        warnings.append("原录像当前不在本机或不可用；可回看标签和已保存证据图，不能仅凭截图重新确认整段动作。")
     return HistoryData(doc, work, motion, root, usable, timeline, warnings)
