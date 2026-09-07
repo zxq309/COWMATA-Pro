@@ -55,7 +55,8 @@ def test_only_owned_generated_files_are_in_uninstall_plan():
     assert listing.index("Call un.CheckDirectory") < listing.index("Delete ")
     assert listing.index("Call un.CheckDeleteErrors") < listing.index("RMDir ")
     import pytest
-    for path in ("../user.json", "C:/user.json", "lib/*.py", 'bad"$path.py'):
+    for path in ("../user.json", "C:/user.json", "C:user.json", r"\user.json", r"..\user.json",
+                 "lib/file:stream", "lib/*.py", 'bad"$path.py'):
         with pytest.raises(ValueError):
             module.uninstall_listing([path])
 

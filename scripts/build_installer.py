@@ -3,7 +3,7 @@ import argparse
 import hashlib
 import json
 import subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 
 def uninstall_listing(files):
@@ -16,8 +16,10 @@ def uninstall_listing(files):
     caches = set()
     deletions = []
     for relative in files:
-        path = Path(relative)
-        if path.is_absolute() or '..' in path.parts or any(c in relative for c in '$\"\r\n*?'):
+        # These are Windows target paths, even when CI checks the builder on
+        # Linux. Reject drives/root-relative paths and NTFS alternate streams.
+        path = PureWindowsPath(relative)
+        if path.drive or path.root or '..' in path.parts or any(c in relative for c in ':$\"\r\n*?'):
             raise ValueError('Unsafe uninstall member')
         native = str(path).replace('/', '\\')
         deletions.append('Delete "$INSTDIR\\' + native + '"')
