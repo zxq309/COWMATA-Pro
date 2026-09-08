@@ -36,7 +36,7 @@ def _label(
     }
 
 
-# 标注协议 v4：16 项正式标签；SYNC_ANCHOR 仅用于时间同步。
+# v4 标签代码兼容；新增爬跨，不改旧标签索引。SYNC_ANCHOR 仅用于同步。
 DEFAULT_LABELS: list[dict[str, Any]] = [
     _label(
         "站立", "standing", "STANDING", "1", "#5f86b3", "body_state",
@@ -122,6 +122,10 @@ DEFAULT_LABELS: list[dict[str, Any]] = [
     _label(
         "敲击", "sync anchor", "SYNC_ANCHOR", "0", "#111827", "sync_anchor",
         "视频与九轴同步敲击点，不属于行为标签。", point=True, trainable=False,
+    ),
+    _label(
+        "爬跨", "mounting", "MOUNTING", "G", "#35afc8", "objective_event",
+        "本牛前肢抬起并搭上另一头牛背部，到前肢离开并落地；被爬跨不等同于本牛爬跨。",
     ),
 ]
 

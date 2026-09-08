@@ -1,6 +1,6 @@
 <div align="center">
 
-> **3.1.2 — 2026-09-09：** 按需打开任意一份九轴，优先读取支持的录像内部录制时间，OCR 核验/兜底；默认单路播放、其他视角逐个加载暂停图，悬浮控件换视角；支持断点续标与多人回传核验。见 [逐份加载](docs/on-demand-indexing.md)、[录像时间](docs/native-video-timing.md)、[多人回传](docs/team-returns.md)、[播放与实测](docs/playback-performance-312.md)、[客户端更新](docs/client-updates.md)。下方旧流程视频录制于 rc1。
+> **3.2.0 — 2026-09-09：** 官网绿色品牌界面与图标；新增单视角「行为识别」「健康与繁殖」入口，五类模型真实运行，未完成算法明确待接入。保留逐份加载、主路优先、断点续标和多人回传，精简离线包。见 [新手图文教程 PDF](docs/quick-start-illustrated.pdf)、[算法边界](docs/algorithm-inspection.md)、[本次验证](docs/release-320-validation.md)。下方旧录屏注明其版本。
 
 > **普通用户直接使用离线 EXE：** 到 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
 > 下载完整离线安装版 **Setup.exe**，按向导安装，无须配置 Python、pip、VLC、CUDA 工具包或模型。
@@ -13,7 +13,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-3.1.2-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest)
+[![Release](https://img.shields.io/badge/release-3.2.0-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -22,9 +22,9 @@
 
 </div>
 
- [![新版工作台真实运行：三路监控与九轴](assets/screenshots/workspace-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/01-multiview.mp4)
+[![3.2.0 真实运行：官网配色与独立行为算法](assets/screenshots/algorithm-320-live.png)](docs/quick-start-illustrated.pdf)
 
-<p align="center"><sub>点击图片看真实操作录屏。三个不同监控的真实画面、真实九轴和模型实际运行；演示工程的同步关系及标签仅用于展示操作，不是该牛已核实的科研真值。</sub></p>
+<p align="center"><sub>点击图片打开十页新手图文教程。真实九轴、监控与模型运行；DEMO 同步关系及示例标签仅用于操作展示，不是科研真值。</sub></p>
 
 ## 项目简介
 
@@ -34,7 +34,7 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 
 - **视频—九轴共时间轴** —— 播放、定位、缩放并同时检查加速度计、陀螺仪和磁力计九个通道。
 - **先对齐、后标注** —— 视频与传感器时间轴完成钉住前，正式标注保持锁定，避免无声错位。
-- **内置 v4 协议** —— 16 项行为/分娩标签，另含一个不参与训练的同步锚点。
+- **内置 v4 协议** —— 保留原 16 项行为/分娩标签及同步锚点，追加爬跨；旧标签索引不变。
 - **人控模型辅助** —— 模型只生成候选项；未经过人工确认，不会成为正式标签。
 - **可追溯输出** —— 稳定机器码、显示名称、绝对时间戳、来源字段与导出前结构校验。
 - **中英双语** —— 界面语言仅影响显示，不会改写落盘标签码或历史数据。

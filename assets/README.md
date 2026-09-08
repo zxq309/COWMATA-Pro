@@ -6,6 +6,7 @@ The files under `brand/` are reused from the companion [COWMATA algorithm reposi
 
 - `cowmata-logo.svg` — original company source: <https://www.cowmata.com/assets/dist/img/logo_cowmata.svg>
 - `cowmata-company-logo.png` — original company source: <https://www.cowmata.com/assets/dist/img/logo.png>
+- `official-wordmark.svg` and `official-favicon.ico` — fetched unchanged on 2026-09-09 from the official website's wordmark URL above and <https://www.cowmata.com/en/favicon.ico>. Windows taskbar/installer resources use this favicon, not the former Phosphor cow; hashes are in `app-icon/provenance.json`.
 
 The COWMATA names, marks, and logo artwork remain company brand assets. Their inclusion here does not place them under the repository's MIT source-code license.
 

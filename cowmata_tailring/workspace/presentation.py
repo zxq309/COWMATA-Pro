@@ -19,6 +19,7 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent, **kwargs)
         self.presentation = "A"
+        self.single_camera_only = False
         self.observation_ratio = 75
         self.aux_scroll = QScrollBar(Qt.Orientation.Vertical, self)
         self.aux_scroll.valueChanged.connect(self.relayout)
@@ -29,6 +30,45 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
     def set_presentation(self, mode):
         self.presentation = mode
         self.relayout()
+
+    def set_single_camera_only(self, enabled):
+        self.single_camera_only = bool(enabled)
+        if enabled:
+            self.set_policy("focus")
+        self.seek(self.reference_ms)
+        self.relayout()
+
+    def set_policy(self, policy):
+        super().set_policy("focus" if getattr(self, "single_camera_only", False) else policy)
+
+    def is_preview(self, camera):
+        if getattr(self, "single_camera_only", False) and camera != self.main_camera:
+            return True  # Hidden views are not current evidence, even paused.
+        return super().is_preview(camera)
+
+    def _position(self, camera, tile, *, force=False):
+        if self.single_camera_only and camera != self.main_camera:
+            self._pause_tile(tile)
+            tile.pending = None
+            tile.ready = False
+            tile.precise_ms = None
+            tile.actual_ms = None
+            tile._preview_only = True
+            tile.stack.hide()
+            return  # No background preview decode in algorithm inspection.
+        super()._position(camera, tile, force=force)
+
+    def set_main(self, camera):
+        previous = self.main_camera
+        super().set_main(camera)
+        if self.single_camera_only and previous != self.main_camera:
+            self.seek(self.reference_ms)
+
+    def _preview_position(self, camera, tile):
+        if self.single_camera_only and camera != self.main_camera:
+            self._position(camera, tile)
+            return
+        super()._preview_position(camera, tile)
 
     def enlarge(self, camera=None):
         if self.presentation == "C" and camera:
@@ -91,6 +131,8 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         self.empty.setVisible(not self.selected)
         visible = set()
         expanded = self.expanded if self.expanded in self.selected else None
+        if self.single_camera_only and self.main_camera in self.selected:
+            expanded = self.main_camera
         if self.presentation == "C" and self.main_camera in self.selected:
             expanded = self.main_camera
         self.aux_scroll.hide()
@@ -136,7 +178,7 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
             tile.message.setToolTip(tile.message.text())
             main = camera == self.main_camera
             style = ("QFrame {background:#17282c; border:1px solid " +
-                              ("#35baac" if main else "#30464b") + "; border-radius:8px} "
+                              ("#8add66" if main else "#30464b") + "; border-radius:8px} "
                               "QPushButton {color:#d8e9e9; background:#20383d; border:0; padding:1px 6px; border-radius:5px} "
                               "QLabel {border:0; font-size:11px}")
             if tile.styleSheet() != style:

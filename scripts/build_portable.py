@@ -20,6 +20,26 @@ def write_checksum(archive, digest):
         stream.write(digest + "  " + archive.name + "\n")
 
 
+def portable_ignore(directory, names):
+    """Exclude only audited unused developer/browser tools, not media codecs.
+
+    The app uses Qt Widgets/SVG, VLC and FFmpeg/ffprobe, never Qt WebEngine or
+    ffplay. Keep Qt platform/image/style plugins and both private runtimes.
+    """
+    path = Path(directory)
+    ignored = {name for name in names if name == "__pycache__" or name.endswith(".pyc")
+               or name in {".pytest_cache", ".ruff_cache"}}
+    if "site-packages" in path.parts and "PySide6" in path.parts:
+        ignored.update(name for name in names if (
+            "webengine" in name.lower() or name in {"include", "typesystems", "glue", "doc", "examples"}
+            or name.startswith("objects-") or name.endswith((".lib", ".exp", ".pdb"))))
+    if path.name == "bin" and path.parent.name == "ffmpeg":
+        ignored.add("ffplay.exe")
+    if any(p in {"runtime", "model_runtime_20260906"} for p in path.parts):
+        ignored.add("tests")
+    return ignored
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
@@ -51,21 +71,19 @@ def main():
             if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
                 raise SystemExit("Portable model hash mismatch: " + item["name"])
     destination.mkdir(parents=True, exist_ok=False)
-    ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", ".ruff_cache")
     for name in ("cowmata_tailring", "runtime", "model_runtime_20260906", "vendor", "assets"):
         # Exclude upstream test corpora and C++ build objects, not runtime DLLs
         # or our reviewed event algorithms. This also avoids NSIS/MAX_PATH
         # failures on deeply nested sklearn test fixtures and Qt object files.
-        runtime_ignore = shutil.ignore_patterns("__pycache__", "*.pyc", "tests", "objects-*")
         shutil.copytree(source / name, destination / name,
-                        ignore=runtime_ignore if name in {"runtime", "model_runtime_20260906"} else ignore)
+                        ignore=portable_ignore)
     for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(source / name, destination / name)
     (destination / "docs").mkdir()
     for name in ("workspace-acceptance.md", "portable-components.md", "algorithm-phase1-acceptance.md", "ui-next-stage-proposal.md", "ui-phase2-acceptance.md", "ui-performance-acceptance.md", "annotation-history-acceptance.md", "event-models-acceptance.md", "windows-distribution.md", "ocr-lightweight-integration.md", "live-demos.md"):
         shutil.copy2(source / "docs" / name, destination / "docs" / name)
     (destination / "scripts").mkdir()
-    for name in ("capture-timing.md", "client-updates.md", "evidence-archive.md", "on-demand-indexing.md", "team-returns.md", "native-video-timing.md", "playback-performance-312.md"):
+    for name in ("capture-timing.md", "client-updates.md", "evidence-archive.md", "on-demand-indexing.md", "team-returns.md", "native-video-timing.md", "playback-performance-312.md", "algorithm-inspection.md", "release-320-validation.md", "quick-start-illustrated.pdf"):
         shutil.copy2(source / "docs" / name, destination / "docs" / name)
     for name in ("portable_self_test.py", "build_portable.py", "verify_label_history.py", "verify_event_models.py", "verify_candidate_ui.py", "register_event_pack.py", "verify_evidence_archive.py"):
         shutil.copy2(source / "scripts" / name, destination / "scripts" / name)

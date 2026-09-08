@@ -85,7 +85,7 @@ def test_default_labels_all_carry_display_pair() -> None:
 
 
 def test_manual_calving_assistance_label_contract() -> None:
-    """Manual assistance is a trainable interval and keeps sync anchor last."""
+    """New labels append after the existing v4 codes; old indices stay valid."""
     from cowmata_tailring.annotation.defaults import DEFAULT_LABELS
 
     labels = {label["code"]: label for label in DEFAULT_LABELS}
@@ -99,4 +99,5 @@ def test_manual_calving_assistance_label_contract() -> None:
     assert assistance["overlap"] is True
     assert assistance["specialty"] is True
     assert assistance["trainable"] is True
-    assert DEFAULT_LABELS[-1]["code"] == "SYNC_ANCHOR"
+    assert DEFAULT_LABELS[16]["code"] == "SYNC_ANCHOR"
+    assert DEFAULT_LABELS[17]["code"] == "MOUNTING"

@@ -1,14 +1,13 @@
 {
-  "source": "https://github.com/phosphor-icons/core",
-  "revision": "2b75f3ad12b420c9504ef05df8d2564a28f8500e",
-  "source_path": "assets/duotone/cow-duotone.svg",
-  "license": "MIT; see LICENSE.txt",
-  "adaptation": "White cow on teal-blue rounded tile; existing corporate marks unchanged.",
+  "source": "https://www.cowmata.com/en/favicon.ico",
+  "retrieved": "2026-09-09",
+  "source_sha256": "a7f57c5b4a5253194dc338934354be5cd5c75e606e96e4f80ac1de3ecff4a7e8",
+  "license": "Corporate trademark, rights retained by COWMATA; see NOTICE",
+  "adaptation": "Original official favicon, format/size conversion only. Not the former Phosphor cow.",
   "sha256": {
-    "cow-duotone.svg": "6ebaa8c42fb6a5c888c3634e257a672664eab835e206fe658541bb8798a63df0",
-    "LICENSE.txt": "b5b1f1da112d18ea2147decfd48ddc1bf2b5aeb6c265381579340e95b15a2bb2",
-    "cowmata.png": "d75087e5acde4740230f0df8ec9ae2a45b03c6309e5ad89bf2e87275f81f7c4f",
-    "cowmata.ico": "cbf3a51374575a08a956f847a5646be7107f8fac5a94dd557c4838e4d6a9d607",
-    "installer.bmp": "20e21c22b1ba26d92cf909d862538b94728b96b91f27a4abcafef14cf3619c13"
+    "cowmata.png": "d4ea819e8365838ed7d51c0485bfccaa9d85dd0ad80165772b7eaf1c1b071664",
+    "cowmata.ico": "6cb0a6eb72755a06772ff4e9e3604148c0617b7d6b583ac58cbf0b9e500c5499",
+    "installer.bmp": "2a2459470a8a060202b8cfc8baa29f7da1cc1dc8029db1ccc5a6b62e60d611c3",
+    "installer-header.bmp": "56b17921bd290061fb77d696d4c51c372c0f40349442ebb54b57eb351c45b808"
   }
 }

@@ -5,3 +5,5 @@ assets/event_models/** -text -whitespace
 *.png -text
 *.jpg -text
 *.ico -text
+*.bmp binary
+*.pdf binary

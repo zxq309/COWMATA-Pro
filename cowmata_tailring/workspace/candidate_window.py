@@ -106,6 +106,9 @@ class CandidateWindow(QDialog):
 
     def start(self):
         w = self.owner
+        if getattr(w, "algorithm_panel", None) is not None and w.algorithm_panel.running:
+            self.status.setText("独立算法正在运行，请结束或取消后再扫描候选。")
+            return
         if self.running or not self.packs or not w.writable_work() or not w.motion:
             return
         if not w.work.project.cow_id.strip():

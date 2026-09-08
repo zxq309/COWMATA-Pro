@@ -1,6 +1,6 @@
 <div align="center">
 
-> **3.1.2 — 2026-09-09:** open one IMU record on demand; locate matching recordings using supported native recording clocks before OCR. Default to one live camera with queued auxiliary stills and hover playback controls; resume unfinished work and safely receive team labels. See [on-demand loading](docs/on-demand-indexing.md), [video timing](docs/native-video-timing.md), [team returns](docs/team-returns.md), [playback performance](docs/playback-performance-312.md) and [updates](docs/client-updates.md). Older workflow videos below were recorded with rc1.
+> **3.2.0 — 2026-09-09:** official COWMATA green branding across the UI and Windows icons. New single-camera Behavior Recognition and Health & Reproduction menus, five real model integrations and explicit unavailable algorithms. Retain on-demand records, main-camera priority, resume and team returns; trim the offline package. See the [illustrated Chinese quick start](docs/quick-start-illustrated.pdf), [algorithm boundaries](docs/algorithm-inspection.md) and [validation](docs/release-320-validation.md). Historical recordings below retain their original version.
 
 > **Windows offline app:** ordinary users download the complete offline Setup EXE from
 > [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases).
@@ -14,7 +14,7 @@
 **Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-3.1.2-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest)
+[![Release](https://img.shields.io/badge/release-3.2.0-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -23,9 +23,9 @@
 
 </div>
 
-[![Real running workstation: three cameras and IMU](assets/screenshots/workspace-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/01-multiview.mp4)
+[![3.2.0 actual application: official green and behavior inspection](assets/screenshots/algorithm-320-live.png)](docs/quick-start-illustrated.pdf)
 
-<p align="center"><sub>Click to watch the real application. Three distinct surveillance scenes, a real IMU record and actual model inference; demo alignment and labels illustrate the workflow, not verified scientific ground truth.</sub></p>
+<p align="center"><sub>Open the ten-page illustrated quick start. Real IMU, surveillance images and model execution; DEMO alignment and labels demonstrate operations, not scientific ground truth.</sub></p>
 
 ## Overview
 
@@ -35,7 +35,7 @@ COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synch
 
 - **Video and IMU in one timeline** — seek, play, zoom, and inspect nine channels without switching applications.
 - **Alignment before annotation** — formal annotation remains locked until the video and sensor timelines are pinned.
-- **Protocol v4 built in** — 16 behaviour/calving labels plus a non-trainable synchronization anchor.
+- **Protocol v4 built in** — preserve the original 16 behaviour/calving labels and synchronization anchor; append mounting without shifting historic indices.
 - **Human-controlled model assistance** — candidates enter a review queue and never become labels without confirmation.
 - **Traceable output** — stable machine codes, display labels, timestamps, provenance fields, and validation-aware exports.
 - **Bilingual UI** — English and Simplified Chinese affect display only; persisted label codes remain stable.

@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.2.0] — 2026-09-09
+
+- Align the desktop UI, installer, EXE, shortcuts and running-window icon with the official COWMATA green C favicon and wordmark. Preserve the website's green/blue accent palette, readable checked controls and optional glass effects. Notify Windows about this application's changed icons without resetting the global icon cache.
+- Add top-level Behavior Recognition and Health & Reproduction menus before Help. All twelve entries enforce one switchable camera at the shared reference time; restore the previous annotation layout when leaving the inspection.
+- Run the five registered 20260906 behavior models through a separate, cancellable background inspection panel. Retain versioned results separately from the existing candidate workflow and human labels; stale results cannot attach to another record. Missing defecation, mounting, straining and health algorithms remain explicitly unavailable.
+- Append MOUNTING without changing historic label indices. Resolve keyboard labels by stable code rather than new-default indices, including old and reordered projects. Choosing an algorithm's human label never creates or confirms an annotation.
+- Remove audited unused Qt WebEngine/developer payloads and ffplay from the offline distribution. Retain both private runtimes, VLC codecs, FFmpeg/ffprobe, OCR and all five event models. Use independent LZMA compression blocks with a zlib fallback option.
+- Include a ten-page illustrated quick start based on actual application operations, accessible from Help. Verify current-record progress/resume, original-frame evidence extraction, label export and read-only history in the new UI.
+
+See [algorithm boundaries](docs/algorithm-inspection.md) and [3.2.0 validation](docs/release-320-validation.md). Real demo alignment and labels illustrate the UI, not scientific ground truth.
+
 ## [3.1.2] — 2026-09-09
 
 - Match the selected IMU acquisition window to video-native recording clocks before OCR. Add strict, sample-validated Hikvision HK1 and Shenmo PES2 readers with explicit timezone handling; unknown layouts, discontinuities and conflicting image checks remain on the OCR/manual path. File creation dates and numeric filename order are not recording-time evidence.

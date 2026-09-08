@@ -47,8 +47,8 @@ def main():
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--version', required=True)
-    parser.add_argument('--compression', choices=('zlib', 'lzma'), default='zlib',
-                        help='zlib prioritizes installation speed; lzma is the smaller legacy build')
+    parser.add_argument('--compression', choices=('zlib', 'lzma'), default='lzma',
+                        help='Independent LZMA blocks reduce size without solid temporary extraction; zlib is the fast baseline')
     args = parser.parse_args()
     root, output = args.package.resolve(), args.out.resolve()
     if output.exists():

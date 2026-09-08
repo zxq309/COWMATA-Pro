@@ -8,7 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
-from PySide6.QtGui import QIcon, QPainter
+from PySide6.QtGui import QActionGroup, QIcon, QPainter
+from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -81,8 +82,10 @@ class MainWindow(ControllerWindow):
         outer.setContentsMargins(14, 8, 14, 8)
         outer.setSpacing(7)
         header = QHBoxLayout()
-        brand = QLabel("COWMATA")
-        brand.setObjectName("brand")
+        brand = QSvgWidget(str(Path(__file__).resolve().parents[2] / "assets/brand/official-wordmark.svg"))
+        brand.setFixedSize(150, 24)
+        brand.setAccessibleName("COWMATA")
+        brand.setToolTip("COWMATA Annotator")
         header.addWidget(brand)
         self._icon_button("Folder Open", "打开工程", self.choose_project, header)
         self.root_label = ElidingLabel("九轴与多视角录像 · 原始文件保持不变")
@@ -120,9 +123,11 @@ class MainWindow(ControllerWindow):
         self._organize_menus(files, materials, sync, edit, view, tools)
         tools.addMenu(materials)
         tools.addMenu(sync)
+        self._build_algorithm_menus()
         help_menu = self.menuBar().addMenu("帮助(&H)")
         from cowmata_tailring.ui.about import show_about
         self._action(help_menu, "快速开始", self.quick_help, "F1")
+        self._action(help_menu, "新手图文教程…", self.open_tutorial)
         self._action(help_menu, "关于", lambda: show_about(self)).setToolTip("软件说明、公司信息、版本号与检查更新")
         self.menuBar().show()
         for toolbar in self.findChildren(QToolBar):
@@ -243,6 +248,13 @@ class MainWindow(ControllerWindow):
         details.addWidget(event_button)
         self.event_panel.setMinimumWidth(300)
         self.body.addWidget(self.event_panel)
+        from .algorithm_panel import AlgorithmPanel
+        self.algorithm_panel = AlgorithmPanel(self)
+        self.algorithm_panel.exitRequested.connect(self.exit_algorithm)
+        self.body.addWidget(self.algorithm_panel)
+        self.body.setCollapsible(3, False)
+        self.algorithm_panel.hide()
+        self._algorithm_restore = None
         self.body.setSizes([245, 1100, 380])
         self.body.setCollapsible(1, False)
         outer.addWidget(self.body, 1)
@@ -296,6 +308,89 @@ class MainWindow(ControllerWindow):
         label = QLabel(text)
         label.setObjectName("sectionTitle")
         return label
+
+    def _build_algorithm_menus(self):
+        from .algorithm_catalog import BEHAVIORS, HEALTH
+        self.algorithm_actions = {}
+        self.algorithm_group = QActionGroup(self)
+        self.algorithm_group.setExclusive(True)
+        for title, specs in (("行为识别(&B)", BEHAVIORS), ("健康与繁殖(&R)", HEALTH)):
+            menu = self.menuBar().addMenu(title)
+            menu.setToolTipsVisible(True)
+            for spec in specs:
+                action = self._action(menu, spec.title, lambda _checked=False, s=spec: self.open_algorithm(s))
+                action.setCheckable(True)
+                action.setToolTip("单摄像头算法检查 · " + ("对应标签 " + spec.code if spec.domain == "behavior" else "待接入，不生成健康结论"))
+                self.algorithm_group.addAction(action)
+                self.algorithm_actions[spec.code] = action
+            menu.addSeparator()
+            self._action(menu, "返回标注布局", self.exit_algorithm)
+
+    def open_algorithm(self, spec):
+        panel = self.algorithm_panel
+        if panel.running:
+            panel.cancel()
+        if self._candidate_window is not None:
+            if self._candidate_window.running:
+                self.tell("请先结束或取消候选预测，再进入独立算法检查。")
+                self.algorithm_actions[spec.code].setChecked(False)
+                return
+            self._candidate_window.hide()
+        if self._algorithm_restore is None:
+            self._algorithm_restore = (self.stage.mode, self.playback_policy.currentIndex(),
+                                       self.board.expanded, not self.event_panel.isHidden())
+            self._algorithm_splitter_sizes = self.body.sizes()
+        self.board.play(False)
+        self.board.set_single_camera_only(True)
+        self.set_presentation("A", persist=False)
+        for button in self.layout_buttons.buttons():
+            button.setEnabled(False)
+        self.playback_policy.setEnabled(False)
+        self.event_panel.hide()
+        self.event_toggle.setChecked(False)
+        panel.set_algorithm(spec)
+        panel.show()
+        self.body.setSizes([250, 1000, 0, 330])
+        self.algorithm_actions[spec.code].setChecked(True)
+
+    def exit_algorithm(self):
+        if getattr(self, "_algorithm_restore", None) is None:
+            return
+        self.algorithm_panel.cancel()
+        self.algorithm_panel.hide()
+        mode, policy, expanded, events = self._algorithm_restore
+        self._algorithm_restore = None
+        self.board.set_single_camera_only(False)
+        self.board.expanded = expanded
+        self.set_presentation(mode, persist=False)
+        self.playback_policy.setCurrentIndex(policy)
+        for button in self.layout_buttons.buttons():
+            button.setEnabled(True)
+        self.playback_policy.setEnabled(True)
+        self.event_panel.setVisible(events)
+        self.event_toggle.setChecked(events)
+        self.body.setSizes(self._algorithm_splitter_sizes)
+        self.algorithm_group.setExclusive(False)
+        for action in self.algorithm_actions.values():
+            action.setChecked(False)
+        self.algorithm_group.setExclusive(True)
+        self.board.relayout()
+
+    def open_candidates(self):
+        if self.algorithm_panel.running:
+            self.tell("请先结束或取消独立算法运行，再打开候选标注。")
+            return
+        self.exit_algorithm()
+        super().open_candidates()
+
+    def open_tutorial(self):
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        path = Path(__file__).resolve().parents[2] / "docs/quick-start-illustrated.pdf"
+        if path.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        else:
+            self.quick_help()
 
     def _organize_menus(self, files, materials, sync, edit, view, tools):
         """One-level categories; existing actions retain handlers and shortcuts."""
@@ -445,11 +540,15 @@ class MainWindow(ControllerWindow):
             "更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。")
 
     def toggle_events(self):
+        if self._algorithm_restore is not None:
+            self.exit_algorithm()
         visible = not self.event_panel.isVisible()
         self.event_panel.setVisible(visible)
         self.event_toggle.setChecked(visible)
 
     def set_presentation(self, mode, *, persist=True):
+        if getattr(self, "_algorithm_restore", None) is not None:
+            mode = "A"
         self.stage.set_mode(mode)
         self.layout_buttons.button("ABC".index(mode)).setChecked(True)
         if persist and self.catalog:
@@ -489,6 +588,7 @@ class MainWindow(ControllerWindow):
         self.stage.arrange()
 
     def open_project(self, root, *, preferred_json=None):
+        self.exit_algorithm()
         super().open_project(root, preferred_json=preferred_json)
         if not self.catalog:
             return
@@ -528,7 +628,21 @@ class MainWindow(ControllerWindow):
                 "playback_policy": self.playback_policy.currentIndex(), "glass": self.glass.isChecked(),
                 "sources_open": self.source_toggle.isChecked(), "events_open": not self.event_panel.isHidden(),
             }
+            if self._algorithm_restore is not None:
+                mode, policy, _, events = self._algorithm_restore
+                self.settings["presentation"].update(mode=mode, playback_policy=policy, events_open=events)
         super().save_current(background=background)
+
+    def closeEvent(self, event):
+        panel = getattr(self, "algorithm_panel", None)
+        if panel is not None and panel.running:
+            panel.cancel()
+            event.ignore()
+            QTimer.singleShot(300, self.close)
+            return
+        super().closeEvent(event)
+        if event.isAccepted() and panel is not None:
+            panel.timer.stop()
 
     def playback_changed(self, playing):
         super().playback_changed(playing)

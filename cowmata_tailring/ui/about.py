@@ -33,11 +33,11 @@ ABOUT_HTML = (
 
 def create_about(parent=None):
     dialog = QDialog(parent)
-    dialog.setWindowTitle(t("关于 COWMATA Annotator"))
+    dialog.setWindowTitle(t("关于"))
     dialog.resize(640, 530)
     layout = QVBoxLayout(dialog)
     title = QLabel("COWMATA Annotator")
-    title.setStyleSheet("font-size:24px; font-weight:600; color:#138b91; padding:8px")
+    title.setStyleSheet("font-size:24px; font-weight:600; color:#436d25; padding:8px")
     layout.addWidget(title)
     body = QTextBrowser()
     body.setOpenExternalLinks(True)

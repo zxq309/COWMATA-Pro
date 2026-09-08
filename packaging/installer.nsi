@@ -7,11 +7,12 @@ Unicode true
 !include "nsDialogs.nsh"
 
 !ifndef COMPRESSION
-  !define COMPRESSION zlib
+  !define COMPRESSION lzma
 !endif
 !if "${COMPRESSION}" == "lzma"
-  SetCompressor /SOLID lzma
-  SetCompressorDictSize 32
+  ; Independent blocks: small download without whole-package temp expansion.
+  SetCompressor lzma
+  SetCompressorDictSize 16
 !else
   ; Independent blocks avoid whole-payload temporary decompression.
   SetCompressor zlib
@@ -19,13 +20,14 @@ Unicode true
 SetDatablockOptimize on
 CRCCheck force
 Name "COWMATA Annotator ${VERSION}"
+BrandingText "COWMATA · www.cowmata.com"
 OutFile "${OUTPUT}"
 InstallDir "$LOCALAPPDATA\Programs\COWMATA Annotator"
 RequestExecutionLevel user
 SetFont "Microsoft YaHei UI" 9
 ShowInstDetails nevershow
 ShowUninstDetails nevershow
-VIProductVersion "3.1.2.0"
+VIProductVersion "3.2.0.0"
 VIAddVersionKey "ProductName" "COWMATA Annotator"
 VIAddVersionKey "FileDescription" "COWMATA Offline Setup"
 VIAddVersionKey "FileVersion" "${VERSION}"
@@ -33,6 +35,12 @@ VIAddVersionKey "LegalCopyright" "COWMATA contributors"
 
 !define MUI_ICON "${PACKAGE}\assets\app-icon\cowmata.ico"
 !define MUI_UNICON "${PACKAGE}\assets\app-icon\cowmata.ico"
+!define MUI_BGCOLOR "F3F7F0"
+!define MUI_TEXTCOLOR "20332A"
+!define MUI_HEADERIMAGE
+!define MUI_HEADERIMAGE_RIGHT
+!define MUI_HEADERIMAGE_BITMAP "${PACKAGE}\assets\app-icon\installer-header.bmp"
+!define MUI_INSTFILESPAGE_COLORS "20332A F3F7F0"
 !define MUI_WELCOMEFINISHPAGE_BITMAP "${PACKAGE}\assets\app-icon\installer.bmp"
 !define MUI_WELCOMEPAGE_TITLE "$(WelcomeTitle)"
 !define MUI_WELCOMEPAGE_TEXT "$(WelcomeBody)"
@@ -125,6 +133,7 @@ Function LocationCreate
   !insertmacro MUI_HEADER_TEXT "$(LocationTitle)" "$(LocationBody)"
   nsDialogs::Create 1018
   Pop $0
+  SetCtlColors $0 20332A F3F7F0
   ${NSD_CreateLabel} 0 0 100% 12u "$(ParentLabel)"
   Pop $0
   ${NSD_CreateText} 0 16u 80% 14u "$ParentPath"
@@ -327,6 +336,13 @@ Section "COWMATA" Main
     ${If} $0 != 0
       SetErrors
     ${EndIf}
+  ${EndIf}
+  ; Refresh only this application's changed EXE and shortcut; never reset the
+  ; user's global icon cache or restart Explorer during an upgrade.
+  System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x1005, w "$INSTDIR\COWMATA.exe", p 0)'
+  System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x1005, w "$SMPROGRAMS\COWMATA Annotator ${VERSION}\COWMATA Annotator.lnk", p 0)'
+  ${If} $DesktopEnabled == ${BST_CHECKED}
+    System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x1005, w "$DESKTOP\COWMATA Annotator ${VERSION}.lnk", p 0)'
   ${EndIf}
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\COWMATA-${VERSION}" "DisplayName" "COWMATA Annotator ${VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\COWMATA-${VERSION}" "DisplayVersion" "${VERSION}"

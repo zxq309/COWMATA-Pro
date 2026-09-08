@@ -49,3 +49,29 @@ QToolTip {color:#23463f; background:#fffffb; border:1px solid #bcd6cc; padding:8
 
 STYLE = STYLE.replace("CHECK_ICON", (Path(__file__).resolve().parents[2] / "assets/fluent/check_visible.svg").as_posix())
 STYLE = STYLE.replace("ARROW_ICON", (Path(__file__).resolve().parents[2] / "assets/fluent/chevron_down.svg").as_posix())
+
+# Official website CSS: main #8ADD66, secondary #35AFC8. Keep dark text on
+# light brand fills (white on the site's light green would be illegible).
+STYLE += """
+QMainWindow, QWidget {background:#f3f7f0; color:#20332a;}
+QFrame#card, QWidget#signalCard, QFrame#sourcePanel, QFrame#eventPanel, QFrame#algorithmPanel {background:white; border:1px solid #d7e4d0; border-radius:10px;}
+QLabel#sectionTitle {font-weight:700; color:#315225;}
+QPushButton:hover, QToolButton:hover {background:#e6f6dc; border-color:#92c142;}
+QPushButton:pressed, QToolButton:pressed {background:#c8eba7;}
+QPushButton:checked, QToolButton:checked {background:#dff3d1; color:#294514; border-color:#6b9b36;}
+QPushButton#primary {background:#8add66; border-color:#69b24e; color:#20351c; font-weight:700;}
+QPushButton#primary:hover {background:#73cd4c; color:#182b12;}
+QPushButton:disabled, QPushButton#primary:disabled {background:#edf0e9; border-color:#d9dfd2; color:#849080;}
+QComboBox:focus, QLineEdit:focus, QDoubleSpinBox:focus {border-color:#35afc8;}
+QListWidget, QTableWidget {selection-background-color:#dff3d1; selection-color:#20351c; alternate-background-color:#f7faf4;}
+QHeaderView::section {background:#edf5e7; color:#3f5737; font-weight:600;}
+QCheckBox::indicator:checked, QListView::indicator:checked {background:#436d25; border:1px solid #34531d; image:url(CHECK_ICON);}
+QCheckBox:focus {outline:1px solid #35afc8;}
+QSlider::sub-page:horizontal {background:#35afc8;}
+QSlider::handle:horizontal {background:#238197;}
+QMenuBar, QStatusBar {background:#eaf3e4; color:#20332a; border-color:#ccdcbc;}
+QMenuBar::item:selected, QMenuBar::item:pressed {background:#ffffff; border-color:#92c142;}
+QMenu::item:selected {background:#e4f4d6; color:#20351c;}
+QMenu::item:checked {font-weight:700;}
+QToolTip {color:#20351c; background:#fcfff8; border-color:#a5c689;}
+""".replace("CHECK_ICON", (Path(__file__).resolve().parents[2] / "assets/fluent/check_visible.svg").as_posix())

@@ -333,7 +333,7 @@ class MainWindow(QMainWindow):
             self.labels.addItem(f"[{label.key}] {label.name}", i)
             if label.key and label.code != "SYNC_ANCHOR":
                 shortcut = QShortcut(QKeySequence(label.key), self)
-                shortcut.activated.connect(lambda index=i: self.mark(index))
+                shortcut.activated.connect(lambda code=label.code: self.mark_code(code))
         row.addWidget(self.labels, 1)
         self.mark_button = self._button("开始 / 结束视频动作", lambda: self.mark(self.labels.currentIndex()), row)
         self._button("所选九轴区间 → 候选标注", self.mark_selection, row)
@@ -1396,6 +1396,15 @@ class MainWindow(QMainWindow):
                 return False
         return True
 
+    def mark_code(self, code):
+        if not self.work:
+            return
+        index = next((i for i, label in enumerate(self.work.project.labels) if label.code == code), None)
+        if index is None:
+            self.tell("当前标签配置中没有该事件类型，请先核对标签配置。")
+            return
+        self.mark(index)
+
     def mark(self, index):
         if not self.writable_work():
             return
@@ -1459,6 +1468,17 @@ class MainWindow(QMainWindow):
         if not self.work:
             self.events.setRowCount(0)
             return
+        # Historic projects own their label order. A new default label must
+        # never expose an out-of-range index or relabel an existing event.
+        titles = [f"[{label.key}] {label.name}" for label in self.work.project.labels]
+        if titles != [self.labels.itemText(i) for i in range(self.labels.count())]:
+            selected = self.labels.currentText()
+            self.labels.blockSignals(True)
+            self.labels.clear()
+            for i, title in enumerate(titles):
+                self.labels.addItem(title, i)
+            self.labels.setCurrentIndex(max(0, self.labels.findText(selected)))
+            self.labels.blockSignals(False)
         entries = [("draft", draft) for draft in self.work.drafts if draft.get("confirmation") != "confirmed"]
         entries += [("event", event) for event in self.work.project.events]
         self.events.setRowCount(len(entries))
