@@ -1,4 +1,5 @@
 import copy
+import json
 import threading
 import time
 
@@ -45,6 +46,16 @@ def test_invalid_predictions_never_enter_timeline(tmp_path, point, score):
     (tmp_path / "result.csv").write_text(f"time,score\n{point},{score}\n")
     with pytest.raises(ValueError):
         normalize_output(tmp_path, dict(output="result.csv", time_column="time", score_column="score", code="TEST"), 100000)
+
+
+def test_empty_model_summary_preserves_nonfinite_as_unavailable(tmp_path):
+    (tmp_path / "result.csv").write_text("time,score\n")
+    (tmp_path / "summary.json").write_text('{"metric":NaN,"nested":[Infinity,1e999,0.25]}')
+    candidates, audit = normalize_output(tmp_path, dict(output="result.csv", time_column="time", score_column="score", code="TEST"), 1000)
+    assert candidates == []
+    assert audit["summary.json"]["metric"] == {"unavailable_nonfinite": "nan"}
+    assert audit["summary.json"]["nested"] == [{"unavailable_nonfinite": "inf"}, {"unavailable_nonfinite": "inf"}, .25]
+    json.dumps(audit, allow_nan=False)
 
 
 def result_for(work):

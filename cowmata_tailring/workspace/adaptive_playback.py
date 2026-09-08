@@ -31,8 +31,13 @@ class AdaptiveVideoBoard(VideoBoard):
         self.preview_stats = {"submitted": 0, "completed": 0, "stale": 0, "errors": 0, "max_inflight": 0}
         self.previewReady.connect(self._preview_ready)
         self.decoder_queue = {}
+        self._full_wait_since = None
+        self.frozen_previews = set()
+        self.precise_queue = {}
+        self.precise_active = None
         self.decoder_timer = QTimer(self)
         self.decoder_timer.timeout.connect(self._start_queued_decoder)
+        self.decoder_timer.timeout.connect(self._start_queued_frame)
         self.decoder_timer.start(40)
 
     def _request(self, tile, interval, target, *, queued_start=None):
@@ -62,7 +67,7 @@ class AdaptiveVideoBoard(VideoBoard):
         super()._request(tile, interval, target, queued_start=started)
 
     def set_policy(self, policy):
-        if policy not in {"full", "balanced"}:
+        if policy not in {"full", "balanced", "focus"}:
             raise ValueError("Unknown playback policy")
         requested = policy
         if policy == "full" and self.playing and len(self.selected) >= 4 and inference_active():
@@ -73,6 +78,7 @@ class AdaptiveVideoBoard(VideoBoard):
                 self.policyChanged.emit(policy)
             return
         self.playback_policy = policy
+        self._full_wait_since = None
         self.preview_last.clear()
         if self.prewarm:
             self._pause_tile(self.prewarm)
@@ -83,10 +89,51 @@ class AdaptiveVideoBoard(VideoBoard):
     def tick(self):
         if not self._closing and self.playing and self.playback_policy == "full" and len(self.selected) >= 4 and inference_active():
             self.set_policy("full")  # guarded policy; no automatic oscillation back
-        return super().tick()
+        result = super().tick()
+        main = self.tiles.get(self.main_camera)
+        if self.playing and self.playback_policy == "focus" and main and main.interval is None:
+            self.play(False)
+            self.notice.emit("主视角到达录像缺口，已暂停；可切换其他有覆盖的视角继续。")
+        waiting = (self.playing and self.playback_policy == "full" and len(self.selected) >= 4
+                   and (self._held or any(t.interval and (not t.ready or t.pending) for t in self.tiles.values())))
+        if not waiting:
+            self._full_wait_since = None
+        elif self._full_wait_since is None:
+            self._full_wait_since = time.perf_counter()
+        elif time.perf_counter() - self._full_wait_since >= 6:
+            self.set_policy("balanced")
+            self.notice.emit("多路解码等待较久，已切换流畅优先：主路播放、辅路预览。暂停仍读取各路原片精确帧。")
+        return result
 
     def is_preview(self, camera):
-        return self.playing and self.playback_policy == "balanced" and camera != self.main_camera
+        return self.playing and self.playback_policy in {"balanced", "focus"} and camera != self.main_camera
+
+    def seek(self, reference_ms):
+        self.frozen_previews.clear()
+        self.precise_queue.clear()
+        self.precise_active = None
+        return super().seek(reference_ms)
+
+    def _precise_request(self, tile, path, target):
+        if self.playback_policy == "focus" and tile.camera != self.main_camera:
+            self.precise_queue[tile] = (self.generation, path, target)
+            tile.status("等待主视角 · 随后逐个读取暂停帧")
+            return
+        super()._precise_request(tile, path, target)
+
+    def _start_queued_frame(self):
+        if self._closing or self.playing or not self.precise_queue:
+            return
+        if self.precise_active and self.precise_active.pending:
+            return
+        main = self.tiles.get(self.main_camera)
+        if main and main.pending:
+            return
+        tile = next(iter(self.precise_queue))
+        generation, path, target = self.precise_queue.pop(tile)
+        if generation == self.generation and tile in self.tiles.values() and tile.pending:
+            self.precise_active = tile
+            super()._precise_request(tile, path, target)
 
     def synchronised_tiles(self):
         return [t for c, t in self.tiles.items() if t.interval and not self.is_preview(c)]
@@ -97,7 +144,13 @@ class AdaptiveVideoBoard(VideoBoard):
     def set_main(self, camera):
         previous = self.main_camera
         super().set_main(camera)
-        if previous != self.main_camera and self.playing and self.playback_policy == "balanced":
+        if previous != self.main_camera and self.playback_policy == "focus" and not self.playing:
+            tile = self.tiles[self.main_camera]
+            queued = self.precise_queue.pop(tile, None)
+            if queued and queued[0] == self.generation and tile.pending:
+                super()._precise_request(tile, queued[1], queued[2])
+        elif previous != self.main_camera and self.playing and self.playback_policy in {"balanced", "focus"}:
+            self.frozen_previews = {v for v in self.frozen_previews if v[1] != previous}
             old = self.tiles.get(previous)
             if old:
                 self._preview_position(previous, old)
@@ -127,6 +180,21 @@ class AdaptiveVideoBoard(VideoBoard):
             tile.precise_ms = None
             tile.actual_ms = None
             tile.stack.hide()
+        # Focus mode keeps one dated still per view. It is not a live frame
+        # and must never become evidence merely because the main clock moves.
+        frozen = (self.generation, camera, tile.asset_id)
+        if self.playback_policy == "focus" and frozen in self.frozen_previews:
+            if tile.asset_id in self.blocked_assets:
+                tile.stack.hide()
+                tile.status("源文件变化，请刷新索引")
+                return
+            if not self.timeline.locate(camera, self.reference_ms, prefer=tile.asset_id):
+                tile.interval = None
+                tile.stack.hide()
+                tile.status("此时刻无录像覆盖 · 不显示旧预览")
+                return
+            self._preview_status(tile)
+            return
         match = self.timeline.locate(camera, self.reference_ms, prefer=tile.asset_id)
         if not match or match[0].asset_id in self.blocked_assets:
             tile.interval = None
@@ -142,10 +210,15 @@ class AdaptiveVideoBoard(VideoBoard):
             tile.stack.hide()
         now = time.perf_counter()
         self._preview_status(tile)
-        if not self.catalog or camera in self.preview_tasks or len(self.preview_tasks) >= 2:
+        limit = 1 if self.playback_policy == "focus" else 2
+        main = self.tiles.get(self.main_camera)
+        if self.playback_policy == "focus" and main and (main.pending or not main.ready):
+            return
+        if not self.catalog or camera in self.preview_tasks or len(self.preview_tasks) >= limit:
             return
         # Round-robin fairness, with at most two tasks total (not two per view).
-        available = [c for c, t in self.tiles.items() if self.is_preview(c) and t.interval and c not in self.preview_tasks]
+        available = [c for c, t in self.tiles.items() if self.is_preview(c) and t.interval and c not in self.preview_tasks
+                     and (self.playback_policy != "focus" or (self.generation,c,t.asset_id) not in self.frozen_previews)]
         if available and camera != min(available, key=lambda c: self.preview_last.get(c, -1)):
             return
         if now - self.preview_last.get(camera, -1e9) < 1.0:
@@ -188,6 +261,12 @@ class AdaptiveVideoBoard(VideoBoard):
         self.frame_pool.submit(read)
 
     def _preview_status(self, tile):
+        if self.playback_policy == "focus":
+            if tile.actual_ms is None:
+                tile.status("暂停 · 等待后台截图，点击播放此视角")
+            else:
+                tile.status(f"已暂停 · {wall_text(tile.actual_ms)} · 点击播放对齐当前时间")
+            return
         if tile.actual_ms is None:
             tile.status("辅视角预览准备中 · 点击切为原片全速主视角")
             return
@@ -217,6 +296,7 @@ class AdaptiveVideoBoard(VideoBoard):
         tile.ready = False  # Deliberate: a preview cannot confirm ground truth.
         tile.precise_ms = None
         self.preview_stats["completed"] += 1
+        self.frozen_previews.add((self.generation, camera, tile.asset_id))
         self._preview_status(tile)
 
     def _observe(self, tile, now):
@@ -233,5 +313,6 @@ class AdaptiveVideoBoard(VideoBoard):
     def close(self):
         self.decoder_timer.stop()
         self.decoder_queue.clear()
+        self.precise_queue.clear()
         self.frame_cache.clear()
         return super().close()

@@ -75,7 +75,7 @@ class DahuaPlaybackStream:
             self.end_offset = max(self.base_offset, int(end_point.byte_offset))
             self.segment_end_ms = float(end_point.time_ms)
         else:
-            self.end_offset = int(index.source_size)
+            self.end_offset = int(index.packets.maximum_position if index.basis == 'native_ps' else index.source_size)
             self.segment_end_ms = float(index.duration_ms)
         self.virtual_size = max(0, self.end_offset - self.base_offset)
         has_preroll = self.target_ms > self.anchor_ms + 1.0

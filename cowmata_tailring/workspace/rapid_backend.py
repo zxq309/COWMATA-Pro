@@ -60,6 +60,8 @@ class RapidV6Adapter:
             raise ValueError("OCR 模型缺少匹配字典，不能建立可信识别")
 
     def __call__(self, image, *, use_det=True, use_cls=False):
+        if getattr(self, "cancelled", None) and self.cancelled():
+            raise InterruptedError("OCR request cancelled")
         output = self.engine(image, use_det=use_det, use_cls=use_cls, use_rec=True)
         texts = output.txts if output.txts is not None else ()
         scores = output.scores if output.scores is not None else ()

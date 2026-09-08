@@ -1,6 +1,6 @@
 <div align="center">
 
-> **3.1.0 — 2026-09-07：** 每视角一张证据图、离线回看标签/九轴/图片、外部录像归档核验；整合新旧 JSON 采集时间兼容、软件图标、安装修复与 GitHub 后台更新。见 [证据与归档](docs/evidence-archive.md)、[采集时间](docs/capture-timing.md)、[客户端更新](docs/client-updates.md) 和 [更新日志](CHANGELOG.md)。下方已有流程视频录制于 rc1。
+> **3.1.2 — 2026-09-09：** 按需打开任意一份九轴，优先读取支持的录像内部录制时间，OCR 核验/兜底；默认单路播放、其他视角逐个加载暂停图，悬浮控件换视角；支持断点续标与多人回传核验。见 [逐份加载](docs/on-demand-indexing.md)、[录像时间](docs/native-video-timing.md)、[多人回传](docs/team-returns.md)、[播放与实测](docs/playback-performance-312.md)、[客户端更新](docs/client-updates.md)。下方旧流程视频录制于 rc1。
 
 > **普通用户直接使用离线 EXE：** 到 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
 > 下载完整离线安装版 **Setup.exe**，按向导安装，无须配置 Python、pip、VLC、CUDA 工具包或模型。
@@ -13,7 +13,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-3.1.0-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest)
+[![Release](https://img.shields.io/badge/release-3.1.2-0A7EA4)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -40,6 +40,12 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 - **中英双语** —— 界面语言仅影响显示，不会改写落盘标签码或历史数据。
 
 ## 真实操作小演示
+
+### 3.1.2：主视角播放，其他视角按需暂停
+
+[![单路优先与画面内悬浮控制条的真实运行截图](assets/screenshots/single-view-live.png)](docs/playback-performance-312.md)
+
+真实 Windows 截图：加载四份原始录像（辅路列表可滚动），主视角播放，其他视角显示带时间的暂停图；九轴为合成演示信号，不是科研同步或已标注真值。悬浮控件操作统一时间轴，[实测区分界面响应和画面解码到位](docs/playback-performance-312.md)。
 
 点击缩略图观看或下载短视频。全部由实际 Windows 程序录屏，不是设计效果图；视频作为 Release 附件保存，不把原始数据提交到 Git。
 
@@ -69,7 +75,7 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 
 ### Windows 一键启动
 
-下载完整离线安装版 `COWMATA-...-Setup.exe` → 阅读许可 → 选择新的空软件目录 → 安装 → 启动。以后从开始菜单打开 COWMATA，选择数据工程即可。整个过程不要求联网或配置依赖。便携 ZIP 若提供，仅作备用，不必重复下载。BAT 备用入口保留，但不再安装任何依赖。
+下载完整离线安装版 `COWMATA-...-Setup.exe` → 阅读许可 → 选择父目录，接受或修改默认的 **COWMATA Annotator** 子文件夹名 → 安装 → 启动。目标不能覆盖无关文件。以后用桌面/开始菜单快捷方式，打开数据工程或任意原始九轴 JSON。整个过程不要求联网或配置依赖。已有更新器的安装版可在「帮助 → 关于 → 版本与更新」升级。
 
 新版包含 A/B/C 布局、1–8 路可选视角、GPU 播放、跨小录像续接、原片精确帧回看、离线 RapidOCR PP-OCRv6 medium、20260906 五类版本化候选模型、带完整九轴的单文件标注及独立历史回看。模型结果只是候选，不能自动当作录像真值。操作见 [使用说明](使用说明.txt)。
 
@@ -224,7 +230,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-当前分支准备 3.1.0-rc.1；实际发布附件和验收证据见 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)，2.x 历史记录保留在 [CHANGELOG.md](CHANGELOG.md)。纯源码 CI 有意跳过五项二进制模型包完整性检查，这五项必须在便携包验收中执行。
+当前分支为 3.1.2；正式发布附件见 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)，历史记录保留在 [CHANGELOG.md](CHANGELOG.md)。纯源码 CI 有意跳过五项二进制模型包完整性检查，这五项必须在离线包验收中执行。
 
 ## 贡献、安全与引用
 
@@ -239,4 +245,4 @@ python -m cowmata_tailring --version
 
 ## 最新更新
 
-**2026-09-07** — 准备 3.1.0-rc.1：离线 EXE、多视角 GPU 播放、内置九轴的历史标注、已核对的 20260906 候选模型及 OCR 轻量改进 v2；保留首页职责精简和历史链接修复。[完整更新记录](CHANGELOG.md)。
+**2026-09-09** — 3.1.2：逐份九轴/录像按需加载、支持的内部录制时间、单路优先、后台解码、悬浮控制、断点续标和多人回传；保留已有模型、截图证据与安全更新。[完整更新记录](CHANGELOG.md)。

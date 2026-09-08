@@ -199,7 +199,7 @@ class EventStrip(QWidget):
         if not used:
             p.setPen(QColor("#738687"))
             p.drawText(self.rect().adjusted(10, 0, -8, 0), Qt.AlignmentFlag.AlignVCenter,
-                       "标签轨道 · 有九轴位置的标注显示于此；视频草稿在标注列表中")
+                       "标签轨道")
         for row, li in enumerate(used):
             label = labels[li]
             p.setPen(QColor("#496162"))

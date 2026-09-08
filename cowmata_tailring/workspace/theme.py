@@ -1,5 +1,7 @@
 """Shared static Qt theme; no window/controller dependency."""
 
+from pathlib import Path
+
 STYLE = """
 QMainWindow, QWidget {background:#edf3f2; color:#223c41; font-family:'Microsoft YaHei UI','Segoe UI'; font-size:13px;}
 QFrame#card, QWidget#signalCard, QFrame#sourcePanel, QFrame#eventPanel {background:white; border:1px solid #dce7e5; border-radius:10px;}
@@ -16,12 +18,15 @@ QPushButton:disabled {color:#92a5a3; background:#f0f4f3;}
 QComboBox, QLineEdit, QDoubleSpinBox {background:white; border:1px solid #d6e3e1; border-radius:6px; padding:4px 7px; min-height:20px; selection-background-color:#128579;}
 QComboBox:focus, QLineEdit:focus, QDoubleSpinBox:focus {border-color:#0c9888;}
 QComboBox::drop-down {border:0; width:22px;}
+QComboBox::down-arrow {image:url(ARROW_ICON); width:12px; height:12px;}
 QListWidget, QTableWidget {background:white; border:0; outline:0; alternate-background-color:#f5f8f7; selection-background-color:#daeee7; selection-color:#164b46;}
 QListWidget::item {padding:7px 4px; border-radius:5px;}
 QHeaderView::section {background:#f0f6f4; border:0; padding:7px; color:#50706f;}
 QCheckBox {spacing:6px; background:transparent;}
-QCheckBox::indicator {width:14px; height:14px; border:1px solid #95bcb2; border-radius:3px; background:white;}
-QCheckBox::indicator:checked {background:#087e72; border:2px solid #5fc3a9;}
+QCheckBox::indicator, QListView::indicator {width:18px; height:18px; border:1px solid #668b81; border-radius:3px; background:white;}
+QCheckBox::indicator:checked, QListView::indicator:checked {background:#076c61; border:1px solid #075449; image:url(CHECK_ICON);}
+QCheckBox::indicator:disabled, QListView::indicator:disabled {background:#d4deda; border-color:#9aacaa;}
+QCheckBox:focus {outline:1px solid #087e72;}
 QSplitter::handle {background:#e1eae7; width:3px; height:3px;}
 QSlider::groove:horizontal {height:4px; background:#d5e4df; border-radius:2px;}
 QSlider::sub-page:horizontal {background:#21a791; border-radius:2px;}
@@ -33,5 +38,14 @@ QStatusBar {background:#e4eeeb; border-top:1px solid #d3e3dc; font-size:11px;}
 QMenu {background:white; border:1px solid #cbded7; padding:5px;}
 QMenu::item {padding:7px 22px; border-radius:4px;}
 QMenu::item:selected {background:#e2f2eb;}
+QMenuBar {background:#e4eeeb; border-bottom:1px solid #b8cec7; padding:3px; font-weight:600;}
+QMenuBar::item {background:transparent; padding:5px 15px; margin:1px; border:1px solid transparent; border-radius:5px;}
+QMenuBar::item:selected, QMenuBar::item:pressed {background:#ffffff; border-color:#98bdb1;}
+QMenu::separator {height:1px; background:#ccddd5; margin:5px 10px;}
+QPushButton, QToolButton, QComboBox {font-weight:600;}
+QComboBox::drop-down {border-left:1px solid #c7dad3; border-top-right-radius:5px; border-bottom-right-radius:5px;}
 QToolTip {color:#23463f; background:#fffffb; border:1px solid #bcd6cc; padding:8px;}
 """
+
+STYLE = STYLE.replace("CHECK_ICON", (Path(__file__).resolve().parents[2] / "assets/fluent/check_visible.svg").as_posix())
+STYLE = STYLE.replace("ARROW_ICON", (Path(__file__).resolve().parents[2] / "assets/fluent/chevron_down.svg").as_posix())

@@ -27,6 +27,7 @@ def test_workspace_renderer_preserves_decode_and_audio_choices(monkeypatch, tmp_
     with pytest.raises(RuntimeError, match="captured before"):
         WorkspaceEngine(None, metadata=None, cache=tmp_path, software=software, no_audio=no_audio)
     assert "--vout=direct3d9" in options
+    assert "--avcodec-threads=2" in options
     assert ("--avcodec-hw=none" in options) == software
     assert ("--no-audio" in options) == no_audio
 
@@ -103,4 +104,25 @@ def test_only_main_view_has_audio(app):
         tile.engine = SimpleNamespace(set_volume=lambda value, c=camera: volumes.update({c: value}), close=lambda: None)
     board.set_main("B")
     assert volumes == {"A": 0, "B": 80, "C": 0}
+    board.close()
+
+
+def test_indexed_seek_resets_counter_but_never_accepts_pre_seek_frame(app):
+    board = VideoBoard()
+    board.timer.stop()
+    board.select(["A"])
+    board.playing = True
+    tile = board.tiles["A"]
+    tile.asset_id = "sample"
+    tile.interval = SimpleNamespace(wall_at=lambda ms:ms)
+    tile.engine = SimpleNamespace(
+        get_time_ms=lambda:1000, stats=lambda:SimpleNamespace(displayed_pictures=100,decoded_video=100),
+        video_output_count=lambda:1, is_seekable=lambda:True, pause=lambda _:None,
+        set_time_ms=lambda _:None, set_rate=lambda _:None, close=lambda:None,
+        _force_avformat=True, _dahua_duration_index=True)
+    tile.pending = {"phase":"priming", "generation":board.generation, "asset":"sample",
+                    "target":1000, "start":1, "baseline":99, "cold":False}
+    board._observe(tile, 2)
+    assert tile.pending["phase"] == "seeking" and tile.pending["baseline"] == 0
+    assert not tile.ready  # The old 100-picture snapshot cannot certify this seek.
     board.close()

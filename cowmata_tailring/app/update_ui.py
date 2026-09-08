@@ -89,7 +89,10 @@ class UpdateController(QObject):
         self.status = tr("更新就绪：自动检查可在这里关闭。", "Update checks can be disabled here.")
         self.button = QPushButton(tr("检查更新", "Updates"))
         self.button.clicked.connect(self.open_dialog)
-        window.statusBar().addPermanentWidget(self.button)
+        # Update entry lives in Help > About. Keep the controller's status
+        # button hidden for compatibility; automatic notifications still work.
+        self.button.setParent(window)
+        self.button.hide()
         self.found.connect(self._found)
         self.failed.connect(self._failed)
         self.downloaded.connect(self._downloaded)

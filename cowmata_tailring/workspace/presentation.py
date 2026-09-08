@@ -43,7 +43,7 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
     def relayout(self):
         if getattr(self, "_closing", False):
             return
-        if getattr(self, "playing", False) and getattr(self, "playback_policy", "full") == "full":
+        if getattr(self, "playing", False):
             # A layout choice and main-camera change can arrive in one UI turn.
             # Apply their final geometry once, not two costly native resizes.
             if not getattr(self, "_live_layout_queued", False):
@@ -69,7 +69,7 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         # Parent repaint suppression also affects embedded native surfaces.
         # Full-playback tests found long stalls when toggling it around GPU
         # layout changes. Keep live full renderers enabled; batch other layouts.
-        batch = not (getattr(self, "playing", False) and getattr(self, "playback_policy", "full") == "full")
+        batch = not getattr(self, "playing", False)
         if batch:
             self.setUpdatesEnabled(False)
         try:

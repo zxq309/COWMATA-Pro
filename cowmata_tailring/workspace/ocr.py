@@ -54,6 +54,87 @@ class TimestampOCR:
         else:
             raise ValueError("Unknown OCR backend: " + backend)
 
+    def routing_read(self, img: Image.Image, *, filename="frame", hint=None, max_passes=None, minimum_votes=1) -> dict:
+        """Bounded single-pass routing, NEVER a verified OCR observation.
+
+        Two nearby routing frames prioritize candidate files. The normal
+        multi-vote recognizer must independently verify a candidate before
+        publishing intervals. No enhancement or pixel-digit retries here.
+        """
+        regions = list(CORNERS.items())
+        if hint:
+            regions.insert(0, ("cached", valid_roi(hint)))
+        pixels = np.array(img.convert("RGB"))
+        passes = 0
+        for name, rect in regions:
+            votes = Counter()
+            x0, y0, x1, y1 = [round(v * (img.width if i % 2 == 0 else img.height)) for i, v in enumerate(rect)]
+            patch = pixels[y0:y1, x0:x1]
+            gray = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+            for variant in (patch, 255-gray, np.where(gray < 30, 0, 255).astype(np.uint8)):
+                if max_passes is not None and passes >= max_passes:
+                    return {"success": False, "wall_ms": None, "roi": None, "routing_only": True}
+                passes += 1
+                if variant.ndim == 2:
+                    variant = cv2.cvtColor(variant, cv2.COLOR_GRAY2RGB)
+                rows, _ = self.engine(Image.fromarray(variant), use_cls=False)
+                rows = [r for r in (rows or []) if float(r[2]) >= .8]
+                rows.sort(key=lambda r: (round(min(p[1] for p in r[0])/30), min(p[0] for p in r[0])))
+                stamp = parse_stamp(" ".join(r[1] for r in rows))
+                if not stamp:
+                    continue
+                votes[stamp] += 1
+                if len(votes) != 1 or votes[stamp] < minimum_votes:
+                    continue
+                time_rows = [r for r in rows if re.search(r"20\d{2}|\d{2}[:：_]\d{2}", r[1])]
+                points = [p for r in time_rows for p in r[0]]
+                roi = rect
+                if points:
+                    roi = (max(0, (min(p[0] for p in points)+x0-8)/img.width),
+                           max(0, (min(p[1] for p in points)+y0-8)/img.height),
+                           min(1, (max(p[0] for p in points)+x0+8)/img.width),
+                           min(1, (max(p[1] for p in points)+y0+8)/img.height))
+                return {"success": True, "wall_ms": wall_ms(stamp), "timestamp": stamp,
+                        "roi": list(roi), "routing_only": True, "filename": filename,
+                        "metadata": {"layout": name}}
+        return {"success": False, "wall_ms": None, "roi": None, "routing_only": True}
+
+    def native_check(self, img, *, filename="frame", hint=None, family=None):
+        """Small independent image check, not a replacement for fallback OCR."""
+        if family == "hikvision-hk1":
+            from .hik_osd import PROFILES, recognize, recognize_date
+            profile = PROFILES.get(img.size)
+            if profile:
+                day, dates = recognize_date(self.engine, img)
+                left, top, step = profile['time_x'], profile['top'], profile['cell']
+                patch = np.array(img.crop((left, top, left+8*step, top+2*step)))
+                gray = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
+                passes, values = [], []
+                for name, pixels in [('raw',gray),('black10',np.where(gray<10,0,255).astype(np.uint8)),
+                                     ('black30',np.where(gray<30,0,255).astype(np.uint8)),
+                                     ('white235',np.where(gray>235,0,255).astype(np.uint8)),
+                                     ('white245',np.where(gray>245,0,255).astype(np.uint8))]:
+                    text,score=recognize(self.engine,pixels,(patch.shape[1]*4,patch.shape[0]*4))
+                    match=TIME_ONLY.search(text)
+                    value=':'.join(match.groups()) if match else None
+                    passes.append({'variant':name,'text':text,'score':score,'clock':value})
+                    if value and score >= .9:
+                        values.append(value)
+                counts=Counter(values)
+                dates_ok=day and not any(p['date'] and p['score'] >= .75 and p['date'] != day for p in dates)
+                if dates_ok and len(counts)==1 and counts.most_common(1)[0][1]>=2:
+                    stamp=day+' '+counts.most_common(1)[0][0]
+                    return {'success':True,'wall_ms':wall_ms(stamp),'timestamp':stamp,'filename':filename,
+                            'roi':[.01,.05,.62 if img.width==1280 else .42,.11],
+                            'metadata':{'layout':profile['name']},'date_passes':dates,'clock_passes':passes}
+                # A readable date already identifies this calibrated corner;
+                # do not replace a failed clock vote with weaker single-pass OCR.
+                result = ({'success':False,'wall_ms':None} if day else
+                          self.routing_read(img, filename=filename, hint=hint, max_passes=15, minimum_votes=2))
+                result.update(date_passes=dates, clock_passes=passes)
+                return result
+        return self.routing_read(img, filename=filename, hint=hint, max_passes=15, minimum_votes=2)
+
     def recognize(self, img: Image.Image, *, filename="frame", roi=None, hint=None, profile_hint=None) -> dict:
         report = self._recognize_once(img, filename=filename, roi=roi, hint=hint, profile_hint=profile_hint)
         if report["success"] or report.get("enhancement_conflict"):

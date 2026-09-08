@@ -45,7 +45,23 @@ def file_stamp(path: Path) -> str:
     return json.dumps([stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino])
 
 
-def digest_file(path: Path, *, quick: bool = False) -> str:
+def bind_location_metadata(metadata, stamp):
+    """Bind content-level timing to a SHA-validated location, not old mtime.
+
+    Call only after location identity validation. Consumers still check this
+    location's complete stamp before decoding; this does not hash or trust files.
+    """
+    timeline = metadata.get("timeline") or {}
+    if timeline.get("native"):
+        size, mtime = json.loads(stamp)[:2]
+        if timeline["native"]["source_size"] != size:
+            raise ValueError("Native index source size disagrees with validated location")
+        return {**metadata, "timeline": {**timeline, "source": {**timeline.get("source", {}), "size": size, "mtimeNs": mtime},
+                "native": {**timeline["native"], "source_mtime_ns": mtime}}}
+    return metadata
+
+
+def digest_file(path: Path, *, quick: bool = False, cancelled=None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         if quick:
@@ -57,6 +73,8 @@ def digest_file(path: Path, *, quick: bool = False) -> str:
                 digest.update(stream.read(65536))
         else:
             while block := stream.read(4 * 1024 * 1024):
+                if cancelled and cancelled():
+                    raise InterruptedError("内容核验已暂停")
                 digest.update(block)
     return digest.hexdigest()
 
@@ -120,6 +138,7 @@ class Catalog:
             self.db.executescript("""
                 PRAGMA journal_mode=DELETE;
                 PRAGMA foreign_keys=ON;
+                BEGIN IMMEDIATE;
                 CREATE TABLE IF NOT EXISTS assets(
                     id TEXT PRIMARY KEY, kind TEXT NOT NULL,
                     metadata TEXT NOT NULL, indexed_at REAL NOT NULL);
@@ -131,6 +150,10 @@ class Catalog:
                 CREATE INDEX IF NOT EXISTS locations_asset ON locations(asset_id);
                 CREATE TABLE IF NOT EXISTS revisions(
                     path TEXT NOT NULL, asset_id TEXT, replaced_at REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS video_hints(
+                    path TEXT PRIMARY KEY, stamp TEXT NOT NULL,
+                    metadata TEXT NOT NULL);
+                COMMIT;
             """)
             self.db.commit()
             # Re-probe only legacy IMU metadata. Human work and expensive video
@@ -172,7 +195,7 @@ class Catalog:
             raise ValueError("素材路径越出工程目录")
         return path
 
-    def scan(self, *, now: float | None = None, audit: bool = False) -> ScanResult:
+    def scan(self, *, now: float | None = None, audit: bool = False, fast: bool = False) -> ScanResult:
         self._write_check()
         now = time.time() if now is None else now
         result = ScanResult()
@@ -206,6 +229,11 @@ class Catalog:
                         # Reconcile every path, but do not reread gigabytes of
                         # unchanged media on every periodic directory scan.
                         fingerprint = cached["fingerprint"]
+                    elif fast and not audit:
+                        # Directory reconciliation must not read every video.
+                        # This is NOT a content identity; selected assets still
+                        # receive full SHA-256 before publishing evidence.
+                        fingerprint = "stat:"
                     else:
                         fingerprint = ("full:" if audit else "quick:") + digest_file(path, quick=not audit)
                     after = file_stamp(path)
@@ -251,21 +279,39 @@ class Catalog:
                                         (relative,))
         return result
 
+    def video_hints(self):
+        with self.mutex:
+            rows = self.db.execute("""SELECT h.path,h.metadata FROM video_hints h
+                JOIN locations l ON l.path=h.path AND l.stamp=h.stamp
+                WHERE l.state NOT IN ('missing','ignored')""").fetchall()
+        return {r["path"]: json.loads(r["metadata"]) for r in rows}
+
+    def save_video_hint(self, relative, stamp, metadata):
+        self._write_check()
+        with self.mutex, self.db:
+            row = self.db.execute("SELECT stamp,state FROM locations WHERE path=?", (relative,)).fetchone()
+            if row is None or row["stamp"] != stamp or row["state"] == "missing":
+                return False
+            self.db.execute("INSERT OR REPLACE INTO video_hints VALUES(?,?,?)",
+                            (relative, stamp, json.dumps(metadata, ensure_ascii=False)))
+        return True
+
     def rows(self, *, kind: str | None = None) -> list[dict]:
         with self.mutex:
             rows = self.db.execute("""SELECT l.*,a.metadata FROM locations l
                 LEFT JOIN assets a ON l.asset_id=a.id ORDER BY l.path""").fetchall()
-        return [{**dict(r), "metadata": json.loads(r["metadata"] or "{}")}
+        return [{**dict(r), "metadata": bind_location_metadata(json.loads(r["metadata"] or "{}"), r["stamp"])
+                 if r["state"] in {"ready", "review"} else json.loads(r["metadata"] or "{}")}
                 for r in rows if kind is None or r["kind"] == kind]
 
-    def pending(self, *, now: float | None = None, retry_seconds: float = 60) -> list[dict]:
+    def pending(self, *, now: float | None = None, retry_seconds: float = 60, eager=False) -> list[dict]:
         now = time.time() if now is None else now
         return [r for r in self.rows() if r["state"] in {"pending", "invalid"}
-                and now - r["stable_since"] >= self.stability_seconds
+                and (eager and os.name == "nt" or now - r["stable_since"] >= self.stability_seconds)
                 and now - r["attempt_at"] >= retry_seconds
                 and not r["stamp"].endswith(":changing")]
 
-    def index_one(self, relative: str, inspect, *, now: float | None = None) -> dict | None:
+    def index_one(self, relative: str, inspect, *, now: float | None = None, cancelled=None, eager=False) -> dict | None:
         """Hash + inspect outside DB lock; publish iff the source is still identical."""
         self._write_check()
         now = time.time() if now is None else now
@@ -276,15 +322,20 @@ class Catalog:
         path = self.source_path(relative)
         try:
             before = file_stamp(path)
-            if before != row["stamp"] or now - row["stable_since"] < self.stability_seconds:
+            if before != row["stamp"] or (now - row["stable_since"] < self.stability_seconds and not (eager and os.name == "nt")):
                 return None
             assert_not_being_written(path)
-            asset_id = digest_file(path)
+            asset_id = digest_file(path, cancelled=cancelled)
             with self.mutex:
                 cached = self.db.execute("SELECT metadata FROM assets WHERE id=?", (asset_id,)).fetchone()
             metadata = json.loads(cached[0]) if cached else {}
             if not metadata or metadata.get("recheck"):
+                previous_camera = metadata.get("camera")
                 metadata = inspect(path, row["kind"], asset_id)
+                if previous_camera and row["kind"] == "video":
+                    metadata["camera"] = previous_camera
+            if cancelled and cancelled():
+                raise InterruptedError("素材检查已暂停")
             if not isinstance(metadata, dict):
                 raise ValueError("素材检查未返回有效结果")
             correction = read_json(self.meta / "video_corrections" / (asset_id + ".json"), None)
@@ -296,6 +347,7 @@ class Catalog:
                 if correction.get("readings"):
                     metadata["intervals"] = correction["intervals"]
                     metadata["needs_review"] = len(correction["readings"]) < 2
+            assert_not_being_written(path)
             if file_stamp(path) != before:
                 raise SourceBusyError("读取期间文件变化；等待复制完成后重试")
             state = "ignored" if metadata.get("ignored") else "review" if metadata.get("needs_review") else "ready"
@@ -310,23 +362,28 @@ class Catalog:
             return {"asset_id": asset_id, "path": relative, "state": state, "metadata": metadata}
         except SourceBusyError as exc:
             with self.mutex, self.db:
-                self.db.execute("""UPDATE locations SET state='pending',error=?,stable_since=?,attempt_at=0
-                    WHERE path=? AND stamp=? AND state!='missing'""", (str(exc), now, relative, row["stamp"]))
+                self.db.execute("""UPDATE locations SET state='pending',error=?,stable_since=?,attempt_at=?
+                    WHERE path=? AND stamp=? AND state!='missing'""", (str(exc), now, now if eager else 0, relative, row["stamp"]))
             return None
         except (OSError, ValueError, RuntimeError) as exc:
             with self.mutex, self.db:
+                if cancelled and cancelled():
+                    self.db.execute("UPDATE locations SET state='pending',error=?,attempt_at=0 WHERE path=? AND stamp=? AND state!='missing'",
+                                    ("按需任务已切换，稍后可继续", relative, row["stamp"]))
+                    return None
                 self.db.execute("""UPDATE locations SET state='invalid',error=?,attempt_at=?
                     WHERE path=? AND stamp=? AND state!='missing'""", (str(exc), now, relative, row["stamp"]))
             return None
 
-    def queue_ocr_upgrade(self, signature: str) -> int:
+    def queue_ocr_upgrade(self, signature: str, *, time_signature=None) -> int:
         """Recheck derived OCR once per algorithm; preserve manual clocks/work."""
         self._write_check()
         queued = 0
         with self.mutex, self.db:
             for row in self.rows(kind="video"):
                 metadata = row["metadata"]
-                if row["state"] not in {"ready", "review"} or metadata.get("ocr_engine") == signature:
+                if row["state"] not in {"ready", "review"} or (metadata.get("ocr_engine") == signature and
+                        (time_signature is None or metadata.get("time_engine") == time_signature)):
                     continue
                 # Two explicit human anchors remain authoritative, including
                 # historical projects whose generated OCR engine is older.

@@ -138,6 +138,7 @@ class MediaTimelineIndex:
     frame_duration_ms: float
     segments: tuple[TimelineSegment, ...]
     discontinuities: tuple[TimelineDiscontinuity, ...]
+    native: dict | None = None
 
     @property
     def is_corrected(self) -> bool:
@@ -278,6 +279,7 @@ class MediaTimelineIndex:
     def to_dict(self) -> dict[str, object]:
         return {
             "schema": CACHE_SCHEMA,
+            "native": self.native,
             "source": {
                 "path": self.source_path,
                 "size": self.source_size,
@@ -313,6 +315,7 @@ class MediaTimelineIndex:
         )
         return cls(
             source_path=str(source["path"]),
+            native=value.get("native"),
             source_size=int(source["size"]),
             source_mtime_ns=int(source["mtimeNs"]),
             first_pts_ms=float(value["firstPtsMs"]),

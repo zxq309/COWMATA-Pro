@@ -363,7 +363,11 @@ class SafeMediaEngine(MediaEngine):
         if index is None or not index.has_seek_index or not self._player:
             return False
         try:
-            stream = DahuaPlaybackStream(index, target_ms)
+            if index.basis == 'native_ps':
+                from .native_stream import NativePlaybackStream
+                stream = NativePlaybackStream(index, target_ms)
+            else:
+                stream = DahuaPlaybackStream(index, target_ms)
         except (OSError, ValueError) as exc:
             return self._fail(f"乐橙视频跳转流创建失败：{exc}")
 

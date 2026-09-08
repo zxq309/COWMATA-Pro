@@ -22,7 +22,13 @@ import numpy as np
 from cowmata_tailring.annotation.core import Project
 from cowmata_tailring.annotation.data import load_motion_json, parse_motion_object
 
-from .catalog import META_DIR, assert_not_being_written, digest_file, file_stamp
+from .catalog import (
+    META_DIR,
+    assert_not_being_written,
+    bind_location_metadata,
+    digest_file,
+    file_stamp,
+)
 from .clocks import ClockMap, VideoTimeline, intervals_from_rows
 from .storage import atomic_json
 from .work import SessionWork
@@ -294,7 +300,7 @@ def load_history(path, root=None, *, cancelled=lambda: False):
                     raise OSError("Different video content")
             if before != file_stamp(source):
                 raise OSError("Changing video")
-            usable.append({**row, "stamp": before})
+            usable.append({**row, "stamp": before, "metadata": bind_location_metadata(row["metadata"], before)})
         except OSError:
             warnings.append("录像缺失或已变化：" + row["path"])
     timeline = VideoTimeline(intervals_from_rows(usable, overrides), maps)

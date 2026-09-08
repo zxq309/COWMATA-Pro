@@ -76,6 +76,9 @@ QPushButton#primary {background:#087e72; color:white; border-color:#087e72;}
 QPushButton:checked {background:#d8ede7; color:#00695e;}
 QListWidget, QTableWidget {background:rgba(255,255,255,220);}
 QMenu, QDialog {background:#f3f7f5;}
+QMenuBar {background:#e4eeeb; color:#223c41; border-bottom:1px solid #b8cec7;}
+QMenuBar::item {background:transparent; color:#223c41;}
+QMenuBar::item:selected, QMenuBar::item:pressed {background:white; border-color:#98bdb1;}
 QStatusBar {background:#e4eeeb; color:#385d55;}
 QComboBox QAbstractItemView {background:#f4f8f6; color:#223c41;}
 """

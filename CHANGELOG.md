@@ -1,5 +1,31 @@
 # Changelog
 
+## [3.1.2] — 2026-09-09
+
+- Match the selected IMU acquisition window to video-native recording clocks before OCR. Add strict, sample-validated Hikvision HK1 and Shenmo PES2 readers with explicit timezone handling; unknown layouts, discontinuities and conflicting image checks remain on the OCR/manual path. File creation dates and numeric filename order are not recording-time evidence.
+- Publish native-time candidates for immediate review before deferred visual checks. Validate all parsed packet clocks, retain SHA-256 source identity and require independent image agreement before verified evidence. Bind cached timing to content-verified relocated files.
+- Seek preallocated MPEG-PS recordings by bounded keyframe byte ranges, excluding invalid recorder tails. Preserve original packet timing in memory rather than compressing preroll. No video edits, recuts or full-size proxies.
+- Include the unpublished 3.1.1 on-demand/progress improvements below. Open any original IMU with Ctrl+J, retain arbitrary order, skip explicitly completed records and resume unfinished positions. Do not infer completion from the existence of a few labels.
+- Add team return settings: a dedicated inbox, two stable observations, content/range/image checks, optional receipt of explicitly completed conflict-free records, automatic placement inside existing project metadata, duplicate detection and preserved conflicting variants. Raw data and project-wide camera calibration are never silently overwritten.
+- Simplify File/Edit/View/Tools/Help commands, group exports, collaboration, indexing, synchronization and evidence, keep descriptions in hover tips, and label the About entry simply About. Preserve color, icons, visible checkmarks and glass effects.
+- Default new projects to single-view priority: prepare the main view first, then load auxiliary stills one at a time. Click a tile's play control to promote it exclusively; other views remain paused with explicit image timestamps. Global pause refreshes all exact original frames at the shared review time. Keep periodically refreshed previews and full multistream playback as alternatives.
+- Add high-contrast, translucent hover controls per video: exclusive play/pause, shared-timeline ±5 seconds, rate, enlarge/restore. Preserve audio only on the main view, IMU synchronization, original frame rates and evidence guards.
+- Move native VLC open/seek/pause/poll operations into owned decoder threads, coalesce obsolete seek commands, bound per-decoder CPU threads, and tag snapshots by source/seek generation. Fix native-media picture counter resets and prevent pre-seek observations from confirming a new frame.
+- On Windows, replace the selected file's unconditional stability delay with before/after write-handle and stamp checks. Reuse its parsed IMU and avoid rebuilding unchanged record lists on each background video result.
+- Preserve non-finite optional model-summary statistics as explicitly unavailable values so empty-result audits can be saved; invalid candidate positions/scores still fail validation. No weights, predictions or labels are fabricated.
+
+Limits: native layouts are validated on supplied samples, not a universal camera specification. First discovery still depends on disk speed, unknown-format OCR and directory size. Multiple hardware decoders can exhaust driver buffers; no claim of eight full-rate streams on every computer.
+
+## [3.1.1] — 2026-09-08 (local validation build)
+
+- Open large projects with metadata-only file reconciliation. Decode and hash one selected IMU record, then search only the requested capture-time window. Do not automatically run full-project OCR or hash every video on startup.
+- Cache stamp-bound OCR routing hints separately from SHA-256 evidence assets. Search card-copy batches using sparse natural-order probes, include overlapping boundary clips, and fully validate candidates before exposing verified intervals. Hints and filename order cannot certify missing footage.
+- Bound exploratory work, allow guided searches to finish the requested window, and offer explicit expansion, pause and optional full background indexing. Cancel stale hashing/OCR work on record changes; reuse decoded opening frames without promoting unverified routing readings.
+- Save explicit record completion, unfinished position and a compact progress summary inside the existing project metadata directory. Reopen unfinished work or select the next unfinished record without starting completed records' videos. Existing saved work is treated as in progress, never assumed complete merely because labels exist.
+- Add a completion/next/save-exit choice at record end, guarded against stale queued prompts. Keep all original sensor files and media unchanged.
+- Restore a visible File/Edit/View/Tools/Help menu bar; add a searchable hover/pinnable source list, clear checkmarks and dropdown arrows, stronger control text and readable glass menus. Move explanatory text to tooltips, keep warnings visible, and place update controls in About while retaining automatic notifications.
+- Default new presentation preferences to main-camera playback with auxiliary previews; preserve user-selected playback settings, view choices and all evidence safeguards.
+
 ## [3.1.0] — 2026-09-07
 
 - Save one original-resolution JPEG per selected camera at one aligned, human-reviewed time. A waveform-deviation suggestion can be adjusted; missing/uncertain views stay explicit. Two bounded background decoders keep screenshot extraction independent of low-rate previews.

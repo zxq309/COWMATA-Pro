@@ -5,8 +5,9 @@ import subprocess
 import time
 
 
-def run_cancellable(command, *, timeout=90, cancelled=None, env=None, cwd=None):
+def run_cancellable(command, *, timeout=90, cancelled=None, env=None, cwd=None, input_data=None):
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               stdin=subprocess.PIPE if input_data is not None else None,
                                env=env, cwd=cwd,
                                creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)))
     started = time.monotonic()
@@ -17,9 +18,10 @@ def run_cancellable(command, *, timeout=90, cancelled=None, env=None, cwd=None):
             if time.monotonic() - started > timeout:
                 raise subprocess.TimeoutExpired(command, timeout)
             try:
-                stdout, stderr = process.communicate(timeout=.25)
+                stdout, stderr = process.communicate(input=input_data, timeout=.25)
                 return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
             except subprocess.TimeoutExpired:
+                input_data = None  # communicate retains its partially written buffer.
                 continue
     finally:
         if process.poll() is None:

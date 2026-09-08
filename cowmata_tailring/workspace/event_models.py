@@ -78,6 +78,18 @@ def _csv(path):
         return list(csv.DictReader(stream))
 
 
+def _audit_value(value):
+    # Empty model summaries can legitimately report NaN/Infinity statistics.
+    # Preserve that unavailable status explicitly, never invent a numeric 0.
+    if isinstance(value, float) and not math.isfinite(value):
+        return {"unavailable_nonfinite": str(value)}
+    if isinstance(value, dict):
+        return {key: _audit_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_audit_value(item) for item in value]
+    return value
+
+
 def normalize_output(folder, model, duration_ms):
     folder = Path(folder)
     rows = _csv(folder / model["output"])
@@ -93,7 +105,7 @@ def normalize_output(folder, model, duration_ms):
     audit = {}
     for path in sorted(folder.iterdir()):
         if path.suffix == ".json":
-            audit[path.name] = json.loads(path.read_text(encoding="utf-8-sig"))
+            audit[path.name] = _audit_value(json.loads(path.read_text(encoding="utf-8-sig")))
         elif path.suffix == ".csv" and path.name != model["output"]:
             values = _csv(path)
             audit[path.name] = {"rows": len(values), "sha256": digest_file(path), "sample": values[:20]}

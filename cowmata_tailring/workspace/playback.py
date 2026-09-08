@@ -4,17 +4,22 @@ import ctypes
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QCursor, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
+    QStyle,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -45,7 +50,9 @@ class WorkspaceEngine(StableMediaEngine):
         # Keep GPU decoding automatic, but use the bundled D3D9 presentation
         # backend for embedded multiview HWNDs. The D3D11 presentation path
         # showed intermittent long layout/reopen stalls in native stress tests.
-        options = ["--vout=direct3d9"]
+        # Auto CPU thread counts grow with every view and inflate the hardware
+        # frame pool too. Bound each decoder; dedicated GPU decoding stays on.
+        options = ["--vout=direct3d9", "--avcodec-threads=2"]
         if software:
             options.append("--avcodec-hw=none")
         if no_audio:
@@ -69,6 +76,11 @@ class WorkspaceEngine(StableMediaEngine):
         value = self.metadata_provider(path)
         if value and value.get("timeline"):
             index = MediaTimelineIndex.from_dict(value["timeline"])
+            if index.native and index.native.get("timestamp_data"):
+                from cowmata_tailring.media.native_ps import playback_index
+                self._timeline_validation_required = False
+                self._apply_dahua_duration_index(playback_index(path,index.native))
+                return
             stat = Path(path).stat()
             index = replace(index, source_path=str(Path(path).resolve()), source_size=stat.st_size,
                             source_mtime_ns=stat.st_mtime_ns)
@@ -115,6 +127,7 @@ class PausedFrame(QLabel):
 class VideoTile(QFrame):
     activated = Signal(object)
     enlarged = Signal(object)
+    transportRequested = Signal(object, str, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -136,11 +149,7 @@ class VideoTile(QFrame):
         header = QHBoxLayout()
         self.title = QPushButton("视角")
         self.title.clicked.connect(lambda: self.activated.emit(self))
-        self.zoom = QPushButton("放大")
-        self.zoom.setMaximumWidth(55)
-        self.zoom.clicked.connect(lambda: self.enlarged.emit(self))
         header.addWidget(self.title, 1)
-        header.addWidget(self.zoom)
         layout.addLayout(header)
         self.surface = VideoSurface(self)
         self.surface.clicked.connect(lambda: self.activated.emit(self))
@@ -155,8 +164,53 @@ class VideoTile(QFrame):
         self.stack.addWidget(self.surface)
         self.stack.addWidget(self.frame_view)
         layout.addWidget(self.stack, 1)
+        self.overlay = QFrame(self.stack)
+        self.overlay.setObjectName("videoTransport")
+        # A native sibling stays above VLC's embedded native video surface.
+        self.overlay.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        self.overlay.setStyleSheet("""
+            QFrame#videoTransport { background: rgba(15, 24, 36, 220); border: 1px solid #60778b; border-radius: 9px; }
+            QFrame#videoTransport QToolButton { color: #ffffff; background: transparent; border: 0; border-radius: 5px; padding: 0; margin: 0; min-height: 0; }
+            QFrame#videoTransport QToolButton:hover { background: #367ca2; }
+            QFrame#videoTransport QComboBox { color: #ffffff; background: #263c50; border: 1px solid #60778b; border-radius: 4px; }
+        """)
+        bar = QHBoxLayout(self.overlay)
+        bar.setContentsMargins(5, 4, 5, 4)
+        bar.setSpacing(2)
+        def control(icon, help_text, callback):
+            button = QToolButton(self.overlay)
+            button.setIcon(self.control_icon(icon))
+            button.setIconSize(QSize(18, 18))
+            button.setFixedSize(28, 28)
+            button.setToolTip(help_text)
+            button.setAccessibleName(help_text)
+            button.clicked.connect(callback)
+            bar.addWidget(button)
+            return button
+        self.back = control(QStyle.StandardPixmap.SP_MediaSeekBackward, "后退 5 秒 · 统一标注时间轴",
+                            lambda: self.transportRequested.emit(self, "seek", -5000))
+        self.play_control = control(QStyle.StandardPixmap.SP_MediaPlay, "播放此视角 · 其他视角暂停",
+                                   lambda: self.transportRequested.emit(self, "play", 0))
+        self.forward = control(QStyle.StandardPixmap.SP_MediaSeekForward, "前进 5 秒 · 统一标注时间轴",
+                               lambda: self.transportRequested.emit(self, "seek", 5000))
+        self.speed_control = QComboBox(self.overlay)
+        self.speed_control.addItems(["0.25×", "0.5×", "1×", "2×", "4×"])
+        self.speed_control.setCurrentIndex(2)
+        self.speed_control.setFixedWidth(65)
+        self.speed_control.setToolTip("播放倍率 · 所有视角与九轴共用时间轴")
+        self.speed_control.currentIndexChanged.connect(
+            lambda i: self.transportRequested.emit(self, "rate", [.25, .5, 1, 2, 4][i]))
+        bar.addWidget(self.speed_control)
+        self.zoom = control(QStyle.StandardPixmap.SP_TitleBarMaxButton, "放大此视角 / 恢复布局",
+                            lambda: self.enlarged.emit(self))
+        self.overlay.hide()
+        self._control_state = None
         self.message = QLabel("等待选择视角")
-        self.message.setWordWrap(True)
+        # Avoid repeated native video resize/reflow on every clock update.
+        self.message.setWordWrap(False)
+        self.message.setMinimumWidth(0)
+        self.message.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.message.setFixedHeight(22)
         layout.addWidget(self.message)
 
     def status(self, text, *, good=False):
@@ -171,6 +225,36 @@ class VideoTile(QFrame):
         super().resizeEvent(event)
         self.scale_frame()
 
+    def control_icon(self, icon):
+        pixmap = self.style().standardIcon(icon).pixmap(18, 18)
+        painter = QPainter(pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor("#f1faff"))
+        painter.end()
+        return QIcon(pixmap)
+
+    def update_controls(self, playing, rate, expanded):
+        state = (playing, rate, expanded)
+        if state != self._control_state:
+            self._control_state = state
+            self.play_control.setIcon(self.control_icon(
+                QStyle.StandardPixmap.SP_MediaPause if playing else QStyle.StandardPixmap.SP_MediaPlay))
+            self.play_control.setToolTip("暂停标注时间轴" if playing else "播放此视角 · 其他视角暂停")
+            self.play_control.setAccessibleName(self.play_control.toolTip())
+            self.zoom.setIcon(self.control_icon(
+                QStyle.StandardPixmap.SP_TitleBarNormalButton if expanded else QStyle.StandardPixmap.SP_TitleBarMaxButton))
+            self.speed_control.blockSignals(True)
+            self.speed_control.setCurrentIndex([.25, .5, 1, 2, 4].index(rate))
+            self.speed_control.blockSignals(False)
+        hovered = self.stack.isVisible() and self.stack.rect().contains(self.stack.mapFromGlobal(QCursor.pos()))
+        if hovered or self.speed_control.view().isVisible():
+            width = self.overlay.sizeHint().width()
+            self.overlay.setGeometry(max(0, (self.stack.width()-width)//2), max(0, self.stack.height()-43), width, 38)
+            self.overlay.show()
+            self.overlay.raise_()
+        else:
+            self.overlay.hide()
+
     def scale_frame(self):
         # Native playback leaves the last precise frame cached. Resizing eight
         # live views must not resample these hidden full-resolution pixmaps.
@@ -181,13 +265,14 @@ class VideoTile(QFrame):
 class VideoBoard(QWidget):
     timeChanged = Signal(float)
     playbackChanged = Signal(bool)
+    rateChanged = Signal(float)
     mainChanged = Signal(str)
     notice = Signal(str)
     metricsChanged = Signal(object)
     preciseReady = Signal(object)
     compatibilityReady = Signal(object)
 
-    def __init__(self, parent=None, *, engine_factory=WorkspaceEngine):
+    def __init__(self, parent=None, *, engine_factory=None):
         super().__init__(parent)
         self.grid = QGridLayout(self)
         self.grid.setSpacing(4)
@@ -215,6 +300,9 @@ class VideoBoard(QWidget):
         self.compatibility_cache = None
         self.generation = 0
         self.last_tick = time.perf_counter()
+        if engine_factory is None:
+            from .threaded_engine import ThreadedWorkspaceEngine
+            engine_factory = partial(ThreadedWorkspaceEngine, backend_factory=WorkspaceEngine)
         self.engine_factory = engine_factory
         self.prewarm = None
         self.latencies = []
@@ -228,6 +316,9 @@ class VideoBoard(QWidget):
         self.timer.setInterval(40)
         self.timer.timeout.connect(self.tick)
         self.timer.start()
+        self.control_timer = QTimer(self)
+        self.control_timer.timeout.connect(self._update_controls)
+        self.control_timer.start(120)
 
     def configure(self, catalog, rows, timeline):
         if self.catalog is not catalog:
@@ -255,9 +346,31 @@ class VideoBoard(QWidget):
         tile = VideoTile(self)
         tile.activated.connect(lambda t: self.set_main(t.camera))
         tile.enlarged.connect(lambda t: self.enlarge(t.camera))
+        tile.transportRequested.connect(self.transport)
         self.pool.append(tile)
         tile.hide()
         return tile
+
+    def _update_controls(self):
+        for camera, tile in self.tiles.items():
+            preview = hasattr(self, "is_preview") and self.is_preview(camera)
+            tile.update_controls(self.playing and not preview, self.rate, self.expanded == camera)
+
+    def transport(self, tile, command, value):
+        if tile.camera not in self.selected:
+            return
+        was_active = tile.camera == self.main_camera
+        self.set_main(tile.camera)
+        if command == "play":
+            # A tile play command explicitly asks for exclusive playback.
+            if hasattr(self, "set_policy"):
+                self.set_policy("focus")
+            self.play(not (self.playing and was_active))
+        elif command == "seek":
+            self.seek(self.reference_ms + value)
+        elif command == "rate":
+            self.set_rate(value)
+        self._update_controls()
 
     def _idle_tile(self):
         active = set(self.tiles.values())
@@ -355,7 +468,8 @@ class VideoBoard(QWidget):
         self.last_tick = time.perf_counter()
         for tile in self.tiles.values():
             if tile.engine and tile.asset_id and tile.ready:
-                tile.engine.pause(not self.playing)
+                preview = hasattr(self, "is_preview") and self.is_preview(tile.camera)
+                tile.engine.pause(not self.playing or preview)
         self.playbackChanged.emit(self.playing)
         if previous != self.playing:
             self.seek(self.reference_ms)
@@ -367,6 +481,7 @@ class VideoBoard(QWidget):
         for tile in self.pool:
             if tile.engine:
                 tile.engine.set_rate(rate)
+        self.rateChanged.emit(rate)
 
     def _pause_tile(self, tile):
         if tile.engine and tile.asset_id:
@@ -495,11 +610,19 @@ class VideoBoard(QWidget):
                         pending["target"] = latest[1]
                 pending["baseline"] = stats.displayed_pictures
                 tile.engine.pause(False)
-                preroll = min(10000, pending["target"]) if tile.engine._force_avformat else 0
+                preroll = min(10000, pending["target"]) if tile.engine._force_avformat and not tile.engine._dahua_duration_index else 0
                 tile.engine.set_time_ms(max(0, pending["target"] - preroll))
+                # Native/Dahua byte seeks replace libVLC media, whose picture
+                # counters restart at zero. Comparing to the previous media's
+                # cumulative counter can make a warm seek wait forever.
+                if tile.engine._dahua_duration_index:
+                    pending["baseline"] = 0
                 tile.engine.set_rate(4.0 if preroll > 1500 else 1.0)
                 pending["phase"] = "preroll" if preroll > 1500 else "seeking"
                 pending["seek_at"] = now
+                # current/stats above belong to the media BEFORE this seek.
+                # Only a later observation can certify the new actual frame.
+                return
             if pending["phase"] == "preroll" and current >= pending["target"] - 1800:
                 tile.engine.set_rate(1.0)
                 pending["phase"] = "seeking"
@@ -757,6 +880,7 @@ class VideoBoard(QWidget):
     def close(self):
         self._closing = True
         self.timer.stop()
+        self.control_timer.stop()
         self.playing = False
         self.frame_pool.shutdown(wait=False, cancel_futures=True)
         self.frame_cache.clear()

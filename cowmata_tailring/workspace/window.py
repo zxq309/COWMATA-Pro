@@ -13,6 +13,7 @@ from PySide6.QtCore import QFileSystemWatcher, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QSlider,
     QSplitter,
@@ -52,6 +54,7 @@ from cowmata_tailring.ui.widgets import PlotSeries
 from .catalog import Catalog, file_stamp
 from .clocks import ClockMap, VideoTimeline, intervals_from_rows, wall_ms, wall_text
 from .coverage import continuation_target, video_coverage
+from .demand import device_name, natural_key, relevant_rows
 from .dialogs import MappingDialog, SourceTimeDialog
 from .playback import VideoBoard
 from .storage import SnapshotWriter, atomic_json, read_json, unique_batch
@@ -64,6 +67,7 @@ class MainWindow(QMainWindow):
     continuationReady = Signal(object)
     backgroundError = Signal(str)
     exportReady = Signal(str)
+    teamScanned = Signal(object)
 
     def __init__(self):
         super().__init__()
@@ -100,6 +104,13 @@ class MainWindow(QMainWindow):
         self._continuation_second = None
         self._continuation_pending = None
         self._work_cache = {}
+        self._loading_path = None
+        self._reading_path = None
+        self._end_prompt_asset = None
+        self.coverage_timeline = None
+        self._saved_work_assets = set()
+        self._team_observed = {}
+        self._team_scanning = False
         self._build_ui()
         self.motionReady.connect(self._motion_loaded)
         self.continuationReady.connect(self._continuation_ready)
@@ -119,6 +130,11 @@ class MainWindow(QMainWindow):
         self.source_timer.setInterval(2000)
         self.source_timer.timeout.connect(self.check_active_sources)
         self.source_timer.start()
+        self.teamScanned.connect(self._team_scanned)
+        self.team_timer = QTimer(self)
+        self.team_timer.setInterval(10000)
+        self.team_timer.timeout.connect(self._poll_team)
+        self.team_timer.start()
 
     def _button(self, title, handler, layout):
         button = QPushButton(title)
@@ -137,16 +153,22 @@ class MainWindow(QMainWindow):
     def _build_ui(self):
         files = self.menuBar().addMenu("工程")
         self._action(files, "打开数据工程…", self.choose_project, "Ctrl+O")
+        self._action(files, "打开指定九轴 JSON…", self.choose_record, "Ctrl+J")
         self._action(files, "保存人工成果", self.save_current, "Ctrl+S")
         self._action(files, "导出当前成果…", self.export_work)
         self._action(files, "导出所选九轴片段（含标签）…", lambda: self.export_work(snippet=True))
         self._action(files, "打开历史标注回看…", self.open_history, "Ctrl+Shift+O")
+        self._action(files, "接收多人标注成果…", self.import_team_labels)
         self._action(files, "训练与兼容格式（批量导出）…", self.export_training)
         self._action(files, "导入旧单视频工程…", self.import_legacy)
         self._action(files, "打开旧版单视频窗口", self.open_legacy)
         materials = self.menuBar().addMenu("素材")
+        self._action(materials, "继续扩大当前时段检索", lambda: self.worker and self.worker.request("more"))
+        self._action(materials, "后台完整索引（可选、耗时）", lambda: self.worker and self.worker.request("bulk", True))
+        self._action(materials, "暂停后台检索", lambda: self.worker and self.worker.request("pause"))
         self._action(materials, "刷新 / 复制完成，重新检查", self.refresh_sources, "F5")
         self._action(materials, "素材与时间核验…", self.source_manager)
+        self._action(materials, "多人协作与回传设置…", self.team_settings)
         self._action(materials, "新增唯一拷贝批次…", self.new_batch)
         self._action(materials, "全文件内容核验（耗时）", lambda: self.worker and self.worker.request("audit"))
         self._action(materials, "录像归档副本核验（不删除原片）…", self.verify_video_archive)
@@ -156,6 +178,9 @@ class MainWindow(QMainWindow):
         self._action(sync, "跳到下一个录像覆盖时段", lambda: self.board.next_coverage())
         edit = self.menuBar().addMenu("标注")
         self._action(edit, "新版事件候选预测…", self.open_candidates)
+        self._action(edit, "完成本份九轴…", self.finish_record, "Ctrl+Return")
+        self._action(edit, "下一份未完成九轴", self.next_record, "Ctrl+PageDown")
+        self._action(edit, "将本份重新标为进行中", self.reopen_record)
         self._action(edit, "撤销", self.undo, "Ctrl+Z")
         self._action(edit, "重做", lambda: self.undo(True), "Ctrl+Y")
         self._action(edit, "确认所选草稿为九轴真值", self.confirm_selected)
@@ -278,6 +303,7 @@ class MainWindow(QMainWindow):
         self.speed.addItems(["0.25×", "0.5×", "1×", "2×", "4×"])
         self.speed.setCurrentIndex(2)
         self.speed.currentIndexChanged.connect(lambda i: self.board.set_rate([.25, .5, 1, 2, 4][i]))
+        self.board.rateChanged.connect(self._display_rate)
         controls.addWidget(self.speed)
         video_layout.addLayout(controls)
         time_row = QHBoxLayout()
@@ -360,6 +386,205 @@ class MainWindow(QMainWindow):
         if root:
             self.open_project(root)
 
+    def choose_record(self):
+        path, _ = QFileDialog.getOpenFileName(self, "选择任意原始九轴 JSON", str(self.catalog.root) if self.catalog else "", "JSON (*.json)")
+        if not path:
+            return
+        path = Path(path).resolve()
+        if self.catalog and path.is_relative_to(self.catalog.root) and not path.is_relative_to(self.catalog.meta):
+            self.open_record_path(path)
+            return
+        root = QFileDialog.getExistingDirectory(self, "选择该九轴所属的工程根目录（含多视角录像）", str(path.parent))
+        if root:
+            if not path.is_relative_to(Path(root).resolve()):
+                self.tell("所选九轴不在这个工程目录内，请重新选择工程根目录。")
+                return
+            self.open_project(root, preferred_json=path)
+
+    def open_record_path(self, path):
+        path = Path(path).resolve()
+        if not self.catalog or not path.is_relative_to(self.catalog.root) or path.is_relative_to(self.catalog.meta):
+            raise ValueError("Choose an original JSON inside the open project")
+        self.save_current()
+        if self.dirty:
+            return
+        relative = path.relative_to(self.catalog.root).as_posix()
+        if self.current_row and self.current_row["path"] == relative and self.work:
+            return
+        self.board.play(False)
+        self.load_generation += 1
+        self._loading_path = relative
+        self.settings["current_path"] = relative
+        if self.worker:
+            self.worker.request("focus", relative)
+            self.worker.request("scan")
+        self.refresh_lists()
+
+    def import_team_labels(self, *, paths=None, automatic=False):
+        if not self.catalog or self.catalog.readonly:
+            self.tell("请先打开可写的数据工程，再接收多人标注成果。")
+            return
+        if self._export_running or self._reading_path or self.active_event:
+            self.tell("请先完成当前读取、导出或尚未结束的动作，再接收标注成果。")
+            return
+        if paths is None:
+            paths, _ = QFileDialog.getOpenFileNames(self, "选择回传的完整标注成果（可多选）", "", "COWMATA (*.cowmata.json *.json)")
+        if not paths:
+            return
+        self.save_current()
+        if self.dirty:
+            return
+        from .team import restore_label
+        self.board.play(False)
+        self.save_timer.stop()
+        self._export_running = True
+        progress = QProgressDialog("按内容身份核验回传；不加载录像", "取消", 0, len(paths), self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        counts, errors = Counter(), []
+        try:
+            for i, path in enumerate(paths):
+                receipt_status = "needs_review"
+                progress.setValue(i)
+                QApplication.processEvents()
+                if progress.wasCanceled():
+                    break
+                try:
+                    result = restore_label(self.catalog, path, require_done=automatic)
+                    counts[result["status"]] += 1
+                    receipt_status = result["status"]
+                    if result["work"] is not None:
+                        self._saved_work_assets.add(result["asset_id"])
+                        self.settings.setdefault("review_progress", {})[result["path"]] = {
+                            **result["progress"], "asset_id": result["asset_id"], "stamp": result["stamp"]}
+                        if self.work and self.work.asset_id == result["asset_id"]:
+                            self.work = SessionWork.from_dict(result["work"])
+                            self.imu_ms = max(0, min(self.motion.duration_ms, float(self.work.progress.get("imu_ms", 0))))
+                            self.cow.setText(self.work.project.cow_id)
+                            self.refresh_events()
+                            self._set_imu(self.imu_ms)
+                            if self.work.clock.anchors:
+                                self.board.seek(self.work.clock.map(self.imu_ms))
+                        self._work_cache.pop(result["asset_id"], None)
+                    self.save_current()
+                except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
+                    errors.append(Path(path).name + ": " + str(exc))
+                try:
+                    self.settings.setdefault("team_receipts", {})[str(Path(path))] = {
+                        "stamp": file_stamp(Path(path)), "status": receipt_status}
+                except OSError:
+                    pass
+                self.save_current()
+            self.rows = self.catalog.rows()
+            self.refresh_lists()
+        finally:
+            progress.close()
+            self._export_running = False
+            self.save_timer.start()
+        message = f"已接收 {counts['imported']} 份 · 重复 {counts['unchanged']} 份 · 冲突 {counts['conflict']} 份 · 失败 {len(errors)} 份。"
+        message += "\n原始数据未改动。回传原件保存在“标注工程/回传”；冲突未覆盖，可用历史回看比较。相机校准不自动覆盖本工程。"
+        if errors:
+            message += "\n" + "\n".join(errors[:5])
+        atomic_json(self.catalog.meta / "回传" / "接收报告.json", {"summary": message, "errors": errors})
+        if automatic:
+            self.tell(message)
+        else:
+            QMessageBox.information(self, "多人标注成果接收", message)
+
+    def team_settings(self):
+        if not self.catalog or self.catalog.readonly:
+            self.tell("请先打开可写的数据工程，再接收多人标注成果。")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("多人协作与回传设置")
+        layout = QVBoxLayout(dialog)
+        current = self.settings.get("team_inbox", {})
+        folder = QLineEdit(current.get("folder", ""))
+        layout.addWidget(QLabel("回传文件夹（可包含一层人员子文件夹；证据随成果一起复制）"))
+        layout.addWidget(folder)
+        def browse():
+            chosen = QFileDialog.getExistingDirectory(dialog, "选择回传文件夹", folder.text())
+            if chosen:
+                folder.setText(chosen)
+        self._button("选择回传文件夹…", browse, layout)
+        enabled = QCheckBox("自动发现回传成果，并提醒核对接收")
+        enabled.setChecked(current.get("enabled", False))
+        automatic = QCheckBox("自动接收核验通过、无冲突且明确已完成的整份成果")
+        automatic.setChecked(current.get("automatic", False))
+        layout.addWidget(enabled)
+        layout.addWidget(automatic)
+        self._button("重新核验待处理成果", self.retry_team_returns, layout)
+        note = QLabel("自动归入本工程的“标注工程”目录，不移动原始九轴和录像。冲突保留双方版本，缺失原始九轴或证据图时不接收。")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            path = Path(folder.text()).resolve() if folder.text().strip() else None
+            if enabled.isChecked() and (path is None or not path.is_dir() or path == self.catalog.root or path.is_relative_to(self.catalog.meta)):
+                self.tell("请选择专用回传文件夹，不能使用工程总目录或标注工程内部目录。")
+                return
+            self.settings["team_inbox"] = {"folder": str(path) if path else "", "enabled": enabled.isChecked(), "automatic": automatic.isChecked()}
+            self._team_observed.clear()
+            self.save_current()
+            self._poll_team()
+
+    def retry_team_returns(self):
+        if not self.catalog or self.catalog.readonly:
+            return
+        self.settings["team_receipts"] = {p: r for p, r in self.settings.get("team_receipts", {}).items()
+                                           if r.get("status") not in {"needs_review", "deferred"}}
+        self.save_current()
+        self.tell("已安排重新核验待处理回传；不会覆盖冲突版本。")
+
+    def _poll_team(self):
+        if self._closed or not self.catalog or self.catalog.readonly or self._team_scanning or self._export_running or self._reading_path or self._loading_path or self.active_event:
+            return
+        config = self.settings.get("team_inbox", {})
+        if not config.get("enabled") or not config.get("folder"):
+            return
+        root, folder = self.catalog.root, config["folder"]
+        self._team_scanning = True
+        def scan():
+            from .team import return_folder_snapshot
+            try:
+                result, error = return_folder_snapshot(folder), None
+            except (OSError, ValueError) as exc:
+                result, error = {}, str(exc)
+            if not self._closed:
+                self.teamScanned.emit((root, folder, result, error))
+        threading.Thread(target=scan, daemon=True, name="team-inbox-scan").start()
+
+    def _team_scanned(self, message):
+        self._team_scanning = False
+        root, folder, snapshot, error = message
+        if self._closed or not self.catalog or root != self.catalog.root or folder != self.settings.get("team_inbox", {}).get("folder"):
+            return
+        if error:
+            self.tell("回传文件夹暂不可读取，未修改已有成果：" + error)
+            return
+        # Require the same stamp in two scans; a paused copy is additionally
+        # rejected by the write-handle and identity checks during acceptance.
+        receipts = self.settings.get("team_receipts", {})
+        stable = [path for path, stamp in snapshot.items() if self._team_observed.get(path) == stamp
+                  and receipts.get(path, {}).get("stamp") != stamp]
+        self._team_observed = snapshot
+        if not stable or self._export_running or self._reading_path or self._loading_path or self.active_event or self.board.playing:
+            return
+        automatic = self.settings.get("team_inbox", {}).get("automatic", False)
+        if not automatic:
+            answer = QMessageBox.question(self, "发现待接收的多人标注成果", f"发现 {len(stable)} 份新增或更新的 JSON。接下来将核验九轴身份、完整范围和证据图；通过的成果自动放入当前工程，冲突不覆盖。是否现在核对接收？")
+            if answer != QMessageBox.StandardButton.Yes:
+                # Remind again only on reopen or an inbox change, not every tick.
+                for path in stable:
+                    receipts[path] = {"stamp": snapshot[path], "status": "deferred"}
+                self.settings["team_receipts"] = receipts
+                return
+        self.import_team_labels(paths=stable, automatic=automatic)
+
     def _retire_project(self):
         self.board.play(False)
         self.load_generation += 1
@@ -368,6 +593,10 @@ class MainWindow(QMainWindow):
         self._coverage_second = None
         self._last_scan_complete = False
         self._work_cache.clear()
+        self._loading_path = None
+        self._reading_path = None
+        self._end_prompt_asset = None
+        self.coverage_timeline = None
         if self.worker:
             worker, catalog = self.worker, self.catalog
             worker.cancel()
@@ -386,7 +615,7 @@ class MainWindow(QMainWindow):
         catalog.close()
         self.retired = [(w, c) for w, c in self.retired if w is not worker]
 
-    def open_project(self, root):
+    def open_project(self, root, *, preferred_json=None):
         self.save_current()
         if self.dirty and self.catalog and not self.catalog.readonly:
             return
@@ -394,6 +623,12 @@ class MainWindow(QMainWindow):
         try:
             self.catalog = Catalog(root)
             self.settings = self.catalog.settings()
+            if preferred_json is not None:
+                preferred = Path(preferred_json).resolve().relative_to(self.catalog.root).as_posix()
+                self._loading_path = preferred
+                self.settings["current_path"] = preferred
+            saved_dir = self.catalog.meta / "annotations"
+            self._saved_work_assets = {p.stem for p in saved_dir.glob("*.json") if len(p.stem) == 64}
             self.active_event = self.settings.get("active_event")
             if self.active_event:
                 self.active_event["assets"] = set(self.active_event["assets"])
@@ -416,11 +651,13 @@ class MainWindow(QMainWindow):
                 self.worker = IndexWorker(self.catalog, self)
                 current = self.worker
                 current.scanned.connect(lambda result, w=current: self.scan_completed(result) if w is self.worker else None)
-                current.indexed.connect(lambda result, w=current: self.scan_completed(None) if w is self.worker else None)
+                current.indexed.connect(lambda result, w=current: self.accept_index_result(result) if w is self.worker else None)
                 current.progress.connect(lambda text, w=current: self.index_status.setText(text) if w is self.worker else None)
                 current.failed.connect(lambda text, w=current: self.tell("索引异常：" + text) if w is self.worker else None)
                 current.start()
-                self.tell("正在核对整个工程目录；已索引的素材可以先使用，新素材在后台检查。原视频和 JSON 不会被修改。")
+                if self._loading_path:
+                    current.request("focus", self._loading_path)
+                self.tell("正在轻量清点文件与恢复标注进度；仅处理当前九轴及对应录像，不自动完整索引整个工程。")
             QSettings().setValue("workspace/last_root", str(self.catalog.root))
         except (OSError, ValueError, RuntimeError) as exc:
             self.tell("无法打开工程：" + str(exc))
@@ -429,6 +666,13 @@ class MainWindow(QMainWindow):
         if self.worker:
             self.worker.request()
             self.tell("已请求重新核对。正在复制的文件仍需通过稳定性和可读性检查，不会强行加载。")
+
+    def accept_index_result(self, result):
+        if result.get('motion') is not None:
+            self.motion_cache[result['asset_id']] = result['motion']
+            while len(self.motion_cache) > 2:
+                self.motion_cache.popitem(last=False)
+        self.scan_completed(None)
 
     def _directory_changed(self, folder):
         if self.catalog and Path(folder).is_relative_to(self.catalog.meta):
@@ -440,7 +684,7 @@ class MainWindow(QMainWindow):
         self.check_active_sources()
 
     def scan_completed(self, result):
-        if not self.catalog:
+        if self._closed or not self.catalog:
             return
         if result is not None:
             self._last_scan_complete = result.complete
@@ -462,6 +706,11 @@ class MainWindow(QMainWindow):
             if result.errors:
                 self.tell("本次目录核对不完整，未据此判定删除：" + "；".join(result.errors[:2]))
         self.rows = self.catalog.rows()
+        if self._loading_path:
+            requested = next((r for r in self.rows if r["path"] == self._loading_path), None)
+            if requested and requested["state"] in {"ignored", "invalid", "missing"}:
+                self.tell("所选文件暂不能作为原始九轴打开：" + (requested.get("error") or requested["state"]))
+                self._loading_path = None
         self.refresh_lists()
         counts = Counter(r["state"] for r in self.rows)
         self.index_status.setText(f"素材 {len(self.rows)} · 可用 {counts['ready']} · 待复核 {counts['review']} · 等待 {counts['pending']} · 异常 {counts['invalid']} · 缺失 {counts['missing']}")
@@ -470,7 +719,12 @@ class MainWindow(QMainWindow):
 
     def refresh_lists(self):
         current_device = self.devices.currentData() or self.settings.get("device")
-        devices = sorted({r["metadata"].get("device", "未知设备") for r in self.rows if r["kind"] == "imu" and r["state"] == "ready"})
+        desired_path = self._loading_path or (self.current_row["path"] if self.current_row else self.settings.get("current_path"))
+        for row in self.rows:
+            if row["path"] == desired_path and row["kind"] == "imu" and row["state"] not in {"ignored", "missing"}:
+                current_device = device_name(row)
+                break
+        devices = sorted({device_name(r) for r in self.rows if r["kind"] == "imu" and r["state"] not in {"ignored", "missing"}})
         self.devices.blockSignals(True)
         self.devices.clear()
         for device in devices:
@@ -481,11 +735,14 @@ class MainWindow(QMainWindow):
         self.devices.blockSignals(False)
         self.refresh_records()
         mappings = {name: ClockMap.from_dict(value) for name, value in self.settings.get("camera_maps", {}).items()}
-        intervals = intervals_from_rows([r for r in self.rows if r["kind"] == "video"], self.settings.get("camera_overrides", {}))
+        videos = self.window_videos()
+        intervals = intervals_from_rows(videos, self.settings.get("camera_overrides", {}))
         timeline = VideoTimeline(intervals, mappings)
-        self.board.configure(self.catalog, [r for r in self.rows if r["kind"] == "video"], timeline)
+        self.coverage_timeline = VideoTimeline(intervals_from_rows(
+            [r for r in self.rows if r["kind"] == "video"], self.settings.get("camera_overrides", {})), mappings)
+        self.board.configure(self.catalog, videos, timeline)
         camera_names = list(timeline.cameras)
-        previous = self.board.selected or self.settings.get("device_views", {}).get(str(self.devices.currentData()), self.settings.get("selected_cameras", []))
+        previous = self.settings.get("device_views", {}).get(str(self.devices.currentData()), self.settings.get("selected_cameras", [])) or self.board.selected
         order = self.settings.get("camera_order", [])
         camera_names.sort(key=lambda c: (c not in order, order.index(c) if c in order else c))
         self.cameras.blockSignals(True)
@@ -503,33 +760,50 @@ class MainWindow(QMainWindow):
         selected = self.checked_cameras()
         if selected != self.board.selected:
             self.board.select(selected)
-        if not self.board.reference_ms and timeline.bounds():
-            self.board.seek(float(self.settings.get("reference_ms") or timeline.bounds()[0]))
+        if self.motion and not self.board.reference_ms and timeline.bounds():
+            self.board.seek(self.work.clock.map(self.imu_ms))
 
     def refresh_records(self, *_):
         device = self.devices.currentData()
         previous = self.current_row["asset_id"] if self.current_row else self.settings.get("current_asset")
+        desired = self._loading_path or (self.current_row["path"] if self.current_row else self.settings.get("current_path"))
+        rows = [r for r in self.rows if r['kind']=='imu' and r['state'] not in {'ignored','missing'} and device_name(r)==device]
+        signature = (str(self.catalog.root) if self.catalog else '', device,
+                     tuple((r['path'],r['state'],r['asset_id'],r.get('stamp'),self.record_status(r)) for r in rows))
+        if signature == getattr(self, '_records_signature', None):
+            item = getattr(self, '_record_items', {}).get(desired)
+            if item and self.records.currentItem() is not item:
+                self.records.setCurrentItem(item)
+            elif item and (self.work is None or self._loading_path):
+                self.select_record(item)
+            return
+        self._records_signature = signature
+        self._record_items = {}
         self.records.blockSignals(True)
         self.records.clear()
         seen = set()
         selected = None
-        candidates = sorted([r for r in self.rows if r["kind"] == "imu" and r["state"] == "ready"
-                             and r["metadata"].get("device", "未知设备") == device],
-                            key=lambda r: (r["metadata"].get("create_time_ms", 0), r["path"]))
+        candidates = sorted(rows, key=lambda r: natural_key(r["path"]))
         for row in candidates:
-            if row["asset_id"] in seen:
+            identity = row["asset_id"] or row["path"]
+            if identity in seen:
                 continue
-            seen.add(row["asset_id"])
-            item = QListWidgetItem(Path(row["path"]).stem)
+            seen.add(identity)
+            status = self.record_status(row)
+            item = QListWidgetItem({"done": "✓ 已完成  ", "in_progress": "● 进行中  ", "new": "○ 未开始  "}[status] + Path(row["path"]).stem)
             item.setToolTip(row["path"] + "\ncreate_time 为设备采集起点；update_time 仅为服务器收包时间")
             item.setData(Qt.ItemDataRole.UserRole, row)
             self.records.addItem(item)
-            if row["asset_id"] == previous:
+            self._record_items[row['path']] = item
+            if row["path"] == desired or (not desired and previous and row["asset_id"] == previous):
                 selected = item
+        if selected:
+            if self.work is None and not self._loading_path and self.record_status(selected.data(Qt.ItemDataRole.UserRole)) == "done":
+                selected = None
         if selected:
             self.records.setCurrentItem(selected)
         self.records.blockSignals(False)
-        if selected and self.work is None:
+        if selected and (self.work is None or self._loading_path):
             self.select_record(selected)
         elif selected and self.work and not self.source_available:
             row = selected.data(Qt.ItemDataRole.UserRole)
@@ -539,8 +813,91 @@ class MainWindow(QMainWindow):
                     self.current_row, self.current_stamp, self.source_available = row, stamp, True
             except OSError:
                 pass
-        elif (self.work is None or self.current_row and self.current_row["metadata"].get("device") != device) and self.records.count():
-            self.records.setCurrentRow(0)
+        elif not self._loading_path and (self.work is None or self.current_row and device_name(self.current_row) != device) and self.records.count():
+            for i in range(self.records.count()):
+                if self.record_status(self.records.item(i).data(Qt.ItemDataRole.UserRole)) != "done":
+                    self.records.setCurrentRow(i)
+                    break
+        totals = Counter(self.record_status(r) for r in candidates)
+        self.devices.setToolTip(f"本设备：未开始 {totals['new']} · 进行中 {totals['in_progress']} · 已完成 {totals['done']}；可任意选择，不要求顺序标注。")
+
+    def record_status(self, row):
+        entry = self.settings.get("review_progress", {}).get(row["path"], {})
+        # Changed/replaced sources cannot inherit completion by filename.
+        if entry and (entry.get("stamp") == row.get("stamp") or row.get("asset_id") and entry.get("asset_id") == row["asset_id"]):
+            return entry.get("status", "in_progress") if entry.get("status") in {"done", "in_progress"} else "in_progress"
+        if row.get("asset_id") in self._saved_work_assets:
+            return "in_progress"
+        return "new"
+
+    def window_videos(self):
+        if not self.motion or not self.work or not self.work.clock.anchors:
+            return []
+        lo, hi = sorted((self.work.clock.map(0), self.work.clock.map(self.motion.duration_ms)))
+        maps = {k: ClockMap.from_dict(v) for k, v in self.settings.get("camera_maps", {}).items()}
+        return relevant_rows([r for r in self.rows if r["kind"] == "video"], lo - 30000, hi + 30000,
+                             maps, self.settings.get("camera_overrides", {}))
+
+    def request_record_videos(self, *, refresh=True):
+        if not self.work or not self.motion or not self.work.clock.anchors:
+            return
+        lo, hi = sorted((self.work.clock.map(0), self.work.clock.map(self.motion.duration_ms)))
+        if self.worker:
+            settings = copy.deepcopy(self.settings)
+            settings["priority_reference_ms"] = self.work.clock.map(self.imu_ms)
+            self.worker.request("window", (lo - 30000, hi + 30000, settings))
+        if refresh:
+            self.refresh_lists()
+
+    def next_record(self):
+        self.save_current()
+        if self.dirty:
+            return
+        candidates = [self.records.item(i) for i in range(self.records.count())
+                      if self.record_status(self.records.item(i).data(Qt.ItemDataRole.UserRole)) != "done"
+                      and (not self.current_row or self.records.item(i).data(Qt.ItemDataRole.UserRole)["path"] != self.current_row["path"])]
+        if candidates:
+            after = [item for item in candidates if self.records.row(item) > self.records.currentRow()]
+            self.records.setCurrentItem((after or candidates)[0])
+        else:
+            self.tell("此设备没有其他未完成记录；可在素材列表切换设备，或回看已完成记录。")
+
+    def reopen_record(self):
+        if self.writable_work():
+            self.work.progress["status"] = "in_progress"
+            self.dirty = True
+            self.save_current()
+            self.refresh_records()
+
+    def finish_record(self):
+        if not self.writable_work():
+            return
+        self.board.play(False)
+        if self.active_event:
+            self.tell("还有未结束的动作，请先结束或处理该动作，再完成本份。")
+            return
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("本份九轴标注进度")
+        dialog.setText("确认已检查完整份记录？完成状态由你确认，不会依据标签数量自动判断。")
+        dialog.setInformativeText("未确认的候选仍保留原状态，不会被升级为真值。暂存只记录当前位置。")
+        next_button = dialog.addButton("已完成，下一份", QMessageBox.ButtonRole.AcceptRole)
+        done_exit = dialog.addButton("已完成，保存退出", QMessageBox.ButtonRole.AcceptRole)
+        save_exit = dialog.addButton("没做完，暂存退出", QMessageBox.ButtonRole.ActionRole)
+        dialog.addButton("继续本份", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        choice = dialog.clickedButton()
+        if choice not in (next_button, done_exit, save_exit):
+            return
+        self.work.progress["status"] = "in_progress" if choice is save_exit else "done"
+        self.dirty = True
+        self.save_current()
+        if self.dirty:
+            return
+        self.refresh_records()
+        if choice is next_button:
+            self.next_record()
+        else:
+            self.close()
 
     def checked_cameras(self):
         return [self.cameras.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.cameras.count())
@@ -558,6 +915,12 @@ class MainWindow(QMainWindow):
             self.cameras.blockSignals(False)
             selected = selected[:8]
         self.board.select(selected)
+        if self.catalog:
+            visible = {self.cameras.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.cameras.count())}
+            remembered = self.settings.get("device_views", {}).get(str(self.devices.currentData()), self.settings.get("selected_cameras", []))
+            wanted = selected + [c for c in remembered if c not in visible]
+            self.settings.setdefault("device_views", {})[str(self.devices.currentData())] = wanted[:8]
+            self.settings["selected_cameras"] = wanted[:8]
         self.dirty = True
 
     def set_layout(self, index):
@@ -569,6 +932,21 @@ class MainWindow(QMainWindow):
         if not item or not self.catalog:
             return
         row = item.data(Qt.ItemDataRole.UserRole)
+        if self._reading_path == row["path"] and getattr(self, "_reading_work", None) == (self.work.asset_id if self.work else None):
+            return
+        if row["state"] != "ready" or not row["asset_id"]:
+            if self._loading_path != row["path"]:
+                if self.work is not None:
+                    self.save_current()
+                    if self.dirty:
+                        return
+                self.board.play(False)
+                self.load_generation += 1
+                self._loading_path = row["path"]
+                if self.worker:
+                    self.worker.request("focus", row["path"])
+                self.tell("正在按需读取：" + row["path"] + "；其他九轴和录像不会全量加载。")
+            return
         if self.current_row and row["asset_id"] == self.current_row["asset_id"] and self.motion:
             if not follow and self._continuation_pending:
                 self.load_generation += 1
@@ -587,6 +965,11 @@ class MainWindow(QMainWindow):
         generation = self.load_generation
         self._continuation_pending = row["asset_id"] if follow else None
         root, asset_id = self.catalog.root, row["asset_id"]
+        self._loading_path = row["path"]
+        self._reading_path = row["path"]
+        self._reading_work = self.work.asset_id if self.work else None
+        if self.worker and not follow:
+            self.worker.request("focus", row["path"])
         self.tell("正在后台读取九轴数据，保留真实采样时间及缺口…")
 
         def read():
@@ -612,6 +995,7 @@ class MainWindow(QMainWindow):
         follow = bool(result[4]) if len(result) > 4 else False
         if generation != self.load_generation or not self.catalog:
             return
+        self._reading_path = None
         self._continuation_pending = None
         if motion is None:
             self.tell(result[5])
@@ -639,6 +1023,8 @@ class MainWindow(QMainWindow):
                 self.board.play(False)
                 return
         self.current_row, self.motion, self.current_stamp = row, motion, stamp
+        self._loading_path = None
+        self._end_prompt_asset = None
         self.source_available = True
         self.motion_cache[row["asset_id"]] = motion
         while len(self.motion_cache) > 2:
@@ -686,6 +1072,9 @@ class MainWindow(QMainWindow):
             self.imu_ms = self.work.clock.map(self.board.reference_ms, inverse=True)
         self.selection = None
         self._set_imu(self.imu_ms)
+        if self.imu_ms > 120000:
+            view_start = max(0, min(self.imu_ms - 60000, motion.duration_ms - 120000))
+            self.plot.set_view(view_start, min(motion.duration_ms, view_start + 120000))
         self.link.setChecked(bool(self.work.clock.anchors))
         if self.active_event:
             if self.active_event["cow_id"] != self.work.project.cow_id:
@@ -698,9 +1087,7 @@ class MainWindow(QMainWindow):
             self.tell("已自动续接下一份已校准九轴；视频位置、倍率和视角保持不变。")
         elif self.work.clock.anchors:
             self.board.seek(self.work.clock.map(self.imu_ms))
-        if self.worker:
-            self.worker.request("priority", [r["path"] for r in self.rows if r["kind"] == "video"
-                                             and Path(row["path"]).stem[:10] in r["path"]])
+        self.request_record_videos(refresh=not follow)
         self.dirty = True
         self.update_coverage(force=True)
 
@@ -759,6 +1146,7 @@ class MainWindow(QMainWindow):
             self.refresh_events()
             self.dirty = True
             self.save_current()
+            self.request_record_videos()
             self.tell("对应点已保存。请在较远处再次核对并钉住；切视角或换小视频不会重新建立同步。")
         except ValueError as exc:
             self.tell(str(exc))
@@ -773,6 +1161,7 @@ class MainWindow(QMainWindow):
             self.refresh_events()
             self.dirty = True
             self.save_current()
+            self.request_record_videos()
 
     def edit_camera_mapping(self):
         if not self.catalog or self.catalog.readonly or not self.board.main_camera:
@@ -791,6 +1180,7 @@ class MainWindow(QMainWindow):
             self.board.seek(self.board.reference_ms)
             self.dirty = True
             self.save_current()
+            self.request_record_videos()
             self.tell("相机同步修订已保存。参考时间未变，相关已确认标注需重新复核。")
 
     def update_alignment_text(self):
@@ -804,6 +1194,9 @@ class MainWindow(QMainWindow):
             self.alignment_label.setText(f"人工同步锚点 {n} · {self.work.clock.quality(self.imu_ms)} · 版本 {self.work.clock.revision[:8]}；保留原有校准")
 
     def video_time_changed(self, value):
+        if self.worker and self.work and abs(value - getattr(self, "_index_playhead", -1e30)) >= 5000:
+            self._index_playhead = value
+            self.worker.request("playhead", value)
         if not self.wall_input.hasFocus():
             self.wall_input.setText(wall_text(value))
         bounds = self.board.timeline.bounds()
@@ -816,11 +1209,20 @@ class MainWindow(QMainWindow):
                 self._set_imu(candidate)
             else:
                 if candidate > self.motion.duration_ms and self.board.playing:
-                    self.continue_motion(value)
+                    self.board.play(False)
+                    if self._end_prompt_asset != self.work.asset_id:
+                        self._end_prompt_asset = self.work.asset_id
+                        self.alignment_label.setText("本份九轴已到末尾，未强行拼接；请确认完成并继续下一份，或暂存退出。")
+                        generation, asset = self.load_generation, self.work.asset_id
+                        QTimer.singleShot(0, lambda: self.prompt_record_end(generation, asset))
                 else:
                     self.alignment_label.setText("当前录像时间超出这份九轴记录；可继续浏览/记视频草稿，或切换下一份记录")
         self.update_coverage()
         self.dirty = True
+
+    def prompt_record_end(self, generation, asset):
+        if not self._closed and generation == self.load_generation and self.work and self.work.asset_id == asset:
+            self.finish_record()
 
     def _cached_work(self, asset_id, catalog=None):
         path = (catalog or self.catalog).work_path(asset_id)
@@ -893,7 +1295,7 @@ class MainWindow(QMainWindow):
         self._coverage_second = second
         aligned = bool(self.work and self.work.clock.anchors
                        and self.work.clock.quality(self.work.clock.map(self.board.reference_ms, inverse=True)) == "interpolated")
-        status = video_coverage(self.board.timeline, self.rows, self.board.reference_ms,
+        status = video_coverage(self.coverage_timeline or self.board.timeline, self.rows, self.board.reference_ms,
                                self.board.selected, scan_complete=self._last_scan_complete, aligned=aligned)
         messages = {
             "covered": "当前参考时刻有录像覆盖；确认真值仍需核对牛号、同步和画面。",
@@ -934,6 +1336,11 @@ class MainWindow(QMainWindow):
                 self.board.seek(self.board.reference_ms)
             self.dirty = True
         self.tell("兼容缓存已开启：只处理当前工作素材，不重编码，容量最多 8 GiB；精确暂停仍回到原片。" if enabled else "当前使用原始录像播放。异常监控 PS 跳转不流畅时，可勾选兼容缓存。")
+
+    def _display_rate(self, rate):
+        self.speed.blockSignals(True)
+        self.speed.setCurrentIndex([.25, .5, 1, 2, 4].index(rate))
+        self.speed.blockSignals(False)
 
     def playback_changed(self, playing):
         self.play_button.setText("暂停" if playing else "播放")
@@ -1307,15 +1714,23 @@ class MainWindow(QMainWindow):
             if self.work:
                 self.work.progress.update(imu_ms=self.imu_ms, reference_ms=self.board.reference_ms)
                 snapshot.append((self.catalog.work_path(self.work.asset_id), copy.deepcopy(self.work.to_dict())))
+                if self.current_row:
+                    self.settings.setdefault("review_progress", {})[self.current_row["path"]] = {
+                        "asset_id": self.work.asset_id, "stamp": self.current_stamp,
+                        "status": self.work.progress.get("status", "in_progress"),
+                        "imu_ms": self.imu_ms, "labels": len(self.work.project.events)}
+                    self.settings["current_path"] = self.current_row["path"]
+            remembered = self.settings.get("device_views", {}).get(str(self.devices.currentData()), self.settings.get("selected_cameras", []))
+            selected_cameras = remembered or list(self.board.selected)
             self.settings.update(device=self.devices.currentData(), current_asset=self.work.asset_id if self.work else None,
-                                 reference_ms=self.board.reference_ms, selected_cameras=self.board.selected,
+                                 reference_ms=self.board.reference_ms, selected_cameras=selected_cameras,
                                  camera_order=[self.cameras.item(i).text() for i in range(self.cameras.count())],
                                  layout=self.layout_choice.currentIndex(), strict_sync=self.strict.isChecked(),
                                  main_camera=self.board.main_camera)
             device = self.current_row["metadata"].get("device") if self.current_row else self.devices.currentData()
-            self.settings.setdefault("device_views", {})[str(device)] = list(self.board.selected)
+            self.settings.setdefault("device_views", {})[str(device)] = selected_cameras
             self.settings.setdefault("device_profiles", {})[str(device)] = {
-                "views": list(self.board.selected), "main": self.board.main_camera,
+                "views": selected_cameras, "main": self.board.main_camera,
                 "order": [self.cameras.item(i).text() for i in range(self.cameras.count())],
                 "layout": self.layout_choice.currentIndex(), "two_view_ratio": self.board.two_view_ratio}
             self.settings["active_event"] = {**self.active_event, "assets": sorted(self.active_event["assets"])} if self.active_event else None
@@ -1615,5 +2030,10 @@ class MainWindow(QMainWindow):
         self.source_timer.stop()
         self.board.close()
         if self.worker:
-            self.worker.cancel()
+            worker, catalog = self.worker, self.catalog
+            self.worker = None
+            worker.finished.connect(catalog.close)
+            worker.cancel()
+            if not worker.thread.is_alive():
+                catalog.close()
         event.accept()

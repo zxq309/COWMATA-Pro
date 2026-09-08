@@ -65,7 +65,7 @@ def main():
     for name in ("workspace-acceptance.md", "portable-components.md", "algorithm-phase1-acceptance.md", "ui-next-stage-proposal.md", "ui-phase2-acceptance.md", "ui-performance-acceptance.md", "annotation-history-acceptance.md", "event-models-acceptance.md", "windows-distribution.md", "ocr-lightweight-integration.md", "live-demos.md"):
         shutil.copy2(source / "docs" / name, destination / "docs" / name)
     (destination / "scripts").mkdir()
-    for name in ("capture-timing.md", "client-updates.md", "evidence-archive.md"):
+    for name in ("capture-timing.md", "client-updates.md", "evidence-archive.md", "on-demand-indexing.md", "team-returns.md", "native-video-timing.md", "playback-performance-312.md"):
         shutil.copy2(source / "docs" / name, destination / "docs" / name)
     for name in ("portable_self_test.py", "build_portable.py", "verify_label_history.py", "verify_event_models.py", "verify_candidate_ui.py", "register_event_pack.py", "verify_evidence_archive.py"):
         shutil.copy2(source / "scripts" / name, destination / "scripts" / name)
