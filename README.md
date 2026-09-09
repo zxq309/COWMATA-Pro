@@ -2,7 +2,7 @@
 
 > **3.3.0 - 2026-09-10:** organize → annotate/save → review/export. Add background data organization, seven collection categories (including early/mid/late pregnancy), strict device-ear-tag-field-mark folders, and per-record identity across device reuse. Fix pending video discovery, legacy indexes and export/return integration. See the [illustrated manual](docs/quick-start-illustrated.pdf), [release notes](docs/release-330.md), [validation](docs/release-330-validation.md) and [code audit](docs/code-audit-330.md). Download the [complete Windows installer](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.0).
 
-> **Windows offline app:** ordinary users download the complete offline Setup EXE from
+> **Self-contained Windows installer:** ordinary users download the complete Setup EXE from
 > [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases).
 > No Python, pip, VLC, CUDA toolkit, or model setup is required. The automatically
 > generated **Source code.zip is not the runnable application**.
@@ -76,7 +76,7 @@ The source and pure logic tests also run outside Windows, but native playback an
 
 ### One-click Windows launch
 
-Download the complete offline **`COWMATA-...-Setup.exe`** → review the license → select a parent folder and accept/edit the suggested **COWMATA Annotator** subfolder → install → launch. The destination must not overwrite unrelated files. Thereafter, use the desktop/Start menu shortcut and open your data project or any original IMU JSON. All private runtimes and models are included; no online bootstrap is required. Updater-enabled installations can use **Help → About → Version and updates**.
+Download the complete **`COWMATA-...-Setup.exe`** → review the license → select a parent folder and accept/edit the suggested **COWMATA Annotator** subfolder → install → launch. The destination must not overwrite unrelated files. All private runtimes and models are included; no dependency setup is required. Startup requires a network connection to check the latest release and complete any required update before opening the workspace. An already opened project can continue offline. Updater-enabled installations go directly to the latest installer; older versions without an updater need one manual installation.
 
 The application provides A/B/C layouts, 1–8 selectable views, GPU playback, cross-file continuation, exact original-frame review, offline RapidOCR PP-OCRv6 medium, five versioned 20260906 candidate models, self-contained IMU annotation export, and independent history review. Predictions are candidates, never automatic ground truth. See [usage](使用说明.txt).
 
@@ -231,7 +231,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-This branch contains 3.1.2. Published artifacts are in [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases); historical records remain in [CHANGELOG.md](CHANGELOG.md). Source-only CI deliberately skips the five binary-pack integrity cases; those are required in offline-package acceptance.
+This branch contains 3.3.0. Published artifacts are in [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases); historical records remain in [CHANGELOG.md](CHANGELOG.md). Source-only CI skips unavailable binary-pack and native Windows/VLC integration fixtures; those are checked locally against the complete distribution. See the [verification scope](docs/release-330-validation.md).
 
 ## Contributing, security, and citation
 
@@ -246,4 +246,4 @@ Source code is released under the [MIT License](LICENSE). The COWMATA names and 
 
 ## Latest update
 
-**2026-09-09** — 3.1.2: on-demand IMU/video discovery, supported native recording clocks, single-view priority, off-GUI decoding, hover controls, progress/resume and verified team returns. Existing models, screenshot evidence and safe client updates are retained. [Full changelog](CHANGELOG.md).
+**2026-09-10** — 3.3.0: background organization, strict per-record identity, seven collection categories, pending/legacy-index fixes, timestamp and save/export integration, and a 32-page illustrated manual. [Full changelog](CHANGELOG.md).

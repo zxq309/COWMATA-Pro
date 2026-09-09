@@ -2,7 +2,7 @@
 
 > **3.3.0 - 2026-09-10：** 按“整理数据 → 标注保存 → 复核导出”贯通全流程。新增后台整理、七类数据（含孕早期/孕中期/孕晚期）、三段设备目录与跨日期设备复用追溯；修复 pending 视频检索、旧索引兼容和导出/回收衔接。查看 [图文说明书](docs/quick-start-illustrated.pdf)、[发布说明](docs/release-330.md)、[功能实测](docs/release-330-validation.md) 和 [代码审查](docs/code-audit-330.md)，下载 [完整 Windows 安装包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.0)。
 
-> **普通用户直接使用离线 EXE：** 到 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
+> **普通用户直接下载安装包：** 到 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
 > 下载完整离线安装版 **Setup.exe**，按向导安装，无须配置 Python、pip、VLC、CUDA 工具包或模型。
 > GitHub 自动生成的 **Source code.zip 是源码，不是可直接运行的软件包**。
 
@@ -75,7 +75,7 @@ COWMATA 牛尾环标注工具是一款 Windows 桌面工作台，用于同步复
 
 ### Windows 一键启动
 
-下载完整离线安装版 `COWMATA-...-Setup.exe` → 阅读许可 → 选择父目录，接受或修改默认的 **COWMATA Annotator** 子文件夹名 → 安装 → 启动。目标不能覆盖无关文件。以后用桌面/开始菜单快捷方式，打开数据工程或任意原始九轴 JSON。整个过程不要求联网或配置依赖。已有更新器的安装版可在「帮助 → 关于 → 版本与更新」升级。
+下载完整安装版 `COWMATA-...-Setup.exe` → 阅读许可 → 选择父目录，接受或修改默认的 **COWMATA Annotator** 子文件夹名 → 安装 → 启动。目标不能覆盖无关文件。运行库和模型随包提供，无须配置依赖。启动时需要联网检查最新版，有更新时完成升级后才能进入工作台；已打开的工程可继续离线标注。带更新器的旧版直接升级到最新版，无须逐版安装；没有更新器的早期版本先手动安装一次。
 
 新版包含 A/B/C 布局、1–8 路可选视角、GPU 播放、跨小录像续接、原片精确帧回看、离线 RapidOCR PP-OCRv6 medium、20260906 五类版本化候选模型、带完整九轴的单文件标注及独立历史回看。模型结果只是候选，不能自动当作录像真值。操作见 [使用说明](使用说明.txt)。
 
@@ -230,7 +230,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-当前分支为 3.1.2；正式发布附件见 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)，历史记录保留在 [CHANGELOG.md](CHANGELOG.md)。纯源码 CI 有意跳过五项二进制模型包完整性检查，这五项必须在离线包验收中执行。
+当前分支为 3.3.0；正式发布附件见 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)，历史记录保留在 [CHANGELOG.md](CHANGELOG.md)。纯源码 CI 跳过缺少条件的二进制模型包和 Windows/VLC 原生集成用例，另用本机完整程序包实测。详见[验证范围](docs/release-330-validation.md)。
 
 ## 贡献、安全与引用
 
@@ -245,4 +245,4 @@ python -m cowmata_tailring --version
 
 ## 最新更新
 
-**2026-09-09** — 3.1.2：逐份九轴/录像按需加载、支持的内部录制时间、单路优先、后台解码、悬浮控制、断点续标和多人回传；保留已有模型、截图证据与安全更新。[完整更新记录](CHANGELOG.md)。
+**2026-09-10** — 3.3.0：后台整理、逐份身份与日期复用、七类数据分组、pending及旧索引修复、时间戳和保存导出衔接，以及32页图文说明书。[完整更新记录](CHANGELOG.md)。
