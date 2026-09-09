@@ -71,7 +71,7 @@ def test_launchers_disable_bytecode_explicitly():
 
 
 def test_about_identity_and_no_unimplemented_update_claim():
-    from PySide6.QtWidgets import QApplication, QTextBrowser
+    from PySide6.QtWidgets import QApplication, QPushButton, QTextBrowser
 
     from cowmata_tailring.ui.about import COMPANY, create_about
     app = QApplication.instance() or QApplication([])
@@ -80,7 +80,10 @@ def test_about_identity_and_no_unimplemented_update_claim():
     assert COMPANY == "杨凌园上园智能科技有限公司"
     from cowmata_tailring import __build__, __version__
     assert __version__ in bodies and __build__ in bodies
-    assert "支持自动检查" in bodies
+    assert "启动先联网检查更新" in bodies and "完成后才能标注" in bodies
+    assert "离线不影响标注" not in bodies
+    tutorial = next(button for button in dialog.findChildren(QPushButton) if button.text() == "新手图文教程…")
+    assert tutorial.isEnabled()
     assert "MIT License" in bodies and "Copyright (c) 2026 zxq309" in bodies
     dialog.close()
     assert app is not None

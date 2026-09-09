@@ -20,6 +20,7 @@ def isolated_access(monkeypatch, tmp_path):
 
 
 def imu(path, device="546C50CA07D5"):
+    path = path.parent / (device + "-00123-w1") / path.name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"device": device, "version": 0, "create_time": 1785732298000,
                                "imu": base64.b64encode(bytes(18 * 4)).decode()}), encoding="utf-8")
@@ -52,7 +53,7 @@ def test_single_device_or_period_and_nested_video_flatten_without_copy(tmp_path,
     result = org.execute(plan, tmp_path / "job")
     assert result["completed"] and result["moved"] == 4
     period = "2026-08-03" if not end else "2026-08-03至2026-08-07"
-    assert (target / "九轴/546C50CA07D5" / period / "one.json").is_file()
+    assert (target / "九轴/546C50CA07D5-00123-w1/2026-08-03/one.json").is_file()
     assert sorted(p.name for p in (target / "视角01" / period).iterdir()) == ["001.mp4", "002.mp4"]
     assert all((target / name).is_dir() for name in org.VIEWS)
     assert not one.exists() and not clip.exists() and not junk.exists()
@@ -373,7 +374,7 @@ def test_category_required_and_separate_batches_keep_their_own_category(tmp_path
     assert read_context(target, "unknown.json") == {}
 
 
-@pytest.mark.parametrize("category", ["healthy", "estrus", "calving", "disease"])
+@pytest.mark.parametrize("category", ["healthy", "estrus", "pregnancy_early", "pregnancy_mid", "pregnancy_late", "calving", "disease"])
 def test_collection_category_does_not_restrict_events_and_survives_exports(category):
     import csv
     import io

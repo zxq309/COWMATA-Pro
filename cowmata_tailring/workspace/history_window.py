@@ -36,7 +36,7 @@ from .evidence_ui import EvidenceGallery
 from .label_file import contained, load_history, read_label_file
 from .materials import GLASS_STYLE, FrostedCanvas, apply_mica
 from .presentation import PresentationVideoBoard
-from .signal_panel import SignalPanel
+from .signal_panel import SignalPanel, reference_text
 from .theme import STYLE
 
 
@@ -210,15 +210,21 @@ class HistoryWindow(QMainWindow):
 
     def apply_data(self, data):
         self.data = data
+        self.plot.set_clock(data.work.clock)
         self.banner.setText("；".join(data.warnings) or "只读回看：标签位置采用原始九轴时间，录像使用已保存的校准版本。")
         if data.motion:
             self.plot.set_data([PlotSeries(**s) for s in data.motion.plot_series()], data.motion.duration_ms)
             self.plot.set_view(*self.bounds())
         self.plot.set_events([label.to_dict() for label in data.work.project.labels], [e.to_dict() for e in data.work.project.events])
+        clock = data.work.clock
         for event in data.work.project.events:
             label = data.work.project.labels[event.li].name if 0 <= event.li < len(data.work.project.labels) else str(event.li)
-            ending = "" if event.t1 is None else f" – {event.t1 / 1000:.3f}s"
-            item = QListWidgetItem(f"{label} · {event.t0 / 1000:.3f}s{ending}\n{event.extras.get('confirmation', 'legacy_unreviewed')} · {event.note}")
+            start = reference_text(clock, event.t0, True) if clock.anchors else f"相对 {event.t0 / 1000:.3f} 秒"
+            ending = ""
+            if event.t1 is not None:
+                end = reference_text(clock, event.t1, True) if clock.anchors else f"相对 {event.t1 / 1000:.3f} 秒"
+                ending = f" – {end}"
+            item = QListWidgetItem(f"{label} · {start}{ending}\n{event.extras.get('confirmation', 'legacy_unreviewed')} · {event.note}")
             item.setData(Qt.ItemDataRole.UserRole, ("event", event.id))
             item.setToolTip(item.text())
             self.events.addItem(item)
@@ -287,7 +293,9 @@ class HistoryWindow(QMainWindow):
         label = {"interpolated": "已校准范围", "estimated": "未校准", "single_anchor": "单点粗对齐",
                  "unconfirmed": "未确认区间", "extrapolated": "超出校准范围",
                  "device_clock": "设备时钟候选定位", "legacy_estimate": "旧协议估计时间"}.get(quality, "未校准")
-        self.position.setText(f"{when / 1000:.3f}s · {label}")
+        clock = self.data.work.clock
+        position = reference_text(clock, when, True) if clock.anchors else f"{when / 1000:.3f}s"
+        self.position.setText(f"{position} · {label}")
 
     def video_time(self, when):
         if not self.data or not self.data.work.clock.anchors:

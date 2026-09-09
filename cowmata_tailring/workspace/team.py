@@ -16,7 +16,9 @@ from .storage import atomic_json, read_json
 
 def substantive(work):
     project = work.get('project', {})
-    return bool(project.get('events') or work.get('drafts') or project.get('cow_id') or
+    identity = project.get('device_identity') or {}
+    automatic_cow = identity.get('cow_id_origin') == 'folder' and project.get('cow_id') == identity.get('folder_cow_id')
+    return bool(project.get('events') or work.get('drafts') or project.get('cow_id') and not automatic_cow or
                 work.get('clock', {}).get('basis') == 'manual' or work.get('progress', {}).get('status') == 'done' or
                 float(work.get('progress', {}).get('imu_ms', 0)) > 0)
 
@@ -72,7 +74,11 @@ def restore_label(catalog, path, *, require_done=False):
     destination = catalog.work_path(asset)
     existing = read_json(destination,{})
     same = existing == incoming
-    conflict = bool(existing and not same and substantive(existing))
+    local_project = existing.get('project', {})
+    incoming_project = incoming.get('project', {})
+    identity_conflict = any(local_project.get(key) and local_project[key] != incoming_project.get(key)
+                            for key in ('cow_id', 'dataset_category'))
+    conflict = bool(existing and not same and (substantive(existing) or identity_conflict))
     # Keep a portable original handback for audit and conflict comparison.
     archive = catalog.meta/'回传'
     digest = hashlib.sha256(json.dumps(document,sort_keys=True,ensure_ascii=False).encode()).hexdigest()

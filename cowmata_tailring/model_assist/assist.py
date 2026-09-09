@@ -46,7 +46,7 @@ from cowmata_tailring.ui.helpers import format_relative
 from cowmata_tailring.ui.i18n import t
 
 APP_DIR = Path(__file__).resolve().parent
-MODEL_RUNTIME_DIR = APP_DIR / "model_runtime"
+MODEL_RUNTIME_DIR = APP_DIR.parent / "model_runtime"
 FULL_PACKAGE_ROOT = APP_DIR / "预测" / "20260816"
 DEFAULT_MODEL_PATH = (
     FULL_PACKAGE_ROOT
@@ -65,6 +65,22 @@ RECOMMENDATION_THRESHOLDS = {
 }
 TABLE_SORT_ROLE = int(Qt.ItemDataRole.UserRole)
 TABLE_PREDICTION_INDEX_ROLE = TABLE_SORT_ROLE + 1
+
+
+def prediction_backend():
+    """Load the optional legacy model stack only when prediction is requested."""
+    runtime = str(MODEL_RUNTIME_DIR)
+    if runtime not in sys.path:
+        sys.path.insert(0, runtime)
+    try:
+        from imu_behavior import full_inference
+    except (ImportError, OSError) as exc:
+        component = getattr(exc, "name", None) or str(exc)
+        raise RuntimeError(
+            f"旧版模型辅助缺少或无法加载可选运行组件：{component}。\n"
+            "当前记录仍可正常人工标注。五类行为模型请使用工作台的“行为识别”或“事件候选”。"
+        ) from exc
+    return full_inference
 
 
 def prediction_fingerprint(row: dict[str, Any]) -> str:
@@ -981,6 +997,11 @@ class ModelAssistMixin:
         return DEFAULT_MODEL_PATH
 
     def choose_prediction_model(self, _checked: bool = False) -> Path | None:
+        try:
+            backend = prediction_backend()
+        except RuntimeError as exc:
+            self._show_error(str(exc))
+            return None
         current = self._configured_model_path()
         selected = QFileDialog.getExistingDirectory(
             self,
@@ -992,12 +1013,7 @@ class ModelAssistMixin:
             return None
         path = Path(selected).resolve()
         try:
-            runtime = str(MODEL_RUNTIME_DIR)
-            if runtime not in sys.path:
-                sys.path.insert(0, runtime)
-            from imu_behavior.full_inference import inspect_full_model_package
-
-            package = inspect_full_model_package(path)
+            package = backend.inspect_full_model_package(path)
         except Exception as exc:
             self._show_error(
                 "无法使用所选模型包。目录中必须包含 gbdt_full.joblib；"
@@ -1024,14 +1040,14 @@ class ModelAssistMixin:
         if self.data is None or not self.data_path:
             self._show_error("请先打开需要辅助标注的九轴 JSON。")
             return
+        try:
+            backend = prediction_backend()
+        except RuntimeError as exc:
+            self._show_error(str(exc))
+            return
         model_path = self._configured_model_path()
         try:
-            runtime = str(MODEL_RUNTIME_DIR)
-            if runtime not in sys.path:
-                sys.path.insert(0, runtime)
-            from imu_behavior.full_inference import inspect_full_model_package
-
-            inspect_full_model_package(model_path)
+            backend.inspect_full_model_package(model_path)
         except Exception:
             selected = self.choose_prediction_model()
             if selected is None:

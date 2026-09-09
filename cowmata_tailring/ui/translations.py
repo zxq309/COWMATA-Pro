@@ -1476,8 +1476,6 @@ def _coverage() -> None:
     print(f"untranslated      : {len(found - ZH_TO_EN.keys())}")
 
 
-if __name__ == "__main__":
-    _coverage()
 # Observation-first workspace. Translation remains display-only.
 ZH_TO_EN.update({
     "A 观察": "A Observe", "B 多视角": "B Multiview", "C 波形": "C Waveform",
@@ -1593,7 +1591,7 @@ ZH_TO_EN.update({
     "<p>公司名称、COWMATA 品牌与原有公司标识的权利说明见 NOTICE。"
     "源代码保留 MIT 许可证及原署名；第三方组件遵循各自许可证。</p>"
     "<p><a href='{releases}'>查看 GitHub 发布版本与更新说明</a><br>"
-    "支持自动检查、后台下载与保存退出后的原位置更新；离线不影响标注。旧版需先手动升级一次。</p>":
+    "启动先联网检查更新；有新版时自动更新，完成后才能标注。已打开工程可离线继续使用；无更新器的旧版需手动升级一次。</p>":
     "<p>Software version: <b>{version}</b><br>Build: {build}</p>"
     "<p>Cattle ground-truth workstation: synchronized IMU/multiview video, candidate review, "
     "traceable label export and history playback. Predictions are not confirmed ground truth.</p>"
@@ -1602,8 +1600,8 @@ ZH_TO_EN.update({
     "<p>NOTICE describes company names, COWMATA branding and original corporate artwork. "
     "Source code retains its MIT license and attribution; dependencies retain their own licenses.</p>"
     "<p><a href='{releases}'>GitHub releases and release notes</a><br>"
-    "Automatic checks, background downloads and in-place updates after saving and exiting are supported. "
-    "Offline annotation is unaffected. Older clients need one manual upgrade.</p>",
+    "Startup requires an online update check. Available updates install before annotation can begin. "
+    "An open workspace can continue offline. Clients without an updater need one manual upgrade.</p>",
 })
 
 # 3.1.0 evidence/archive UI. Translation never changes persisted paths or labels.
@@ -1957,3 +1955,84 @@ ZH_TO_EN.update({
     "本记录的数据类别，随标签保存；不限制可标注的行为。": "Collection category for this recording, saved with labels. Available behaviors remain unrestricted.",
     "数据类别读取失败，请人工核对：": "Cannot read data category; review manually: "
 })
+
+
+# 3.3: initialization recovery, device provenance and update failure recovery.
+ZH_TO_EN.update({
+    " GiB · 命名待规范 ": " GiB · Naming issues ",
+    " · 现场记号 ": " · Field mark ",
+    " 不一致，且名称不规范；不推测替换。": " differs, and the folder name is invalid; no replacement is inferred.",
+    " 不一致；请核对原件，不自动更正。": " differs; check the original record. No automatic correction.",
+    " 不在所选日期范围内，请核对本批起止日期；原件保留。": " is outside the selected date range. Check the batch dates; the original is retained.",
+    " 与 JSON 设备 ": " and JSON device ",
+    " 项 · 待核对 ": " items · Review needed ",
+    "1. 新数据先进入「数据整理」：选择采集类别，检查命名、审查并按日期归类。\n   九轴目录：完整设备编号-牛耳标号-现场记号；同设备跨日期复用分别保留。\n2. 文件 → 打开工程：已有工程可直接打开；选择九轴后自动检索对应录像。\n3. 核对设备、牛耳标、现场记号及时间同步，再观察录像并标注。\n4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n5. 复核后在「文件 → 导出」输出完整成果、所选片段或训练数据。\n\n未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n未检索不等于无录像。未找到时可用「工具 → 录像索引 → 扩大当前检索」。\n更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。": "1. Start new data in Data organization: choose a collection category, check names, audit and organize by date.\n   IMU folders: full device ID-cow ear tag-field mark. Reuse of a device across dates is tracked separately.\n2. File > Open project: existing projects open directly; selecting an IMU record searches for corresponding video.\n3. Check the device, cow ear tag, field mark and time alignment, then observe video and annotate.\n4. Choose Complete this record to confirm saving. Switching saves automatically; reopening resumes unfinished work.\n5. After review, use File > Export for complete annotations, selected snippets or training data.\n\nUnknown video times require initial OCR. File numbers only speed up searches; they are not ground truth.\nNot searched does not mean no video. Use Tools > Video index > Expand current search when needed.\nUpdate settings: Help > About. Ctrl+L pins the source list; hover over Sources to open it temporarily.",
+    "JSON 内设备编号不是完整 12 位十六进制编号；请核对原始记录，保留原件。": "The JSON device ID is not a full 12-digit hexadecimal ID. Check the original record; retain the original.",
+    "[0-9]{4}-[0-9]{2}-[0-9]{2}(?:至[0-9]{4}-[0-9]{2}-[0-9]{2})?(?:_[0-9]+)?": "[0-9]{4}-[0-9]{2}-[0-9]{2}(?:to[0-9]{4}-[0-9]{2}-[0-9]{2})?(?:_[0-9]+)?",
+    "。\n当前记录仍可正常人工标注。五类行为模型请使用工作台的“行为识别”或“事件候选”。": ".\nManual annotation remains available. Use Behavior recognition or Event candidates in the workspace for the five behavior models.",
+    "。不自动改名。": ". No automatic renaming.",
+    "。建议：": ". Suggested: ",
+    "三段目录与 JSON 设备一致；耳标及现场记号按本份记录保留。": "The three-part folder name matches the JSON device. Ear tag and field mark are retained for this record.",
+    "下载校验失败，已清除损坏下载；请重试。未运行安装器": "Download verification failed. The corrupt download was cleared; retry. The installer was not run.",
+    "中段含字母、末段为数字，可能把现场记号与耳标顺序写反；需人工确认": "The middle part contains letters and the last part is numeric. The field mark and ear tag may be reversed; confirm manually.",
+    "九轴设备目录：完整设备编号-牛耳标号-现场记号，例如 546C50CA07D5-00123-w1。\n设备号须为 12 位十六进制；耳标保留前导 0；现场记号保留大小写。异常目录先列出建议，需人工规范后重选来源。": "IMU device folder: full device ID-cow ear tag-field mark, e.g. 546C50CA07D5-00123-w1.\nDevice IDs must contain 12 hexadecimal digits. Ear tags retain leading zeros; field marks retain letter case. Review suggested names, correct invalid folders manually, then select the sources again.",
+    "人工核对，原件保留。": "Review manually; retain the originals.",
+    "先审查来源命名与数据，再归类、标注和导出。单份、单日或跨日均支持；同设备换日期或换牛逐记录保留。": "Audit source names and data before organizing, annotating and exporting. Single records, single days and date ranges are supported. Changes of date or cow for the same device are retained per record.",
+    "可用": "Ready",
+    "同一待规范目录包含多个完整设备编号，无法唯一补齐或改名；请先人工拆分核对，原件全部保留。": "This invalidly named folder contains multiple full device IDs, so its name cannot be completed unambiguously. Split and review it manually; retain all originals.",
+    "启动时必须完成最新版检查。检查或更新未完成时，请重试或退出；进入工程后可继续离线标注。\n原位置升级仅支持安装版，便携版/源码副本可下载安装包后手动安装。": "Startup requires a successful latest-version check. Retry or exit if checking or updating fails; an open workspace can continue offline.\nIn-place updates require an installed copy. Portable and source copies can download the installer for manual installation.",
+    "启动时必须检查最新版；使用中的后台检查可在这里关闭。": "Startup checks are required; background checks during annotation can be disabled here.",
+    "完整设备编号-牛耳标号-现场记号（设备 12 位十六进制、耳标纯数字、记号 ASCII 字母数字）": "full device ID-cow ear tag-field mark (12 hexadecimal digits for the device, digits only for the ear tag, ASCII letters and digits for the mark)",
+    "尚未索引；选择九轴后自动检索对应录像，也可在录像索引菜单启动完整索引。": "Not indexed yet. Select an IMU record to search corresponding video, or start full indexing from the Video index menu.",
+    "已保留原牛号；请在牛号框核对后按回车，相关标签需重新复核。": "The original cow ID is retained. Check the Cow ID field and press Enter; related annotations require review.",
+    "已忽略": "Ignored",
+    "已按本份记录人工核对，保留目录来源。": "Manually checked for this record; folder provenance is retained.",
+    "建议目录名（需人工确认）": "Suggested folder name (confirm manually)",
+    "异常": "Error",
+    "整理清单与恢复记录不一致，保留原件，请核对任务记录": "The organization manifest differs from the recovery log. Originals are retained; check the task records.",
+    "整理清单记录不完整，保留原件，请核对任务记录": "The organization manifest is incomplete. Originals are retained; check the task records.",
+    "旧版模型辅助缺少或无法加载可选运行组件：": "The optional runtime component for legacy model assistance is missing or cannot be loaded: ",
+    "未找到三段设备目录；请人工确认耳标和现场记号，按": "No three-part device folder was found. Confirm the ear tag and field mark manually, then use ",
+    "未索引": "Not indexed",
+    "本记录牛号 ": "Cow ID for this record ",
+    "校验命名并预览归类": "Check names and preview organization",
+    "此安装目录已有更新正在进行，请等待其完成；完成后会自动打开软件。": "An update is already in progress for this installation. Wait for it to finish; the application will reopen automatically.",
+    "牛耳标": "Cow ear tag",
+    "现场记号": "Field mark",
+    "目录命名待规范，无法唯一推断耳标或现场记号；请按": "The folder name is invalid and its ear tag or field mark is ambiguous. Use ",
+    "目录命名待规范；": "Folder naming needs correction; ",
+    "目录耳标 ": "Folder ear tag ",
+    "目录耳标与本记录牛号存在冲突，请先在牛号框核对并按回车确认": "The folder ear tag conflicts with this record's cow ID. Check the Cow ID field and press Enter to confirm.",
+    "目录耳标与本记录牛号存在冲突，请先核对身份再导出训练真值": "The folder ear tag conflicts with this record's cow ID. Verify identity before exporting training ground truth.",
+    "目录设备 ": "Folder device ",
+    "短码与本份 JSON 完整设备编号后缀相符；需核对同目录所有记录后人工补齐": "The short ID matches the suffix of this JSON record's full device ID. Check every record in the folder before completing the name manually.",
+    "等待文件稳定及可读性检查": "Waiting for file stability and readability checks",
+    "素材已移动；索引清点不完整，请恢复目录访问后继续原任务：": "Files were moved, but the index inventory is incomplete. Restore directory access and resume the original task: ",
+    "缺失": "Missing",
+    "耳标数字后紧接字母记号，可能缺少分隔符；需人工确认": "Letters follow the ear-tag digits directly. A separator may be missing; confirm manually.",
+    "规范来源目录。原件保留。": "to standardize the source folder. Originals are retained.",
+    "记录采集日期 ": "Record acquisition date ",
+    "设备 ": "Device ",
+    "设备、耳标和现场记号按本份九轴记录读取": "Device, ear tag and field mark are read for the current IMU record",
+    "设备命名需先规范：请逐项核对建议并人工修改来源目录后重新审查。本批禁止执行，有效九轴原件保留。": "Device folder names must be corrected first. Review each suggestion, rename source folders manually and audit again. This batch cannot execute; valid original IMU records are retained.",
+    "设备目录 / 来源": "Device folder / Source",
+    "设备目录需规范为：": "Device folders must use: ",
+    "，已人工核对。": ", manually verified.",
+    "，本记录牛号 ": ", cow ID for this record ",
+    "；目录耳标 ": "; folder ear tag ",
+    "正在处理，请稍候": "Processing; please wait",
+    "正在导出完整逐样本标签、人工成果和证据图，请等待写入完成。": "Exporting complete per-sample labels, manual annotations and evidence images. Wait for writing to finish.",
+    "正在核验完整九轴及回传证据；本份完成后可取消剩余文件。": "Verifying the full IMU record and returned evidence. Remaining files can be cancelled after the current file finishes.",
+    "孕早期": "Early pregnancy",
+    "孕中期": "Mid pregnancy",
+    "孕晚期": "Late pregnancy",
+    "请先选择数据类别：正常健康、发情、孕早期、孕中期、孕晚期、产犊或疫病": "First select a collection category: Healthy, Estrus, Early pregnancy, Mid pregnancy, Late pregnancy, Calving or Disease",
+    "当前时刻的录像尚未就绪，请等待检索出画面后再播放": "Video for the current time is not ready. Wait for a matching frame before starting playback.",
+    "开始时间": "Start time",
+    "结束时间": "End time",
+    " · 分数 ": " · Score ",
+})
+
+
+if __name__ == "__main__":
+    _coverage()

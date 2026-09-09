@@ -45,6 +45,7 @@ from cowmata_tailring.annotation.core import (
     export_meta_json,
     export_sample_multihot_csv,
     load_project,
+    record_identity_fields,
     save_project,
 )
 from cowmata_tailring.annotation.data import load_motion_json
@@ -54,10 +55,10 @@ from cowmata_tailring.ui.widgets import PlotSeries
 from .catalog import Catalog, file_stamp
 from .clocks import ClockMap, VideoTimeline, intervals_from_rows, wall_ms, wall_text
 from .coverage import continuation_target, video_coverage
-from .demand import device_name, natural_key, relevant_rows
+from .demand import device_aliases, device_name, natural_key, relevant_rows
 from .dialogs import MappingDialog, SourceTimeDialog
 from .playback import VideoBoard
-from .signal_panel import TimePositionSpinBox
+from .signal_panel import TimePositionSpinBox, reference_text
 from .storage import SnapshotWriter, atomic_json, read_json, unique_batch
 from .work import SessionWork
 from .worker import IndexWorker
@@ -246,6 +247,9 @@ class MainWindow(QMainWindow):
         self.cow.setPlaceholderText("本记录牛号（人工确认）")
         self.cow.editingFinished.connect(self.set_cow)
         sidebar.addWidget(self.cow)
+        self.identity_label = QLabel("设备、耳标和现场记号按本份九轴记录读取")
+        self.identity_label.setWordWrap(True)
+        sidebar.addWidget(self.identity_label)
         from .data_category import CATEGORIES
         self.data_category = QComboBox()
         self.data_category.addItem("数据类别：未设置", "")
@@ -370,7 +374,7 @@ class MainWindow(QMainWindow):
         self.event_status = QLabel("先看视频即可记录动作草稿，不需要先认出九轴是什么事件。")
         bottom_layout.addWidget(self.event_status)
         self.events = QTableWidget(0, 6)
-        self.events.setHorizontalHeaderLabels(["类型", "标签", "开始 / 九轴秒", "结束 / 九轴秒", "状态", "备注"])
+        self.events.setHorizontalHeaderLabels(["类型", "标签", "开始时间", "结束时间", "状态", "备注"])
         self.events.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.events.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.events.horizontalHeader().setStretchLastSection(True)
@@ -503,7 +507,10 @@ class MainWindow(QMainWindow):
                 if progress.wasCanceled():
                     break
                 try:
-                    result = restore_label(self.catalog, path, require_done=automatic)
+                    from .io_task import run_io_task
+                    catalog = self.catalog  # Thread-safe, non-Qt; the close guard retains its lease.
+                    result = run_io_task(self, "正在核验完整九轴及回传证据；本份完成后可取消剩余文件。",
+                                         lambda: restore_label(catalog, path, require_done=automatic))
                     counts[result["status"]] += 1
                     receipt_status = result["status"]
                     if result["work"] is not None:
@@ -512,8 +519,12 @@ class MainWindow(QMainWindow):
                             **result["progress"], "asset_id": result["asset_id"], "stamp": result["stamp"]}
                         if self.work and self.work.asset_id == result["asset_id"]:
                             self.work = SessionWork.from_dict(result["work"])
+                            self.bind_current_identity()
                             self.imu_ms = max(0, min(self.motion.duration_ms, float(self.work.progress.get("imu_ms", 0))))
                             self.cow.setText(self.work.project.cow_id)
+                            self.data_category.blockSignals(True)
+                            self.data_category.setCurrentIndex(max(0, self.data_category.findData(self.work.project.extras.get("dataset_category", ""))))
+                            self.data_category.blockSignals(False)
                             self.refresh_events()
                             self._set_imu(self.imu_ms)
                             if self.work.clock.anchors:
@@ -892,6 +903,7 @@ class MainWindow(QMainWindow):
         self.update_coverage(force=True)
 
     def refresh_lists(self):
+        self._device_aliases = device_aliases(self.rows)
         # Keep previously calibrated view identities instead of silently moving
         # their recordings onto a new, uncalibrated folder-based clock.
         overrides = self.settings.setdefault("camera_overrides", {})
@@ -904,9 +916,9 @@ class MainWindow(QMainWindow):
         desired_path = self._loading_path or (self.current_row["path"] if self.current_row else self.settings.get("current_path"))
         for row in self.rows:
             if row["path"] == desired_path and row["kind"] == "imu" and row["state"] not in {"ignored", "missing"}:
-                current_device = device_name(row)
+                current_device = device_name(row, self._device_aliases)
                 break
-        devices = sorted({device_name(r) for r in self.rows if r["kind"] == "imu" and r["state"] not in {"ignored", "missing"}})
+        devices = sorted({device_name(r, self._device_aliases) for r in self.rows if r["kind"] == "imu" and r["state"] not in {"ignored", "missing"}})
         self.devices.blockSignals(True)
         self.devices.clear()
         for device in devices:
@@ -952,9 +964,10 @@ class MainWindow(QMainWindow):
 
     def refresh_records(self, *_):
         device = self.devices.currentData()
+        aliases = getattr(self, "_device_aliases", {})
         previous = self.current_row["asset_id"] if self.current_row else self.settings.get("current_asset")
         desired = self._loading_path or (self.current_row["path"] if self.current_row else self.settings.get("current_path"))
-        rows = [r for r in self.rows if r['kind']=='imu' and r['state'] not in {'ignored','missing'} and device_name(r)==device]
+        rows = [r for r in self.rows if r['kind']=='imu' and r['state'] not in {'ignored','missing'} and device_name(r, aliases)==device]
         signature = (str(self.catalog.root) if self.catalog else '', device, self.work.asset_id if self.work else None,
                      tuple((r['path'],r['state'],r['asset_id'],r.get('stamp'),self.record_status(r)) for r in rows))
         if signature == getattr(self, '_records_signature', None):
@@ -1013,7 +1026,7 @@ class MainWindow(QMainWindow):
                     self.current_row, self.current_stamp, self.source_available = row, stamp, True
             except OSError:
                 pass
-        elif not self._loading_path and (self.work is None or self.current_row and device_name(self.current_row) != device) and self.records.count():
+        elif not self._loading_path and (self.work is None or self.current_row and device_name(self.current_row, aliases) != device) and self.records.count():
             for status in ("in_progress", "new"):
                 target = next((i for i in range(self.records.count())
                                if self.record_status(self.records.item(i).data(Qt.ItemDataRole.UserRole)) == status), None)
@@ -1276,6 +1289,7 @@ class MainWindow(QMainWindow):
                                          "createTimeMs": motion.create_time_ms,
                                          "create_time_semantics": "device_acquisition_start",
                                          "capture_timing": motion.capture_timing()})
+        self.bind_current_identity()
         if not self.work.clock.anchors:
             self.work.clock = ClockMap.from_capture(motion, self.settings.get("timezone_offset_minutes", 480))
         elif self.work.clock.basis != "manual":
@@ -1315,6 +1329,28 @@ class MainWindow(QMainWindow):
         self.dirty = True
         self.update_coverage(force=True)
 
+    def bind_current_identity(self):
+        if not self.work or not self.motion or not self.current_row:
+            return
+        from .device_identity import resolve_device_identity
+        identity = resolve_device_identity(self.catalog.source_path(self.current_row["path"]), self.motion.device)
+        self.work.bind_device_identity(identity, source_path=self.current_row["path"], capture_timing=self.motion.capture_timing())
+        self.update_identity_display()
+
+    def update_identity_display(self):
+        identity = self.work.project.extras.get("device_identity", {}) if self.work else {}
+        message = identity.get("message", "")
+        self.cow.setToolTip(message)
+        if identity.get("status") in {"ready", "manual_override"}:
+            text = f"设备 {identity.get('device_id', '')} · 现场记号 {identity.get('field_mark', '')}"
+            if identity.get("status") == "manual_override":
+                text += "\n" + message
+        else:
+            text = message or "设备、耳标和现场记号按本份九轴记录读取"
+        self.identity_label.setText(text)
+        self.identity_label.setToolTip(message)
+        self.identity_label.setStyleSheet("color: #a45d16;" if identity.get("status") in {"blocked", "conflict"} else "")
+
     def set_data_category(self):
         code = self.data_category.currentData()
         if not code and self.work:
@@ -1331,12 +1367,10 @@ class MainWindow(QMainWindow):
     def set_cow(self):
         if self.work and not self.catalog.readonly:
             value = self.cow.text().strip()
-            if value != self.work.project.cow_id:
-                self.work.checkpoint()
-                self.work.project.cow_id = value
-                for event in self.work.project.events:
-                    if event.extras.get("confirmation") == "confirmed":
-                        event.extras["confirmation"] = "needs_review"
+            if value != self.work.project.cow_id or self.work.project.extras.get("device_identity", {}).get("status") == "conflict":
+                self.work.confirm_cow(value)
+                self.update_identity_display()
+                self.refresh_events()
                 self.dirty = True
                 self.save_current()
 
@@ -1676,16 +1710,22 @@ class MainWindow(QMainWindow):
             if active["cow_id"] != self.work.project.cow_id:
                 self.tell("正在记录的动作牛号与当前记录不一致，请切回原记录结束。")
                 return
+            # Retrying a failed write must keep the observed end frame and must
+            # not duplicate the portions already persisted in other records.
+            active.setdefault("end", value)
+            active.setdefault("end_evidence", evidence)
             try:
                 self.snapshot_writer.flush()
-            except (OSError, ValueError) as exc:
+                for asset_id in sorted(active["assets"]):
+                    target = self.work if asset_id == self.work.asset_id else SessionWork.from_dict(read_json(self.catalog.work_path(asset_id)))
+                    if not any(draft["group_id"] == active["group_id"] for draft in target.drafts):
+                        target.add_draft(index, active["start"], active["end"], active["evidence"] + active["end_evidence"], group_id=active["group_id"])
+                    atomic_json(self.catalog.work_path(asset_id), target.to_dict())
+            except (OSError, ValueError, TypeError, KeyError) as exc:
                 self.dirty = True
+                self.refresh_events()
                 self.tell("保存失败，内存中的成果仍保留，请勿关闭：" + str(exc))
                 return
-            for asset_id in active["assets"]:
-                target = self.work if asset_id == self.work.asset_id else SessionWork.from_dict(read_json(self.catalog.work_path(asset_id)))
-                target.add_draft(index, active["start"], value, active["evidence"] + evidence, group_id=active["group_id"])
-                atomic_json(self.catalog.work_path(asset_id), target.to_dict())
             self.active_event = None
             self.event_status.setText("动作已保存为视频草稿；同步核对后可确认对应九轴范围。")
         self.refresh_events()
@@ -1734,12 +1774,16 @@ class MainWindow(QMainWindow):
                 identifier = entry["id"]
             else:
                 label = self.work.project.labels[entry.li]
-                values = ["九轴标注", label.name, f"{entry.t0 / 1000:.3f}",
-                          f"{entry.t1 / 1000:.3f}" if entry.t1 is not None else "点事件",
+                start = reference_text(clock, entry.t0, True) if clock.anchors else f"相对 {entry.t0 / 1000:.3f} 秒"
+                end = "点事件"
+                if entry.t1 is not None:
+                    end = reference_text(clock, entry.t1, True) if clock.anchors else f"相对 {entry.t1 / 1000:.3f} 秒"
+                values = ["九轴标注", label.name, start, end,
                           entry.extras.get("confirmation", "legacy_unreviewed"), entry.note]
                 identifier = entry.id
             for j, text in enumerate(values):
                 item = QTableWidgetItem(str(text))
+                item.setToolTip(str(text))
                 item.setData(Qt.ItemDataRole.UserRole, (kind, identifier))
                 self.events.setItem(i, j, item)
         self.plot.set_events([label.to_dict() for label in self.work.project.labels], [e.to_dict() for e in self.work.project.events])
@@ -1931,6 +1975,8 @@ class MainWindow(QMainWindow):
 
     def undo(self, redo=False):
         if self.writable_work() and self.work.undo_once(redo=redo):
+            self.cow.setText(self.work.project.cow_id)
+            self.update_identity_display()
             self.data_category.blockSignals(True)
             self.data_category.setCurrentIndex(max(0, self.data_category.findData(self.work.project.extras.get("dataset_category", ""))))
             self.data_category.blockSignals(False)
@@ -2045,12 +2091,35 @@ class MainWindow(QMainWindow):
         table.horizontalHeader().setStretchLastSection(True)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        snapshot = list(self.rows)
-        for i, row in enumerate(snapshot):
-            values = [row["path"], row["kind"], row["state"], row["metadata"].get("start_display") or row["metadata"].get("device", ""),
-                      row["error"] or row["metadata"].get("reason") or "; ".join(row["metadata"].get("warnings", []))]
-            for j, value in enumerate(values):
-                table.setItem(i, j, QTableWidgetItem(str(value)))
+        snapshot = []
+        catalog = self.catalog
+        def refresh():
+            if self.catalog is not catalog or self._closed:
+                dialog.reject()
+                return
+            if snapshot == self.rows:
+                return
+            selected = snapshot[table.currentRow()]["path"] if 0 <= table.currentRow() < len(snapshot) else None
+            snapshot[:] = self.rows
+            table.setRowCount(len(snapshot))
+            for i, row in enumerate(snapshot):
+                explanation = row["error"] or row["metadata"].get("reason") or "; ".join(row["metadata"].get("warnings", []))
+                if row["state"] == "pending" and explanation == "等待文件稳定及可读性检查":
+                    explanation = "尚未索引；选择九轴后自动检索对应录像，也可在录像索引菜单启动完整索引。"
+                state = {"pending": "未索引", "ready": "可用", "review": "待复核", "invalid": "异常",
+                         "ignored": "已忽略", "missing": "缺失"}.get(row["state"], row["state"])
+                values = [row["path"], row["kind"], state,
+                          row["metadata"].get("start_display") or row["metadata"].get("device", ""), explanation]
+                for j, value in enumerate(values):
+                    item = QTableWidgetItem(str(value))
+                    item.setToolTip(str(value))
+                    table.setItem(i, j, item)
+                if row["path"] == selected:
+                    table.selectRow(i)
+        refresh()
+        timer = QTimer(dialog)
+        timer.timeout.connect(refresh)
+        timer.start(500)
         layout.addWidget(table)
         buttons = QHBoxLayout()
         self._button("核验所选视频时间 / 框选 ROI", lambda: self.edit_source(snapshot[table.currentRow()]) if table.currentRow() >= 0 else None, buttons)
@@ -2059,7 +2128,11 @@ class MainWindow(QMainWindow):
         box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         box.rejected.connect(dialog.reject)
         layout.addWidget(box)
-        dialog.exec()
+        try:
+            dialog.exec()
+        finally:
+            timer.stop()
+            dialog.deleteLater()
 
     def edit_source(self, row):
         if row["kind"] != "video" or row["state"] not in {"ready", "review"} or self.catalog.readonly:
@@ -2187,7 +2260,7 @@ class MainWindow(QMainWindow):
         window.raise_()
 
     def export_training(self):
-        if not self.work or not self.catalog:
+        if not self.work or not self.catalog or not self.motion or self._export_running:
             return
         directory = QFileDialog.getExistingDirectory(self, "选择导出位置")
         if not directory:
@@ -2196,22 +2269,42 @@ class MainWindow(QMainWindow):
             self.check_active_sources()
             project = self.work.training_project(source_available=self.source_available,
                                                  evidence_validator=lambda e: self.validate_evidence(e, allow_archived=True))
-            output = unique_batch(Path(directory), "COWMATA_" + self.work.asset_id[:8])
-            atomic_json(output / "全部人工成果.json", self.work.to_dict())
-            save_project(self.work.project, output / "兼容单视频工程.json")
-            export_events_csv(project, output / "已确认事件.csv", relative_timestamps_ms=self.motion.times_ms)
-            with (output / "参考时间与视频证据.csv").open("w", encoding="utf-8-sig", newline="") as stream:
-                writer = csv.writer(stream)
-                writer.writerow(["event_id", "cow_id", "imu_asset_sha256", "imu_start_ms", "imu_end_ms", "reference_start", "reference_end", "mapping_revision", "video_evidence_json"])
-                for event in project.events:
-                    writer.writerow([event.id, project.cow_id, self.work.asset_id, event.t0, event.t1,
-                                     wall_text(self.work.clock.map(event.t0)), wall_text(self.work.clock.map(event.t1)) if event.t1 is not None else "",
-                                     self.work.clock.revision, json.dumps(event.extras.get("video_evidence", []), ensure_ascii=False)])
-            export_sample_multihot_csv(project, output / "逐样本标签.csv", self.motion.times_ms)
-            export_boris_csv(project, output / "BORIS.csv")
-            export_meta_json(project, output / "训练元数据.json", data_meta=self.motion.quality_report())
+            from .evidence import copy_evidence
+            from .io_task import run_io_task
+            work = SessionWork.from_dict(copy.deepcopy(self.work.to_dict()))
+            evidence_root = self.catalog.meta
+            samples = self.motion.times_ms.copy()
+            samples.setflags(write=False)
+            quality = copy.deepcopy(self.motion.quality_report())
+            def write_outputs():
+                # This worker uses only detached domain data and paths, never Qt or the active window.
+                output = unique_batch(Path(directory), "COWMATA_" + work.asset_id[:8])
+                human_work = work.to_dict()
+                copy_evidence({"work": human_work}, evidence_root, output)
+                atomic_json(output / "全部人工成果.json", human_work)
+                save_project(SessionWork.from_dict(human_work).project, output / "兼容单视频工程.json")
+                export_events_csv(project, output / "已确认事件.csv", relative_timestamps_ms=samples)
+                identity = record_identity_fields(project)
+                with (output / "参考时间与视频证据.csv").open("w", encoding="utf-8-sig", newline="") as stream:
+                    writer = csv.writer(stream)
+                    writer.writerow(["event_id", "cow_id", "imu_asset_sha256", "imu_start_ms", "imu_end_ms", "reference_start", "reference_end", "mapping_revision", "video_evidence_json", "dataset_category", "dataset_category_label", *identity])
+                    for event in project.events:
+                        writer.writerow([event.id, project.cow_id, work.asset_id, event.t0, event.t1,
+                                         wall_text(work.clock.map(event.t0)), wall_text(work.clock.map(event.t1)) if event.t1 is not None else "",
+                                         work.clock.revision, json.dumps(event.extras.get("video_evidence", []), ensure_ascii=False),
+                                         project.extras.get("dataset_category", ""), project.extras.get("dataset_category_label", ""),
+                                         *identity.values()])
+                export_sample_multihot_csv(project, output / "逐样本标签.csv", samples)
+                export_boris_csv(project, output / "BORIS.csv")
+                export_meta_json(project, output / "训练元数据.json", data_meta=quality)
+                return output
+            self._export_running = True
+            try:
+                output = run_io_task(self, "正在导出完整逐样本标签、人工成果和证据图，请等待写入完成。", write_outputs)
+            finally:
+                self._export_running = False
             self.tell(f"已导出到 {output}。未确认/未观看样本不能作为负样本；逐样本表保留 reviewed_any 标识。")
-        except (OSError, ValueError, TypeError) as exc:
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
             self.tell("人工成果可保留；训练真值导出被阻止或未完成：" + str(exc))
 
     def import_legacy(self):
@@ -2225,6 +2318,9 @@ class MainWindow(QMainWindow):
                     return
                 self.work.checkpoint()
                 source = dict(self.work.project.source)
+                category = self.work.project.extras.get("dataset_category")
+                collection_context = copy.deepcopy(self.work.project.extras.get("collection_context"))
+                saved_identity = copy.deepcopy(self.work.project.extras.get("device_identity"))
                 for event in legacy.events:
                     event.extras["confirmation"] = "legacy_unreviewed"
                 self.work.project = legacy
@@ -2233,6 +2329,15 @@ class MainWindow(QMainWindow):
                 self.work.project.source["asset_id"] = self.work.asset_id
                 self.work.drafts = []
                 self.work.clock = ClockMap()
+                if category:
+                    self.work.set_category(category, context=collection_context)
+                if saved_identity:
+                    self.work.project.extras["device_identity"] = saved_identity
+                self.bind_current_identity()
+                self.cow.setText(self.work.project.cow_id)
+                self.data_category.blockSignals(True)
+                self.data_category.setCurrentIndex(max(0, self.data_category.findData(self.work.project.extras.get("dataset_category", ""))))
+                self.data_category.blockSignals(False)
                 self.refresh_events()
                 self.dirty = True
                 self.save_current()

@@ -58,7 +58,9 @@ def main():
             (job / "plan.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
         (job / "result.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
         with (job / "report.csv").open("w", encoding="utf-8-sig", newline="") as stream:
-            fields = ["source", "target", "kind", "device", "size", "status", "message"]
+            fields = ["source", "target", "kind", "device", "size", "status", "message",
+                      "source_folder", "device_id", "cow_id", "field_mark", "record_date",
+                      "record_start_ms", "suggested_folder", "identity_provenance"]
             writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(result.get("rows", []))

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from .algorithm_catalog import bindings
 from .event_models import available_packs, predict_one
+from .signal_panel import reference_text
 
 
 class AlgorithmPanel(QFrame):
@@ -36,6 +37,7 @@ class AlgorithmPanel(QFrame):
         self.running = False
         self.cancelled = threading.Event()
         self.view_token = None
+        self.clock_revision = None
         self.job_token = None
         self.setObjectName("algorithmPanel")
         self.setMinimumWidth(280)
@@ -142,7 +144,8 @@ class AlgorithmPanel(QFrame):
     def check_context(self):
         if self.running and self.job_token != self.token():
             self.cancel()
-        if self.spec and self.view_token != self.token():
+        revision = self.owner.work.clock.revision if self.owner.work else None
+        if self.spec and (self.view_token != self.token() or self.clock_revision != revision):
             self.refresh_results()
         if not self.isHidden():
             self.refresh_cameras()
@@ -212,6 +215,7 @@ class AlgorithmPanel(QFrame):
         self.items.clear()
         self.details.clear()
         w = self.owner
+        self.clock_revision = w.work.clock.revision if w.work else None
         if not w.work or not self.spec:
             return
         for run in w.work.project.extras.get("algorithm_inspections", {}).values():
@@ -219,8 +223,12 @@ class AlgorithmPanel(QFrame):
                 continue
             candidates = run["candidates"] or [None]
             for candidate in candidates:
-                text = (f"{candidate['point_ms']/1000:.2f}s · 分数 {candidate['score']:.3f}" if candidate else "无事件点 · 点击检查质量")
+                text = "无事件点 · 点击检查质量"
+                if candidate:
+                    when = reference_text(w.work.clock, candidate["point_ms"], True) if w.work.clock.anchors else f"相对 {candidate['point_ms'] / 1000:.3f} 秒"
+                    text = f"{when} · 分数 {candidate['score']:.3f}"
                 item = QListWidgetItem(text + " · " + run["version"])
+                item.setToolTip(item.text())
                 item.setData(Qt.ItemDataRole.UserRole, (run, candidate))
                 self.items.addItem(item)
 

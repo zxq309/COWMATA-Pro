@@ -70,6 +70,13 @@ def test_every_algorithm_locks_one_view_and_returns_layout(window, spec):
     app.processEvents()
     assert not window.board.single_camera_only
     assert window.stage.mode == "B" and window.board.playback_policy == "balanced"
+    # Native tiles are shown on successive Qt turns so returning from inspection
+    # stays responsive with eight views. Wait for the real visibility changes.
+    from PySide6.QtTest import QTest
+    for _ in range(50):
+        if sum(not t.isHidden() for t in window.board.tiles.values()) == 3:
+            break
+        QTest.qWait(10)
     assert sum(not t.isHidden() for t in window.board.tiles.values()) == 3
 
 
@@ -113,6 +120,62 @@ def test_background_algorithm_and_candidate_jobs_do_not_overlap(window):
     window.open_algorithm(BEHAVIORS[0])
     assert window._algorithm_restore is None
     window._candidate_window = None
+
+
+@pytest.mark.parametrize("with_clock", [True, False])
+def test_algorithm_and_candidate_result_times_keep_original_review_position(window, monkeypatch, with_clock):
+    from cowmata_tailring.workspace.candidate_window import CandidateWindow
+    from cowmata_tailring.workspace.clocks import Anchor, ClockMap, wall_ms
+
+    window.work = SessionWork("source-id")
+    window.work.project.cow_id = "test-cow"
+    origin = wall_ms("2026-09-10 12:34:56")
+    window.work.clock = ClockMap([Anchor(0, origin)] if with_clock else [])
+    window.motion = SimpleNamespace(duration_ms=1000)
+    monkeypatch.setattr(window, "writable_work", lambda: True)
+    monkeypatch.setattr(window, "save_current", lambda *a, **k: None)
+    imu_positions, video_positions = [], []
+    monkeypatch.setattr(window, "seek_imu", imu_positions.append)
+    monkeypatch.setattr(window.board, "seek", video_positions.append)
+    result = {"id": "r1", "identity": {"cow_id": "test-cow", "model_id": "stand_up"},
+              "version": "test", "model_title": "起立过程", "audit": {},
+              "candidates": [{"id": "point1", "point_ms": 20, "score": .2,
+                              "code": "STANDING_UP", "review_status": "pending"}]}
+    window.open_algorithm(BEHAVIORS[0])
+    panel = window.algorithm_panel
+    panel.cancelled.clear()
+    panel.receive((panel.token(), copy.deepcopy(result), None, False))
+    candidate = CandidateWindow(window)
+    candidate.receive((candidate.token(), copy.deepcopy(result)))
+    imu_positions.clear()
+    video_positions.clear()  # Ignore the layout's initial seek; test review actions.
+    expected = "2026-09-10 12:34:56.020" if with_clock else "相对 0.020 秒"
+    try:
+        for view in (panel, candidate):
+            assert view.items.count() == 1
+            assert expected in view.items.item(0).text()
+            assert expected in view.items.item(0).toolTip()
+            view.items.setCurrentRow(0)
+            view.review()
+        assert imu_positions == [20, 20]
+        assert video_positions == ([origin + 20, origin + 20] if with_clock else [])
+        assert not window.work.project.events and not window.work.drafts
+        for key in ("algorithm_inspections", "event_model_runs"):
+            assert window.work.project.extras[key]["r1"]["candidates"][0]["point_ms"] == 20
+        window.work.clock = ClockMap([Anchor(0, origin + 1000)])
+        for view in (panel, candidate):
+            job_token = view.token()
+            view.job_token = job_token
+            view.running = True
+            view.cancelled.clear()
+            view.check_context()
+            assert "2026-09-10 12:34:57.020" in view.items.item(0).text()
+            assert view.job_token == job_token and not view.cancelled.is_set()
+            view.running = False
+    finally:
+        panel.running = candidate.running = False
+        candidate.close()
+        candidate.timer.stop()
 
 
 def test_old_label_order_and_missing_mounting_shortcut_are_safe(window, monkeypatch):

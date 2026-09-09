@@ -2,7 +2,8 @@
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -27,7 +28,7 @@ ABOUT_HTML = (
     "<p>公司名称、COWMATA 品牌与原有公司标识的权利说明见 NOTICE。"
     "源代码保留 MIT 许可证及原署名；第三方组件遵循各自许可证。</p>"
     "<p><a href='{releases}'>查看 GitHub 发布版本与更新说明</a><br>"
-    "支持自动检查、后台下载与保存退出后的原位置更新；离线不影响标注。旧版需先手动升级一次。</p>"
+    "启动先联网检查更新；有新版时自动更新，完成后才能标注。已打开工程可离线继续使用；无更新器的旧版需手动升级一次。</p>"
 )
 
 
@@ -51,6 +52,11 @@ def create_about(parent=None):
                                          for name in ("LICENSE", "NOTICE") if (root / name).is_file()))
     license_text.setAccessibleName(t("许可证与版权声明"))
     layout.addWidget(license_text)
+    tutorial_path = root / "docs" / "quick-start-illustrated.pdf"
+    tutorial = QPushButton(t("新手图文教程…"))
+    tutorial.setEnabled(tutorial_path.is_file())
+    tutorial.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(tutorial_path))))
+    layout.addWidget(tutorial)
     from cowmata_tailring.app.update_ui import tr
     update = QPushButton(tr("版本与更新…", "Version and updates…"))
     update.setEnabled(parent is not None and hasattr(parent, "updater"))

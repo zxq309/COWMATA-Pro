@@ -78,6 +78,7 @@ def main():
     app.setOrganizationName("COWMATA-Validation")
     app.setApplicationName("Candidate-UI-Test")
     window = MainWindow()
+    window.confirm_close = lambda: "save"  # This isolated test owns its work.
     window.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
     window.show()
     window.open_project(root)
@@ -112,6 +113,7 @@ def main():
             return
         try:
             if state == "load" and window.motion and len(window.board.tiles) == 8 and all(t.ready for t in window.board.tiles.values()):
+                window.playback_policy.setCurrentIndex(0)  # Exercise inference's full-speed protection.
                 window.open_candidates()
                 window._candidate_window.start()
                 window.board.play(True)

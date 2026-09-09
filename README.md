@@ -1,10 +1,6 @@
 <div align="center">
 
-> **3.2.1 correction (2026-09-09, same-version update):** every IMU record displays the shared reference date/time on its waveform axis, hover readout and editable position field. Startup now requires a release check before opening annotation. Any newer release downloads and installs automatically, then reopens the app; intermediate releases are skipped. Failed checks/updates allow retry or exit, without entering the old workspace. Earlier 3.2.1 clients need a manual download from the existing release; the version number is unchanged.
-
-> **3.2.1 — 2026-09-09:** fix default video selection and startup search in large nested projects. Add per-view seek bars and smoother rate changes/seeks, colored record progress, save prompts on exit/completion, and editable reopened labels. Download the [complete offline installer](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1); see [release notes](docs/release-321.md) and [pre-release workflow validation](docs/release-321-validation.md).
-
-> **3.2.0 — 2026-09-09:** official COWMATA green branding across the UI and Windows icons. New single-camera Behavior Recognition and Health & Reproduction menus, five real model integrations and explicit unavailable algorithms. Retain on-demand records, main-camera priority, resume and team returns; trim the offline package. See the [illustrated Chinese quick start](docs/quick-start-illustrated.pdf), [algorithm boundaries](docs/algorithm-inspection.md) and [validation](docs/release-320-validation.md). Historical recordings below retain their original version.
+> **3.3.0 - 2026-09-10:** organize → annotate/save → review/export. Add background data organization, seven collection categories (including early/mid/late pregnancy), strict device-ear-tag-field-mark folders, and per-record identity across device reuse. Fix pending video discovery, legacy indexes and export/return integration. See the [illustrated manual](docs/quick-start-illustrated.pdf), [release notes](docs/release-330.md), [validation](docs/release-330-validation.md) and [code audit](docs/code-audit-330.md). Download the [complete Windows installer](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.0).
 
 > **Windows offline app:** ordinary users download the complete offline Setup EXE from
 > [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases).
@@ -18,7 +14,7 @@
 **Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-3.2.1-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1)
+[![Release](https://img.shields.io/badge/release-3.3.0-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.0)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -27,9 +23,9 @@
 
 </div>
 
-[![3.2.0 actual application: official green and behavior inspection](assets/screenshots/algorithm-320-live.png)](docs/quick-start-illustrated.pdf)
+[![3.3.0 actual workspace: organized data, video and IMU annotation](assets/screenshots/manual-330/09-workspace.png)](docs/quick-start-illustrated.pdf)
 
-<p align="center"><sub>Open the ten-page illustrated quick start. Real IMU, surveillance images and model execution; DEMO alignment and labels demonstrate operations, not scientific ground truth.</sub></p>
+<p align="center"><sub>Open the 32-page illustrated manual, with three short steps per page. Screenshots show actual current UI operations using generated demo IMU, identities and labels with authorized farm excerpts. Historical recordings below retain their original version.</sub></p>
 
 ## Overview
 

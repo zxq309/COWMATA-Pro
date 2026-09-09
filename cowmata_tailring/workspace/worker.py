@@ -39,6 +39,7 @@ class IndexWorker(QObject):
         self.budget = 48
         self.hints_used = 0
         self.attempted = set()
+        self.attempted_stamps = {}
         self.explicit = set()
         self.bulk = False
         self.playhead = None
@@ -60,6 +61,10 @@ class IndexWorker(QObject):
 
     def next_task(self, pending):
         by_path = {r["path"]: r for r in pending}
+        for path, stamp in list(self.attempted_stamps.items()):
+            if path in by_path and by_path[path]["stamp"] != stamp:
+                self.attempted.discard(path)
+                del self.attempted_stamps[path]
         if self.focus_path in by_path:
             return "full", by_path[self.focus_path]
         for path in sorted(self.explicit):
@@ -110,7 +115,8 @@ class IndexWorker(QObject):
             return True
         # Playback cannot starve the very next clip in the active IMU window.
         # Full-project/exploratory work still yields to the video renderer.
-        return bool(self.window and (task[0] in {"full", "native"} or task[1].get("_guided")))
+        return bool(self.window and not task[1].get("_exploratory") and
+                    (task[0] in {"full", "native"} or task[1].get("_guided")))
 
     def run(self):
         if os.name == "nt":
@@ -139,11 +145,13 @@ class IndexWorker(QObject):
                         self.focus_path, self.window = value, None
                         self.playhead = None
                         self.hints_used, self.attempted = 0, set()
+                        self.attempted_stamps.clear()
                         self.budget = 48
                     elif action == "window":
                         self.window = value
                         self.playhead = value[2].get("priority_reference_ms", value[0])
                         self.hints_used, self.attempted = 0, set()
+                        self.attempted_stamps.clear()
                     elif action == "playhead":
                         self.playhead = value
                     elif action == "more":
@@ -216,10 +224,24 @@ class IndexWorker(QObject):
                         finally:
                             inspector.defer_native_checks = True
                     elif mode == "full":
+                        if row["kind"] == "video" and row["metadata"].get("recheck") and not row["metadata"].get("manual_readings"):
+                            # Legacy intervals can route straight to full OCR.
+                            # Prepare the same bounded later-frame cache used
+                            # by new imports, so blank openings are not retried
+                            # repeatedly before reaching a readable clock.
+                            try:
+                                assert_not_being_written(path)
+                                inspector.video_hint(path)
+                            except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+                                if not self.job_stop.is_set():
+                                    self.progress.emit(str(exc))
                         result = self.catalog.index_one(row["path"], inspector, cancelled=self.job_stop.is_set, eager=True)
                         if not self.job_stop.is_set():
                             self.attempted.add(row["path"])
+                            self.attempted_stamps[row["path"]] = row["stamp"]
                             self.explicit.discard(row["path"])
+                            if row.get("_exploratory"):
+                                self.hints_used += 1
                         if result:
                             motion = getattr(inspector, 'last_motion', None)
                             if motion and motion[:2] == (path.resolve(), result['asset_id']):

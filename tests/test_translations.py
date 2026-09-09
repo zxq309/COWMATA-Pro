@@ -56,6 +56,14 @@ def test_no_empty_translations() -> None:
     assert not empty, f"empty translations: {empty[:5]}"
 
 
+def test_command_line_coverage_includes_all_registered_catalogue_blocks(capsys) -> None:
+    import runpy
+
+    runpy.run_path(str(PKG_ROOT / "ui" / "translations.py"), run_name="__main__")
+    report = dict(line.split(":", 1) for line in capsys.readouterr().out.splitlines())
+    assert report["untranslated      "].strip() == "0"
+
+
 def test_translation_never_applied_to_stored_data() -> None:
     """No t() call may appear inside a function that serialises to disk."""
     offenders: list[str] = []

@@ -14,8 +14,9 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from .catalog import EXCLUDE_DIRS, VIDEO_SUFFIXES, Catalog, assert_not_being_written, file_stamp
-from .data_category import CONTEXT_FILE, FIELDS, category_fields, update_context
+from .data_category import CONTEXT_FILE, FIELDS, LEGACY_FIELDS, category_fields, update_context
 from .dataset_access import DatasetLease, overlaps
+from .device_identity import resolve_device_identity, source_device_folder
 from .storage import ProjectLock
 
 VIEWS = tuple(f"视角{i:02d}" for i in range(1, 9))
@@ -140,12 +141,33 @@ def inspect_file(path, kind=None):
             if kind == "video":
                 row.update(protected=True, message="录像来源中发现原始九轴，保留并请核对来源")
                 return row
+            naming = resolve_device_identity(path, device)
+            row.update(naming)
+            if naming["status"] != "ready":
+                # A useful IMU record with a bad folder name is never waste.
+                row.update(quarantine=False, naming_issue=True)
+                return row
+            from cowmata_tailring.annotation.data import _normalise_epoch_ms
+            started = _normalise_epoch_ms(obj.get("create_time"), "create_time", required=True)
+            record_date = datetime.fromtimestamp(started / 1000, timezone(timedelta(hours=8))).date().isoformat()
+            row.update(record_start_ms=started, record_date=record_date)
         if identity(path) != row["identity"]:
             raise OSError("文件在审查期间发生变化")
         row.update(status="ready", message="结构审查通过；采集时间与视频解码仍由标注工具核验")
-    except (OSError, ValueError, TypeError) as exc:
+    except (OSError, ValueError, TypeError, OverflowError) as exc:
         row.update(status="invalid", message=str(exc), quarantine=False)
     return row
+
+
+def check_identity_ambiguity(rows):
+    folder_devices = {}
+    for row in rows:
+        if row.get("naming_issue"):
+            folder = source_device_folder(row["source"])
+            folder_devices.setdefault(folder, set()).add(row.get("device_id"))
+    for row in rows:
+        if row.get("naming_issue") and len(folder_devices.get(source_device_folder(row["source"]), set()) - {"", None}) > 1:
+            row.update(suggested_folder="", message="同一待规范目录包含多个完整设备编号，无法唯一补齐或改名；请先人工拆分核对，原件全部保留。")
 
 
 def audit(roots, cancelled=lambda: False, progress=lambda *_: None):
@@ -158,6 +180,7 @@ def audit(roots, cancelled=lambda: False, progress=lambda *_: None):
             seen.add(str(path))
             rows.append(inspect_file(path))
             progress(len(rows), 0, str(path))
+    check_identity_ambiguity(rows)
     return {"mode": "audit", "created_at": now(), "roots": list(map(str, roots)), "rows": rows,
             "seconds": round(time.monotonic() - started, 3)}
 
@@ -188,15 +211,21 @@ def plan_import(target, sources, start, end=None, note="", cancelled=lambda: Fal
             seen.add(str(path))
             row = inspect_file(path, kind)
             if row["status"] == "ready":
-                owner = row["device"] if kind == "imu" else camera
+                owner = row["folder_name"] if kind == "imu" else camera
                 base = target / "九轴" / owner if kind == "imu" else target / camera
-                key = (str(base), str(path.parent))
+                row_period = row["record_date"] if kind == "imu" else period
+                if kind == "imu" and not start_date.isoformat() <= row_period <= end_date.isoformat():
+                    row.update(status="blocked", message=f"记录采集日期 {row_period} 不在所选日期范围内，请核对本批起止日期；原件保留。")
+                    rows.append(row)
+                    progress(len(rows), 0, str(path))
+                    continue
+                key = (str(base), str(path.parent), row_period)
                 if key not in batches:
-                    batches[key] = base / period
+                    batches[key] = base / row_period
                 destination = batches[key] / path.name
                 if destination.exists() or os.path.normcase(str(destination)) in reserved:
                     for number in range(1, 10001):
-                        batch = base / f"{period}_{number:03d}"
+                        batch = base / f"{row_period}_{number:03d}"
                         candidate = batch / path.name
                         if not candidate.exists() and os.path.normcase(str(candidate)) not in reserved:
                             batches[key] = batch
@@ -216,6 +245,7 @@ def plan_import(target, sources, start, end=None, note="", cancelled=lambda: Fal
                     row.update(status="blocked", message="跨盘不能快速隔离，原文件保留")
             rows.append(row)
             progress(len(rows), 0, str(path))
+    check_identity_ambiguity(rows)
     return {"mode": "import", "id": token, "target": str(target), "quarantine_root": str(quarantine), "sources": sources,
             "start": start_date.isoformat(), "end": end_date.isoformat(), "created_at": now(), "note": note,
             "category": category, "rows": rows}
@@ -345,6 +375,42 @@ def append_manifest(root, row):
         os.fsync(stream.fileno())
 
 
+def manifest_keys(root, journal, done):
+    path = root / "整理清单.csv"
+    # The move intent records the durable CSV length before its append. A
+    # killed append (including one inside quoted UTF-8 text) can be rolled
+    # back to that boundary and regenerated from the unchanged plan.
+    unfinished = None
+    if journal.exists():
+        with journal.open(encoding="utf-8") as stream:
+            for line in stream:
+                event = json.loads(line)
+                if event.get("phase") == "intent" and event.get("manifest_offset") is not None and event["source"] not in done:
+                    unfinished = event
+    if unfinished is not None:
+        offset = unfinished["manifest_offset"]
+        with path.open("r+b") as stream:
+            if not isinstance(offset, int) or not len(stream.readline()) <= offset <= path.stat().st_size:
+                raise ValueError("整理清单与恢复记录不一致，保留原件，请核对任务记录")
+            stream.seek(offset)
+            tail = stream.read()
+            if tail:
+                backup = journal.parent / "manifest-interrupted-tail.bin"
+                if not backup.exists():
+                    backup.write_bytes(tail)
+                stream.truncate(offset)
+                stream.flush()
+                os.fsync(stream.fileno())
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream, strict=True)
+        keys = set()
+        for row in reader:
+            if None in row or any(row.get(field) is None for field in MANIFEST_FIELDS):
+                raise ValueError("整理清单记录不完整，保留原件，请核对任务记录")
+            keys.add((row["source_path"], row["target_relative_path"]))
+        return keys
+
+
 def _rewrite(value, replacements):
     if isinstance(value, str):
         for old, new in replacements:
@@ -384,6 +450,7 @@ def relocate_metadata(plan, job, *, validate_only=False):
         if index.is_file():
             db = sqlite3.connect(index.as_uri() + "?mode=ro", uri=True, timeout=1) if validate_only else sqlite3.connect(index, timeout=1)
             try:
+                tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
                 if validate_only:
                     for (raw,) in db.execute("SELECT metadata FROM assets"):
                         _rewrite(json.loads(raw), replacements)
@@ -398,8 +465,17 @@ def relocate_metadata(plan, job, *, validate_only=False):
                         old = Path(r["source"]).relative_to(root).as_posix()
                         new = Path(r["target"]).relative_to(root).as_posix()
                         stamp = file_stamp(Path(r["target"]))
+                        if db.execute("SELECT 1 FROM locations WHERE path=?", (old,)).fetchone():
+                            # A missing former file may still occupy this cache
+                            # key. Keep its identity/history before relinking.
+                            db.execute("INSERT INTO revisions(path,asset_id,replaced_at) SELECT path,asset_id,? FROM locations WHERE path=?", (time.time(), new))
+                            db.execute("DELETE FROM locations WHERE path=?", (new,))
                         db.execute("UPDATE locations SET path=?,stamp=? WHERE path=?", (new, stamp, old))
-                        db.execute("UPDATE video_hints SET path=?,stamp=? WHERE path=?", (new, stamp, old))
+                        # v3.1 indexes predate the optional lightweight hint cache.
+                        if "video_hints" in tables:
+                            if db.execute("SELECT 1 FROM video_hints WHERE path=?", (old,)).fetchone():
+                                db.execute("DELETE FROM video_hints WHERE path=?", (new,))
+                            db.execute("UPDATE video_hints SET path=?,stamp=? WHERE path=?", (new, stamp, old))
                     for asset, raw in db.execute("SELECT id,metadata FROM assets").fetchall() if continue_index else []:
                         value = json.loads(raw)
                         changed = _rewrite(value, replacements)
@@ -447,13 +523,17 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
         raise ValueError("隔离目录必须在素材与目标工程之外")
     with DatasetLease([root, quarantine, *sources], "organize", owner=plan["id"]) as lease, ExitStack() as stack:
         # Also honour writer locks held by older installed clients.
-        legacy_roots = {p for path in (root, *sources) for p in (path, *path.parents) if (p / "标注工程").is_dir()}
+        # A selected source can contain an older client's nested project.
+        # Inspect ancestors of the files too, not only the selected directory.
+        related = (root, *sources, *(Path(r["source"]).parent for r in selected))
+        parents = {p for path in related for p in (path, *path.parents)}
+        legacy_roots = {p for p in parents if (p / "标注工程").is_dir()}
         for parent in legacy_roots:
             lock = ProjectLock(parent / "标注工程" / "writer.lock")
             stack.callback(lock.close)
             if not lock.acquired:
                 raise OSError("相关工程仍在标注，请保存并暂停后再整理")
-        manifest_keys = set()
+        recorded_keys = set()
         for row in selected:
             source, target = safe_path(row["source"]), safe_path(row["target"])
             destination_root = quarantine if row.get("operation") == "quarantine" else root
@@ -469,7 +549,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
         check_cancel(cancelled)
         if (root / CONTEXT_FILE).is_file():
             with (root / CONTEXT_FILE).open(encoding="utf-8-sig", newline="") as stream:
-                if next(csv.reader(stream), None) != FIELDS:
+                if next(csv.reader(stream), None) not in (FIELDS, LEGACY_FIELDS):
                     raise ValueError("数据分类表头不兼容，停止整理")
         if plan["mode"] != "quarantine" and (root / "整理清单.csv").exists():
             with (root / "整理清单.csv").open(encoding="utf-8-sig", newline="") as stream:
@@ -490,8 +570,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
             with (root / "整理清单.csv").open(encoding="utf-8-sig", newline="") as stream:
                 if next(csv.reader(stream)) != MANIFEST_FIELDS:
                     raise ValueError("整理清单表头不同，停止执行")
-            with (root / "整理清单.csv").open(encoding="utf-8-sig", newline="") as stream:
-                manifest_keys = {(r["source_path"], r["target_relative_path"]) for r in csv.DictReader(stream)}
+            recorded_keys = manifest_keys(root, journal, done)
         for row in selected:
             check_cancel(cancelled)
             source, target = safe_path(row["source"]), safe_path(row["target"])
@@ -501,7 +580,8 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
                 with prevent_writes(source):
                     if identity(source) != row["identity"]:
                         raise ValueError("源文件在执行前变化，已停止")
-                    append_journal(journal, {"phase": "intent", **row})
+                    manifest_offset = (root / "整理清单.csv").stat().st_size if plan["mode"] != "quarantine" and row.get("operation") != "quarantine" else None
+                    append_journal(journal, {"phase": "intent", **row, "manifest_offset": manifest_offset})
                     if not marked:
                         lease.mark_pending(plan["id"], job)
                         marked = True
@@ -512,9 +592,9 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
             if str(source) not in done:
                 if plan["mode"] != "quarantine" and row.get("operation") != "quarantine":
                     key = (row["source"], Path(row["target"]).relative_to(root).as_posix())
-                    if key not in manifest_keys:
+                    if key not in recorded_keys:
                         append_manifest(root, row)
-                        manifest_keys.add(key)
+                        recorded_keys.add(key)
                 append_journal(journal, {"phase": "done", **row})
             moved += 1
             progress(moved, len(selected), str(target))
@@ -550,7 +630,9 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
             try:
                 if catalog.readonly:
                     raise OSError("素材已移动；索引被其他进程占用，请稍后在标注工具重新核对")
-                catalog.scan(fast=True, cancelled=cancelled)
+                scan = catalog.scan(fast=True, cancelled=cancelled)
+                if not scan.complete:
+                    raise OSError("素材已移动；索引清点不完整，请恢复目录访问后继续原任务：" + "; ".join(scan.errors[:3]))
             finally:
                 catalog.close()
         append_journal(journal, {"phase": "complete", "count": moved})

@@ -550,6 +550,9 @@ class VideoBoard(QWidget):
         self.timeChanged.emit(self.reference_ms)
 
     def play(self, enabled=True):
+        if enabled and not any(tile.interval for tile in self.tiles.values()):
+            enabled = False
+            self.notice.emit("当前时刻的录像尚未就绪，请等待检索出画面后再播放")
         previous = self.playing
         self.playing = bool(enabled)
         if not self.playing:

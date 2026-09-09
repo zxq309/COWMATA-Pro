@@ -1,10 +1,6 @@
 <div align="center">
 
-> **3.2.1 修订（2026-09-09，同版本更新）：** 所有九轴记录的横轴、悬停和当前位置统一显示工程已有同步关系下的日期时间，可输入时间戳定位。启动先检查更新，有新版自动下载安装，完成重开后才能标注；直接更新到最新版，跳过中间版本。失败时可重试或退出。已装早前 3.2.1 的用户请从现有发布页手动下载修订包；本次不递增版本号。
-
-> **3.2.1 — 2026-09-09：** 修复大型嵌套数据工程默认视频空白与漫长扫描；单视角增加常驻进度条，改善倍速与跳转。切换记录自动保存和恢复位置，四种颜色区分进度；退出与完成本份时确认保存，重新打开可编辑、删除标签。下载 [完整离线安装包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1)，查看 [发布说明](docs/release-321.md) 与 [发布前操作实测](docs/release-321-validation.md)。
-
-> **3.2.0 — 2026-09-09：** 官网绿色品牌界面与图标；新增单视角「行为识别」「健康与繁殖」入口，五类模型真实运行，未完成算法明确待接入。保留逐份加载、主路优先、断点续标和多人回传，精简离线包。见 [新手图文教程 PDF](docs/quick-start-illustrated.pdf)、[算法边界](docs/algorithm-inspection.md)、[本次验证](docs/release-320-validation.md)。下方旧录屏注明其版本。
+> **3.3.0 - 2026-09-10：** 按“整理数据 → 标注保存 → 复核导出”贯通全流程。新增后台整理、七类数据（含孕早期/孕中期/孕晚期）、三段设备目录与跨日期设备复用追溯；修复 pending 视频检索、旧索引兼容和导出/回收衔接。查看 [图文说明书](docs/quick-start-illustrated.pdf)、[发布说明](docs/release-330.md)、[功能实测](docs/release-330-validation.md) 和 [代码审查](docs/code-audit-330.md)，下载 [完整 Windows 安装包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.0)。
 
 > **普通用户直接使用离线 EXE：** 到 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
 > 下载完整离线安装版 **Setup.exe**，按向导安装，无须配置 Python、pip、VLC、CUDA 工具包或模型。
@@ -17,7 +13,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-3.2.1-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1)
+[![Release](https://img.shields.io/badge/release-3.3.0-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.0)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -26,9 +22,9 @@
 
 </div>
 
-[![3.2.0 真实运行：官网配色与独立行为算法](assets/screenshots/algorithm-320-live.png)](docs/quick-start-illustrated.pdf)
+[![3.3.0 真实工作台：数据整理、视频与九轴标注](assets/screenshots/manual-330/09-workspace.png)](docs/quick-start-illustrated.pdf)
 
-<p align="center"><sub>点击图片打开十页新手图文教程。真实九轴、监控与模型运行；DEMO 同步关系及示例标签仅用于操作展示，不是科研真值。</sub></p>
+<p align="center"><sub>点击图片打开32页图文说明书，每页三个步骤。当前界面实际操作截图，演示九轴、身份及标签为测试数据，牛舍短片用于操作展示；下方历史录屏保留原版本标记。</sub></p>
 
 ## 项目简介
 

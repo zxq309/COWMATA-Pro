@@ -85,7 +85,7 @@ class UpdateController(QObject):
         self.stop = threading.Event()
         self.dialog = None
         self.notification = None
-        self.status = tr("更新就绪：自动检查可在这里关闭。", "Update checks can be disabled here.")
+        self.status = tr("启动时必须检查最新版；使用中的后台检查可在这里关闭。", "Startup checks are required; background checks during annotation can be disabled here.")
         self.button = QPushButton(tr("检查更新", "Updates"))
         self.button.clicked.connect(self.open_dialog)
         # Update entry lives in Help > About. Keep the controller's status
@@ -393,9 +393,9 @@ class UpdateController(QObject):
             return
         self.info.setText(self.status)
         self.notes.setPlainText(self.update.get("notes", "") if self.update else tr(
-            "旧版需先手动升级一次。更新只从固定官方 GitHub 仓库下载；离线仍可正常标注。"
+            "启动时必须完成最新版检查。检查或更新未完成时，请重试或退出；进入工程后可继续离线标注。"
             "\n原位置升级仅支持安装版，便携版/源码副本可下载安装包后手动安装。",
-            "Older clients need one manual upgrade. Updates come only from the fixed GitHub repository. Offline annotation remains available."
+            "Startup requires a successful latest-version check. Retry or exit if checking/updating fails; an open workspace can continue offline."
             "\nIn-place updates require an installed copy; source/portable copies support download for manual installation."))
         enabled = [not self.busy, bool(self.update) and not self.busy,
                    self.busy, bool(self.update) and not self.busy and not self.pending_job,

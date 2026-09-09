@@ -1061,6 +1061,25 @@ def _session_id(project: Project, explicit: str | None = None) -> str:
     return device
 
 
+def record_identity_fields(project: Project) -> dict[str, Any]:
+    """Flat provenance columns shared by all tabular annotation exports."""
+    identity = project.extras.get("device_identity") or {}
+    timing = identity.get("capture_timing") or project.source.get("capture_timing") or {}
+    return {"device_id": identity.get("device_id", ""), "field_mark": identity.get("field_mark", ""),
+            "folder_cow_id": identity.get("folder_cow_id", ""), "source_device_folder": identity.get("source_folder", ""),
+            "device_identity_status": identity.get("status", ""),
+            "record_start_epoch_ms": timing.get("sample_start_epoch_ms", ""),
+            "record_end_epoch_ms": timing.get("sample_end_epoch_ms", "")}
+
+
+def _recording_origin(source: Mapping[str, Any]) -> float | None:
+    start = source.get("createTimeMs", source.get("createTime"))
+    if start in (None, ""):
+        return None
+    timing = source.get("capture_timing") or {}
+    return float(start) + float(timing.get("first_frame_elapsed_ms", 0)) - float(timing.get("coordinate_offset_ms", 0))
+
+
 def build_events_csv(
     project: Project,
     *,
@@ -1075,9 +1094,10 @@ def build_events_csv(
         "t_start_rel_ms", "t_end_rel_ms",
         "reviewed_start_ms", "reviewed_end_ms", "duration_ms", "frame_start",
         "frame_end", "t_start_wall_bj", "t_end_wall_bj", "note", "dataset_category", "dataset_category_label",
+        *record_identity_fields(project),
     ]
     rows: list[list[Any]] = [header]
-    recording_start = project.source.get("createTime")
+    recording_start = _recording_origin(project.source)
     sid = _session_id(project, session_id)
     timestamps = relative_timestamps_ms
     for ordinal, event in enumerate(sorted(project.events, key=lambda e: e.t0), 1):
@@ -1123,6 +1143,7 @@ def build_events_csv(
                 event.note,
                 project.extras.get("dataset_category", ""),
                 project.extras.get("dataset_category_label", ""),
+                *record_identity_fields(project).values(),
             ]
         )
     return _csv_text(rows)
@@ -1167,12 +1188,13 @@ def build_sample_multihot_csv(
     columns = [f"{label.layer}__{label.code}" for _, label in labels]
     header = [
         "sample_index", "sample_time_ms", "cow_id", "reviewed_any",
-        *columns, "dataset_category", "dataset_category_label",
+        *columns, "dataset_category", "dataset_category_label", *record_identity_fields(project),
     ]
     rows = [
         [
             index, round(time, 3), project.cow_id, 0,
             *([0] * len(columns)), project.extras.get("dataset_category", ""), project.extras.get("dataset_category_label", ""),
+            *record_identity_fields(project).values(),
         ]
         for index, time in enumerate(times)
     ]
@@ -1248,10 +1270,12 @@ def build_meta(
         "cow_id": project.cow_id,
         "dataset_category": project.extras.get("dataset_category", ""),
         "dataset_category_label": project.extras.get("dataset_category_label", ""),
+        **record_identity_fields(project),
+        "device_identity": copy.deepcopy(project.extras.get("device_identity", {})),
         "annotator": project.annotator,
         "protocol": project.protocol,
         "device": source.get("device", ""),
-        "create_time_bj": _format_wall_ms(source.get("createTime")),
+        "create_time_bj": _format_wall_ms(source.get("createTimeMs", source.get("createTime"))),
         "imu_version": source.get("dataVersion", source.get("version", "")),
         "acc_scale_divisor": source.get("accScale", ""),
         "sampling_hz": supplied.get("sampling_hz", source.get("samplingHz", "")),
@@ -1297,6 +1321,7 @@ def build_boris_csv(
         [
             "Observation id", "Behavior", "Behavioral category",
             "Start (s)", "Stop (s)", "Duration (s)",
+            "cow_id", "dataset_category", "dataset_category_label", *record_identity_fields(project),
         ]
     ]
     for event in sorted(project.events, key=lambda item: item.t0):
@@ -1311,6 +1336,8 @@ def build_boris_csv(
                 f"{start_s:.3f}",
                 f"{stop_s:.3f}",
                 f"{stop_s - start_s:.3f}",
+                project.cow_id, project.extras.get("dataset_category", ""), project.extras.get("dataset_category_label", ""),
+                *record_identity_fields(project).values(),
             ]
         )
     return _csv_text(rows)

@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.3.0] - 2026-09-10
+
+- Establish organize → annotate/save → review/export. Add a background organization window for single-file, single-device, single-day and multi-day nested sources; normalize view01–08, preview moves, protect active projects, quarantine only classified junk, and resume interrupted work.
+- Require full-device-ID / ear-tag / field-mark identity before new organization. Keep numeric ear tags and case-sensitive field marks intact. Preserve historical malformed sources and labels; show suggestions without guessing a rename. Reused devices are associated with each record and its capture date, not deduplicated across cows or dates.
+- Add seven stable collection categories: healthy, estrus, pregnancy_early, pregnancy_mid, pregnancy_late, calving and disease. Carry category and identity through save/reopen, drafts, review, undo, team returns and exports. Behaviors remain independently selectable.
+- Fix pending-only startup regression: stable device grouping, failed-opening hint fallback, later-frame OCR, legacy timing routes, changed-source retry, and continued background search when Play is pressed before video coverage exists. Refresh the material index dialog while work progresses.
+- Fix legacy SQLite view normalization, nested active-project protection and interrupted organization journals. Preserve original assets and retained human work.
+- Fix export evidence paths, real timestamp columns, incoming category UI refresh and team conflict detection. Move large return/training-export I/O off the GUI thread.
+- Use mapped date/time throughout IMU waveforms, annotation/history lists and algorithm candidates; refresh after synchronization edits and avoid overlapping axis labels. Preserve internal sample coordinates.
+- Retry transient Windows sharing conflicts during atomic saves, retain failed work and make interval completion idempotent across records. Defer native video-window shows across Qt turns to reduce eight-view history stalls.
+- Repair corrupt partial-update retry and rollback cleanup; serialize update workers for each install location. Startup still requires the latest release check and direct update to the newest version.
+- Replace the illustrated operation manual with 32 pages and 38 actual 3.3 screenshots, reproducible sources, bookmarks and short steps; add its entry to About. Keep all executable/package versions at 3.3.0.
+
+See [validation](docs/release-330-validation.md) and [scope/limits of the audit](docs/code-audit-330.md).
+
 ### 3.2.1 timestamp and latest-update correction — 2026-09-09
 
 - Require a startup release check before constructing any annotation/history window or opening project files. Newer releases automatically download, verify, install and restart; errors stay at a retry/exit gate. This mandatory startup rule ignores prior optional background-check preferences.

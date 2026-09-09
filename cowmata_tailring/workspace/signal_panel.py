@@ -221,16 +221,24 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
     def _paint_time_axis(self, painter):
         plot = self._plot_rect()
         painter.setPen(QColor("#78908c"))
-        width = max(90, painter.fontMetrics().horizontalAdvance(self._format_time(self._view_t0)) + 12)
-        count = max(2, min(6, int(plot.width() / (width + 20)) + 1))
-        for index in range(count):
-            fraction = index / (count - 1)
-            x = plot.left() + fraction * plot.width()
-            when = self._view_t0 + fraction * (self._view_t1 - self._view_t0)
+        # Centering then clamping edge labels can make them overlap even when
+        # the tick spacing fits. Check the final text rectangles, including
+        # proportional-font widths, and reduce the number of complete labels.
+        for count in range(6, 0, -1):
+            ticks = []
+            for index in range(count):
+                fraction = index / (count - 1) if count > 1 else 0
+                x = plot.left() + fraction * plot.width()
+                when = self._view_t0 + fraction * (self._view_t1 - self._view_t0)
+                text = self._format_time(when)
+                width = max(90, painter.fontMetrics().horizontalAdvance(text) + 12)
+                left = max(0, min(self.width() - width, x - width / 2))
+                ticks.append((x, QRectF(left, plot.bottom() + 5, width, 18), text))
+            if all(left[1].right() + 8 <= right[1].left() for left, right in zip(ticks, ticks[1:])):
+                break
+        for x, rectangle, text in ticks:
             painter.drawLine(QPointF(x, plot.bottom()), QPointF(x, plot.bottom() + 4))
-            left = max(0, min(self.width() - width, x - width / 2))
-            painter.drawText(QRectF(left, plot.bottom() + 5, width, 18), Qt.AlignmentFlag.AlignCenter,
-                             self._format_time(when))
+            painter.drawText(rectangle, Qt.AlignmentFlag.AlignCenter, text)
 
 
 class EventStrip(QWidget):

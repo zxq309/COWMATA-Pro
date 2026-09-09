@@ -167,6 +167,7 @@ def main():
     assert len(load_history(output, archive).timeline.cameras) == len(timeline.cameras)
     history.close()
     heartbeat.stop()
+    owner.confirm_close = lambda: "save"  # The real save prompt is tested separately.
     owner.close()
     catalog.close()
     assert not errors

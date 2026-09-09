@@ -174,8 +174,13 @@ def download(update, directory, progress=lambda *_: None, cancelled=lambda: Fals
                     progress(offset, update["size"])
                 stream.flush()
                 os.fsync(stream.fileno())
-    if partial.stat().st_size != update["size"] or digest(partial) != update["sha256"]:
+    if partial.stat().st_size != update["size"]:
         raise ValueError("下载不完整或校验失败；未运行安装器")
+    if digest(partial) != update["sha256"]:
+        # A complete but corrupt partial cannot be resumed. Remove only this
+        # failed download so the mandatory startup dialog's Retry can refetch.
+        partial.unlink()
+        raise ValueError("下载校验失败，已清除损坏下载；请重试。未运行安装器")
     partial.replace(final)
     progress(update["size"], update["size"])
     return final

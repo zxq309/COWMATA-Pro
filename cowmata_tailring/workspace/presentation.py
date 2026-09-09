@@ -26,6 +26,8 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         self.empty = QLabel("打开工程后，在素材面板勾选视角", self)
         self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setStyleSheet("color:#a4b8b8; background:#17282c; border-radius:12px; font-size:16px")
+        self._pending_tile_shows = []
+        self._tile_show_queued = False
 
     def set_presentation(self, mode):
         self.presentation = mode
@@ -166,6 +168,7 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
             cell_w, cell_h = (w - gap * (columns - 1)) // columns, (h - gap * (rows - 1)) // rows
             positions = {camera: ((i % columns) * (cell_w + gap), (i // columns) * (cell_h + gap),
                                    cell_w, cell_h) for i, camera in enumerate(self.selected)}
+        pending_shows = []
         for camera, geometry in positions.items():
             tile = self.tiles[camera]
             visible.add(tile)
@@ -184,11 +187,32 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
             if tile.styleSheet() != style:
                 tile.setStyleSheet(style)
             tile.setGeometry(*geometry)
-            tile.show()
+            if tile.isHidden():
+                pending_shows.append(tile)
         for tile in self.pool:
             if tile not in visible:
                 tile.hide()
+        # QWidget.show creates native child windows on Windows. Eight cold
+        # surfaces took over one second in a single history-load callback.
+        # Keep geometry synchronous, but yield to input between native shows.
+        self._pending_tile_shows = pending_shows
+        if pending_shows and not self._tile_show_queued:
+            self._tile_show_queued = True
+            QTimer.singleShot(0, self._show_next_tile)
         self.aux_scroll.raise_()
+
+    def _show_next_tile(self):
+        self._tile_show_queued = False
+        if getattr(self, "_closing", False):
+            self._pending_tile_shows.clear()
+            return
+        if self._pending_tile_shows:
+            self._pending_tile_shows.pop(0).show()
+        # A newer layout replaces this queue, so hidden/removed views cannot
+        # be resurrected by an earlier selection's deferred callback.
+        if self._pending_tile_shows and not self._tile_show_queued:
+            self._tile_show_queued = True
+            QTimer.singleShot(0, self._show_next_tile)
 
 
 class DragHeader(QLabel):

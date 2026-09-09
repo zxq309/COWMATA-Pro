@@ -7,12 +7,14 @@ directory. Unknown files and redirected paths stop the upgrade before changes.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK
 
@@ -23,6 +25,57 @@ except ImportError:  # Copied next to the detached private interpreter.
 
 REG_BASE = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
 LOCK = "COWMATA.update-lock"
+
+
+class UpdateInProgress(RuntimeError):
+    """Another updater already owns this installation transaction."""
+
+
+@contextmanager
+def installation_lock(root):
+    """Serialize detached updaters; ownership survives directory renames."""
+    key = hashlib.sha256(os.path.normcase(os.path.abspath(root)).encode("utf-8")).hexdigest()
+    busy = "此安装目录已有更新正在进行，请等待其完成；完成后会自动打开软件。"
+    if os.name == "nt":
+        import ctypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+        kernel.CreateMutexW.restype = ctypes.c_void_p
+        kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        kernel.WaitForSingleObject.restype = ctypes.c_ulong
+        kernel.ReleaseMutex.argtypes = [ctypes.c_void_p]
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        handle = kernel.CreateMutexW(None, False, "Global\\COWMATA.Update." + key)
+        if not handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        acquired = False
+        try:
+            status = kernel.WaitForSingleObject(handle, 0)
+            if status == 0x102:  # WAIT_TIMEOUT: do not wait behind an obsolete job.
+                raise UpdateInProgress(busy)
+            if status not in (0, 0x80):  # Normal or abandoned ownership.
+                raise ctypes.WinError(ctypes.get_last_error())
+            acquired = True
+            yield
+        finally:
+            if acquired:
+                kernel.ReleaseMutex(handle)
+            kernel.CloseHandle(handle)
+    else:
+        # CI exercises the same transaction contract on POSIX. A stable lock
+        # inode must not be unlinked while another process may be opening it.
+        import fcntl
+        import tempfile
+        path = Path(tempfile.gettempdir()) / ("cowmata-update-" + key + ".lock")
+        descriptor = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        try:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise UpdateInProgress(busy) from exc
+            yield
+        finally:
+            os.close(descriptor)
 
 
 def write_json(path, value):
@@ -167,6 +220,12 @@ def remove_owned(root):
 
 
 def install(job, *, runner=run, registration=registered, unregister=remove_registration, restart=True):
+    with installation_lock(safe_path(job["root"])):
+        return _install_locked(job, runner=runner, registration=registration,
+                               unregister=unregister, restart=restart)
+
+
+def _install_locked(job, *, runner, registration, unregister, restart):
     started = time.monotonic()
     root = safe_path(job["root"])
     setup = safe_path(job["setup"])
@@ -252,7 +311,12 @@ def install(job, *, runner=run, registration=registered, unregister=remove_regis
     except Exception as exc:
         if swapped:
             # No new application is started before commit.
-            unregister(root, version)
+            try:
+                unregister(root, version)
+            except (OSError, ValueError) as cleanup_error:
+                # A locked shortcut/registry key must not prevent restoring
+                # the previous application directory after registration fails.
+                state["rollback_warning"] = str(cleanup_error)
             root.rename(stage)
             backup.rename(root)
         (root / LOCK).unlink(missing_ok=True)
@@ -281,6 +345,12 @@ def main():
     job = json.loads(Path(args.job).read_text(encoding="utf-8"))
     try:
         install(job)
+        return 0
+    except UpdateInProgress as exc:
+        write_json(Path(job["job_dir"]) / "result.json", {"phase": "already_updating", "message": str(exc)})
+        if os.name == "nt":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, str(exc), "COWMATA Annotator 更新", 0x40)
         return 0
     except Exception as exc:
         write_json(Path(job["job_dir"]) / "error.json", {"error": str(exc)})

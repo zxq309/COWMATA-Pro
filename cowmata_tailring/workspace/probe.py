@@ -192,13 +192,16 @@ class SourceInspector:
         self.opening_cache = {"path": path, "stamp": file_stamp(path), "frames": {}}
         points = []
         roi = None
-        for target in (0, 1200, 2500):
+        for target in (0, 1200, 2500, 5000, 10000):
             if self.stop.is_set():
                 raise InterruptedError("时间检索已切换")
-            frame, actual = extract_frame(path, target, cancelled=self.stop.is_set)
-            report = self.ocr.routing_read(frame, filename=f"{path.name}@hint", hint=roi)
-            if not report["success"]:
-                report = self.ocr.recognize(frame, filename=f"{path.name}@hint-fallback", hint=roi)
+            try:
+                frame, actual = extract_frame(path, target, cancelled=self.stop.is_set)
+            except (ValueError, OSError, subprocess.TimeoutExpired):
+                # A corrupt opening frame or a short clip must not prevent
+                # inspecting another position (or the full fallback later).
+                continue
+            report = self.ocr.routing_read(frame, filename=f"{path.name}@hint", hint=roi, raw_only=True)
             self.opening_cache["frames"][target] = (frame, actual, report)
             if report.get("success") and report.get("wall_ms") is not None:
                 roi = report.get("roi")
@@ -331,6 +334,13 @@ class SourceInspector:
         if hasattr(self.ocr, "engine"):
             self.ocr.engine.cancelled = self.stop.is_set
         targets = {0.0, min(1200.0, timeline.duration_ms / 3)}
+        opening_frames = {}
+        if (self.opening_cache and self.opening_cache["path"] == path
+                and self.opening_cache["stamp"] == file_stamp(path) and not roi):
+            opening_frames = {t: value for t, value in self.opening_cache["frames"].items()
+                              if 0 <= t < timeline.duration_ms and abs(timeline.public_to_raw_ms(t)[0] - t) < 1}
+        opening_hits = [t for t, (_, _, report) in opening_frames.items() if report.get("success")]
+        targets.update(opening_hits)
         for segment in timeline.segments:
             if segment.duration_ms <= 0:
                 continue
@@ -351,13 +361,18 @@ class SourceInspector:
             self.progress(f"识别 {path.name} · {number + 1}/{len(targets)}")
             try:
                 cached = None
-                if (self.opening_cache and self.opening_cache["path"] == path
-                        and self.opening_cache["stamp"] == file_stamp(path) and not roi
-                        and abs(timeline.public_to_raw_ms(target)[0] - target) < 1):
-                    cached = self.opening_cache["frames"].get(target)
+                cached = opening_frames.get(target)
                 if cached:
                     frame, actual, report = cached
                     report = copy.deepcopy(report)
+                    if report.get("routing_only") and not report.get("success") and len(opening_hits) >= 2:
+                        # Verify the later visible clock instead of repeatedly
+                        # retrying a blank opening. Keep this edge unresolved;
+                        # routing observations alone never verify an interval.
+                        samples.append({"media_ms": actual, "wall_ms": None, "ocr": report})
+                        if number == 0:
+                            frame.save(frame_dir / f"{asset_id}.jpg", quality=90)
+                        continue
                     if report.get("routing_only"):
                         report = self.ocr.recognize(frame, filename=f"{path.name}@{actual:.0f}ms", roi=roi,
                                                     hint=report.get("roi") or saved_roi, profile_hint=layout)

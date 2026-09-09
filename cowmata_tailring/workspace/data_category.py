@@ -4,15 +4,19 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-CATEGORIES = {"healthy": "正常健康", "estrus": "发情", "calving": "产犊", "disease": "疫病"}
+CATEGORIES = {"healthy": "正常健康", "estrus": "发情",
+              "pregnancy_early": "孕早期", "pregnancy_mid": "孕中期", "pregnancy_late": "孕晚期",
+              "calving": "产犊", "disease": "疫病"}
 CONTEXT_FILE = "数据分类.csv"
-FIELDS = ["target_relative_path", "dataset_category", "dataset_category_label", "collection_start",
+LEGACY_FIELDS = ["target_relative_path", "dataset_category", "dataset_category_label", "collection_start",
           "collection_end", "task_id", "confirmed_at", "note"]
+IDENTITY_FIELDS = ["device_id", "cow_id", "field_mark", "source_folder", "record_date", "record_start_ms", "identity_provenance"]
+FIELDS = [*LEGACY_FIELDS, *IDENTITY_FIELDS]
 
 
 def category_fields(code):
     if code not in CATEGORIES:
-        raise ValueError("请先选择数据类别：正常健康、发情、产犊或疫病")
+        raise ValueError("请先选择数据类别：正常健康、发情、孕早期、孕中期、孕晚期、产犊或疫病")
     return {"dataset_category": code, "dataset_category_label": CATEGORIES[code]}
 
 
@@ -44,7 +48,7 @@ def update_context(root, plan):
     if table.exists():
         with table.open(encoding="utf-8-sig", newline="") as stream:
             reader = csv.DictReader(stream)
-            if reader.fieldnames != FIELDS:
+            if reader.fieldnames not in (FIELDS, LEGACY_FIELDS):
                 raise ValueError("数据分类表头不兼容，停止整理")
             records = {r["target_relative_path"]: r for r in reader}
     for row in plan["rows"]:
@@ -58,7 +62,8 @@ def update_context(root, plan):
         else:
             records[relative] = {"target_relative_path": relative, **category_fields(plan["category"]),
                 "collection_start": plan["start"], "collection_end": plan["end"], "task_id": plan["id"],
-                "confirmed_at": plan["created_at"], "note": plan.get("note", "")}
+                "confirmed_at": plan["created_at"], "note": plan.get("note", ""),
+                **{field: row.get(field, "") for field in IDENTITY_FIELDS}}
     if not records:
         return
     temporary = table.with_suffix(".csv.tmp")

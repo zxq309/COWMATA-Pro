@@ -54,7 +54,7 @@ class TimestampOCR:
         else:
             raise ValueError("Unknown OCR backend: " + backend)
 
-    def routing_read(self, img: Image.Image, *, filename="frame", hint=None, max_passes=None, minimum_votes=1) -> dict:
+    def routing_read(self, img: Image.Image, *, filename="frame", hint=None, max_passes=None, minimum_votes=1, raw_only=False) -> dict:
         """Bounded single-pass routing, NEVER a verified OCR observation.
 
         Two nearby routing frames prioritize candidate files. The normal
@@ -71,7 +71,8 @@ class TimestampOCR:
             x0, y0, x1, y1 = [round(v * (img.width if i % 2 == 0 else img.height)) for i, v in enumerate(rect)]
             patch = pixels[y0:y1, x0:x1]
             gray = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
-            for variant in (patch, 255-gray, np.where(gray < 30, 0, 255).astype(np.uint8)):
+            variants = (patch,) if raw_only else (patch, 255-gray, np.where(gray < 30, 0, 255).astype(np.uint8))
+            for variant in variants:
                 if max_passes is not None and passes >= max_passes:
                     return {"success": False, "wall_ms": None, "roi": None, "routing_only": True}
                 passes += 1

@@ -163,6 +163,9 @@ def test_focus_still_is_frozen_and_never_becomes_evidence(app, monkeypatch):
 def test_tile_play_promotes_one_camera_and_uses_shared_clock(app, monkeypatch):
     b = AdaptiveVideoBoard()
     b.select(["A", "B"])
+    # Transport needs coverage; actual decoding is exercised in playback tests.
+    monkeypatch.setattr(b, "_position", lambda camera, tile, **kw: setattr(tile, "interval", SimpleNamespace()))
+    b.seek(10000)
     b.reference_ms = 10000
     b.transport(b.tiles["B"], "play", 0)
     assert b.playback_policy == "focus" and b.main_camera == "B" and b.playing

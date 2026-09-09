@@ -9,17 +9,43 @@ import re
 from collections import defaultdict
 from pathlib import PurePosixPath
 
+from .device_identity import source_device_folder
+
 
 def natural_key(path):
     return tuple((1, int(p)) if p.isdigit() else (0, p.lower()) for p in re.split(r"(\d+)", path))
 
 
-def device_name(row):
+def device_aliases(rows):
+    """UI grouping for unread legacy short-code folders, never cow identity."""
+    groups = defaultdict(set)
+    for row in rows:
+        if row["kind"] != "imu" or row["state"] in {"ignored", "missing"}:
+            continue
+        folder = source_device_folder(row["path"])
+        device = str(row["metadata"].get("device", ""))
+        if folder and re.fullmatch(r"[0-9a-fA-F]{12}", device):
+            groups[folder.as_posix()].add(device.upper())
+    return {folder: next(iter(devices)) for folder, devices in groups.items() if len(devices) == 1}
+
+
+def device_name(row, aliases=None):
     if row["metadata"].get("device"):
-        return str(row["metadata"]["device"])
-    parts = PurePosixPath(row["path"]).parts
-    if "九轴" in parts and parts.index("九轴") + 2 < len(parts):
-        return parts[parts.index("九轴") + 1]
+        name = str(row["metadata"]["device"])
+        return name.upper() if re.fullmatch(r"[0-9a-fA-F]{12}", name) else name
+    folder = source_device_folder(row["path"])
+    if folder:
+        name = folder.name
+        # Device exports append model/batch names to the hardware ID. Keep
+        # unread records in the same group after the first JSON is decoded.
+        match = re.fullmatch(r"([0-9a-fA-F]{12})(?:[-_].+)?", name)
+        if match:
+            return match[1].upper()
+        prefix = name.split("-", 1)[0]
+        known = (aliases or {}).get(folder.as_posix())
+        if known and re.fullmatch(r"[0-9a-fA-F]{4,11}", prefix) and known.endswith(prefix.upper()):
+            return known
+        return name
     return "待读取设备"
 
 
@@ -46,7 +72,11 @@ def camera_folder(relative):
 
 def source_span(row, hints):
     spans = row["metadata"].get("intervals", [])
-    if row["state"] in {"ready", "review"} and spans:
+    if spans and (row["state"] in {"ready", "review"} or
+                  row["state"] == "pending" and row.get("asset_id") and row["metadata"].get("recheck")):
+        # Unchanged legacy sources retain useful routing times while their
+        # derived index is rechecked. intervals_from_rows still excludes them
+        # from playback/evidence until inspection succeeds.
         return min(s["wall_start"] for s in spans), max(s["wall_end"] for s in spans)
     hint = hints.get(row["path"], {})
     start = hint.get("start_ms")
@@ -96,8 +126,7 @@ def next_video_task(rows, hints, start, end, *, maps=None, overrides=None, attem
             bracketed = span[1] is None and i == predecessor and (i == len(group) - 1 or any(j == i + 1 and t > lo for j, t in starts))
             if (overlaps or bracketed) and row["state"] in {"pending", "invalid"} and row["path"] not in attempted:
                 full_choices.append((abs(span[0] - lo), row))
-        unknown = [i for i, r in enumerate(group) if (r["path"] not in hints or hints[r["path"]] == {"native_checked": True})
-                   and not source_span(r, hints) and r["state"] in {"pending", "invalid"}
+        unknown = [i for i, r in enumerate(group) if not source_span(r, hints) and r["state"] in {"pending", "invalid"}
                    and r["path"] not in attempted]
         if not unknown:
             continue
@@ -123,11 +152,18 @@ def next_video_task(rows, hints, start, end, *, maps=None, overrides=None, attem
         # Round-robin batches; one long/irrelevant camera cannot use the budget.
         searched = sum(r["path"] in hints or source_span(r, hints) is not None for r in group)
         if explore or priority == 0:
-            hint_choices.append((searched, priority, batch, {**group[pick], "_guided": priority == 0}))
+            row = group[pick]
+            hint = hints.get(row["path"])
+            # A failed opening read is not a failed video. Full inspection
+            # samples later frames; charge this fallback to exploration too.
+            fallback = hint is not None and hint != {"native_checked": True}
+            hint_choices.append((searched, priority, batch, "full" if fallback else "hint",
+                                 {**row, "_guided": priority == 0, "_exploratory": fallback and priority != 0}))
     if full_choices:
         return "full", min(full_choices, key=lambda v: v[0])[1]
     if hint_choices:
-        return "hint", min(hint_choices, key=lambda v: v[:3])[3]
+        choice = min(hint_choices, key=lambda v: v[:3])
+        return choice[3], choice[4]
     return None
 
 

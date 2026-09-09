@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from .event_models import available_packs, predict_one
+from .signal_panel import reference_text
 
 
 class CandidateWindow(QDialog):
@@ -32,6 +33,7 @@ class CandidateWindow(QDialog):
         self.cancelled = threading.Event()
         self.job_token = None
         self.view_token = None
+        self.clock_revision = None
         self.setWindowTitle("事件候选 · 模型预测后需人工看录像")
         self.resize(700, 520)
         layout = QVBoxLayout(self)
@@ -101,7 +103,8 @@ class CandidateWindow(QDialog):
         if self.running and self.token() != self.job_token:
             self.cancel()
             self.status.setText("记录、牛号或工程已改变；旧任务结果不会写入当前记录。")
-        if self.view_token != self.token():
+        revision = self.owner.work.clock.revision if self.owner.work else None
+        if self.view_token != self.token() or self.clock_revision != revision:
             self.refresh_results()
 
     def start(self):
@@ -187,6 +190,7 @@ class CandidateWindow(QDialog):
         self.view_token = self.token()
         self.items.clear()
         w = self.owner
+        self.clock_revision = w.work.clock.revision if w.work else None
         for run in w.work.project.extras.get("event_model_runs", {}).values() if w.work else []:
             if run["identity"]["cow_id"] != w.work.project.cow_id:
                 continue
@@ -196,8 +200,10 @@ class CandidateWindow(QDialog):
                 self.items.addItem(item)
             for candidate in run["candidates"]:
                 status = {"pending": "待复核", "unknown": "暂未知", "rejected": "已排除", "drafted": "已建草稿"}.get(candidate["review_status"], candidate["review_status"])
-                text = f"{candidate['point_ms'] / 1000:.3f}s · {run['model_title']} · {candidate['score']:.3f} · {status} · {run['version']}"
+                when = reference_text(w.work.clock, candidate["point_ms"], True) if w.work.clock.anchors else f"相对 {candidate['point_ms'] / 1000:.3f} 秒"
+                text = f"{when} · {run['model_title']} · {candidate['score']:.3f} · {status} · {run['version']}"
                 item = QListWidgetItem(text)
+                item.setToolTip(text)
                 item.setData(Qt.ItemDataRole.UserRole, (run["id"], candidate["id"]))
                 self.items.addItem(item)
 

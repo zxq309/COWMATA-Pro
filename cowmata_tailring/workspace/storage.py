@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,21 @@ class SnapshotWriter:
         self.pool.shutdown(wait=True)
 
 
+def _replace_with_retry(source, target):
+    # Windows readers/antivirus may briefly deny replacement of a closed file.
+    # Keep the atomic replacement and bound waiting; persistent errors propagate.
+    delays = (0, .02, .04, .08, .16)
+    for attempt, delay in enumerate(delays):
+        if delay:
+            time.sleep(delay)
+        try:
+            os.replace(source, target)
+            return
+        except OSError as exc:
+            if getattr(exc, "winerror", None) not in {5, 32, 33} or attempt == len(delays) - 1:
+                raise
+
+
 def atomic_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False)
@@ -64,7 +80,7 @@ def atomic_json(path: Path, value: Any) -> None:
                 pass
             else:
                 shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
-        os.replace(name, path)
+        _replace_with_retry(name, path)
     finally:
         if os.path.exists(name):
             os.unlink(name)

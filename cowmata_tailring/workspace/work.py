@@ -35,6 +35,74 @@ class SessionWork:
     def category_fields(self):
         return {key: self.project.extras.get(key, "") for key in ("dataset_category", "dataset_category_label")}
 
+    def identity_fields(self):
+        identity = self.project.extras.get("device_identity")
+        return {"device_identity": copy.deepcopy(identity)} if identity else {}
+
+    def _sync_identity(self):
+        for draft in self.drafts:
+            draft.update(self.identity_fields())
+        for event in self.project.events:
+            event.extras.update(self.identity_fields())
+
+    def bind_device_identity(self, identity, *, source_path, capture_timing):
+        """Bind a checked folder to this content asset, never to a device globally."""
+        previous = self.project.extras.get("device_identity", {})
+        value = {**copy.deepcopy(identity), "asset_id": self.asset_id, "source_path": source_path,
+                 "capture_timing": copy.deepcopy(capture_timing), "folder_cow_id": identity.get("cow_id", "")}
+        if identity.get("status") == "ready":
+            if not self.project.cow_id.strip():
+                self.project.cow_id = identity["cow_id"]
+                value["cow_id_origin"] = "folder"
+            elif self.project.cow_id == identity["cow_id"]:
+                value["cow_id_origin"] = previous.get("cow_id_origin", "manual")
+            elif self.project.cow_id != identity["cow_id"]:
+                value["cow_id_origin"] = "manual"
+                already_checked = (previous.get("asset_id") == self.asset_id and
+                    previous.get("source_folder") == identity.get("source_folder") and
+                    previous.get("device_id") == identity.get("device_id") and
+                    previous.get("manual_cow_id") == self.project.cow_id)
+                value["status"] = "manual_override" if already_checked else "conflict"
+                value["message"] = (f"目录耳标 {identity['cow_id']}，本记录牛号 {self.project.cow_id}。" +
+                    ("已按本份记录人工核对，保留目录来源。" if already_checked else
+                     "已保留原牛号；请在牛号框核对后按回车，相关标签需重新复核。"))
+                if already_checked:
+                    value["manual_cow_id"] = self.project.cow_id
+                else:
+                    if self.progress.get("status") == "done":
+                        self.progress["status"] = "in_progress"
+                    for event in self.project.events:
+                        if event.extras.get("confirmation") == "confirmed":
+                            event.extras["confirmation"] = "needs_review"
+        elif previous.get("asset_id") == self.asset_id and previous.get("field_mark"):
+            # Relocating a known recording into an old-style folder must not erase its saved provenance.
+            value["saved_identity"] = copy.deepcopy(previous.get("saved_identity", previous))
+            value["field_mark"] = previous["field_mark"]
+            value["folder_cow_id"] = previous.get("folder_cow_id", "")
+            value["identity_provenance"] = "saved_record_identity_current_folder_unverified"
+        value["cow_id"] = self.project.cow_id
+        self.project.extras["device_identity"] = value
+        self._sync_identity()
+        return value
+
+    def confirm_cow(self, value):
+        """An explicit edit/review applies only to the current recording."""
+        value = value.strip()
+        self.checkpoint()
+        self.project.cow_id = value
+        identity = self.project.extras.get("device_identity")
+        if identity:
+            identity["cow_id"] = value
+            identity["cow_id_origin"] = "manual"
+            if identity.get("status") in {"ready", "conflict", "manual_override"}:
+                identity["status"] = "ready" if value == identity.get("folder_cow_id") else "manual_override"
+                identity["manual_cow_id"] = value
+                identity["message"] = (f"本记录牛号 {value}；目录耳标 {identity.get('folder_cow_id', '')}，已人工核对。")
+        for event in self.project.events:
+            if event.extras.get("confirmation") == "confirmed":
+                event.extras["confirmation"] = "needs_review"
+        self._sync_identity()
+
     def to_dict(self):
         return {"schema": 1, "asset_id": self.asset_id, "project": self.project.to_dict(),
                 "clock": self.clock.to_dict(), "mapping_history": self.mapping_history,
@@ -84,7 +152,7 @@ class SessionWork:
         draft = {"id": uuid.uuid4().hex, "group_id": group_id or uuid.uuid4().hex,
                  "label_index": label_index, "reference_start": start, "reference_end": end,
                  "video_evidence": copy.deepcopy(evidence), "cow_id": self.project.cow_id,
-                 "confirmation": "video_draft", "note": note, **self.category_fields()}
+                 "confirmation": "video_draft", "note": note, **self.category_fields(), **self.identity_fields()}
         self.drafts.append(draft)
         return draft
 
@@ -103,6 +171,8 @@ class SessionWork:
 
     def confirm_draft(self, draft_id, duration_ms, *, source_available=True, evidence_validator=None):
         draft = next(d for d in self.drafts if d["id"] == draft_id)
+        if self.project.extras.get("device_identity", {}).get("status") == "conflict":
+            raise ValueError("目录耳标与本记录牛号存在冲突，请先在牛号框核对并按回车确认")
         if not source_available:
             raise ValueError("源文件不可用，不能确认真值；草稿保留")
         if not self.project.cow_id.strip():
@@ -123,7 +193,7 @@ class SessionWork:
         previous = next((e for e in self.project.events if e.extras.get("draft_id") == draft_id), None)
         event = Event(previous.id if previous else self.project.next_event_id, draft["label_index"], start, end,
                       note=draft.get("note", ""), ev="video",
-                      extras={**self.category_fields(), "confirmation": "confirmed", "mapping_revision": self.clock.revision,
+                      extras={**self.category_fields(), **self.identity_fields(), "confirmation": "confirmed", "mapping_revision": self.clock.revision,
                               "video_evidence": copy.deepcopy(evidence), "group_id": draft["group_id"],
                               "draft_id": draft_id, "asset_id": self.asset_id,
                               "reference_start": draft["reference_start"], "reference_end": draft["reference_end"]})
@@ -138,6 +208,8 @@ class SessionWork:
         return event
 
     def training_project(self, *, source_available=True, evidence_validator=None):
+        if self.project.extras.get("device_identity", {}).get("status") == "conflict":
+            raise ValueError("目录耳标与本记录牛号存在冲突，请先核对身份再导出训练真值")
         if not source_available:
             raise ValueError("九轴源文件缺失/变化，无法导出训练真值")
         if not self.project.cow_id.strip():

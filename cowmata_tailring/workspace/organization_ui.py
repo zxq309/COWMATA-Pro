@@ -44,8 +44,10 @@ def task_root():
 
 
 class PlanModel(QAbstractTableModel):
-    COLUMNS = (("source", "来源文件"), ("target", "归类目标"), ("device", "设备 / 视角"),
-               ("size", "大小"), ("status", "状态"), ("message", "审查说明"))
+    COLUMNS = (("source_folder", "设备目录 / 来源"), ("status", "状态"),
+               ("suggested_folder", "建议目录名（需人工确认）"), ("device", "设备 / 视角"),
+               ("cow_id", "牛耳标"), ("field_mark", "现场记号"), ("record_date", "采集日期"),
+               ("source", "来源文件"), ("target", "归类目标"), ("size", "大小"), ("message", "审查说明"))
     STATES = {"ready": "可归类", "skip": "保留原处", "junk": "待隔离", "quarantine": "移至隔离", "invalid": "需核对", "blocked": "已拦截"}
 
     def __init__(self, parent=None):
@@ -81,7 +83,9 @@ class PlanModel(QAbstractTableModel):
             if key == "status":
                 return self.STATES.get(row.get(key), row.get(key, ""))
             if key == "device":
-                return row.get("owner") or row.get("device", "")
+                return row.get("device_id") or row.get("owner") or row.get("device", "")
+            if key == "source_folder":
+                return row.get(key) or Path(row.get("source", "")).parent.name
             return row.get(key, "")
         return None
 
@@ -115,7 +119,7 @@ class OrganizationWindow(QDialog):
         title.setObjectName("sectionTitle")
         title.setStyleSheet("font-size:21px; padding:8px;")
         outer.addWidget(title)
-        subtitle = QLabel("单个设备、单份九轴、单日或跨日数据均可；按固定视角存放原片，通用事件仍在标注时记录。")
+        subtitle = QLabel("先审查来源命名与数据，再归类、标注和导出。单份、单日或跨日均支持；同设备换日期或换牛逐记录保留。")
         subtitle.setWordWrap(True)
         outer.addWidget(subtitle)
         target_bar = QHBoxLayout()
@@ -157,6 +161,10 @@ class OrganizationWindow(QDialog):
         self.sources.setMaximumHeight(170)
         self.sources.setMinimumHeight(110)
         box.addWidget(self.sources)
+        identity_rule = QLabel("九轴设备目录：完整设备编号-牛耳标号-现场记号，例如 546C50CA07D5-00123-w1。\n"
+                               "设备号须为 12 位十六进制；耳标保留前导 0；现场记号保留大小写。异常目录先列出建议，需人工规范后重选来源。")
+        identity_rule.setWordWrap(True)
+        box.addWidget(identity_rule)
         add_bar = QHBoxLayout()
         self.add_buttons = []
         for text, callback in (("添加九轴文件…", self.add_imu_files),
@@ -189,7 +197,7 @@ class OrganizationWindow(QDialog):
         form.addRow("设备与实验说明", self.note)
         box.addLayout(form)
         classify_actions = QHBoxLayout()
-        self.preview_button = QPushButton("审查并预览归类")
+        self.preview_button = QPushButton("校验命名并预览归类")
         self.preview_button.setObjectName("primary")
         self.preview_button.clicked.connect(self.preview_import)
         self.normalize_button = QPushButton("预览规范视角名称")
@@ -227,7 +235,7 @@ class OrganizationWindow(QDialog):
         self.table.verticalHeader().setDefaultSectionSize(30)
         self.table.setWordWrap(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for i, width in enumerate((295, 300, 110, 90, 95, 290)):
+        for i, width in enumerate((270, 90, 310, 140, 90, 90, 105, 295, 300, 90, 330)):
             self.table.setColumnWidth(i, width)
         outer.addWidget(self.table, 1)
         self.status = QLabel("其他目录可同时标注；同目录必须先保存并暂停。只有点击执行剪切才会移动文件。")
@@ -405,8 +413,9 @@ class OrganizationWindow(QDialog):
             result = json.loads(self.result_pending.read_text(encoding="utf-8"))
             self.model.set_rows(result.get("rows", []))
             counts = Counter(r["status"] for r in result.get("rows", []))
+            naming_issues = sum(bool(r.get("naming_issue")) for r in result.get("rows", []))
             size = sum(r["size"] for r in result.get("rows", []) if r["status"] == "ready")
-            self.summary.setText(f"共 {len(result.get('rows', []))} 项 · 可归类 {counts['ready']} 项 / {size / 1024**3:.2f} GiB · 待核对 {counts['invalid']} 项 · 拦截 {counts['blocked']} 项 · 临时文件 {counts['junk']} 项")
+            self.summary.setText(f"共 {len(result.get('rows', []))} 项 · 可归类 {counts['ready']} 项 / {size / 1024**3:.2f} GiB · 命名待规范 {naming_issues} 项 · 待核对 {counts['invalid']} 项 · 拦截 {counts['blocked']} 项 · 临时文件 {counts['junk']} 项")
             if result["mode"] == "audit":
                 self.report = result
                 self.status.setText("审查完成。可预览隔离临时/空文件，再到数据归类确认目标。异常原件继续保留。")
@@ -418,7 +427,8 @@ class OrganizationWindow(QDialog):
                 self.open_button.setEnabled(result["mode"] != "quarantine")
             else:
                 self.plan, self.plan_job = result, self.job
-                self.status.setText("预览完成，尚未移动文件。核对来源、目标和异常后点击执行；单次任务按同盘移动处理。")
+                self.status.setText("设备命名需先规范：请逐项核对建议并人工修改来源目录后重新审查。本批禁止执行，有效九轴原件保留。" if naming_issues else
+                                    "预览完成，尚未移动文件。核对来源、目标和异常后点击执行；单次任务按同盘移动处理。")
         else:
             self.status.setText(self.last_error or self.stderr.decode("utf-8", errors="replace") or "任务未完成，请查看任务记录并重试；原文件不会被覆盖。")
         self.render()

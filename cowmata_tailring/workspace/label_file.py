@@ -105,7 +105,7 @@ def build_label_file(work, motion, root, rows, settings, *, selection=None, incl
         video_ids.update(s.asset_id for s in timeline.intervals if _overlap(
             timeline.reference_time(s.camera, s.wall_start), timeline.reference_time(s.camera, s.wall_end), start, end))
     return {"format": FORMAT, "version": 2 if embedded and embedded.get("kind") == "original_json" else 1,
-            "coordinates": "parent_imu_ms", **work.category_fields(),
+            "coordinates": "parent_imu_ms", **work.category_fields(), **work.identity_fields(),
             "work": snapshot, "view": {"start_ms": lo, "end_ms": hi},
             "source": {"asset_id": work.asset_id, "path": motion.source_path.resolve().relative_to(root).as_posix(),
                        "project_root_hint": str(root), "acc_scale": motion.acc_scale,

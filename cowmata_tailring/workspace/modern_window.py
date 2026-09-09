@@ -164,6 +164,7 @@ class MainWindow(ControllerWindow):
         sources.addWidget(self.record_search)
         sources.addWidget(self.records, 3)
         sources.addWidget(self.cow)
+        sources.addWidget(self.identity_label)
         sources.addWidget(self.data_category)
         sources.addWidget(self._heading("视角 · 勾选并拖动排序"))
         sources.addWidget(self.cameras, 2)
@@ -565,13 +566,14 @@ class MainWindow(ControllerWindow):
     def quick_help(self):
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.information(self, "逐份标注 · 快速开始",
-            "1. 文件 → 打开数据工程：先清点文件，不全量解码。\n"
-            "2. 素材列表选择一份九轴：按实际采集时间检索多视角录像。\n"
-            "3. 核对同步、牛号，观察录像并标注；保存不会修改原始文件。\n"
-            "4. 点击「完成本份」：下一份 / 保存退出；没做完则暂存。\n"
-            "5. 重开工程恢复未完成位置；已完成记录仍可从列表回看。\n\n"
+            "1. 新数据先进入「数据整理」：选择采集类别，检查命名、审查并按日期归类。\n"
+            "   九轴目录：完整设备编号-牛耳标号-现场记号；同设备跨日期复用分别保留。\n"
+            "2. 文件 → 打开工程：已有工程可直接打开；选择九轴后自动检索对应录像。\n"
+            "3. 核对设备、牛耳标、现场记号及时间同步，再观察录像并标注。\n"
+            "4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n"
+            "5. 复核后在「文件 → 导出」输出完整成果、所选片段或训练数据。\n\n"
             "未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n"
-            "未检索不等于无录像。未找到时可用「工具 → 素材 → 继续扩大检索」。\n"
+            "未检索不等于无录像。未找到时可用「工具 → 录像索引 → 扩大当前检索」。\n"
             "更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。")
 
     def toggle_events(self):
