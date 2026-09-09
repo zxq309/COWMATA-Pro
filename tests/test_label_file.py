@@ -52,6 +52,19 @@ def document(source, **kw):
     return build_label_file(work, motion, root, rows, {"selected_cameras": ["A"]}, **kw)
 
 
+def test_collection_category_survives_full_and_snippet_label_files(source, tmp_path):
+    root, motion, work, rows = source
+    work.set_category("estrus")
+    for selection in (None, (40, 360)):
+        output = tmp_path / ("full.json" if selection is None else "snippet.json")
+        doc = build_label_file(work, motion, root, rows, {}, selection=selection)
+        assert doc["dataset_category"] == "estrus"
+        assert doc["dataset_category_label"] == "发情"
+        save_label_file(output, doc)
+        restored = read_label_file(output)
+        assert restored["work"]["project"]["dataset_category"] == "estrus"
+
+
 def test_one_file_flat_roundtrip_and_no_source_writes(source, tmp_path):
     root, motion, work, _ = source
     before = {p: digest_file(p) for p in root.rglob("*") if p.is_file()}

@@ -246,6 +246,14 @@ class MainWindow(QMainWindow):
         self.cow.setPlaceholderText("本记录牛号（人工确认）")
         self.cow.editingFinished.connect(self.set_cow)
         sidebar.addWidget(self.cow)
+        from .data_category import CATEGORIES
+        self.data_category = QComboBox()
+        self.data_category.addItem("数据类别：未设置", "")
+        for code, label in CATEGORIES.items():
+            self.data_category.addItem(label, code)
+        self.data_category.setToolTip("本记录的数据类别，随标签保存；不限制可标注的行为。")
+        self.data_category.currentIndexChanged.connect(self.set_data_category)
+        sidebar.addWidget(self.data_category)
         sidebar.addWidget(QLabel("勾选 1–8 个视角 · 拖动调整顺序"))
         self.cameras = QListWidget()
         self.cameras.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
@@ -666,6 +674,15 @@ class MainWindow(QMainWindow):
         self.retired = [(w, c) for w, c in self.retired if w is not worker]
 
     def open_project(self, root, *, preferred_json=None):
+        from .dataset_access import ensure_available
+        if getattr(self, "_organization_pausing", False):
+            self.tell("正在保存并暂停工程，请稍候再打开")
+            return
+        try:
+            ensure_available([root])
+        except OSError as exc:
+            self.tell(str(exc))
+            return
         self.save_current()
         if self.dirty and self.catalog and not self.catalog.readonly:
             return
@@ -720,6 +737,106 @@ class MainWindow(QMainWindow):
             self.worker.request()
             self.tell("已请求重新核对。正在复制的文件仍需通过稳定性和可读性检查，不会强行加载。")
 
+    def open_organization(self, tab=0):
+        from .organization_ui import OrganizationWindow
+        if getattr(self, "_organization_window", None) is None:
+            self._organization_window = OrganizationWindow(self)
+        self._organization_window.tabs.setCurrentIndex(tab)
+        self._organization_window.show()
+        self._organization_window.raise_()
+
+    def pause_for_organization(self, finished):
+        if not self.catalog or getattr(self, "_organization_pausing", False):
+            finished("当前没有需要暂停的工程")
+            return
+        if self._export_running or self._candidate_window is not None and self._candidate_window.running:
+            finished("请先完成当前导出或模型任务，再暂停工程")
+            return
+        self._organization_pausing = True
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event, Thread
+
+        from .dataset_access import overlaps
+        # Stop new frame requests, then drain even jobs superseded by an earlier
+        # seek. Pool shutdown waits in a helper, never on the Qt event thread.
+        self.board.play(False)
+        self.board.generation += 1
+        self.board._closing = True
+        self.board.timer.stop()
+        self.board.control_timer.stop()
+        drained = Event()
+
+        def drain_frames():
+            self.board.frame_pool.shutdown(wait=True, cancel_futures=True)
+            drained.set()
+        Thread(target=drain_frames, name="organization-frame-release", daemon=True).start()
+        histories = [h for h in self._history_windows if any(
+            overlaps(self.catalog.root, p) for lease in getattr(h, "source_leases", []) for p in lease.paths)]
+        for history in histories:
+            history.dispose()
+        self.save_timer.stop()
+        self.centralWidget().setEnabled(False)
+        self.menuBar().setEnabled(False)
+        # Wait for any earlier autosave before submitting this final snapshot.
+        save_submitted = False
+        closing_engines = None
+        if self.worker:
+            self.worker.cancel()
+
+        def poll():
+            nonlocal save_submitted, closing_engines
+            message = None
+            pending = self.snapshot_writer.pending
+            if pending is not None and not pending.done() or self.worker and self.worker.thread.is_alive() or not drained.is_set() or any(h.source_leases for h in histories):
+                QTimer.singleShot(80, poll)
+                return
+            try:
+                self.snapshot_writer.poll()
+                if not save_submitted:
+                    save_submitted = True
+                    self.save_current(background=True)
+                    QTimer.singleShot(80, poll)
+                    return
+                if self.dirty and not self.catalog.readonly:
+                    raise OSError("工程尚未成功保存，请处理保存错误后重试")
+                if closing_engines is None:
+                    closing_engines = [tile.engine for tile in self.board.pool if tile.engine]
+                    for engine in closing_engines:
+                        engine.close()
+                if any(getattr(engine, "thread_owner", None) and engine.thread_owner.isRunning() for engine in closing_engines):
+                    QTimer.singleShot(80, poll)
+                    return
+                for tile in self.board.pool:
+                    if tile.engine:
+                        tile.engine = None
+                    tile.pending = None
+                    tile.interval = None
+                    tile.asset_id = None
+                self._retire_project()
+                self.rows = []
+                self.current_row = self.motion = self.work = None
+                self.plot.clear_data()
+                self.imu_position.set_clock(None)
+                self.devices.clear()
+                self.records.clear()
+                self.root_label.setText("工程已保存并暂停，可进行数据整理")
+                message = "工程已保存并暂停，文件已释放。现在可执行整理，完成后重新打开工程。"
+            except (OSError, ValueError) as exc:
+                message = "暂停失败，工程保留：" + str(exc)
+            finally:
+                if message is not None:
+                    self.board.frame_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="precise-frame")
+                    self.board._closing = False
+                    self.board.frame_jobs = []
+                    self.board.timer.start()
+                    self.board.control_timer.start()
+                    self._organization_pausing = False
+                    self.centralWidget().setEnabled(True)
+                    self.menuBar().setEnabled(True)
+                    self.save_timer.start()
+                    finished(message)
+        QTimer.singleShot(0, poll)
+
     def accept_index_result(self, result):
         if result.get('motion') is not None:
             self.motion_cache[result['asset_id']] = result['motion']
@@ -737,7 +854,7 @@ class MainWindow(QMainWindow):
         self.check_active_sources()
 
     def scan_completed(self, result):
-        if self._closed or self._closing_requested or not self.catalog:
+        if self._closed or self._closing_requested or getattr(self, "_organization_pausing", False) or not self.catalog:
             return
         if result is not None:
             self._last_scan_complete = result.complete
@@ -1121,6 +1238,18 @@ class MainWindow(QMainWindow):
             self.motion_cache.popitem(last=False)
         raw = read_json(self.catalog.work_path(row["asset_id"]), None)
         self.work = SessionWork.from_dict(raw) if raw else SessionWork(row["asset_id"])
+        from .data_category import read_context
+        if not self.work.project.extras.get("dataset_category"):
+            try:
+                context = read_context(self.catalog.root, row["path"])
+                if context:
+                    self.work.set_category(context["dataset_category"], context=context)
+            except (OSError, ValueError) as exc:
+                self.tell("数据类别读取失败，请人工核对：" + str(exc))
+        self.data_category.blockSignals(True)
+        self.data_category.setCurrentIndex(max(0, self.data_category.findData(self.work.project.extras.get("dataset_category", ""))))
+        self.data_category.setEnabled(not self.catalog.readonly)
+        self.data_category.blockSignals(False)
         if not follow:
             profile = self.settings.get("device_profiles", {}).get(str(motion.device), {})
             preferences = profile.get("views", self.settings.get("device_views", {}).get(str(motion.device)))
@@ -1185,6 +1314,19 @@ class MainWindow(QMainWindow):
                        "新记录；切换时自动保存并保留为未完成。"))
         self.dirty = True
         self.update_coverage(force=True)
+
+    def set_data_category(self):
+        code = self.data_category.currentData()
+        if not code and self.work:
+            self.data_category.blockSignals(True)
+            self.data_category.setCurrentIndex(max(0, self.data_category.findData(self.work.project.extras.get("dataset_category", ""))))
+            self.data_category.blockSignals(False)
+            return
+        if self.work and self.catalog and not self.catalog.readonly and code:
+            self.work.checkpoint()
+            self.work.set_category(code, context={"assigned_by": "manual_record_review"})
+            self.dirty = True
+            self.save_current(background=True)
 
     def set_cow(self):
         if self.work and not self.catalog.readonly:
@@ -1789,6 +1931,9 @@ class MainWindow(QMainWindow):
 
     def undo(self, redo=False):
         if self.writable_work() and self.work.undo_once(redo=redo):
+            self.data_category.blockSignals(True)
+            self.data_category.setCurrentIndex(max(0, self.data_category.findData(self.work.project.extras.get("dataset_category", ""))))
+            self.data_category.blockSignals(False)
             self.refresh_events()
             self.update_alignment_text()
             self.dirty = True

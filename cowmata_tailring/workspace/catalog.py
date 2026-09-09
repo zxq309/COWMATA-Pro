@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .dataset_access import DatasetLease
 from .storage import ProjectLock, atomic_json, read_json
 
 META_DIR = "标注工程"
@@ -100,7 +101,7 @@ class Catalog:
     """
 
     def __init__(self, root: Path | str, *, stability_seconds: float = 3.0,
-                 load_session: bool = False, meta_path: Path | None = None):
+                 load_session: bool = False, meta_path: Path | None = None, organization_owner=None):
         self.root = Path(root).resolve(strict=True)
         if not self.root.is_dir():
             raise ValueError("请选择工程文件夹")
@@ -108,8 +109,13 @@ class Catalog:
         if self.meta.is_symlink() or getattr(self.meta, "is_junction", lambda: False)():
             raise ValueError("标注工程目录不能是指向其他位置的链接")
         new = not self.meta.exists()
-        self.meta.mkdir(exist_ok=True)
-        self.lock = ProjectLock(self.meta / "writer.lock")
+        self.source_lease = DatasetLease([self.root], owner=organization_owner)
+        try:
+            self.meta.mkdir(exist_ok=True)
+            self.lock = ProjectLock(self.meta / "writer.lock")
+        except Exception:
+            self.source_lease.close()
+            raise
         self.readonly = not self.lock.acquired
         self.stability_seconds = stability_seconds
         self.mutex = threading.RLock()
@@ -125,6 +131,7 @@ class Catalog:
             if getattr(self, "db", None):
                 self.db.close()
             self.lock.close()
+            self.source_lease.close()
             self._cleanup_pending()
             raise
 
@@ -200,6 +207,7 @@ class Catalog:
             self.db.close()
             self.lock.close()
             self._cleanup_pending()
+            self.source_lease.close()
 
     def finish_load(self):
         """Publish a usable project; failed new loads remain disposable."""

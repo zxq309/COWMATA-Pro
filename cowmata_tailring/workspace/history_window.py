@@ -30,9 +30,10 @@ from cowmata_tailring.ui.widgets import PlotSeries
 
 from .catalog import file_stamp
 from .clocks import wall_text
+from .dataset_access import DatasetLease
 from .evidence import context_matches
 from .evidence_ui import EvidenceGallery
-from .label_file import contained, load_history
+from .label_file import contained, load_history, read_label_file
 from .materials import GLASS_STYLE, FrostedCanvas, apply_mica
 from .presentation import PresentationVideoBoard
 from .signal_panel import SignalPanel
@@ -50,6 +51,7 @@ class HistoryWindow(QMainWindow):
         self.cancellation = threading.Event()
         self.loader = ThreadPoolExecutor(max_workers=1, thread_name_prefix="annotation-history")
         self.future = None
+        self.source_leases = []
         self.cache = tempfile.TemporaryDirectory(prefix="cowmata-history-")
         self.setWindowTitle("COWMATA · 历史标注回看（只读） · " + self.path.name)
         self.resize(1400, 900)
@@ -158,7 +160,22 @@ class HistoryWindow(QMainWindow):
         self.play_button.setEnabled(False)
         self.relink.setEnabled(False)
         self.archive_link.setEnabled(False)
-        self.future = self.loader.submit(load_history, self.path, root, cancelled=self.cancellation.is_set)
+        cancellation = self.cancellation
+        path = self.path
+
+        def guarded_load():
+            hint = read_label_file(path)["source"].get("project_root_hint", "")
+            selected = root or (hint if hint and Path(hint).is_dir() else None)
+            lease = DatasetLease([selected]) if selected else None
+            if lease:
+                self.source_leases.append(lease)
+            try:
+                return load_history(path, root, cancelled=cancellation.is_set)
+            except Exception:
+                if lease:
+                    lease.close()
+                raise
+        self.future = self.loader.submit(guarded_load)
 
     def choose_root(self):
         root = QFileDialog.getExistingDirectory(self, "选择包含原始九轴与录像的数据工程")
@@ -355,6 +372,16 @@ class HistoryWindow(QMainWindow):
         self.source_check.stop()
         self.board.close()
         self.loader.shutdown(wait=False, cancel_futures=True)
+        def release_sources():
+            self.loader.shutdown(wait=True, cancel_futures=True)
+            self.board.frame_pool.shutdown(wait=True, cancel_futures=True)
+            for tile in self.board.pool:
+                if tile.engine and getattr(tile.engine, "thread_owner", None):
+                    tile.engine.thread_owner.wait()
+            for lease in self.source_leases:
+                lease.close()
+            self.source_leases.clear()
+        threading.Thread(target=release_sources, name="history-release", daemon=True).start()
         # VLC may retain cache handles until process teardown on surveillance
         # PS. No source files or human work are touched by this temporary cache.
         try:

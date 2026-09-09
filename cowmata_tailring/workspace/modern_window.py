@@ -123,6 +123,10 @@ class MainWindow(ControllerWindow):
         self._organize_menus(files, materials, sync, edit, view, tools)
         tools.addMenu(materials)
         tools.addMenu(sync)
+        organize = self.menuBar().addMenu("数据整理(&D)")
+        self._action(organize, "数据审查…", lambda: self.open_organization(0))
+        self._action(organize, "数据归类…", lambda: self.open_organization(1))
+        self._action(organize, "数据异常报告…", lambda: self.open_organization(2))
         self._build_algorithm_menus()
         help_menu = self.menuBar().addMenu("帮助(&H)")
         from cowmata_tailring.ui.about import show_about
@@ -160,6 +164,7 @@ class MainWindow(ControllerWindow):
         sources.addWidget(self.record_search)
         sources.addWidget(self.records, 3)
         sources.addWidget(self.cow)
+        sources.addWidget(self.data_category)
         sources.addWidget(self._heading("视角 · 勾选并拖动排序"))
         sources.addWidget(self.cameras, 2)
         source_actions = QHBoxLayout()
@@ -665,6 +670,12 @@ class MainWindow(ControllerWindow):
         super().save_current(background=background)
 
     def closeEvent(self, event):
+        organize = getattr(self, "_organization_window", None)
+        if organize is not None and (organize.running or organize.pause_pending):
+            organize.cancel()
+            event.ignore()
+            QTimer.singleShot(150, self.close)
+            return
         panel = getattr(self, "algorithm_panel", None)
         if panel is not None and panel.running:
             panel.cancel()
@@ -674,6 +685,8 @@ class MainWindow(ControllerWindow):
         super().closeEvent(event)
         if event.isAccepted() and panel is not None:
             panel.timer.stop()
+        if event.isAccepted() and organize is not None:
+            organize.close()
 
     def playback_changed(self, playing):
         super().playback_changed(playing)

@@ -21,6 +21,20 @@ class SessionWork:
     progress: dict = field(default_factory=dict)
     undo: UndoStack = field(default_factory=lambda: UndoStack(limit=100), repr=False)
 
+    def set_category(self, code, *, context=None):
+        from .data_category import category_fields
+        fields = category_fields(code)
+        self.project.extras.update(fields)
+        if context is not None:
+            self.project.extras["collection_context"] = copy.deepcopy(context)
+        for item in self.drafts:
+            item.update(fields)
+        for event in self.project.events:
+            event.extras.update(fields)
+
+    def category_fields(self):
+        return {key: self.project.extras.get(key, "") for key in ("dataset_category", "dataset_category_label")}
+
     def to_dict(self):
         return {"schema": 1, "asset_id": self.asset_id, "project": self.project.to_dict(),
                 "clock": self.clock.to_dict(), "mapping_history": self.mapping_history,
@@ -70,7 +84,7 @@ class SessionWork:
         draft = {"id": uuid.uuid4().hex, "group_id": group_id or uuid.uuid4().hex,
                  "label_index": label_index, "reference_start": start, "reference_end": end,
                  "video_evidence": copy.deepcopy(evidence), "cow_id": self.project.cow_id,
-                 "confirmation": "video_draft", "note": note}
+                 "confirmation": "video_draft", "note": note, **self.category_fields()}
         self.drafts.append(draft)
         return draft
 
@@ -109,7 +123,7 @@ class SessionWork:
         previous = next((e for e in self.project.events if e.extras.get("draft_id") == draft_id), None)
         event = Event(previous.id if previous else self.project.next_event_id, draft["label_index"], start, end,
                       note=draft.get("note", ""), ev="video",
-                      extras={"confirmation": "confirmed", "mapping_revision": self.clock.revision,
+                      extras={**self.category_fields(), "confirmation": "confirmed", "mapping_revision": self.clock.revision,
                               "video_evidence": copy.deepcopy(evidence), "group_id": draft["group_id"],
                               "draft_id": draft_id, "asset_id": self.asset_id,
                               "reference_start": draft["reference_start"], "reference_end": draft["reference_end"]})

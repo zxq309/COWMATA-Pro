@@ -1074,7 +1074,7 @@ def build_events_csv(
         "type", "evidence", "annotator", "protocol",
         "t_start_rel_ms", "t_end_rel_ms",
         "reviewed_start_ms", "reviewed_end_ms", "duration_ms", "frame_start",
-        "frame_end", "t_start_wall_bj", "t_end_wall_bj", "note",
+        "frame_end", "t_start_wall_bj", "t_end_wall_bj", "note", "dataset_category", "dataset_category_label",
     ]
     rows: list[list[Any]] = [header]
     recording_start = project.source.get("createTime")
@@ -1121,6 +1121,8 @@ def build_events_csv(
                 start_wall,
                 end_wall,
                 event.note,
+                project.extras.get("dataset_category", ""),
+                project.extras.get("dataset_category_label", ""),
             ]
         )
     return _csv_text(rows)
@@ -1165,12 +1167,12 @@ def build_sample_multihot_csv(
     columns = [f"{label.layer}__{label.code}" for _, label in labels]
     header = [
         "sample_index", "sample_time_ms", "cow_id", "reviewed_any",
-        *columns,
+        *columns, "dataset_category", "dataset_category_label",
     ]
     rows = [
         [
             index, round(time, 3), project.cow_id, 0,
-            *([0] * len(columns)),
+            *([0] * len(columns)), project.extras.get("dataset_category", ""), project.extras.get("dataset_category_label", ""),
         ]
         for index, time in enumerate(times)
     ]
@@ -1244,6 +1246,8 @@ def build_meta(
         "project_version": PROJECT_VERSION,
         "session_id": _session_id(project, session_id),
         "cow_id": project.cow_id,
+        "dataset_category": project.extras.get("dataset_category", ""),
+        "dataset_category_label": project.extras.get("dataset_category_label", ""),
         "annotator": project.annotator,
         "protocol": project.protocol,
         "device": source.get("device", ""),

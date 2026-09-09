@@ -29,7 +29,7 @@ def window():
 
 def test_menu_order_and_one_to_one_codes(window):
     titles = [a.text().split("(")[0] for a in window.menuBar().actions()]
-    assert titles == ["文件", "编辑", "视图", "工具", "行为识别", "健康与繁殖", "帮助"]
+    assert titles == ["文件", "编辑", "视图", "工具", "数据整理", "行为识别", "健康与繁殖", "帮助"]
     assert len({s.code for s in BEHAVIORS}) == 8
     labels = {label["code"] for label in DEFAULT_LABELS}
     assert {s.code for s in BEHAVIORS} <= labels
