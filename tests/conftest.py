@@ -5,16 +5,30 @@ import time
 import pytest
 
 
+@pytest.fixture(scope="session")
+def qt_window_registry():
+    """Own Python wrappers until Qt-thread teardown, including cancelled closes."""
+    return {}
+
+
 @pytest.fixture(autouse=True)
-def save_when_test_closes_window(monkeypatch):
+def save_when_test_closes_window(monkeypatch, qt_window_registry):
     module = sys.modules.get("cowmata_tailring.workspace.window")
     if module is not None:
         monkeypatch.setattr(module.MainWindow, "confirm_close", lambda self: "save")
+        original_init = module.MainWindow.__init__
+
+        def tracked_init(window, *args, **kwargs):
+            original_init(window, *args, **kwargs)
+            qt_window_registry[id(window)] = window
+
+        monkeypatch.setattr(module.MainWindow, "__init__", tracked_init)
     yield
     if module is None:
         return
     from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QApplication
+    from shiboken6 import isValid
 
     app = QApplication.instance()
     if app is None:
@@ -25,9 +39,14 @@ def save_when_test_closes_window(monkeypatch):
     # or the next test allocates tmp_path and collects the previous Qt graph.
     # Windows deliberately kept open (for example Cancel/error tests) are not
     # asked to close here, and no save/discard choice is changed.
-    pending = [window for window in app.topLevelWidgets()
-               if isinstance(window, module.MainWindow)
-               and window._closing_requested and not window._closed]
+    # Keep the constructor's actual wrapper across the test-body boundary.
+    # Enumerating topLevelWidgets() here must not recreate wrappers for global
+    # native widget pointers while the final snapshot thread is still active.
+    for key, window in list(qt_window_registry.items()):
+        if not isValid(window):
+            del qt_window_registry[key]
+    pending = [window for window in qt_window_registry.values()
+               if window._closing_requested and not window._closed]
     deadline = time.monotonic() + 5
     while pending and time.monotonic() < deadline:
         app.processEvents()
@@ -48,9 +67,13 @@ def save_when_test_closes_window(monkeypatch):
     # tree. Leaving many closed windows to cyclic GC carried tens of thousands
     # of Qt objects into later tests. Dispose only completed requested closes;
     # windows deliberately left open after Cancel/error remain available.
-    for window in app.topLevelWidgets():
-        if isinstance(window, module.MainWindow) and window._closing_requested and window._closed:
-            window.deleteLater()
+    completed = [(key, window) for key, window in qt_window_registry.items()
+                 if window._closing_requested and window._closed]
+    for _, window in completed:
+        window.deleteLater()
     # processEvents() alone does not deliver DeferredDelete outside app.exec().
     # Explicitly drain it here while fixture monkeypatches are still valid.
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    for key, window in completed:
+        assert not isValid(window), "Completed test window was not destroyed on the Qt thread"
+        del qt_window_registry[key]
