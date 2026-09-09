@@ -1,6 +1,6 @@
 <div align="center">
 
-> **3.2.1 本地验证版 — 2026-09-09：** 修复大型嵌套数据工程默认视频空白与漫长扫描；单视角增加常驻进度条，改善倍速与跳转。切换记录自动保存和恢复位置，四种颜色区分进度；退出与完成本份时确认保存，重新打开可编辑、删除标签。见 [本版操作与实测](docs/release-321-validation.md)。本地安装包与免安装目录随本版交付，尚未发布至 Releases。
+> **3.2.1 — 2026-09-09：** 修复大型嵌套数据工程默认视频空白与漫长扫描；单视角增加常驻进度条，改善倍速与跳转。切换记录自动保存和恢复位置，四种颜色区分进度；退出与完成本份时确认保存，重新打开可编辑、删除标签。下载 [完整离线安装包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1)，查看 [发布说明](docs/release-321.md) 与 [发布前操作实测](docs/release-321-validation.md)。
 
 > **3.2.0 — 2026-09-09：** 官网绿色品牌界面与图标；新增单视角「行为识别」「健康与繁殖」入口，五类模型真实运行，未完成算法明确待接入。保留逐份加载、主路优先、断点续标和多人回传，精简离线包。见 [新手图文教程 PDF](docs/quick-start-illustrated.pdf)、[算法边界](docs/algorithm-inspection.md)、[本次验证](docs/release-320-validation.md)。下方旧录屏注明其版本。
 
@@ -15,7 +15,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/local_build-3.2.1-92C142)](docs/release-321-validation.md)
+[![Release](https://img.shields.io/badge/release-3.2.1-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)

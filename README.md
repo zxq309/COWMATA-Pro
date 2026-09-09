@@ -1,6 +1,6 @@
 <div align="center">
 
-> **3.2.1 local validation build — 2026-09-09:** fix default video selection and startup search in large nested projects. Add per-view seek bars and smoother rate changes/seeks, colored record progress, save prompts on exit/completion, and editable reopened labels. See [workflow and measured validation](docs/release-321-validation.md). Offline installer and portable directory are delivered locally; this build is not yet on Releases.
+> **3.2.1 — 2026-09-09:** fix default video selection and startup search in large nested projects. Add per-view seek bars and smoother rate changes/seeks, colored record progress, save prompts on exit/completion, and editable reopened labels. Download the [complete offline installer](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1); see [release notes](docs/release-321.md) and [pre-release workflow validation](docs/release-321-validation.md).
 
 > **3.2.0 — 2026-09-09:** official COWMATA green branding across the UI and Windows icons. New single-camera Behavior Recognition and Health & Reproduction menus, five real model integrations and explicit unavailable algorithms. Retain on-demand records, main-camera priority, resume and team returns; trim the offline package. See the [illustrated Chinese quick start](docs/quick-start-illustrated.pdf), [algorithm boundaries](docs/algorithm-inspection.md) and [validation](docs/release-320-validation.md). Historical recordings below retain their original version.
 
@@ -16,7 +16,7 @@
 **Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/local_build-3.2.1-92C142)](docs/release-321-validation.md)
+[![Release](https://img.shields.io/badge/release-3.2.1-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
