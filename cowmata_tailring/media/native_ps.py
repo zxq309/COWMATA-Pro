@@ -173,32 +173,35 @@ def _scan(data, start=0, stop=None, timezone_minutes=480, cancelled=None):
             "family": family, "codec": codec, "valid_end": end}
 
 
-def native_hint(path, *, timezone_minutes=480):
+def native_hint(path, *, timezone_minutes=480, cancelled=None):
     """Tiny header + reverse tail lookup. Routing only, never verified evidence."""
     path = Path(path)
     with path.open("rb") as stream:
         if stream.read(4) != PREFIX + b"\xba":
             return None
         with mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:
-            head = _scan(data, stop=min(len(data), 1024 * 1024), timezone_minutes=timezone_minutes)
+            head = _scan(data, stop=min(len(data), 1024 * 1024), timezone_minutes=timezone_minutes, cancelled=cancelled)
             if not head["anchors"]:
                 return None
             family = head["family"]
             marker = PREFIX + (b"\xbc" if family == "hikvision-hk1" else b"\xe0")
-            pos = data.rfind(marker)
+            tail_start = max(0, len(data) - 4 * 1024 * 1024)
+            pos = data.rfind(marker, tail_start)
             tail = None
             # A trailing accidental signature must not become a date. Bound
             # retries, require a valid enclosing pack and plausible continuity.
             for _ in range(8):
+                if cancelled and cancelled():
+                    raise InterruptedError("录像时间查找已取消")
                 if pos < 0:
                     break
                 pack = data.rfind(PREFIX + b"\xba", max(0, pos - 65536), pos)
                 if pack >= 0:
-                    candidate = _scan(data, pack, min(len(data), pack + 1024 * 1024), timezone_minutes)
+                    candidate = _scan(data, pack, min(len(data), pack + 1024 * 1024), timezone_minutes, cancelled)
                     if candidate["family"] == family and candidate["anchors"]:
                         tail = candidate
                         break
-                pos = data.rfind(marker, 0, pos)
+                pos = data.rfind(marker, tail_start, pos)
             first_pts, first_wall = head["anchors"][0]
             start = first_wall - (first_pts - head["frames"][0])
             end = None

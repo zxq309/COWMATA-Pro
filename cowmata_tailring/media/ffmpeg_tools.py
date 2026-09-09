@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -54,9 +53,11 @@ def find_ffmpeg() -> tuple[Path, Path]:
     return ffmpeg, ffprobe
 
 
-def probe_media(path: str | os.PathLike[str]) -> dict[str, Any]:
+def probe_media(path: str | os.PathLike[str], *, cancelled=None) -> dict[str, Any]:
+    from .subprocess_tools import run_cancellable
+
     _ffmpeg, ffprobe = find_ffmpeg()
-    process = subprocess.run(
+    process = run_cancellable(
         [
             str(ffprobe),
             "-v",
@@ -69,17 +70,12 @@ def probe_media(path: str | os.PathLike[str]) -> dict[str, Any]:
             "json",
             os.fspath(path),
         ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
         timeout=30,
-        check=False,
-        creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0)),
+        cancelled=cancelled,
     )
     if process.returncode != 0:
         raise FFmpegToolError(
-            process.stderr.strip() or "FFprobe 无法识别该文件"
+            process.stderr.decode("utf-8", "replace").strip() or "FFprobe 无法识别该文件"
         )
     return json.loads(process.stdout)
 

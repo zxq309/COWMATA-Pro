@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QStackedWidget,
     QStyle,
     QToolButton,
@@ -124,6 +125,38 @@ class PausedFrame(QLabel):
         self.clicked.emit()
 
 
+class ClipSeekSlider(QSlider):
+    """Click or drag anywhere; decoding happens only when the gesture ends."""
+
+    def _at_pointer(self, event):
+        margin = self.style().pixelMetric(QStyle.PixelMetric.PM_SliderLength) / 2
+        fraction = max(0, min(1, (event.position().x() - margin) / max(1, self.width() - 2 * margin)))
+        self.setSliderPosition(round(self.minimum() + fraction * (self.maximum() - self.minimum())))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setSliderDown(True)
+            self._at_pointer(event)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.isSliderDown():
+            self._at_pointer(event)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.isSliderDown():
+            self._at_pointer(event)
+            self.setSliderDown(False)
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+
 class VideoTile(QFrame):
     activated = Signal(object)
     enlarged = Signal(object)
@@ -212,6 +245,53 @@ class VideoTile(QFrame):
         self.message.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.message.setFixedHeight(22)
         layout.addWidget(self.message)
+        timeline_bar = QHBoxLayout()
+        timeline_bar.setContentsMargins(3, 0, 3, 0)
+        self.seek_slider = ClipSeekSlider(Qt.Orientation.Horizontal)
+        self.seek_slider.setRange(0, 1000000)
+        self.seek_slider.setEnabled(False)
+        self.seek_slider.setToolTip("拖动到本段录像的位置；松开后定位，九轴和其他视角一起联动")
+        self.seek_slider.setAccessibleName("本视角录像进度")
+        self.seek_clock = QLabel("--:-- / --:--")
+        self.seek_clock.setStyleSheet("color:#b8cecc; font-size:11px")
+        self.seek_slider.sliderReleased.connect(self._commit_seek)
+        self.seek_slider.sliderMoved.connect(self._preview_seek)
+        self.seek_slider.actionTriggered.connect(self._seek_action)
+        self.seek_bounds = None
+        timeline_bar.addWidget(self.seek_slider, 1)
+        timeline_bar.addWidget(self.seek_clock)
+        layout.addLayout(timeline_bar)
+
+    @staticmethod
+    def _duration_text(ms):
+        seconds = max(0, int(ms / 1000))
+        return f"{seconds // 3600:02}:{seconds // 60 % 60:02}:{seconds % 60:02}"
+
+    def _preview_seek(self, value):
+        if self.seek_bounds:
+            duration = self.seek_bounds[1] - self.seek_bounds[0]
+            self.seek_clock.setText(f"{self._duration_text(duration * value / 1000000)} / {self._duration_text(duration)}")
+
+    def _commit_seek(self):
+        if self.seek_bounds:
+            start, end = self.seek_bounds
+            target = start + (end - start) * self.seek_slider.sliderPosition() / 1000000
+            self.transportRequested.emit(self, "seek_absolute", min(target, end - 1))
+
+    def _seek_action(self, action):
+        if not self.seek_slider.isSliderDown():
+            # Keyboard/page actions commit once after Qt updates the position.
+            QTimer.singleShot(0, self._commit_seek)
+
+    def update_seek(self, start, end, reference_ms):
+        if self.seek_slider.isSliderDown():
+            return  # Freeze this clip's bounds until the gesture is committed.
+        self.seek_bounds = (start, end) if end > start else None
+        self.seek_slider.setEnabled(self.seek_bounds is not None)
+        if self.seek_bounds:
+            fraction = max(0, min(1, (reference_ms - start) / (end - start)))
+            self.seek_slider.setValue(round(fraction * 1000000))
+            self._preview_seek(self.seek_slider.value())
 
     def status(self, text, *, good=False):
         if self.message.text() != text:
@@ -355,6 +435,13 @@ class VideoBoard(QWidget):
         for camera, tile in self.tiles.items():
             preview = hasattr(self, "is_preview") and self.is_preview(camera)
             tile.update_controls(self.playing and not preview, self.rate, self.expanded == camera)
+            spans = [s for s in self.timeline._groups.get(camera, []) if s.asset_id == tile.asset_id]
+            if spans:
+                start = self.timeline.reference_time(camera, min(s.wall_start for s in spans))
+                end = self.timeline.reference_time(camera, max(s.wall_end for s in spans))
+                tile.update_seek(start, end, self.reference_ms)
+            else:
+                tile.update_seek(0, 0, 0)
 
     def transport(self, tile, command, value):
         if tile.camera not in self.selected:
@@ -368,6 +455,8 @@ class VideoBoard(QWidget):
             self.play(not (self.playing and was_active))
         elif command == "seek":
             self.seek(self.reference_ms + value)
+        elif command == "seek_absolute":
+            self.seek(value)
         elif command == "rate":
             self.set_rate(value)
         self._update_controls()
@@ -544,13 +633,14 @@ class VideoBoard(QWidget):
                 tile.stack.hide()
                 self._precise_request(tile, source_path, target)
                 return
-            if self.compatibility and self.playing and metadata.get("format") == "mpeg":
+            native = metadata.get("timeline", {}).get("native")
+            if (self.compatibility or native) and self.playing and metadata.get("format") == "mpeg":
                 cached = self.compatibility_cache.cached(interval.asset_id)
                 if cached is None:
                     self._compatibility_request(tile, interval, target, source_path, metadata)
                     return
                 path = cached.resolve()
-                self.metadata[str(path)] = metadata
+                self.metadata[str(path)] = self.compatibility_cache.playback_metadata(interval.asset_id, metadata)
             if tile.engine is None:
                 tile.engine = self.engine_factory(tile.surface, metadata=lambda p: self.metadata.get(str(Path(p))),
                                                   cache=self.catalog.meta / "cache", parent=tile,
@@ -688,7 +778,7 @@ class VideoBoard(QWidget):
             tile.status("画面暂未推进 / 缓冲中；当前不是同步实况")
             tile.ready = False
             return
-        if self.playing and abs(drift) > 900 * max(1, self.rate) and now - tile.last_seek_at > 3:
+        if self.playing and tile.camera != self.main_camera and abs(drift) > 900 * max(1, self.rate) and now - tile.last_seek_at > 3:
             match = self.timeline.locate(tile.camera, self.reference_ms, prefer=tile.asset_id)
             if match:
                 self._request(tile, *match)
@@ -710,7 +800,16 @@ class VideoBoard(QWidget):
                     if t.ready and t.engine:
                         t.engine.pause(blocked)
             if not blocked:
-                self.reference_ms += elapsed * 1000 * self.rate
+                if main and main.ready and main.engine and main.interval:
+                    # The actual main decoder drives annotation time. A 4x
+                    # request is not proof of 4x throughput; chasing a synthetic
+                    # clock caused repeated seeks and visible playback stalls.
+                    current = main.engine.get_time_ms()
+                    self.reference_ms = self.timeline.reference_time(main.camera, main.interval.wall_at(current))
+                    if main.engine.current_status == "ended" and current >= main.interval.media_end - 1000:
+                        self.reference_ms = self.timeline.reference_time(main.camera, main.interval.wall_end) + 1
+                else:
+                    self.reference_ms += elapsed * 1000 * self.rate
             for camera, tile in list(self.tiles.items()):
                 self._position(camera, tile)
             if not any(t.interval for t in self.tiles.values()) and self.tiles:
@@ -822,7 +921,7 @@ class VideoBoard(QWidget):
         generation, started = self.generation, time.perf_counter()
         tile.pending = {"asset": interval.asset_id, "generation": generation, "target": target,
                         "phase": "compat_cache", "start": started}
-        tile.status("创建可选兼容缓存 · 无重编码 · 原片不变 · 容量上限 8 GiB")
+        tile.status("正在准备本段流畅播放 · 无重编码 · 首次完成后复用")
         cache = self.compatibility_cache
         pinned = [t.engine._path for t in self.pool if t.engine and t.engine._path]
 

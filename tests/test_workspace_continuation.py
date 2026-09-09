@@ -226,7 +226,7 @@ def test_first_record_load_does_not_overwrite_saved_view_preferences(tmp_path, a
     window.dirty = True  # Reference-clock setup emits a change before IMU load.
     calls = []
 
-    def save():
+    def save(**_):
         calls.append("saved")
         window.dirty = False
 

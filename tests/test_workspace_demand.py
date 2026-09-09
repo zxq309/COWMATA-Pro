@@ -205,7 +205,7 @@ def test_completion_is_explicit_and_drafts_are_not_promoted(window, monkeypatch)
     window.source_available = True
     window.work.add_draft(0, 100, 200, [])
     monkeypatch.setattr(QMessageBox, "exec", lambda dialog: None)
-    monkeypatch.setattr(QMessageBox, "clickedButton", lambda dialog: next(b for b in dialog.buttons() if b.text() == "已完成，下一份"))
+    monkeypatch.setattr(QMessageBox, "clickedButton", lambda dialog: next(b for b in dialog.buttons() if b.text() == "保存并完成，下一份"))
     monkeypatch.setattr(window, "next_record", lambda: None)
     window.finish_record()
     assert window.work.progress["status"] == "done"
@@ -269,7 +269,7 @@ def test_routing_cache_is_rechecked_by_full_recognizer(tmp_path, monkeypatch):
         return {"success":True,"wall_ms":100000+target,"roi":[0,0,.8,.2],"metadata":{}}
     inspect.ocr = SimpleNamespace(recognize=strong, signature="test")
     timeline = MediaTimelineIndex("synthetic",1,0,0,100,(TimelineSegment(0,10000,0,10000),),())
-    monkeypatch.setattr(probe,"probe_media",lambda _:{"streams":[{"codec_type":"video","width":640,"height":360}]})
+    monkeypatch.setattr(probe,"probe_media",lambda _, **kw:{"streams":[{"codec_type":"video","width":640,"height":360}]})
     monkeypatch.setattr(probe,"find_ffmpeg",lambda:("ffmpeg","ffprobe"))
     monkeypatch.setattr(probe,"probe_media_timeline",lambda *_a,**_kw:timeline)
     monkeypatch.setattr(probe,"extract_frame",lambda _p,target,*_a,**_kw:(frame,target))

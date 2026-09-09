@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 
 import pytest
 
@@ -79,7 +80,12 @@ def test_window_autosave_detaches_work_and_closes_with_latest_changes(tmp_path, 
     assert captured[0][1]["project"]["cow_id"] == "before"
     release.set()
     path = window.catalog.work_path(window.work.asset_id)
-    assert window.close()
+    window.close()
+    deadline = time.monotonic() + 3
+    while not window._closed and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(.01)
+    assert window._closed
     assert json.loads(path.read_text(encoding="utf-8"))["project"]["cow_id"] == "after"
     assert not window.dirty
     window.catalog.close()
@@ -104,9 +110,17 @@ def test_failed_save_refuses_window_close(tmp_path, monkeypatch):
     monkeypatch.setattr(window.snapshot_writer, "write", broken)
     window.dirty = True
     window.auto_save()
+    deadline = time.monotonic() + 3
+    while not window.snapshot_writer.pending.done() and time.monotonic() < deadline:
+        time.sleep(.01)
     assert not window.close()
     assert not window._closed and window.dirty
     monkeypatch.setattr(window.snapshot_writer, "write", actual)
-    assert window.close()
+    window.close()
+    deadline = time.monotonic() + 3
+    while not window._closed and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(.01)
+    assert window._closed
     window.catalog.close()
     app.processEvents()

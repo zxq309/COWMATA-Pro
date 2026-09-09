@@ -172,6 +172,7 @@ class ThreadedWorkspaceEngine(QObject):
         self._path = str(Path(path).resolve())
         metadata = copy.deepcopy(self.metadata_provider(Path(self._path)) or {})
         self._native_hint = metadata.get('timeline',{}).get('native')
+        self._force_avformat = metadata.get('format') == 'mpeg' and not metadata.get('_normalized_playback')
         return self._send(path=self._path, metadata=metadata,
             generation=self.shared['desired']['generation']+1, target=None, seek_serial=0,playing=False)
 

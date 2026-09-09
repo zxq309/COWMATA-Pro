@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.2.1] — 2026-09-09 (local validation build)
+
+- Discover explicit view folders below nested data directories and keep camera identities stable across resolution changes. Preserve manually calibrated old view identities. Search native recording times sparsely around the selected IMU window; do not probe every video before showing the first matching original frame.
+- Automatically choose a covering view when saved choices are stale or unavailable, while respecting explicit deselection. Display a successful-load banner after the actual first frame arrives, and retain 500 complete status messages in a resizable, copyable log window.
+- Cancel scanning and video probes without blocking Qt during exit. Clean only owned temporary metadata from unsuccessful new loads; preserve successful projects, human work and unknown files. Retain a recovery marker until cleanup succeeds.
+- Add a permanent per-view progress bar with elapsed/total time. Coalesce drag requests until release, use the main decoder's actual clock, and avoid repeated corrective seeks on that main view. Native PS playback uses a bounded, validated stream-copy cache with its own timeline; exact paused frames still come from the original recording.
+- Distinguish active, unfinished, new and completed records by both text and color. Autosave on switching and restore the last position and labels. Confirm saving before closing and when completing a record. Saved labels remain editable/deletable after reopening; edits reopen completed records and require review, with undo preserved.
+- Build a clean offline package from reviewed source plus an existing matching component bundle. No dependency installation or changes to original data are required.
+
+See [3.2.1 workflow and validation](docs/release-321-validation.md).
+
 ## [3.2.0] — 2026-09-09
 
 - Align the desktop UI, installer, EXE, shortcuts and running-window icon with the official COWMATA green C favicon and wordmark. Preserve the website's green/blue accent palette, readable checked controls and optional glass effects. Notify Windows about this application's changed icons without resetting the global icon cache.

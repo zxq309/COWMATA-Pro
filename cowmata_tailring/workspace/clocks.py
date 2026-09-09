@@ -193,6 +193,7 @@ class VideoTimeline:
 
 
 def intervals_from_rows(rows: list[dict], camera_overrides: dict[str, str] | None = None):
+    from .demand import camera_name
     intervals = []
     overrides = camera_overrides or {}
     seen = set()
@@ -200,7 +201,7 @@ def intervals_from_rows(rows: list[dict], camera_overrides: dict[str, str] | Non
         if row["state"] not in {"ready", "review"} or not row["asset_id"]:
             continue
         metadata = row["metadata"]
-        camera = overrides.get(row["asset_id"], metadata.get("camera", "未分组"))
+        camera = camera_name(row, overrides)
         if (row["asset_id"], camera) in seen:
             continue
         seen.add((row["asset_id"], camera))

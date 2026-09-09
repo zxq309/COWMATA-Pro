@@ -24,7 +24,24 @@ def device_name(row):
 
 
 def camera_name(row, overrides=None):
-    return (overrides or {}).get(row.get("asset_id"), row["metadata"].get("camera")) or PurePosixPath(row["path"]).parts[0]
+    override = (overrides or {}).get(row.get("asset_id"))
+    if override:
+        return override
+    metadata = row["metadata"]
+    name = metadata.get("camera")
+    folder = camera_folder(row["path"])
+    # Structured resource folders are stable camera identities. Resolution and
+    # OSD placement may change within the same camera/card-copy batch.
+    if re.match(r"^视角\d", folder) and not metadata.get("manual_readings"):
+        if not name or re.fullmatch(r".+ · (?:\d+|None)×(?:\d+|None) · [a-z_]+", name):
+            return folder
+    return name or folder
+
+
+def camera_folder(relative):
+    parts = PurePosixPath(relative).parts
+    return next((p for p in parts[:-1] if re.match(r"^视角\d", p)),
+                parts[0] if len(parts) > 1 else "录像")
 
 
 def source_span(row, hints):
@@ -39,7 +56,7 @@ def source_span(row, hints):
 def reference_window(row, start, end, maps, overrides):
     mapping = maps.get(camera_name(row, overrides))
     if mapping is None and not row["metadata"].get("camera"):
-        prefix = PurePosixPath(row["path"]).parts[0] + " · "
+        prefix = camera_folder(row["path"]) + " · "
         matches = [value for name, value in maps.items() if name.startswith(prefix)]
         if len(matches) == 1:
             mapping = matches[0]

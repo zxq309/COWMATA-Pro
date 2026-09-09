@@ -25,6 +25,7 @@ from cowmata_tailring.media.timeline import (
 
 from .catalog import file_stamp
 from .clocks import wall_text
+from .demand import camera_folder
 from .ocr import TimestampOCR
 from .rapid_backend import TIMESTAMP_SIGNATURE
 from .storage import atomic_json, read_json
@@ -182,7 +183,7 @@ class SourceInspector:
 
     def video_hint(self, path: Path) -> dict:
         """Cheap routing OSD; never a verified interval or evidence identity."""
-        hint = native_hint(path, timezone_minutes=self.timezone_minutes)
+        hint = native_hint(path, timezone_minutes=self.timezone_minutes, cancelled=self.stop.is_set)
         if hint:
             return hint
         self.ocr = self.ocr or TimestampOCR()
@@ -285,11 +286,12 @@ class SourceInspector:
         if not verified:
             warnings.append("原生时间已读取，画面抽查未全部确认；仅供粗定位，需复核后保存证据")
         start = native["wall_start"]
-        folder = path.relative_to(self.root).parts[0] if len(path.relative_to(self.root).parts) > 1 else "录像"
+        folder = camera_folder(path.relative_to(self.root).as_posix())
         corner = "unknown"
         if saved_roi:
             corner = ("top" if (saved_roi[1]+saved_roi[3])/2 < .5 else "bottom") + ("_left" if (saved_roi[0]+saved_roi[2])/2 < .5 else "_right")
-        return {"camera": f"{folder} · {video.get('width')}×{video.get('height')} · {corner}",
+        camera = folder if re.match(r"^视角\d", folder) else f"{folder} · {video.get('width')}×{video.get('height')} · {corner}"
+        return {"camera": camera,
                 "width": video.get("width"), "height": video.get("height"), "codec": video.get("codec_name"),
                 "format": info.get("format", {}).get("format_name"), "header_duration": info.get("format", {}).get("duration"),
                 "duration_ms": duration, "timeline": timeline.to_dict(), "samples": samples,
@@ -305,7 +307,7 @@ class SourceInspector:
         correction = read_json(self.meta / "video_corrections" / (asset_id + ".json"), {})
         roi = roi or correction.get("roi")
         self.progress(f"校验数据包时间轴：{path.name}")
-        info = probe_media(path)
+        info = probe_media(path, cancelled=self.stop.is_set)
         video = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), None)
         if not video:
             raise ValueError("文件中没有可解码的视频流")
@@ -418,12 +420,12 @@ class SourceInspector:
             self.roi_hints[hint_key] = saved_roi
             atomic_json(self.meta / "ocr_profiles.json", self.roi_hints)
         relative = path.relative_to(self.root)
-        folder = relative.parts[0] if len(relative.parts) > 1 else "录像"
+        folder = camera_folder(relative.as_posix())
         # Folder is only a tentative grouping; separate visibly different layouts.
         corner = "unknown"
         if saved_roi:
             corner = ("top" if (saved_roi[1] + saved_roi[3]) / 2 < .5 else "bottom") + ("_left" if (saved_roi[0] + saved_roi[2]) / 2 < .5 else "_right")
-        camera = f"{folder} · {video.get('width')}×{video.get('height')} · {corner}"
+        camera = folder if re.match(r"^视角\d", folder) else f"{folder} · {video.get('width')}×{video.get('height')} · {corner}"
         valid = [s for s in samples if s.get("wall_ms") is not None]
         if not valid:
             warnings.append("时间戳识别失败：可浏览原片，需框选或输入人工读数")

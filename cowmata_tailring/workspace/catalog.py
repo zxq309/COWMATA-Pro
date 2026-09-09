@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -98,14 +99,36 @@ class Catalog:
     Missing source records and their human work are never deleted by a scan.
     """
 
-    def __init__(self, root: Path | str, *, stability_seconds: float = 3.0):
+    def __init__(self, root: Path | str, *, stability_seconds: float = 3.0,
+                 load_session: bool = False, meta_path: Path | None = None):
         self.root = Path(root).resolve(strict=True)
-        self.meta = self.root / META_DIR
+        if not self.root.is_dir():
+            raise ValueError("请选择工程文件夹")
+        self.meta = Path(meta_path).resolve() if meta_path else self.root / META_DIR
+        if self.meta.is_symlink() or getattr(self.meta, "is_junction", lambda: False)():
+            raise ValueError("标注工程目录不能是指向其他位置的链接")
+        new = not self.meta.exists()
         self.meta.mkdir(exist_ok=True)
         self.lock = ProjectLock(self.meta / "writer.lock")
         self.readonly = not self.lock.acquired
         self.stability_seconds = stability_seconds
         self.mutex = threading.RLock()
+        self.load_pending = False
+        try:
+            if load_session and not self.readonly:
+                marker = self.meta / ".load-pending.json"
+                if new:
+                    atomic_json(marker, {"owner": "cowmata-project-load-v1"})
+                self.load_pending = read_json(marker, {}).get("owner") == "cowmata-project-load-v1"
+            self._open_index()
+        except Exception:
+            if getattr(self, "db", None):
+                self.db.close()
+            self.lock.close()
+            self._cleanup_pending()
+            raise
+
+    def _open_index(self):
         self.recovered_index = None
         index_path = self.meta / "index.sqlite"
         self.db = sqlite3.connect(index_path, timeout=10, check_same_thread=False)
@@ -176,6 +199,49 @@ class Catalog:
                 return
             self.db.close()
             self.lock.close()
+            self._cleanup_pending()
+
+    def finish_load(self):
+        """Publish a usable project; failed new loads remain disposable."""
+        if self.load_pending and not self.readonly:
+            (self.meta / ".load-pending.json").unlink(missing_ok=True)
+            self.load_pending = False
+
+    def _cleanup_pending(self):
+        if not self.load_pending or self.readonly:
+            return
+        root = self.meta.resolve()
+        # Human work and unknown files are never classified as load debris.
+        if any((root / name).exists() for name in ("annotations", "video_corrections", "evidence", "exports")):
+            return
+        owned = {"index.sqlite", "index.sqlite-journal", "index.sqlite-wal", "index.sqlite-shm",
+                 "writer.lock", "ocr_profiles.json", "ocr_profiles.json.bak"}
+        failed = False
+        for folder in (root / "previews", root):
+            if not folder.exists() or folder.is_symlink() or getattr(folder, "is_junction", lambda: False)():
+                continue
+            for path in folder.iterdir():
+                if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
+                    continue
+                generated = (bool(re.fullmatch(r"[0-9a-f]{64}\.jpg", path.name)) if folder != root else
+                             path.name in owned or bool(re.fullmatch(r"ocr_profiles\.json\..+\.tmp", path.name)))
+                if generated:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        failed = True
+            try:
+                folder.rmdir()  # Empty directories only; never recursive deletion.
+            except OSError:
+                pass
+        if not failed:
+            try:
+                # Delete the recovery marker last, so an interrupted cleanup
+                # can be retried after a file lock or process crash clears.
+                (root / ".load-pending.json").unlink(missing_ok=True)
+                root.rmdir()
+            except OSError:
+                pass
 
     def settings(self) -> dict:
         return read_json(self.meta / "project.json", {})
@@ -195,7 +261,8 @@ class Catalog:
             raise ValueError("素材路径越出工程目录")
         return path
 
-    def scan(self, *, now: float | None = None, audit: bool = False, fast: bool = False) -> ScanResult:
+    def scan(self, *, now: float | None = None, audit: bool = False, fast: bool = False,
+             cancelled=None, progress=None) -> ScanResult:
         self._write_check()
         now = time.time() if now is None else now
         result = ScanResult()
@@ -211,11 +278,15 @@ class Catalog:
             error(OSError("工程根目录暂不可访问；保留原索引，不判定文件删除"))
             return result
         for folder, dirs, files in os.walk(self.root, onerror=error, followlinks=False):
+            if cancelled and cancelled():
+                raise InterruptedError("目录清点已取消")
             dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS
                        and not (Path(folder) / d).is_symlink()
                        and not getattr(Path(folder) / d, "is_junction", lambda: False)()]
             result.directories.append(str(folder))
             for filename in files:
+                if cancelled and cancelled():
+                    raise InterruptedError("目录清点已取消")
                 path = Path(folder) / filename
                 suffix = path.suffix.lower()
                 kind = "imu" if suffix == ".json" else "video" if suffix in VIDEO_SUFFIXES else None
@@ -235,16 +306,20 @@ class Catalog:
                         # receive full SHA-256 before publishing evidence.
                         fingerprint = "stat:"
                     else:
-                        fingerprint = ("full:" if audit else "quick:") + digest_file(path, quick=not audit)
+                        fingerprint = ("full:" if audit else "quick:") + digest_file(path, quick=not audit, cancelled=cancelled)
                     after = file_stamp(path)
                     if before != after:
                         # Keep the file visible but incapable of passing stability.
                         after += ":changing"
                     found[relative] = kind, after, fingerprint
+                    if progress and len(found) % 250 == 0:
+                        progress(f"正在清点工程目录 · 已发现 {len(found)} 份素材")
                 except OSError as exc:
                     # A file disappearing mid-enumeration is not a complete scan.
                     error(exc)
         result.inspected = len(found)
+        if cancelled and cancelled():
+            raise InterruptedError("目录清点已取消")
         with self.mutex, self.db:
             old = {r["path"]: dict(r) for r in self.db.execute("SELECT * FROM locations")}
             for relative, (kind, stamp, fingerprint) in found.items():

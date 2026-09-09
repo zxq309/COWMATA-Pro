@@ -34,6 +34,8 @@ class SessionWork:
 
     def checkpoint(self):
         self.undo.push(self.to_dict())
+        if self.progress.get("status") == "done":
+            self.progress["status"] = "in_progress"
 
     def restore(self, data):
         other = self.from_dict(data)

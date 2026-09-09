@@ -44,8 +44,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--no-zip", action="store_true")
+    parser.add_argument("--components", type=Path, help="Existing matching offline package supplying private runtimes and model weights")
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[1]
+    components = args.components.resolve() if args.components else source
+
+    def input_path(relative):
+        candidate = source / relative
+        return candidate if candidate.exists() else components / relative
     destination = Path(args.out).resolve()
     if destination.exists():
         raise SystemExit("Output already exists; choose a fresh distribution directory.")
@@ -62,12 +68,12 @@ def main():
                 "vendor/vlc/libvlc.dll", "vendor/ffmpeg/bin/ffmpeg.exe", "vendor/ffmpeg/bin/ffprobe.exe"]
     required += ["model_runtime_20260906/python.exe", "assets/event_models/20260906/pack.json"]
     for relative in required:
-        if not (source / relative).is_file():
+        if not input_path(relative).is_file():
             raise SystemExit("Missing portable input: " + relative)
     model_root = source / "assets" / "ocr" / "ppocrv6_medium"
     registry = json.loads((model_root / "models.json").read_text(encoding="utf-8"))
     for item in registry["files"].values():
-        with (model_root / item["name"]).open("rb") as stream:
+        with input_path("assets/ocr/ppocrv6_medium/" + item["name"]).open("rb") as stream:
             if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
                 raise SystemExit("Portable model hash mismatch: " + item["name"])
     destination.mkdir(parents=True, exist_ok=False)
@@ -75,16 +81,18 @@ def main():
         # Exclude upstream test corpora and C++ build objects, not runtime DLLs
         # or our reviewed event algorithms. This also avoids NSIS/MAX_PATH
         # failures on deeply nested sklearn test fixtures and Qt object files.
-        shutil.copytree(source / name, destination / name,
+        shutil.copytree(components / name if name == "assets" else input_path(name), destination / name,
                         ignore=portable_ignore)
+        if name == "assets" and components != source:
+            shutil.copytree(source / name, destination / name, dirs_exist_ok=True, ignore=portable_ignore)
     for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
-        shutil.copy2(source / name, destination / name)
+        shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
     for name in ("workspace-acceptance.md", "portable-components.md", "algorithm-phase1-acceptance.md", "ui-next-stage-proposal.md", "ui-phase2-acceptance.md", "ui-performance-acceptance.md", "annotation-history-acceptance.md", "event-models-acceptance.md", "windows-distribution.md", "ocr-lightweight-integration.md", "live-demos.md"):
-        shutil.copy2(source / "docs" / name, destination / "docs" / name)
+        shutil.copy2(input_path("docs/" + name), destination / "docs" / name)
     (destination / "scripts").mkdir()
-    for name in ("capture-timing.md", "client-updates.md", "evidence-archive.md", "on-demand-indexing.md", "team-returns.md", "native-video-timing.md", "playback-performance-312.md", "algorithm-inspection.md", "release-320-validation.md", "quick-start-illustrated.pdf"):
-        shutil.copy2(source / "docs" / name, destination / "docs" / name)
+    for name in ("capture-timing.md", "client-updates.md", "evidence-archive.md", "on-demand-indexing.md", "team-returns.md", "native-video-timing.md", "playback-performance-312.md", "algorithm-inspection.md", "release-320-validation.md", "release-321-validation.md", "quick-start-illustrated.pdf"):
+        shutil.copy2(input_path("docs/" + name), destination / "docs" / name)
     for name in ("portable_self_test.py", "build_portable.py", "verify_label_history.py", "verify_event_models.py", "verify_candidate_ui.py", "register_event_pack.py", "verify_evidence_archive.py"):
         shutil.copy2(source / "scripts" / name, destination / "scripts" / name)
     inventory = []

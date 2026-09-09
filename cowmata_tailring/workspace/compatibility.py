@@ -9,11 +9,16 @@ from __future__ import annotations
 import os
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from cowmata_tailring.media.ffmpeg_tools import find_ffmpeg
 from cowmata_tailring.media.subprocess_tools import run_cancellable
-from cowmata_tailring.media.timeline import MediaTimelineIndex, probe_media_timeline
+from cowmata_tailring.media.timeline import (
+    MediaTimelineIndex,
+    TimelineSegment,
+    probe_media_timeline,
+)
 
 from .catalog import file_stamp
 from .storage import atomic_json, read_json
@@ -79,12 +84,34 @@ class CompatibilityCache:
                 self.entries[asset_id] = {"stamp": file_stamp(target), "size": target.stat().st_size,
                                           "last_use": time.time(), "source_stamp": before,
                                           "source_duration_ms": source_index.duration_ms,
-                                          "cache_duration_ms": index.duration_ms, "method": "stream_copy"}
+                                          "cache_duration_ms": index.duration_ms, "method": "stream_copy",
+                                          "timeline": index.to_dict()}
                 atomic_json(self.root / "manifest.json", self.entries)
                 return target
             finally:
                 if temporary.exists():
                     temporary.unlink()  # Only this exact owned incomplete cache.
+
+    def playback_metadata(self, asset_id, metadata):
+        """A remux has its own offsets/clock; never apply original PS byte keys."""
+        path = self.cached(asset_id)
+        if path is None:
+            raise ValueError("流畅播放缓存已失效，请重新加载")
+        entry = self.entries[asset_id]
+        raw = entry.get("timeline")
+        if raw:
+            index = MediaTimelineIndex.from_dict(raw)
+        else:
+            # Existing caches were already validated as a continuous zero-based
+            # copy with the same duration. Upgrade their in-memory description.
+            duration = entry["cache_duration_ms"]
+            frame = metadata.get("timeline", {}).get("frameDurationMs", 40)
+            index = MediaTimelineIndex(str(path), 0, 0, 0, frame,
+                                       (TimelineSegment(0, duration, 0, duration),), ())
+        stat = path.stat()
+        index = replace(index, source_path=str(path.resolve()), source_size=stat.st_size,
+                        source_mtime_ns=stat.st_mtime_ns, native=None)
+        return {**metadata, "format": "matroska", "timeline": index.to_dict(), "_normalized_playback": True}
 
     def _make_room(self, required, pinned):
         if required > self.max_bytes:

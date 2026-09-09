@@ -5,12 +5,13 @@ import csv
 import hashlib
 import json
 import threading
+import time
 import uuid
-from collections import Counter, OrderedDict
+from collections import Counter, OrderedDict, deque
 from pathlib import Path
 
 from PySide6.QtCore import QFileSystemWatcher, QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -111,6 +112,13 @@ class MainWindow(QMainWindow):
         self._saved_work_assets = set()
         self._team_observed = {}
         self._team_scanning = False
+        self._status_history = deque(maxlen=500)
+        self._manual_view_devices = set()
+        self._load_started = None
+        self._load_notified = False
+        self._close_save_started = False
+        self._closing_requested = False
+        self._close_choice = None
         self._build_ui()
         self.motionReady.connect(self._motion_loaded)
         self.continuationReady.connect(self._continuation_ready)
@@ -135,6 +143,10 @@ class MainWindow(QMainWindow):
         self.team_timer.setInterval(10000)
         self.team_timer.timeout.connect(self._poll_team)
         self.team_timer.start()
+        self.load_status_timer = QTimer(self)
+        self.load_status_timer.setInterval(200)
+        self.load_status_timer.timeout.connect(self._check_load_ready)
+        self.load_status_timer.start()
 
     def _button(self, title, handler, layout):
         button = QPushButton(title)
@@ -380,6 +392,38 @@ class MainWindow(QMainWindow):
 
     def tell(self, message):
         self.banner.setText(str(message))
+        self._record_status(message)
+
+    def _record_status(self, message):
+        message = str(message)
+        if self._status_history and self._status_history[-1][1] == message:
+            return
+        self._status_history.append((time.strftime("%H:%M:%S"), message))
+        log = getattr(self, "status_log", None)
+        if log is not None:
+            log.appendPlainText(f"{self._status_history[-1][0]}  {message}")
+
+    def set_index_status(self, message):
+        self.index_status.setText(str(message))
+        self.index_status.setToolTip(str(message))
+        self._record_status(message)
+
+    def _check_load_ready(self):
+        if self._closed or not self.catalog or self._load_notified or self._load_started is None:
+            return
+        ready = any(t.ready and not t.pending for t in self.board.tiles.values())
+        imu_only = self.motion is not None and self._last_scan_complete and not any(r["kind"] == "video" for r in self.rows)
+        if not ready and not imu_only:
+            return
+        self.catalog.finish_load()
+        self._load_notified = True
+        elapsed = time.monotonic() - self._load_started
+        message = (f"加载成功 · 当前九轴和录像画面已就绪（{elapsed:.1f} 秒）；其余录像按需读取。" if ready else
+                   f"加载成功 · 九轴已就绪（{elapsed:.1f} 秒）；工程目录中未发现录像。")
+        self.tell(message)
+        self.set_index_status(message)
+        self.dirty = True
+        QApplication.alert(self, 3000)
 
     def choose_project(self):
         root = QFileDialog.getExistingDirectory(self, "选择包含九轴和多视角录像的工程目录")
@@ -597,13 +641,16 @@ class MainWindow(QMainWindow):
         self._reading_path = None
         self._end_prompt_asset = None
         self.coverage_timeline = None
+        self._load_started = None
+        self._load_notified = False
+        self._manual_view_devices.clear()
         if self.worker:
             worker, catalog = self.worker, self.catalog
             worker.cancel()
             if worker.thread.is_alive():
                 self.retired.append((worker, catalog))
                 # Keep the QObject and connection alive until its last emission.
-                worker.finished.connect(lambda w=worker, c=catalog: self._release_retired(w, c))
+                QTimer.singleShot(100, lambda w=worker, c=catalog: self._release_retired(w, c))
             else:
                 catalog.close()
         elif self.catalog:
@@ -612,6 +659,9 @@ class MainWindow(QMainWindow):
         self.board.select([])
 
     def _release_retired(self, worker, catalog):
+        if worker.thread.is_alive():
+            QTimer.singleShot(100, lambda: self._release_retired(worker, catalog))
+            return
         catalog.close()
         self.retired = [(w, c) for w, c in self.retired if w is not worker]
 
@@ -621,7 +671,8 @@ class MainWindow(QMainWindow):
             return
         self._retire_project()
         try:
-            self.catalog = Catalog(root)
+            self._load_started = time.monotonic()
+            self.catalog = Catalog(root, load_session=True)
             self.settings = self.catalog.settings()
             if preferred_json is not None:
                 preferred = Path(preferred_json).resolve().relative_to(self.catalog.root).as_posix()
@@ -652,7 +703,7 @@ class MainWindow(QMainWindow):
                 current = self.worker
                 current.scanned.connect(lambda result, w=current: self.scan_completed(result) if w is self.worker else None)
                 current.indexed.connect(lambda result, w=current: self.accept_index_result(result) if w is self.worker else None)
-                current.progress.connect(lambda text, w=current: self.index_status.setText(text) if w is self.worker else None)
+                current.progress.connect(lambda text, w=current: self.set_index_status(text) if w is self.worker else None)
                 current.failed.connect(lambda text, w=current: self.tell("索引异常：" + text) if w is self.worker else None)
                 current.start()
                 if self._loading_path:
@@ -660,6 +711,7 @@ class MainWindow(QMainWindow):
                 self.tell("正在轻量清点文件与恢复标注进度；仅处理当前九轴及对应录像，不自动完整索引整个工程。")
             QSettings().setValue("workspace/last_root", str(self.catalog.root))
         except (OSError, ValueError, RuntimeError) as exc:
+            self._retire_project()
             self.tell("无法打开工程：" + str(exc))
 
     def refresh_sources(self):
@@ -684,7 +736,7 @@ class MainWindow(QMainWindow):
         self.check_active_sources()
 
     def scan_completed(self, result):
-        if self._closed or not self.catalog:
+        if self._closed or self._closing_requested or not self.catalog:
             return
         if result is not None:
             self._last_scan_complete = result.complete
@@ -705,6 +757,10 @@ class MainWindow(QMainWindow):
                 self.tell(f"素材变化：新增 {len(result.added)}，变化/改名 {len(result.changed)}，原位置缺失 {len(result.missing)}。人工标注已保留。")
             if result.errors:
                 self.tell("本次目录核对不完整，未据此判定删除：" + "；".join(result.errors[:2]))
+            if result.complete and not result.inspected:
+                self._retire_project()
+                self.tell("加载失败：所选目录没有九轴 JSON 或录像；本次新建的临时索引正在自动清理。")
+                return
         self.rows = self.catalog.rows()
         if self._loading_path:
             requested = next((r for r in self.rows if r["path"] == self._loading_path), None)
@@ -713,11 +769,19 @@ class MainWindow(QMainWindow):
                 self._loading_path = None
         self.refresh_lists()
         counts = Counter(r["state"] for r in self.rows)
-        self.index_status.setText(f"素材 {len(self.rows)} · 可用 {counts['ready']} · 待复核 {counts['review']} · 等待 {counts['pending']} · 异常 {counts['invalid']} · 缺失 {counts['missing']}")
+        self.set_index_status(f"素材 {len(self.rows)} · 可用 {counts['ready']} · 待复核 {counts['review']} · 未索引 {counts['pending']} · 异常 {counts['invalid']} · 缺失 {counts['missing']}")
         self.check_active_sources()
         self.update_coverage(force=True)
 
     def refresh_lists(self):
+        # Keep previously calibrated view identities instead of silently moving
+        # their recordings onto a new, uncalibrated folder-based clock.
+        overrides = self.settings.setdefault("camera_overrides", {})
+        maps = self.settings.get("camera_maps", {})
+        for row in self.rows:
+            name = row["metadata"].get("camera")
+            if row["kind"] == "video" and row.get("asset_id") and name in maps:
+                overrides.setdefault(row["asset_id"], name)
         current_device = self.devices.currentData() or self.settings.get("device")
         desired_path = self._loading_path or (self.current_row["path"] if self.current_row else self.settings.get("current_path"))
         for row in self.rows:
@@ -745,6 +809,12 @@ class MainWindow(QMainWindow):
         previous = self.settings.get("device_views", {}).get(str(self.devices.currentData()), self.settings.get("selected_cameras", [])) or self.board.selected
         order = self.settings.get("camera_order", [])
         camera_names.sort(key=lambda c: (c not in order, order.index(c) if c in order else c))
+        matched = [c for c in previous if c in camera_names]
+        covered = [c for c in camera_names if timeline.locate(c, self.board.reference_ms)]
+        if str(self.devices.currentData()) not in self._manual_view_devices:
+            if not matched or covered and not any(c in covered for c in matched):
+                matched = (covered or camera_names)[:1]
+        previous = matched
         self.cameras.blockSignals(True)
         self.cameras.clear()
         for name in camera_names:
@@ -753,13 +823,12 @@ class MainWindow(QMainWindow):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if name in previous else Qt.CheckState.Unchecked)
             self.cameras.addItem(item)
-        if not previous and camera_names:
-            for i in range(min(2, len(camera_names))):
-                self.cameras.item(i).setCheckState(Qt.CheckState.Checked)
         self.cameras.blockSignals(False)
         selected = self.checked_cameras()
         if selected != self.board.selected:
             self.board.select(selected)
+        elif any(not t.interval and timeline.locate(c, self.board.reference_ms) for c, t in self.board.tiles.items()):
+            self.board.seek(self.board.reference_ms)
         if self.motion and not self.board.reference_ms and timeline.bounds():
             self.board.seek(self.work.clock.map(self.imu_ms))
 
@@ -768,7 +837,7 @@ class MainWindow(QMainWindow):
         previous = self.current_row["asset_id"] if self.current_row else self.settings.get("current_asset")
         desired = self._loading_path or (self.current_row["path"] if self.current_row else self.settings.get("current_path"))
         rows = [r for r in self.rows if r['kind']=='imu' and r['state'] not in {'ignored','missing'} and device_name(r)==device]
-        signature = (str(self.catalog.root) if self.catalog else '', device,
+        signature = (str(self.catalog.root) if self.catalog else '', device, self.work.asset_id if self.work else None,
                      tuple((r['path'],r['state'],r['asset_id'],r.get('stamp'),self.record_status(r)) for r in rows))
         if signature == getattr(self, '_records_signature', None):
             item = getattr(self, '_record_items', {}).get(desired)
@@ -790,8 +859,21 @@ class MainWindow(QMainWindow):
                 continue
             seen.add(identity)
             status = self.record_status(row)
-            item = QListWidgetItem({"done": "✓ 已完成  ", "in_progress": "● 进行中  ", "new": "○ 未开始  "}[status] + Path(row["path"]).stem)
-            item.setToolTip(row["path"] + "\ncreate_time 为设备采集起点；update_time 仅为服务器收包时间")
+            active = status != "done" and self.work is not None and row["asset_id"] == self.work.asset_id
+            title, color, background = (("▶ 正在标注", "#075bb5", "#e5f1ff") if active else {
+                "done": ("✓ 已完成", "#217044", "#eaf6ee"),
+                "in_progress": ("● 未完成", "#915514", "#fff2de"),
+                "new": ("○ 未开始", "#617277", "#f5f7f8"),
+            }[status])
+            item = QListWidgetItem(title + "  " + Path(row["path"]).stem)
+            item.setForeground(QColor(color))
+            item.setBackground(QColor(background))
+            font = item.font()
+            font.setBold(active)
+            item.setFont(font)
+            saved = self.settings.get("review_progress", {}).get(row["path"], {})
+            item.setToolTip(f"{title} · 上次位置 {saved.get('imu_ms', 0) / 1000:.1f} 秒 · 已保存标签 {saved.get('labels', 0)}\n"
+                            + row["path"] + "\n切换时自动保存；未完成记录会恢复上次位置。点击“完成本份”确认保存及完成状态。")
             item.setData(Qt.ItemDataRole.UserRole, row)
             self.records.addItem(item)
             self._record_items[row['path']] = item
@@ -814,14 +896,18 @@ class MainWindow(QMainWindow):
             except OSError:
                 pass
         elif not self._loading_path and (self.work is None or self.current_row and device_name(self.current_row) != device) and self.records.count():
-            for i in range(self.records.count()):
-                if self.record_status(self.records.item(i).data(Qt.ItemDataRole.UserRole)) != "done":
-                    self.records.setCurrentRow(i)
+            for status in ("in_progress", "new"):
+                target = next((i for i in range(self.records.count())
+                               if self.record_status(self.records.item(i).data(Qt.ItemDataRole.UserRole)) == status), None)
+                if target is not None:
+                    self.records.setCurrentRow(target)
                     break
         totals = Counter(self.record_status(r) for r in candidates)
-        self.devices.setToolTip(f"本设备：未开始 {totals['new']} · 进行中 {totals['in_progress']} · 已完成 {totals['done']}；可任意选择，不要求顺序标注。")
+        self.devices.setToolTip(f"本设备：未开始 {totals['new']} · 未完成 {totals['in_progress']} · 已完成 {totals['done']}；切换自动保存，返回恢复位置。")
 
     def record_status(self, row):
+        if self.work and row.get("asset_id") == self.work.asset_id:
+            return "done" if self.work.progress.get("status") == "done" else "in_progress"
         entry = self.settings.get("review_progress", {}).get(row["path"], {})
         # Changed/replaced sources cannot inherit completion by filename.
         if entry and (entry.get("stamp") == row.get("stamp") or row.get("asset_id") and entry.get("asset_id") == row["asset_id"]):
@@ -878,9 +964,9 @@ class MainWindow(QMainWindow):
             return
         dialog = QMessageBox(self)
         dialog.setWindowTitle("本份九轴标注进度")
-        dialog.setText("确认已检查完整份记录？完成状态由你确认，不会依据标签数量自动判断。")
-        dialog.setInformativeText("未确认的候选仍保留原状态，不会被升级为真值。暂存只记录当前位置。")
-        next_button = dialog.addButton("已完成，下一份", QMessageBox.ButtonRole.AcceptRole)
+        dialog.setText("本份九轴标注结束，是否保存并标为已完成？")
+        dialog.setInformativeText("保存标签和当前位置后再继续。完成状态由你确认；未确认的候选仍需复核，已保存标签下次仍可编辑或删除。")
+        next_button = dialog.addButton("保存并完成，下一份", QMessageBox.ButtonRole.AcceptRole)
         done_exit = dialog.addButton("已完成，保存退出", QMessageBox.ButtonRole.AcceptRole)
         save_exit = dialog.addButton("没做完，暂存退出", QMessageBox.ButtonRole.ActionRole)
         dialog.addButton("继续本份", QMessageBox.ButtonRole.RejectRole)
@@ -894,9 +980,11 @@ class MainWindow(QMainWindow):
         if self.dirty:
             return
         self.refresh_records()
+        self.tell("本份九轴已保存；标签下次打开仍可编辑或删除。")
         if choice is next_button:
             self.next_record()
         else:
+            self._close_choice = "save"  # The completion dialog already asked.
             self.close()
 
     def checked_cameras(self):
@@ -904,6 +992,7 @@ class MainWindow(QMainWindow):
                 if self.cameras.item(i).checkState() == Qt.CheckState.Checked]
 
     def select_cameras(self, *_):
+        self._manual_view_devices.add(str(self.devices.currentData()))
         selected = self.checked_cameras()
         if len(selected) > 8:
             self.tell("一次最多显示 8 路。请取消一个视角，再勾选新的。")
@@ -993,7 +1082,7 @@ class MainWindow(QMainWindow):
     def _motion_loaded(self, result):
         generation, row, motion, stamp = result[:4]
         follow = bool(result[4]) if len(result) > 4 else False
-        if generation != self.load_generation or not self.catalog:
+        if generation != self.load_generation or self._closing_requested or not self.catalog:
             return
         self._reading_path = None
         self._continuation_pending = None
@@ -1088,6 +1177,11 @@ class MainWindow(QMainWindow):
         elif self.work.clock.anchors:
             self.board.seek(self.work.clock.map(self.imu_ms))
         self.request_record_videos(refresh=not follow)
+        if not follow:
+            self.tell(f"正在标注 {Path(row['path']).stem} · " +
+                      ("已打开已完成记录；选择下方标签点“编辑”或“删除”可修正，修改后恢复为未完成。" if self.work.progress.get("status") == "done" else
+                       f"已恢复未完成记录，继续上次 {self.imu_ms / 1000:.1f} 秒的位置；已有标记已保留。" if raw else
+                       "新记录；切换时自动保存并保留为未完成。"))
         self.dirty = True
         self.update_coverage(force=True)
 
@@ -1194,6 +1288,8 @@ class MainWindow(QMainWindow):
             self.alignment_label.setText(f"人工同步锚点 {n} · {self.work.clock.quality(self.imu_ms)} · 版本 {self.work.clock.revision[:8]}；保留原有校准")
 
     def video_time_changed(self, value):
+        if self._closing_requested:
+            return
         if self.worker and self.work and abs(value - getattr(self, "_index_playhead", -1e30)) >= 5000:
             self._index_playhead = value
             self.worker.request("playhead", value)
@@ -1221,7 +1317,7 @@ class MainWindow(QMainWindow):
         self.dirty = True
 
     def prompt_record_end(self, generation, asset):
-        if not self._closed and generation == self.load_generation and self.work and self.work.asset_id == asset:
+        if not self._closed and not self._closing_requested and generation == self.load_generation and self.work and self.work.asset_id == asset:
             self.finish_record()
 
     def _cached_work(self, asset_id, catalog=None):
@@ -1351,6 +1447,7 @@ class MainWindow(QMainWindow):
         if not self.work or not self.catalog or self.catalog.readonly:
             self.tell("请先选择九轴记录；只读工程不能修改人工成果。")
             return False
+        self.catalog.finish_load()  # Explicit human editing must always persist.
         return True
 
     def select_range(self, start, end):
@@ -1499,6 +1596,8 @@ class MainWindow(QMainWindow):
                 item.setData(Qt.ItemDataRole.UserRole, (kind, identifier))
                 self.events.setItem(i, j, item)
         self.plot.set_events([label.to_dict() for label in self.work.project.labels], [e.to_dict() for e in self.work.project.events])
+        self.events.setToolTip("已保存标签也可修改：选中一条后点“编辑”或“删除”；双击回看对应位置。修改后需重新复核。")
+        self.refresh_records()
 
     def selected_entry(self):
         item = self.events.item(self.events.currentRow(), 0)
@@ -1724,6 +1823,14 @@ class MainWindow(QMainWindow):
     def save_current(self, *_, background=False):
         if not self.catalog or self.catalog.readonly:
             return
+        if self.catalog.load_pending:
+            human_work = self.work and (self.work.project.events or self.work.drafts or
+                                         self.work.project.cow_id or self.work.clock.basis == "manual")
+            if human_work or self.active_event:
+                self.catalog.finish_load()
+            else:
+                self.dirty = False
+                return  # Do not turn an unsuccessful load into an empty project.
         try:
             if background:
                 if not self.snapshot_writer.poll():
@@ -2017,6 +2124,21 @@ class MainWindow(QMainWindow):
         if self.catalog and not self.catalog.readonly:
             atomic_json(self.catalog.meta / "playback_metrics.json", self.board.latencies)
 
+    def confirm_close(self):
+        if not self.catalog or self.catalog.readonly or self.catalog.load_pending:
+            return "save"
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("关闭前保存工程")
+        dialog.setText("是否保存工程后退出？")
+        dialog.setInformativeText("保存标签、标注进度和当前位置。此前自动保存的内容会保留；“不保存本次改动”仅放弃尚未写盘的更改。")
+        save = dialog.addButton("保存并退出", QMessageBox.ButtonRole.AcceptRole)
+        discard = dialog.addButton("不保存本次改动并退出", QMessageBox.ButtonRole.DestructiveRole)
+        cancel = dialog.addButton("返回继续标注", QMessageBox.ButtonRole.RejectRole)
+        dialog.setDefaultButton(save)
+        dialog.setEscapeButton(cancel)
+        dialog.exec()
+        return "save" if dialog.clickedButton() is save else "discard" if dialog.clickedButton() is discard else "cancel"
+
     def closeEvent(self, event):
         for dialog in (self._capture_dialog, self._archive_dialog):
             if dialog is not None and dialog.future is not None and not dialog.future.done():
@@ -2033,9 +2155,68 @@ class MainWindow(QMainWindow):
             event.ignore()
             self.tell("标注文件正在保存，请等待完成后再关闭。")
             return
-        self.save_current()
+        if not self._closing_requested:
+            self.board.play(False)
+            self.save_timer.stop()  # Do not autosave while choosing Discard.
+            choice = self._close_choice or self.confirm_close()
+            if choice == "cancel":
+                self.save_timer.start()
+                event.ignore()
+                return
+            self._close_choice = choice
+            self._closing_requested = True
+            self.centralWidget().setEnabled(False)
+            self.board.play(False)
+            self.board.timer.stop()
+            self.save_timer.stop()
+            self.source_timer.stop()
+            self.load_status_timer.stop()
+        # Cancel expensive reads first. Qt keeps painting while workers finish
+        # and the final durable snapshot is written; no joins/fsync on the GUI.
+        if self.worker:
+            self.worker.cancel()
+        for worker, _catalog in self.retired:
+            worker.cancel()
+        pending = self.snapshot_writer.pending
+        workers = ([self.worker] if self.worker else []) + [w for w, _ in self.retired]
+        if any(w.thread.is_alive() for w in workers) or pending is not None and not pending.done():
+            event.ignore()
+            self.tell("正在取消后台读取并保存退出，界面仍可响应…")
+            QTimer.singleShot(100, self.close)
+            return
+        if self._close_choice == "discard":
+            # A snapshot already submitted before the prompt may finish. It is
+            # previous autosaved work, not permission to write a new snapshot.
+            try:
+                self.snapshot_writer.poll()
+            except (OSError, ValueError):
+                pass
+            self.dirty = False
+            self._close_save_started = True
+        elif not self._close_save_started:
+            self.save_current(background=True)
+            self._close_save_started = not self.dirty
+            if self.snapshot_writer.pending is not None:
+                event.ignore()
+                QTimer.singleShot(100, self.close)
+                return
+        else:
+            try:
+                self.snapshot_writer.poll()
+            except (OSError, ValueError) as exc:
+                self.dirty = True
+                self._close_save_started = False
+                self.tell("保存失败：" + str(exc))
         if self.dirty and self.catalog and not self.catalog.readonly:
             event.ignore()
+            self._closing_requested = False
+            self._close_save_started = False
+            self._close_choice = None
+            self.centralWidget().setEnabled(True)
+            self.board.timer.start()
+            self.save_timer.start()
+            self.source_timer.start()
+            self.load_status_timer.start()
             self.tell("人工成果尚未成功保存，请先处理保存错误再关闭。")
             return
         self._closed = True
@@ -2048,12 +2229,19 @@ class MainWindow(QMainWindow):
         self.load_generation += 1
         self.save_timer.stop()
         self.source_timer.stop()
+        self.load_status_timer.stop()
+        self.team_timer.stop()
+        self.debounce.stop()
         self.board.close()
         if self.worker:
             worker, catalog = self.worker, self.catalog
             self.worker = None
-            worker.finished.connect(catalog.close)
             worker.cancel()
             if not worker.thread.is_alive():
                 catalog.close()
+        elif self.catalog:
+            self.catalog.close()
+        for _worker, catalog in self.retired:
+            catalog.close()
+        self.retired.clear()
         event.accept()

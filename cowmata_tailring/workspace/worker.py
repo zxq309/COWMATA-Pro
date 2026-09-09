@@ -82,11 +82,12 @@ class IndexWorker(QObject):
                                    explore=self.hints_used < self.budget)
             if task and task[0] == "full" and task[1]["path"] in by_path:
                 return task
-            # Cheap native header discovery precedes OCR exploration. Counters
-            # need not be chronological. It does not consume the OCR budget.
-            native_candidates = [r for r in pending if r["kind"] == "video" and r["path"] not in hints]
-            if native_candidates:
-                return "native", native_candidates[0]
+            # Use the same sparse, batch-aware routing for native headers.
+            # Scanning every card first delays other cameras in large projects.
+            if task and task[1]["path"] in by_path:
+                if task[1]["path"] not in hints:
+                    return "native", task[1]
+                return task
             checks = []
             for row in rows:
                 if row["metadata"].get("native_check_pending") and row["state"] == "review" and not row["metadata"].get("manual_readings"):
@@ -172,7 +173,11 @@ class IndexWorker(QObject):
                 if not self.commands.empty():
                     continue
                 if time.monotonic() - last_scan > 60:
-                    result = self.catalog.scan(audit=audit, fast=True)
+                    self.progress.emit("正在清点工程目录（不读取录像正文）…")
+                    result = self.catalog.scan(audit=audit, fast=True, cancelled=self.stop.is_set,
+                                               progress=self.progress.emit)
+                    if self.stop.is_set():
+                        break
                     audit = False
                     self.scanned.emit(result)
                     last_scan = time.monotonic()
@@ -227,7 +232,7 @@ class IndexWorker(QObject):
                             assert_not_being_written(path)
                             if file_stamp(path) != row["stamp"]:
                                 raise OSError("文件变化，等待刷新")
-                            hint = ((native_hint(path, timezone_minutes=inspector.timezone_minutes) or {"native_checked": True})
+                            hint = ((native_hint(path, timezone_minutes=inspector.timezone_minutes, cancelled=self.job_stop.is_set) or {"native_checked": True})
                                     if mode == "native" else inspector.video_hint(path))
                             if not self.job_stop.is_set() and file_stamp(path) == row["stamp"]:
                                 self.catalog.save_video_hint(row["path"], row["stamp"], hint)
@@ -248,6 +253,7 @@ class IndexWorker(QObject):
                     self.wake.wait(.5)
                     self.wake.clear()
         except Exception as exc:
-            self.failed.emit(str(exc))
+            if not self.stop.is_set():
+                self.failed.emit(str(exc))
         finally:
             self.finished.emit()

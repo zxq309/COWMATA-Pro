@@ -102,7 +102,7 @@ def test_root_switch_is_blocked_when_save_failed(tmp_path, app, monkeypatch):
     window = MainWindow()
     window.catalog = catalog
     window.dirty = True
-    monkeypatch.setattr(window, "save_current", lambda *_: None)
+    monkeypatch.setattr(window, "save_current", lambda *_, **kw: None)
     window.open_project(tmp_path / "other")
     assert window.catalog is catalog
     assert not (tmp_path / "other").exists()

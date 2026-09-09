@@ -136,6 +136,9 @@ class MainWindow(ControllerWindow):
         outer.addLayout(header)
         self.banner.setStyleSheet("background:#e1eeea; color:#3d645e; padding:5px 9px; border-radius:6px; font-size:11px")
         self.banner.setParent(central)
+        self.banner.setWordWrap(True)
+        self.banner.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        outer.addWidget(self.banner)
         self.banner.hide()
         self.coverage_label.setStyleSheet("color:#9a6132; font-size:11px")
         outer.addWidget(self.coverage_label)
@@ -145,6 +148,10 @@ class MainWindow(ControllerWindow):
         self.source_panel.setObjectName("sourcePanel")
         sources = QVBoxLayout(self.source_panel)
         sources.addWidget(self._heading("设备与九轴记录"))
+        legend = QLabel('<span style="color:#075bb5">▶ 正在标注</span>　<span style="color:#915514">● 未完成</span><br>'
+                        '<span style="color:#617277">○ 未开始</span>　<span style="color:#217044">✓ 已完成</span>')
+        legend.setToolTip("切换记录自动保存并恢复上次位置；只有明确点击完成才变为已完成。")
+        sources.addWidget(legend)
         sources.addWidget(self.devices)
         self.record_search = QLineEdit()
         self.record_search.setPlaceholderText("搜索文件名 / 查看进度")
@@ -290,8 +297,11 @@ class MainWindow(ControllerWindow):
         self.statusBar().removeWidget(self.index_status)
         self.index_status.deleteLater()
         self.index_status = ElidingLabel("打开工程即可逐份开始")
-        self.index_status.setMaximumWidth(460)
         self.statusBar().addPermanentWidget(self.index_status, 1)
+        self.status_details_button = QPushButton("加载记录…")
+        self.status_details_button.setToolTip("展开完整状态、路径和加载记录；可选择复制")
+        self.status_details_button.clicked.connect(self.show_status_details)
+        self.statusBar().addPermanentWidget(self.status_details_button)
         self.set_glass(True)
         self.source_panel.hide()
         self.event_panel.hide()
@@ -509,6 +519,26 @@ class MainWindow(ControllerWindow):
         super().tell(message)
         self.statusBar().showMessage(str(message), 12000)
         self.statusBar().setToolTip(str(message))
+        if str(message).startswith(("加载成功", "加载失败", "无法打开工程", "正在取消")):
+            self.banner.show()
+
+    def show_status_details(self):
+        if not hasattr(self, "status_dialog"):
+            self.status_dialog = QDialog(self)
+            self.status_dialog.setWindowTitle("完整加载记录")
+            self.status_dialog.resize(900, 480)
+            layout = QVBoxLayout(self.status_dialog)
+            self.status_log = QPlainTextEdit()
+            self.status_log.setReadOnly(True)
+            self.status_log.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+            self.status_log.setMaximumBlockCount(500)
+            self.status_log.setPlainText("\n".join(f"{stamp}  {text}" for stamp, text in self._status_history))
+            layout.addWidget(self.status_log)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            buttons.rejected.connect(self.status_dialog.hide)
+            layout.addWidget(buttons)
+        self.status_dialog.show()
+        self.status_dialog.raise_()
 
     def update_alignment_text(self):
         super().update_alignment_text()
@@ -589,6 +619,7 @@ class MainWindow(ControllerWindow):
 
     def open_project(self, root, *, preferred_json=None):
         self.exit_algorithm()
+        self.banner.hide()
         super().open_project(root, preferred_json=preferred_json)
         if not self.catalog:
             return
