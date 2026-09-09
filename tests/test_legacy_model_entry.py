@@ -1,5 +1,6 @@
 """Compatibility windows must keep manual work usable without optional models."""
 import builtins
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,13 +14,19 @@ from cowmata_tailring.model_assist import assist
 
 @pytest.fixture
 def legacy_window(monkeypatch, tmp_path):
+    # These are real native-player UI integration tests, not media stubs.
+    # The Windows distribution supplies VLC; source-only CI does not.
+    package = Path(__file__).resolve().parents[2] / "COWMATA Annotator"
+    if sys.platform != "win32":
+        pytest.skip("Legacy native player UI requires Windows")
+    if not (package / "vendor/vlc/libvlc.dll").is_file():
+        pytest.skip("Legacy native player UI requires the adjacent offline distribution")
     from cowmata_tailring.app.mixins import production_safety
     from cowmata_tailring.ui import main_window
     app = QApplication.instance() or QApplication([])
     settings = QSettings(str(tmp_path / "legacy.ini"), QSettings.Format.IniFormat)
     monkeypatch.setattr(main_window, "QSettings", lambda *_: settings)
     monkeypatch.setattr(production_safety.QStandardPaths, "writableLocation", lambda *_: str(tmp_path / "user-data"))
-    package = Path(__file__).resolve().parents[2] / "COWMATA Annotator"
     monkeypatch.setenv("VLC_HOME", str(package / "vendor/vlc"))
     window = model_assist_window.MainWindow()
     window.autosave_timer.stop()
