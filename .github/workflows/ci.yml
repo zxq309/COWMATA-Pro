@@ -26,7 +26,11 @@ jobs:
       # PySide6 imports Qt's EGL backend even when pytest uses the offscreen platform.
       - name: Install Linux Qt runtime library
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1
+        # Qt needs Ubuntu's libegl1; unrelated runner Chrome repositories can
+        # be temporarily inconsistent during upstream publication.
+        run: |
+          sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/ubuntu.sources" -o Dir::Etc::sourceparts="-"
+          sudo apt-get install -y libegl1
 
       - name: Install
         run: |
