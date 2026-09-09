@@ -1,5 +1,13 @@
 # Changelog
 
+### 3.2.1 timestamp and latest-update correction — 2026-09-09
+
+- Require a startup release check before constructing any annotation/history window or opening project files. Newer releases automatically download, verify, install and restart; errors stay at a retry/exit gate. This mandatory startup rule ignores prior optional background-check preferences.
+- Offer only the newest release in the selected channel, with one reminder per package across restarts. Recheck before downloading, after downloading and before preparing installation; superseded packages cannot remain ready for installation. Cancelling the save/close step cancels the queued installation, and the GitHub entry opens the latest release directly.
+
+- Keep the public version at 3.2.1. Display the existing shared video/IMU reference clock on every record's waveform axis, hover readout and editable position field, including date and milliseconds where appropriate. Refresh the display when records or calibration change; preserve original sample and annotation coordinates.
+- Rebuild the offline installer and refresh the existing v3.2.1 release assets and checksums. Earlier 3.2.1 clients require a manual download because their updater compares version numbers. Build identity: `project-load-playback-resume-r2-timestamps-startup-update-20260909`.
+
 ## [3.2.1] — 2026-09-09 (local validation build)
 
 - Discover explicit view folders below nested data directories and keep camera identities stable across resolution changes. Preserve manually calibrated old view identities. Search native recording times sparsely around the selected IMU window; do not probe every video before showing the first matching original frame.

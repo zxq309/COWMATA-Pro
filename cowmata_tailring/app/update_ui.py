@@ -85,7 +85,6 @@ class UpdateController(QObject):
         self.stop = threading.Event()
         self.dialog = None
         self.notification = None
-        self.announced_sha = None
         self.status = tr("更新就绪：自动检查可在这里关闭。", "Update checks can be disabled here.")
         self.button = QPushButton(tr("检查更新", "Updates"))
         self.button.clicked.connect(self.open_dialog)
@@ -95,9 +94,9 @@ class UpdateController(QObject):
         self.button.hide()
         self.found.connect(self._found)
         self.failed.connect(self._failed)
-        self.downloaded.connect(self._downloaded)
+        self.downloaded.connect(self._download_result)
         self.progress.connect(self._progress)
-        self.prepared.connect(self._prepared)
+        self.prepared.connect(self._prepare_result)
         self.timer = QTimer(self)
         self.timer.setInterval(30 * 60 * 1000)
         self.timer.timeout.connect(self.auto_check)
@@ -154,9 +153,10 @@ class UpdateController(QObject):
 
     def _found(self, update):
         self.busy = False
+        self.pending_job = None
         previous = self.update
         self.update = update
-        if update and previous and update["sha256"] == previous["sha256"] and self.setup:
+        if self.same_package(update, previous) and self.setup:
             self._downloaded(self.setup)
             return
         self.setup = None
@@ -169,21 +169,26 @@ class UpdateController(QObject):
             if self.option("auto_download"):
                 self.start_download()
         else:
+            if self.notification is not None:
+                self.notification.close()
+            self.button.setText(tr("检查更新", "Updates"))
+            self.button.setStyleSheet("")
             self.status = tr("当前已是此通道的最新版本。", "This is the newest version in this channel.")
             self.render()
 
     def announce(self, update):
-        if self.announced_sha == update["sha256"]:
+        identity = update["version"] + ":" + update["sha256"]
+        if self.settings.value("updates/announced_package", "", type=str) == identity:
             return
-        self.announced_sha = update["sha256"]
         if self.notification is not None:
             self.notification.close()
             self.notification.deleteLater()
+        self.settings.setValue("updates/announced_package", identity)
         self.notification = QMessageBox(self.window)
         self.notification.setWindowTitle(tr("COWMATA Annotator 有新版本", "COWMATA Annotator update available"))
         self.notification.setText(tr("发现新版本：", "New version: ") + update["version"] + tr(
-            "\n可在右下角查看下载进度与更新说明。不会强制关闭正在标注的工程。",
-            "\nOpen Updates at the bottom right for progress and release notes. Your annotation session will not be closed automatically."))
+            "\n在“帮助 → 关于 → 版本与更新”查看最新版安装包与进度，可直接升级，无须逐个安装旧版本。不会强制关闭正在标注的工程。",
+            "\nOpen Help > About > Version and updates for the latest installer and progress. Upgrade directly without installing intermediate releases. Your annotation session stays open."))
         self.notification.setIcon(QMessageBox.Icon.Information)
         details = self.notification.addButton(tr("查看更新", "View update"), QMessageBox.ButtonRole.ActionRole)
         details.clicked.connect(self.open_dialog)
@@ -201,9 +206,39 @@ class UpdateController(QObject):
         if not self.update or self.busy:
             return
         update = dict(self.update)
+        channel = self.channel()
+        self.setup = None
+        self.pending_job = None
         self.status = tr("后台下载中；不会自动退出标注。", "Downloading in the background; annotation stays open.")
         directory = self.cache / "downloads" / update["sha256"]
-        self._task(lambda: core.download(update, directory, self.progress.emit, self.stop.is_set), self.downloaded)
+
+        def download_latest():
+            latest = core.check_update(__version__, channel)
+            if not self.same_package(update, latest):
+                return channel, latest, None
+            path = core.download(latest, directory, self.progress.emit, self.stop.is_set)
+            if self.stop.is_set():
+                raise InterruptedError("Paused")
+            latest = core.check_update(__version__, channel)
+            return channel, latest, path if self.same_package(update, latest) else None
+
+        self._task(download_latest, self.downloaded)
+
+    @staticmethod
+    def same_package(first, second):
+        return bool(first and second and first["sha256"] == second["sha256"]
+                    and core.version_key(first["version"]) == core.version_key(second["version"]))
+
+    def _download_result(self, result):
+        channel, update, path = result
+        self.busy = False
+        if channel != self.channel():
+            self.check()
+        elif path is None:
+            self._found(update)
+        else:
+            self.update = update
+            self._downloaded(path)
 
     def _downloaded(self, path):
         self.busy = False
@@ -225,8 +260,31 @@ class UpdateController(QObject):
                "Save and close all annotation windows, update in place, then reopen?\nSource data, labels and calibration will not be moved."))
         if answer != QMessageBox.StandardButton.Yes:
             return
-        self.status = tr("正在检查安装位置与准备独立更新程序…", "Preparing the independent updater…")
-        self._task(lambda: prepare_job(self.root, self.setup, self.update, self.cache), self.prepared)
+        self._prepare_install()
+
+    def _prepare_install(self):
+        update, setup, channel = dict(self.update), self.setup, self.channel()
+        self.pending_job = None
+        self.status = tr("正在确认最新版并准备独立更新程序…", "Checking the latest release and preparing the independent updater…")
+
+        def prepare_latest():
+            latest = core.check_update(__version__, channel)
+            job = prepare_job(self.root, setup, latest, self.cache) if self.same_package(update, latest) else None
+            return channel, latest, job
+
+        self._task(prepare_latest, self.prepared)
+
+    def _prepare_result(self, result):
+        channel, update, job = result
+        self.busy = False
+        if channel != self.channel():
+            self.setup = None
+            self.check()
+        elif job is None:
+            self._found(update)
+        else:
+            self.update = update
+            self._prepared(job)
 
     def _prepared(self, job):
         self.busy = False
@@ -236,7 +294,17 @@ class UpdateController(QObject):
         if self.dialog:
             self.dialog.close()
         # closeAllWindows honours every closeEvent; quit() would bypass saves.
-        QTimer.singleShot(0, QApplication.closeAllWindows)
+        QTimer.singleShot(0, self._close_for_update)
+
+    def _close_for_update(self):
+        QApplication.closeAllWindows()
+        if any(window.isVisible() for window in QApplication.topLevelWidgets()):
+            # A cancelled save/close must not leave an old install queued for
+            # an unrelated exit hours later. The next attempt rechecks latest.
+            self.pending_job = None
+            self.status = tr("已取消退出更新，可继续标注；下次更新时将重新检查最新版。",
+                             "Update exit cancelled. Continue annotating; the next attempt checks the latest release again.")
+            self.render()
 
     def on_exit(self):
         self.stop.set()
@@ -309,7 +377,7 @@ class UpdateController(QObject):
                 self.actions.append(button)
             box.addLayout(buttons)
             release = QPushButton(tr("查看 GitHub 更新日志", "Release notes on GitHub"))
-            release.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(core.PAGE)))
+            release.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(core.PAGE + "/latest")))
             box.addWidget(release)
         self.render()
         self.dialog.show()
@@ -334,3 +402,93 @@ class UpdateController(QObject):
                    bool(self.setup) and not self.busy]
         for button, value in zip(self.actions, enabled):
             button.setEnabled(value)
+
+
+class StartupUpdateController(UpdateController):
+    """Keep the workspace unopened until the current release is verified."""
+
+    def __init__(self, window):
+        super().__init__(window, automatic=False)
+        self.status = tr("启动前正在检查最新版，请稍候…", "Checking the latest release before startup…")
+
+    def _found(self, update):
+        self.busy = False
+        self.update, self.setup, self.pending_job = update, None, None
+        if update is None:
+            self.window.accept()
+            return
+        self.window.setWindowTitle(tr("必须更新后才能开始标注", "Update required before annotation"))
+        self.window.version.setText(__version__ + " → " + update["version"])
+        # Startup checks/downloads are mandatory, independent of optional
+        # background reminders, saved preferences or previously dismissed UI.
+        self.start_download()
+
+    def _downloaded(self, path):
+        self.busy = False
+        self.setup = Path(path)
+        self._prepare_install()
+
+    def _prepared(self, job):
+        self.busy = False
+        self.pending_job = Path(job)
+        self.window.reject()  # main exits; only then may the worker swap files.
+
+    def _failed(self, message):
+        self.busy = False
+        self.status = tr("检查或更新未完成，请重试或退出：", "Check/update incomplete. Retry or exit: ") + message
+        self.render()
+
+    def _progress(self, current, total):
+        self.window.bar.setValue(round(current / max(total, 1) * 1000))
+        self.status = tr("正在自动下载最新版：", "Downloading the latest release: ") + f"{current / 1024**2:.1f} / {total / 1024**2:.1f} MB"
+        self.render()
+
+    def render(self):
+        self.window.info.setText(self.status)
+        self.window.retry.setEnabled(not self.busy)
+        self.window.folder.setEnabled(self.setup is not None and not self.busy)
+
+
+class StartupUpdateDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(tr("COWMATA 启动更新检查", "COWMATA startup update check"))
+        self.setMinimumWidth(530)
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        box = QVBoxLayout(self)
+        self.version = QLabel("COWMATA Annotator " + __version__)
+        box.addWidget(self.version)
+        instruction = QLabel(tr("发现更新将自动下载、校验并安装，完成后重新打开软件。\n更新完成前不能进入标注；只安装最新版，无须逐版更新。",
+                                "Updates download, verify and install automatically, then reopen the app.\nAnnotation starts only when up to date; intermediate releases are skipped."))
+        instruction.setWordWrap(True)
+        box.addWidget(instruction)
+        self.info = QLabel()
+        self.info.setWordWrap(True)
+        box.addWidget(self.info)
+        self.bar = QProgressBar()
+        self.bar.setRange(0, 1000)
+        box.addWidget(self.bar)
+        buttons = QHBoxLayout()
+        self.retry = QPushButton(tr("重试更新", "Retry update"))
+        self.folder = QPushButton(tr("打开安装包目录", "Open installer folder"))
+        leave = QPushButton(tr("退出软件", "Exit application"))
+        for button in (self.retry, self.folder, leave):
+            buttons.addWidget(button)
+        box.addLayout(buttons)
+        self.updater = StartupUpdateController(self)
+        self.retry.clicked.connect(self.updater.check)
+        self.folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.updater.setup.parent))) if self.updater.setup else None)
+        leave.clicked.connect(self.reject)
+        self.updater.render()
+        QTimer.singleShot(0, self.updater.check)
+
+
+def verify_startup_update():
+    dialog = StartupUpdateDialog()
+    accepted = dialog.exec() == QDialog.DialogCode.Accepted
+    # This gate runs before app.exec() and before constructing/opening any
+    # project window. Reject exits main; it is never a path into annotation.
+    QApplication.instance().aboutToQuit.disconnect(dialog.updater.on_exit)
+    dialog.updater.on_exit()
+    dialog.updater.pending_job = None
+    return accepted

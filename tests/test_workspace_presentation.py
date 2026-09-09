@@ -223,6 +223,35 @@ def test_hover_never_interpolates_gap_or_changes_samples(app):
     wave.close()
 
 
+def test_all_record_timestamps_follow_reference_clock_without_moving_samples(window):
+    from cowmata_tailring.workspace.clocks import Anchor, ClockMap, wall_ms
+    from cowmata_tailring.workspace.work import SessionWork
+    times = np.array([0, 20, 40], dtype=float)
+    window.plot.set_data([PlotSeries("ax", "AX", "g", "#159c8d", times, np.ones(3))], 3600000)
+    window.work = SessionWork("a" * 64)
+    window.work.clock = ClockMap([Anchor(0, wall_ms("2026-08-03 12:44:58"))])
+    window.imu_position.setMaximum(3600)
+    window.imu_position.setValue(2575.262)
+    window.refresh_events()
+    assert window.plot.wave._format_time(2575262) == "2026-08-03 13:27:53"
+    assert window.plot.wave._format_time(2575262, True) == "2026-08-03 13:27:53.262"
+    assert window.imu_position.text() == "2026-08-03 13:27:53.262"
+    window.imu_position.lineEdit().setText("2026-08-03 13:28:00.000")
+    window.imu_position.interpretText()
+    assert window.imu_position.value() == 2582
+    # Changing records/calibration changes display, never the stored coordinates.
+    window.work = SessionWork("b" * 64)
+    window.work.clock = ClockMap([Anchor(0, wall_ms("2026-08-04 23:59:50")),
+                                 Anchor(10000, wall_ms("2026-08-05 00:00:01"))])
+    window.refresh_events()
+    assert window.plot.wave._format_time(10000) == "2026-08-05 00:00:01"
+    assert window.imu_position.valueFromText("2026-08-05 00:00:01.000") == 10
+    assert np.array_equal(times, [0, 20, 40])
+    window.plot.clear_data()
+    assert window.plot.wave._format_time(10000) == "00:00:10"
+    window.work = None
+
+
 def test_event_track_preserves_ids_selection_and_view(app):
     panel = SignalPanel()
     panel.resize(1000, 250)

@@ -57,6 +57,27 @@ def test_release_protocol_channel_and_downgrade():
     assert core.check_update("3.0.0", opener=transport([row], desc)) is None
 
 
+def test_old_client_skips_all_intermediate_releases_and_never_falls_back():
+    old, _, _ = release("3.1.0", False)
+    middle, _, _ = release("3.2.0", False)
+    newest, desc, _ = release("3.10.0", False)
+    preview, _, _ = release("4.0.0-rc.1", True)
+    rows = [middle, preview, newest, old]  # API order is not version order.
+    assert core.check_update("3.0.0", "stable", opener=transport(rows, desc))["version"] == "3.10.0"
+    newest["assets"] = []
+    with pytest.raises(ValueError, match="自动更新清单"):
+        core.check_update("3.0.0", "stable", opener=transport(rows, desc))
+
+
+@pytest.fixture(autouse=True)
+def isolated_update_settings(monkeypatch, tmp_path):
+    from PySide6.QtCore import QSettings
+
+    from cowmata_tailring.app import update_ui
+    settings = QSettings(str(tmp_path / "updates.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr(update_ui, "QSettings", lambda: settings)
+
+
 @pytest.mark.parametrize("change", ["missing", "digest", "url", "size", "descriptor", "version"])
 def test_invalid_releases_never_produce_install_job(change):
     row, desc, _ = release()
@@ -254,9 +275,196 @@ def test_new_version_reminder_is_nonmodal_and_not_repeated(monkeypatch):
     assert "3.1.1" in first.text()
     updater._found(dict(update))
     assert updater.notification is first
+    second_window = QMainWindow()
+    second = UpdateController(second_window, automatic=False)
+    second.option = lambda *_: False
+    second._found(dict(update))
+    assert second.notification is None  # Includes reopening the application.
+    second_window.close()
     window.close()
     first.close()
     app.processEvents()
+
+
+@pytest.fixture
+def update_controller(monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QApplication, QMainWindow
+
+    from cowmata_tailring.app import update_ui
+    app = QApplication.instance() or QApplication([])
+    window = QMainWindow()
+    updater = update_ui.UpdateController(window, automatic=False)
+    updater.cache = tmp_path
+    updater.option = lambda *_: False
+    monkeypatch.setattr(updater, "announce", lambda *_: None)
+
+    def run(function, signal):
+        updater.busy = True
+        try:
+            signal.emit(function())
+        except Exception as exc:
+            updater._failed(str(exc))
+
+    monkeypatch.setattr(updater, "_task", run)
+    updater.update = {"version": "3.3.0", "sha256": "a" * 64, "name": "old.exe"}
+    yield updater
+    updater.pending_job = None
+    window.close()
+    app.processEvents()
+
+
+@pytest.mark.parametrize("newer_at", ["before_download", "after_download", "same_version_repack", "withdrawn", "unchanged"])
+def test_download_only_marks_current_latest_package_ready(update_controller, monkeypatch, tmp_path, newer_at):
+    updater = update_controller
+    original = dict(updater.update)
+    latest = {"version": "3.4.0", "sha256": "b" * 64, "name": "latest.exe"}
+    if newer_at == "same_version_repack":
+        latest["version"] = original["version"]
+    if newer_at == "withdrawn":
+        latest = None
+    if newer_at == "unchanged":
+        latest = original
+    checks = iter([latest] if newer_at == "before_download" else [original, latest])
+    monkeypatch.setattr(core, "check_update", lambda *_: next(checks))
+    downloads = []
+
+    def download(update, *_):
+        downloads.append(update)
+        return tmp_path / update["name"]
+
+    monkeypatch.setattr(core, "download", download)
+    updater.start_download()
+    assert updater.update == latest
+    assert bool(updater.setup) == (newer_at == "unchanged")
+    assert len(downloads) == (0 if newer_at == "before_download" else 1)
+    assert not updater.busy and updater.pending_job is None
+
+
+@pytest.mark.parametrize("check_result", ["newer", "offline", "unchanged"])
+def test_install_rechecks_latest_before_preparing_or_closing(update_controller, monkeypatch, tmp_path, check_result):
+    from PySide6.QtWidgets import QMessageBox
+
+    from cowmata_tailring.app import update_ui
+    updater = update_controller
+    updater.setup = tmp_path / "old.exe"
+    latest = dict(updater.update) if check_result == "unchanged" else {
+        "version": "3.4.0", "sha256": "b" * 64, "name": "newest.exe"}
+
+    def check(*_):
+        if check_result == "offline":
+            raise OSError("offline")
+        return latest
+
+    monkeypatch.setattr(core, "check_update", check)
+    monkeypatch.setattr(QMessageBox, "question", lambda *_: QMessageBox.StandardButton.Yes)
+    prepared, closed = [], []
+    monkeypatch.setattr(update_ui, "prepare_job", lambda *args: prepared.append(args[2]) or tmp_path / "job.json")
+    monkeypatch.setattr(updater, "_prepared", lambda job: closed.append(job))
+    updater.install()
+    assert len(prepared) == len(closed) == (1 if check_result == "unchanged" else 0)
+    if check_result == "newer":
+        assert updater.update == latest and updater.setup is None
+    assert not updater.busy
+
+
+def test_cancelled_window_close_does_not_queue_installer_for_later(update_controller, monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QApplication
+    updater = update_controller
+    updater.window.show()
+    updater.pending_job = tmp_path / "job.json"
+    monkeypatch.setattr(QApplication, "closeAllWindows", lambda: None)  # User chose to continue annotating.
+    updater._close_for_update()
+    assert updater.pending_job is None
+    calls = []
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: calls.append(a))
+    updater.on_exit()
+    assert not calls
+
+
+@pytest.fixture
+def startup_gate(monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    from cowmata_tailring.app import update_ui
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(update_ui.QTimer, "singleShot", lambda *_: None)
+    dialog = update_ui.StartupUpdateDialog()
+    updater = dialog.updater
+
+    def run(function, signal):
+        updater.busy = True
+        try:
+            signal.emit(function())
+        except Exception as exc:
+            updater._failed(str(exc))
+
+    monkeypatch.setattr(updater, "_task", run)
+    yield dialog
+    updater.pending_job = None
+    updater.stop.set()
+    app.aboutToQuit.disconnect(updater.on_exit)
+    dialog.close()
+
+
+def test_startup_allows_annotation_only_after_latest_check(startup_gate, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+    monkeypatch.setattr(core, "check_update", lambda *_: None)
+    startup_gate.updater.check()
+    assert startup_gate.result() == QDialog.DialogCode.Accepted
+    assert startup_gate.updater.pending_job is None
+
+
+def test_startup_forces_automatic_latest_update_despite_old_preferences(startup_gate, monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QDialog, QMessageBox
+
+    from cowmata_tailring.app import update_ui
+    updater = startup_gate.updater
+    update = {"version": "3.9.0", "sha256": "a" * 64, "name": "latest.exe"}
+    updater.settings.setValue("updates/auto_check", False)
+    updater.settings.setValue("updates/auto_download", False)
+    updater.settings.setValue("updates/announced_package", update["version"] + ":" + update["sha256"])
+    monkeypatch.setattr(core, "check_update", lambda *_: dict(update))
+    calls = []
+    monkeypatch.setattr(core, "download", lambda *args: calls.append(args[0]) or tmp_path / "latest.exe")
+    monkeypatch.setattr(update_ui, "prepare_job", lambda *args: calls.append(args[2]) or tmp_path / "job.json")
+    monkeypatch.setattr(QMessageBox, "question", lambda *_: pytest.fail("Startup must update automatically"))
+    updater.check()
+    assert calls == [update, update]
+    assert updater.pending_job == tmp_path / "job.json"
+    assert startup_gate.result() == QDialog.DialogCode.Rejected  # Exit to install, never enter old workspace.
+
+
+@pytest.mark.parametrize("failure_at", ["check", "download", "prepare"])
+def test_startup_errors_cannot_unlock_old_annotation(startup_gate, monkeypatch, tmp_path, failure_at):
+    from PySide6.QtWidgets import QDialog
+
+    from cowmata_tailring.app import update_ui
+    update = {"version": "3.9.0", "sha256": "a" * 64, "name": "latest.exe"}
+
+    def fail(*_):
+        raise OSError("network or installation failed")
+
+    monkeypatch.setattr(core, "check_update", fail if failure_at == "check" else lambda *_: update)
+    monkeypatch.setattr(core, "download", fail if failure_at == "download" else lambda *_: tmp_path / "latest.exe")
+    monkeypatch.setattr(update_ui, "prepare_job", fail)
+    startup_gate.show()
+    startup_gate.updater.check()
+    assert startup_gate.isVisible() and startup_gate.result() != QDialog.DialogCode.Accepted
+    assert startup_gate.retry.isEnabled() and startup_gate.updater.pending_job is None
+
+
+def test_main_does_not_construct_workspace_or_load_project_when_startup_is_blocked(tmp_path):
+    import sys
+    source = Path(__file__).resolve().parents[1]
+    script = ("import sys;sys.path.insert(0,sys.argv[1]);"
+              "from cowmata_tailring.app import main,update_ui;"
+              "update_ui.verify_startup_update=lambda:False;"
+              "sys.modules['cowmata_tailring.workspace.modern_window']=None;"
+              "raise SystemExit(main.main(['--mode','workspace','--project',sys.argv[2]]))")
+    result = subprocess.run([sys.executable, "-B", "-c", script, str(source), str(tmp_path)],
+                            capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+    assert not list(tmp_path.iterdir())
 
 
 def test_directory_check_cache_does_not_hide_a_redirect_on_next_pass(transaction):

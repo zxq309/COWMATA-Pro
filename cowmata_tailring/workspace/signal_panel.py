@@ -5,9 +5,10 @@ import html
 
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap, QValidator
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QScrollArea,
@@ -17,6 +18,49 @@ from PySide6.QtWidgets import (
 )
 
 from cowmata_tailring.ui.interactive_plot import InteractiveSignalPlotWidget
+
+from .clocks import wall_ms, wall_text
+
+
+def reference_text(clock, milliseconds, with_ms=False):
+    value = int(round(clock.map(milliseconds))) if with_ms else int(clock.map(milliseconds))
+    return wall_text(value) + (f".{value % 1000:03d}" if with_ms else "")
+
+
+class TimePositionSpinBox(QDoubleSpinBox):
+    """Display/edit reference timestamps while retaining relative seconds internally."""
+
+    def __init__(self, parent=None):
+        self.clock = None
+        super().__init__(parent)
+        self.setKeyboardTracking(False)
+
+    def set_clock(self, clock):
+        self.clock = clock if clock and clock.anchors else None
+        self.setSuffix("" if self.clock else " 秒")
+        self.setMinimumWidth(215 if self.clock else 0)
+        self.lineEdit().setText(self.textFromValue(self.value()) + self.suffix())
+
+    def textFromValue(self, value):
+        return reference_text(self.clock, value * 1000, True) if self.clock else super().textFromValue(value)
+
+    def valueFromText(self, text):
+        if not self.clock:
+            return super().valueFromText(text)
+        try:
+            return self.clock.map(wall_ms(text), inverse=True) / 1000
+        except (ValueError, OverflowError):
+            return self.value()
+
+    def validate(self, text, pos):
+        if not self.clock:
+            return super().validate(text, pos)
+        try:
+            value = self.clock.map(wall_ms(text), inverse=True) / 1000
+            valid = self.minimum() - 0.0005 <= value <= self.maximum() + 0.0005
+        except (ValueError, OverflowError):
+            valid = False
+        return (QValidator.State.Acceptable if valid else QValidator.State.Intermediate, text, pos)
 
 
 class ReviewWaveform(InteractiveSignalPlotWidget):
@@ -29,7 +73,19 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
         self.setMinimumSize(300, 92)
         self.set_lanes_visible(False)
         self.group = "all"
+        self.clock = None
         self.setToolTip("滚轮缩放 · Shift 拖动平移 · 拖动选择区间 · 悬停读取原始样本")
+
+    def set_clock(self, clock):
+        self.clock = clock if clock and clock.anchors else None
+        self._invalidate_static()
+
+    def clear_data(self):
+        self.clock = None
+        super().clear_data()
+
+    def _format_time(self, ms, with_ms=False):
+        return reference_text(self.clock, ms, with_ms) if self.clock else super()._format_time(ms, with_ms)
 
     def set_group(self, group):
         self.group = group
@@ -165,13 +221,15 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
     def _paint_time_axis(self, painter):
         plot = self._plot_rect()
         painter.setPen(QColor("#78908c"))
-        for index in range(6):
-            fraction = index / 5
+        width = max(90, painter.fontMetrics().horizontalAdvance(self._format_time(self._view_t0)) + 12)
+        count = max(2, min(6, int(plot.width() / (width + 20)) + 1))
+        for index in range(count):
+            fraction = index / (count - 1)
             x = plot.left() + fraction * plot.width()
             when = self._view_t0 + fraction * (self._view_t1 - self._view_t0)
             painter.drawLine(QPointF(x, plot.bottom()), QPointF(x, plot.bottom() + 4))
-            left = max(0, min(self.width() - 90, x - 45))
-            painter.drawText(QRectF(left, plot.bottom() + 5, 90, 18), Qt.AlignmentFlag.AlignCenter,
+            left = max(0, min(self.width() - width, x - width / 2))
+            painter.drawText(QRectF(left, plot.bottom() + 5, width, 18), Qt.AlignmentFlag.AlignCenter,
                              self._format_time(when))
 
 
@@ -288,6 +346,9 @@ class SignalPanel(QWidget):
     def set_data(self, *args, **kwargs):
         self.wave.set_data(*args, **kwargs)
         self.track.refresh()
+
+    def set_clock(self, clock):
+        self.wave.set_clock(clock)
 
     def clear_data(self):
         self.wave.clear_data()

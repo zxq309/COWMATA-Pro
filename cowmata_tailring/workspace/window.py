@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
@@ -58,6 +57,7 @@ from .coverage import continuation_target, video_coverage
 from .demand import device_name, natural_key, relevant_rows
 from .dialogs import MappingDialog, SourceTimeDialog
 from .playback import VideoBoard
+from .signal_panel import TimePositionSpinBox
 from .storage import SnapshotWriter, atomic_json, read_json, unique_batch
 from .work import SessionWork
 from .worker import IndexWorker
@@ -275,7 +275,7 @@ class MainWindow(QMainWindow):
         signal_layout.setContentsMargins(0, 0, 0, 0)
         imu_controls = QHBoxLayout()
         imu_controls.addWidget(QLabel("九轴位置"))
-        self.imu_position = QDoubleSpinBox()
+        self.imu_position = TimePositionSpinBox()
         self.imu_position.setDecimals(3)
         self.imu_position.setRange(0, 1e8)
         self.imu_position.setSuffix(" 秒")
@@ -689,6 +689,7 @@ class MainWindow(QMainWindow):
             self.source_available = False
             self.motion_cache.clear()
             self.plot.clear_data()
+            self.imu_position.set_clock(None)
             self.root_label.setText("   " + str(self.catalog.root) + "   ")
             self.board.software_decode = self.settings.get("software_decode", False)
             self.layout_choice.setCurrentIndex(self.settings.get("layout", 0))
@@ -1562,6 +1563,10 @@ class MainWindow(QMainWindow):
         self.save_current()
 
     def refresh_events(self):
+        clock = self.work.clock if self.work else None
+        self.imu_position.set_clock(clock)
+        if hasattr(self.plot, "set_clock"):
+            self.plot.set_clock(clock)
         if not self.work:
             self.events.setRowCount(0)
             return

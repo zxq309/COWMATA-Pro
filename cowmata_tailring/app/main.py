@@ -79,6 +79,10 @@ def main(argv: list[str] | None = None) -> int:
         application.setWindowIcon(QIcon(str(icon_path)))
     application.setStyle("Fusion")
 
+    from cowmata_tailring.app.update_ui import verify_startup_update
+    if not verify_startup_update():
+        return 0
+
     if args.annotations:
         from cowmata_tailring.workspace.history_window import HistoryWindow
         window = HistoryWindow(args.annotations, args.project)
