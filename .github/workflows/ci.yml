@@ -37,6 +37,7 @@ jobs:
         run: ruff check cowmata_tailring tests
 
       - name: Test
+        timeout-minutes: 5
         env:
           QT_QPA_PLATFORM: offscreen
-        run: pytest -v
+        run: pytest -v -o faulthandler_timeout=30
