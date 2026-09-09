@@ -13,6 +13,7 @@ def save_when_test_closes_window(monkeypatch):
     yield
     if module is None:
         return
+    from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance()
@@ -43,3 +44,13 @@ def save_when_test_closes_window(monkeypatch):
                    "root": str(window.catalog.root) if window.catalog else None}
                   for window in pending]
         pytest.fail(f"Requested window close did not finish within 5 seconds: {states}")
+    # QWidget.close() hides a completed window but does not destroy its native
+    # tree. Leaving many closed windows to cyclic GC carried tens of thousands
+    # of Qt objects into later tests. Dispose only completed requested closes;
+    # windows deliberately left open after Cancel/error remain available.
+    for window in app.topLevelWidgets():
+        if isinstance(window, module.MainWindow) and window._closing_requested and window._closed:
+            window.deleteLater()
+    # processEvents() alone does not deliver DeferredDelete outside app.exec().
+    # Explicitly drain it here while fixture monkeypatches are still valid.
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
