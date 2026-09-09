@@ -28,6 +28,7 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         self.empty.setStyleSheet("color:#a4b8b8; background:#17282c; border-radius:12px; font-size:16px")
         self._pending_tile_shows = []
         self._tile_show_queued = False
+        self._spare_surface_queued = False
 
     def set_presentation(self, mode):
         self.presentation = mode
@@ -199,6 +200,8 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         if pending_shows and not self._tile_show_queued:
             self._tile_show_queued = True
             QTimer.singleShot(0, self._show_next_tile)
+        elif not pending_shows:
+            self._queue_spare_surface()
         self.aux_scroll.raise_()
 
     def _show_next_tile(self):
@@ -213,6 +216,30 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         if self._pending_tile_shows and not self._tile_show_queued:
             self._tile_show_queued = True
             QTimer.singleShot(0, self._show_next_tile)
+        elif not self._pending_tile_shows:
+            self._queue_spare_surface()
+
+    def _queue_spare_surface(self):
+        if (self._spare_surface_queued or self._closing or self.playing or self._pending_tile_shows
+                or not self.catalog or not self.selected or not self.isVisible()):
+            return
+        self._spare_surface_queued = True
+        QTimer.singleShot(0, self._prepare_spare_surface)
+
+    def _prepare_spare_surface(self):
+        self._spare_surface_queued = False
+        # Recheck the current layout, playback and lifetime; an earlier queued
+        # callback must not allocate after closing or while playback is busy.
+        if (self._closing or self.playing or self._pending_tile_shows
+                or not self.catalog or not self.selected or not self.isVisible()):
+            return
+        if self.prewarm is None:
+            self.prewarm = self._idle_tile()
+        # Prepare the spare HWND before playback so first creation is not paid
+        # in the prewarm callback. Only create its handle on this paused UI turn;
+        # the existing prewarm algorithm still decides when to open a decoder.
+        if not self.prewarm.surface.testAttribute(Qt.WidgetAttribute.WA_WState_Created):
+            self.prewarm.surface.winId()
 
 
 class DragHeader(QLabel):

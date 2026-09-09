@@ -108,7 +108,7 @@
 | U03 / 高 | 两个更新进程竞争同一安装目录，原路径锁可被覆盖，双方均进入替换事务 | `update_worker.py:35/222` 的安装路径系统互斥；`test_two_real_updaters_cannot_replace_the_same_installation_concurrently` 与进程死亡释放测试，使用真实独立进程 |
 | U04 / 中 | 旧模型辅助入口指向不存在的模块，缺 Torch 时反复要求选择模型包 | `model_assist/assist.py:49` 修正导入并延迟可选依赖；`test_legacy_model_entry.py` 实际窗口加载、人工标注、保存重开和缺依赖提示 |
 | L01 / 低 | 翻译自检命令先于后续词条注册执行，误报大量缺失词条，部分界面文案漏译 | `ui/translations.py:2034` 在全部注册完成后运行；`test_translations.py` 实际 runpy 自检与持久化数据不翻译回归 |
-| A04 / 中 | 历史八路原生视频窗口集中show阻塞GUI，打开或重开时出现一秒以上停顿 | presentation.py将原生显示分派到连续Qt事件轮次，布局/隐藏立即完成；5项历史响应回归及真实8路HEVC重复重开通过，最长间隔1.364→0.730秒 |
+| A04 / 中 | 历史八路原生窗口集中show，以及播放预热时临时创建备用窗口，造成GUI停顿 | presentation.py分次显示窗口，并在暂停时仅预备一个备用原生句柄；不提前打开解码器，池上限9。播放请求最大耗时764→4.83毫秒；功能回归通过。首次单路native show仍约729毫秒、GUI间隔约793毫秒，整体750毫秒目标未达成，作为性能限制保留，未用重复测试的较低值替代 |
 | N05 / 高 | Windows短暂读句柄使原子替换报WinError5；跨记录结束动作部分写入后重试可能重复草稿 | storage.py对5/32/33错误有限退避、保持旧文件和备份；window.mark固定结束帧并按group_id幂等。真实Windows读句柄、持续拒绝、磁盘满、跨记录部分写入/保存恢复/重试回归 |
 | L02 / 低 | 窄波形最后两个完整日期刻度重叠；已确认标注和历史列表仍显示相对秒，难以对应视频 | signal_panel.py按实际文字矩形留间距；工作台/历史有时钟时显示日期时间，无时钟明确相对坐标。内部样本和编辑坐标保持不变，宽度/字体组合及标签展示回归 |
 
@@ -190,7 +190,7 @@
 | 便携/源码版更新 | 缺注册安装身份时要求运行安装器，不能宣称原位置全自动覆盖；正式安装版按启动最新版门禁执行 |
 | 发布完整性 | 先上传安装包、描述文件和清单并核对 SHA，再公开最新版，避免强制启动客户端看到不完整发布 |
 | 客户原始失败工程 | 不在本机；客户提供工程或回传日志后仍需针对原录像格式、路径和缓存复验 |
-| 性能 | OCR 冷启动与大单份 I/O 的实测限制见第 5 节；网盘、机械盘、不同显卡、多实例极限负载未穷尽 |
+| 性能 | 八路首次原生窗口创建仍有约0.8秒停顿，整体750毫秒测试目标未达成；播放中备用窗口创建尖峰已修复。OCR 冷启动、大单份 I/O、网盘、机械盘和不同显卡的限制仍需分别评估 |
 | 旧损坏整理清单 | 新日志支持按字节位置恢复；旧清单已损坏且没有恢复位置信息时明确停止，不能猜测删除其内容 |
 | 可选算法与第三方 | 未逐行审计 vendor、解码器/SDK、第三方库与模型权重；旧 Torch 外置模型全推理、阳性准确率和科学验证不在本次证明范围 |
 
@@ -213,4 +213,4 @@
 
 本地审查证据目录 `audit-330/`（不是客户数据，也不要求写入发布包）保留 `annotation-context.md`、`organization-context.md`、`update-context.md` 三份初始函数契约；专项结论为 `annotation-review.md`、`organization-review.md`、`organization-device-identity-review.md`、`update-algorithm-review.md`。运行原始结果包括 `pending-cold-04/`、`pending-legacy-03/`、`annotation-large-225722/`、`annotation-large-231222/`、`organization-volumes/`、`algorithm-runtime/` 和 `core-selftest/`。
 
-**最终验收索引：** [功能实测记录](release-330-validation.md)汇总全量结果、真实本机工程、播放、保存、导出、历史、模型和安装边界；[图文教程验证](manual-330-validation.md)对照32页实际操作。最终EXE的新装/卸载、旧worker迁移、全清单SHA和固定提交记录在发行附件COWMATA-3.3.0-Delivery-Checks.json；发布后另核对GitHub latest、标签提交、全部资源摘要及公共更新描述文件。任何一项失败都应阻止该安装包公开。
+**最终验收索引：** [功能实测记录](release-330-validation.md)汇总全量结果、真实本机工程、播放、保存、导出、历史、模型和安装边界；[图文教程验证](manual-330-validation.md)对照32页实际操作。最终EXE的新装/卸载、旧worker迁移、全清单SHA和固定提交记录在发行附件COWMATA-3.3.0-Delivery-Checks.json；发布后另核对GitHub latest、标签提交、全部资源摘要及公共更新描述文件。数据正确性、安装和更新完整性或功能回归失败应阻止公开；上述首次原生窗口性能限制单独披露，原失败结果仍保留，不计为性能测试通过。
