@@ -355,9 +355,14 @@ class SourceInspector:
         layout = "unknown"
         saved_roi = roi
         hint_key = "|".join(map(str, (path.relative_to(self.root).parts[0], video.get("width"), video.get("height"))))
+        ocr_deadline = time.monotonic() + 60
         for number, target in enumerate(sorted(targets)):
             if self.stop.is_set():
                 raise RuntimeError("索引已暂停，下次打开会继续")
+            if time.monotonic() >= ocr_deadline:
+                samples.append({"media_ms": target, "wall_ms": None, "ocr": self._ocr_limit_report()})
+                continue
+            frame_deadline = min(ocr_deadline, time.monotonic() + 12)
             self.progress(f"识别 {path.name} · {number + 1}/{len(targets)}")
             try:
                 cached = None
@@ -374,27 +379,34 @@ class SourceInspector:
                             frame.save(frame_dir / f"{asset_id}.jpg", quality=90)
                         continue
                     if report.get("routing_only"):
-                        report = self.ocr.recognize(frame, filename=f"{path.name}@{actual:.0f}ms", roi=roi,
+                        report = self._recognize_bounded(frame, frame_deadline, filename=f"{path.name}@{actual:.0f}ms", roi=roi,
                                                     hint=report.get("roi") or saved_roi, profile_hint=layout)
                 else:
                     frame, actual = extract_frame(path, target, timeline, cancelled=self.stop.is_set)
-                    report = self.ocr.recognize(frame, filename=f"{path.name}@{actual:.0f}ms", roi=roi,
+                    report = self._recognize_bounded(frame, frame_deadline, filename=f"{path.name}@{actual:.0f}ms", roi=roi,
                                                 hint=saved_roi or self.roi_hints.get(hint_key), profile_hint=layout)
                 if number == 0:
                     frame.save(frame_dir / f"{asset_id}.jpg", quality=90)
                 retries = []
-                if not report["success"]:
+                if not report["success"] and not report.get("budget_exhausted"):
                     original_report = report
                     for offset in (500, -500, 1500, -1500, -2500, -4000):
+                        if time.monotonic() >= frame_deadline:
+                            report = self._ocr_limit_report()
+                            break
                         retry_at = target + offset
                         if not 0 <= retry_at < timeline.duration_ms - timeline.frame_duration_ms:
                             continue
                         retry_frame, retry_actual = extract_frame(path, retry_at, timeline, cancelled=self.stop.is_set)
-                        retry_report = self.ocr.recognize(retry_frame, filename=f"{path.name}@{retry_actual:.0f}ms", roi=roi,
+                        self.progress(f"复核画面时间：{path.name} @{retry_at / 1000:.1f}s")
+                        retry_report = self._recognize_bounded(retry_frame, frame_deadline, filename=f"{path.name}@{retry_actual:.0f}ms", roi=roi,
                                                           hint=saved_roi, profile_hint=layout)
                         retries.append({"media_ms": retry_actual, "ocr": retry_report})
                         if retry_report["success"]:
                             report, actual = retry_report, retry_actual
+                            break
+                        if retry_report.get("budget_exhausted"):
+                            report = retry_report
                             break
                     report = dict(report)
                     report["original_attempt"] = original_report
@@ -403,6 +415,9 @@ class SourceInspector:
                 if report["success"]:
                     saved_roi = report["roi"]
                     layout = report["metadata"].get("layout", layout)
+                    # Long recordings with readable clocks can finish normally;
+                    # only consecutive unreadable work consumes this allowance.
+                    ocr_deadline = time.monotonic() + 60
             except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
                 samples.append({"media_ms": target, "wall_ms": None, "error": str(exc)})
         # A high-confidence glyph can still be wrong. Retry isolated temporal
@@ -416,6 +431,8 @@ class SourceInspector:
                 suspects = [s for s in good if abs(s["wall_ms"] - s["media_ms"] - centre) > 2000]
                 for sample in suspects[:2]:
                     for offset in (500, -500, 1500):
+                        if time.monotonic() >= ocr_deadline:
+                            break
                         target = sample["media_ms"] + offset
                         if not 0 <= target < timeline.duration_ms - timeline.frame_duration_ms:
                             continue
@@ -423,7 +440,7 @@ class SourceInspector:
                             raise RuntimeError("索引已暂停")
                         self.progress(f"复核时间推进异常点：{path.name} @{target / 1000:.1f}s")
                         frame, actual = extract_frame(path, target, timeline, cancelled=self.stop.is_set)
-                        report = self.ocr.recognize(frame, filename=f"{path.name}@{actual:.0f}ms", roi=roi,
+                        report = self._recognize_bounded(frame, min(ocr_deadline, time.monotonic() + 12), filename=f"{path.name}@{actual:.0f}ms", roi=roi,
                                                     hint=saved_roi, profile_hint=layout)
                         sample.setdefault("temporal_rechecks", []).append({"media_ms": actual, "ocr": report})
                         if report["wall_ms"] is not None and abs(report["wall_ms"] - actual - centre) <= 2000:
@@ -431,6 +448,8 @@ class SourceInspector:
                             sample.update(media_ms=actual, wall_ms=report["wall_ms"], ocr=report)
                             break
         intervals, warnings = build_observed_intervals(samples, timeline)
+        if any(s.get("ocr", {}).get("budget_exhausted") for s in samples):
+            warnings.append("部分画面时间限时未读清；已保留待复核，继续检索其他录像。可框选时间戳或输入人工读数。")
         if saved_roi:
             self.roi_hints[hint_key] = saved_roi
             atomic_json(self.meta / "ocr_profiles.json", self.roi_hints)
@@ -453,3 +472,28 @@ class SourceInspector:
                 "time_engine": NATIVE_SIGNATURE,
                 "preview": f"previews/{asset_id}.jpg", "needs_review": bool(warnings) or not intervals,
                 "start_display": wall_text(valid[0]["wall_ms"], filename=True) if valid else "待确认"}
+
+    @staticmethod
+    def _ocr_limit_report():
+        return {"success": False, "wall_ms": None, "roi": None, "metadata": {}, "budget_exhausted": True}
+
+    def _recognize_bounded(self, frame, deadline, **kwargs):
+        # Cancel between model calls, not by killing a thread with live ONNX
+        # state. One in-flight inference may finish after the deadline.
+        engine = getattr(self.ocr, "engine", None)
+        previous = getattr(engine, "cancelled", None)
+        if engine is not None:
+            engine.cancelled = lambda: self.stop.is_set() or time.monotonic() >= deadline
+        try:
+            if self.stop.is_set():
+                raise InterruptedError("时间检索已切换")
+            if time.monotonic() >= deadline:
+                return self._ocr_limit_report()
+            return self.ocr.recognize(frame, **kwargs)
+        except InterruptedError:
+            if self.stop.is_set() or time.monotonic() < deadline:
+                raise
+            return self._ocr_limit_report()
+        finally:
+            if engine is not None:
+                engine.cancelled = previous

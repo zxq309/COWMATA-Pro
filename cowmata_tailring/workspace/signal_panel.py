@@ -141,20 +141,34 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
             cache.fill(QColor("#ffffff"))
             painter = QPainter(cache)
             self._draw_curves(painter)
+            self._paint_intervals(painter)
             painter.end()
             self._static_cache = cache
         painter = QPainter(self)
         painter.drawPixmap(0, 0, self._static_cache)
+        self._paint_playheads(painter)
+
+    def _paint_intervals(self, painter):
+        # Part of the static layer: playback moves the cursor without redrawing
+        # every annotation. View, selection and boundary changes invalidate it.
         painter.save()
         painter.setClipRect(self._plot_rect())
-        target = self._selected_event()
-        if target and target.get("t1") is not None:
+        for target in self._events:
+            if target.get("t1") is None or target["t1"] <= target["t0"]:
+                continue  # Point events have no interval to shade.
+            if target["t1"] <= self._view_t0 or target["t0"] >= self._view_t1:
+                continue
             x0, x1 = self._x_for_time(target["t0"]), self._x_for_time(target["t1"])
-            painter.fillRect(QRectF(x0, self.TOP, max(1, x1 - x0), self._plot_rect().height()), QColor(21, 156, 141, 24))
-            painter.setPen(QPen(QColor("#159c8d"), 2))
+            selected = target["id"] == self._selected_event_id
+            li = int(target.get("li", -1))
+            color = QColor(self._labels[li].get("color", "#159c8d") if 0 <= li < len(self._labels) else "#159c8d")
+            shade = QColor(color)
+            shade.setAlpha(45 if selected else 25)
+            painter.fillRect(QRectF(x0, self.TOP, max(1, x1 - x0), self._plot_rect().height()), shade)
+            painter.setPen(QPen(color, 2 if selected else 1,
+                               Qt.PenStyle.SolidLine if target.get("confirmation") == "confirmed" else Qt.PenStyle.DashLine))
             for x in (x0, x1):
                 painter.drawLine(QPointF(x, self.TOP), QPointF(x, self._plot_rect().bottom()))
-        self._paint_playheads(painter)
         painter.restore()
 
     def _draw_curves(self, p):

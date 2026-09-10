@@ -1,18 +1,18 @@
-# COWMATA Annotator 新手图文操作手册 3.3.1
+# COWMATA Annotator 新手图文操作手册 3.3.2
 
 操作顺序：准备数据 → 审查归类 → 标注保存 → 复核导出。
 
-功能页面由 3.3.1 实际运行截图更新；安装向导沿用 3.3 系列实拍布局。牛舍短片为授权素材，演示九轴及标签不作研究真值。
+功能页面由 3.3.2 实际运行截图更新；待确认页使用隔离状态示例，安装向导沿用 3.3 系列实拍布局。授权牛舍短片及演示九轴、标签不作研究真值。
 
 ## 01 安装最新修复版
 
 阶段：开始使用
 
-![安装最新修复版](../assets/screenshots/manual-331/01-install.png)
+![安装最新修复版](../assets/screenshots/manual-332/01-install.png)
 
-![安装最新修复版](../assets/screenshots/manual-331/01-install-directory.png)
+![安装最新修复版](../assets/screenshots/manual-332/01-install-directory.png)
 
-1. 下载发布页最新的 3.3.1 安装包，双击运行。
+1. 下载发布页最新的 3.3.2 安装包，双击运行。
 2. 选择软件目录，按安装向导完成；原始数据放在单独的数据目录。
 3. 已有工程可继续打开；安装版启动时自动检查并直升最新版。
 
@@ -22,7 +22,7 @@
 
 阶段：开始使用
 
-![启动检查与强制更新](../assets/screenshots/manual-331/02-startup.png)
+![启动检查与强制更新](../assets/screenshots/manual-332/02-startup.png)
 
 1. 启动时先联网检查最新版本，检查通过后才能进入工作台。
 2. 发现更新会自动下载、校验并安装；更新完成后重新打开。
@@ -34,7 +34,7 @@
 
 阶段：准备数据
 
-![先准备来源，再整理数据](../assets/screenshots/manual-331/03-sources.png)
+![先准备来源，再整理数据](../assets/screenshots/manual-332/03-sources.png)
 
 1. 打开“数据整理 → 数据归类”，选择目标数据工程。
 2. 添加九轴文件或根目录；每路录像分别添加，并指定视角01至视角08。
@@ -46,7 +46,7 @@
 
 阶段：准备数据
 
-![九轴目录必须写对三段](../assets/screenshots/manual-331/04-naming-errors.png)
+![九轴目录必须写对三段](../assets/screenshots/manual-332/04-naming-errors.png)
 
 1. 目录格式：完整设备编号-牛耳标号-现场记号，例如 546C50CA07D5-00123-w1。
 2. 设备号为12位十六进制；耳标只用数字并保留前导0；现场记号限英文字母/数字，保留大小写。
@@ -58,9 +58,9 @@
 
 阶段：准备数据
 
-![选择本批数据类别](../assets/screenshots/manual-331/04-seven-categories.png)
+![选择本批数据类别](../assets/screenshots/manual-332/04-seven-categories.png)
 
-![选择本批数据类别](../assets/screenshots/manual-331/03-sources.png)
+![选择本批数据类别](../assets/screenshots/manual-332/03-sources.png)
 
 1. 按现场已确认信息选择：正常健康、发情、孕早期、孕中期、孕晚期、产犊或疫病。
 2. 不同类别分批整理；不会根据日期、波形或行为自动推断孕期。
@@ -72,7 +72,7 @@
 
 阶段：审查归类
 
-![先审查，再处理异常](../assets/screenshots/manual-331/05-audit.png)
+![先审查，再处理异常](../assets/screenshots/manual-332/05-audit.png)
 
 1. 切到“① 数据审查”，点击“开始数据审查”。
 2. 检查可归类、命名待规范、待核对和临时文件数量。
@@ -84,7 +84,7 @@
 
 阶段：审查归类
 
-![异常报告与任务记录](../assets/screenshots/manual-331/06-report.png)
+![异常报告与任务记录](../assets/screenshots/manual-332/06-report.png)
 
 1. 在“③ 异常报告”查看来源、状态和修改建议；横向滚动可看完整列。
 2. 导出审查报告 CSV，交给采集人员逐项核对。
@@ -96,7 +96,7 @@
 
 阶段：审查归类
 
-![核对归类预览](../assets/screenshots/manual-331/07-preview.png)
+![核对归类预览](../assets/screenshots/manual-332/07-preview.png)
 
 1. 返回“② 数据归类”，点“校验命名并预览归类”。
 2. 逐行检查设备、牛耳标、现场记号、实际采集日期和目标路径。
@@ -108,7 +108,7 @@
 
 阶段：审查归类
 
-![等整理完成，再打开标注](../assets/screenshots/manual-331/08-organized.png)
+![等整理完成，再打开标注](../assets/screenshots/manual-332/08-organized.png)
 
 1. 看到“整理完成”与完整进度后，点击“打开整理后的工程”。
 2. 整理的目标或来源正被标注占用时，先保存并暂停该工程，再执行整理。
@@ -120,7 +120,7 @@
 
 阶段：开始标注
 
-![认识标注工作台](../assets/screenshots/manual-331/09-workspace.png)
+![认识标注工作台](../assets/screenshots/manual-332/09-workspace.png)
 
 1. 左侧选设备与九轴记录，核对牛耳标、现场记号和类别。
 2. 当前九轴和匹配录像就绪后会提示“加载成功”；其余记录按需读取。
@@ -128,37 +128,39 @@
 
 本教程使用真实牛舍录像短片和合成九轴，演示绑定与标签仅用于操作说明，不作研究真值。
 
-## 11 未索引，不等于没有录像
+## 11 待确认是什么意思，下一步怎么做
 
 阶段：开始标注
 
-![未索引，不等于没有录像](../assets/screenshots/manual-331/10-index.png)
+![待确认是什么意思，下一步怎么做](../assets/screenshots/manual-332/10-pending-index.png)
 
-1. 点左下“索引核验”，查看可用、未索引、待复核、异常或缺失状态。
-2. 先选要标的九轴；仍未匹配时用“工具 → 录像索引 → 扩大当前检索”。
-3. 需要全量处理时启动“完整索引”；右下“加载记录…”可看完整进度与原因。
+![待确认是什么意思，下一步怎么做](../assets/screenshots/manual-332/10-pending-help.png)
 
-重新建立索引只更新可重建信息；已有人工标签与校准记录保留。
+1. 点“索引核验”，悬停状态或开始时间，查看原因与下一步。
+2. “待确认”是录像时间未确认，不等于损坏；先选择九轴，或选录像重建索引。
+3. 状态变为可用／待复核后，点“核验所选视频时间 / 框选 ROI”，核对画面时间。
+
+后台抽查录像时间不代表已匹配当前牛；时间匹配后仍需核对牛身份。本页为隔离状态示例。
 
 ## 12 加载记录与检索工具
 
 阶段：开始标注
 
-![加载记录与检索工具](../assets/screenshots/manual-331/10-status.png)
+![加载记录与检索工具](../assets/screenshots/manual-332/10-status.png)
 
-![加载记录与检索工具](../assets/screenshots/manual-331/30-index-tools.png)
+![加载记录与检索工具](../assets/screenshots/manual-332/30-index-tools.png)
 
 1. 状态栏显示不全时，点右下“加载记录…”查看并复制完整路径、进度与提示。
 2. 在“工具 → 录像索引”可扩大当前检索、启动完整索引、暂停检索或刷新素材。
 3. 素材改动后再刷新；大批录像的内容核验和完整索引需等待后台完成。
 
-同名新增拷贝可建立唯一批次；不要通过反复复制数据来修复索引。
+同一时间范围不会因保存或位置刷新从头重识别；难读画面会保留待复核，继续检查其他录像。
 
 ## 13 时间读错时，核验画面读数
 
 阶段：开始标注
 
-![时间读错时，核验画面读数](../assets/screenshots/manual-331/11-time-roi.png)
+![时间读错时，核验画面读数](../assets/screenshots/manual-332/11-time-roi.png)
 
 1. 在素材索引里选中录像，点“核验所选视频时间 / 框选 ROI”。
 2. 读取画面，框选日期时间区域，识别后人工核对日期与时分秒。
@@ -170,7 +172,7 @@
 
 阶段：观察与同步
 
-![单路播放、倍速与快定位](../assets/screenshots/manual-331/12-single-view.png)
+![单路播放、倍速与快定位](../assets/screenshots/manual-332/12-single-view.png)
 
 1. 只勾选一个视角，或放大主视角；视频下方有独立播放进度条。
 2. 用1×、2×、4×播放观察；拖动进度条或输入日期时间后点“跳转”。
@@ -182,7 +184,7 @@
 
 阶段：观察与同步
 
-![多视角交叉核对](../assets/screenshots/manual-331/13-multiview.png)
+![多视角交叉核对](../assets/screenshots/manual-332/13-multiview.png)
 
 1. 左侧勾选所需视角，最多8路；拖动列表可调整顺序。
 2. 顶部点“多视角”看网格；点击画面控件可设主视角或放大。
@@ -194,7 +196,7 @@
 
 阶段：观察与同步
 
-![波形与时间戳](../assets/screenshots/manual-331/14-waveform.png)
+![波形与时间戳](../assets/screenshots/manual-332/14-waveform.png)
 
 1. 点“波形”放大九轴，视频变为画中画；可拖动调整位置。
 2. 九轴横轴和时间输入使用日期时间，便于与视频时间戳查找。
@@ -206,7 +208,7 @@
 
 阶段：观察与同步
 
-![人工确认九轴与视频同步](../assets/screenshots/manual-331/15-alignment.png)
+![人工确认九轴与视频同步](../assets/screenshots/manual-332/15-alignment.png)
 
 1. 找到同一个明确动作：把九轴光标和暂停视频分别定位到对应时刻，点“对齐”。
 2. 在较远的另一个位置再核对并对齐；勾选“同步跟随”一起移动。
@@ -218,7 +220,7 @@
 
 阶段：标注与保存
 
-![先记录动作，再确认真值](../assets/screenshots/manual-331/16-active-action.png)
+![先记录动作，再确认真值](../assets/screenshots/manual-332/16-active-action.png)
 
 1. 选择行为，点击“开始…”记录起点，再点“结束…”记录终点；同一数字键也可操作。
 2. 正在记录的动作名称、起点和结束键始终显示；误操作可点“取消本次动作…”并确认。
@@ -230,21 +232,21 @@
 
 阶段：标注与保存
 
-![在九轴上分别微调动作两端](../assets/screenshots/manual-331/16-imu-refine.png)
+![在九轴上分别微调动作两端](../assets/screenshots/manual-332/16-imu-refine.png)
 
-![在九轴上分别微调动作两端](../assets/screenshots/manual-331/16-boundary-editor.png)
+![在九轴上分别微调动作两端](../assets/screenshots/manual-332/16-boundary-editor.png)
 
-1. 在标注列表选择视频草稿，点击“九轴起止微调”。
+1. 闭合动作区间自动显示淡色背景；在标注列表选中草稿，点“九轴起止微调”。
 2. 拖动波形左、右边界；“编辑起止”可分别 ±0.1 秒调整，或直接输入时间戳。
 3. 回看调整后的起点、终点，补充画面证据并确认真值，最后保存。
 
-草稿波形预览不自动变成真值；必须先建立视频与九轴的时间对应。
+虚线边界为待确认草稿，实线为已确认标签；颜色只帮助看范围，不自动确认为真值。
 
 ## 20 留存每个视角的证据图
 
 阶段：标注与保存
 
-![留存每个视角的证据图](../assets/screenshots/manual-331/17-evidence.png)
+![留存每个视角的证据图](../assets/screenshots/manual-332/17-evidence.png)
 
 1. 确认真值后打开证据窗口，选择动作内最有代表性的时刻。
 2. 点“提取 / 更新图片”，逐一检查目标牛、遮挡和缺失视角。
@@ -256,9 +258,9 @@
 
 阶段：标注与保存
 
-![保存进度，随时继续](../assets/screenshots/manual-331/19-finish.png)
+![保存进度，随时继续](../assets/screenshots/manual-332/19-finish.png)
 
-![保存进度，随时继续](../assets/screenshots/manual-331/19-close.png)
+![保存进度，随时继续](../assets/screenshots/manual-332/19-close.png)
 
 1. 未做完可直接切换记录，工具自动保存标签和位置；回来会恢复进度。
 2. 整份检查完后点“完成本份…”：保存并完成，或选择暂存退出。
@@ -270,7 +272,7 @@
 
 阶段：标注与保存
 
-![标错了可以修改](../assets/screenshots/manual-331/18-edit-label.png)
+![标错了可以修改](../assets/screenshots/manual-332/18-edit-label.png)
 
 1. 重新打开原工程，在标注列表选中一条，点击“编辑起止”。
 2. 修改标签、起止边界或备注；也可删除，或用Ctrl+Z撤销、Ctrl+Y重做。
@@ -282,9 +284,9 @@
 
 阶段：复核与导出
 
-![复核后导出成果](../assets/screenshots/manual-331/20-export-result.png)
+![复核后导出成果](../assets/screenshots/manual-332/20-export-result.png)
 
-![复核后导出成果](../assets/screenshots/manual-331/20-export.png)
+![复核后导出成果](../assets/screenshots/manual-332/20-export.png)
 
 1. “文件 → 导出 → 完整成果”保存当前整份标注 JSON，便于交换和历史回看。
 2. 先选九轴区间，再用“所选片段”导出该段数据与标签。
@@ -296,7 +298,7 @@
 
 阶段：复核与导出
 
-![历史回看与离线证据](../assets/screenshots/manual-331/21-history.png)
+![历史回看与离线证据](../assets/screenshots/manual-332/21-history.png)
 
 1. “文件 → 历史回看”打开导出的标注 JSON，选择标签定位查看。
 2. 有原录像时重新连接数据工程；录像不在本机时切到“留存证据图”。
@@ -308,7 +310,7 @@
 
 阶段：复核与导出
 
-![多人标注与回传](../assets/screenshots/manual-331/22-team.png)
+![多人标注与回传](../assets/screenshots/manual-332/22-team.png)
 
 1. “工具 → 多人协作 → 回传设置”选择专用回传文件夹。
 2. 将整份标注 JSON 和配套证据放入回传目录，可按人员设一层子目录。
@@ -320,7 +322,7 @@
 
 阶段：辅助工具
 
-![行为算法：独立检查](../assets/screenshots/manual-331/23-algorithm.png)
+![行为算法：独立检查](../assets/screenshots/manual-332/23-algorithm.png)
 
 1. 从“行为识别”选择行为，选单个视角和可用算法版本。
 2. 点“运行算法”，双击结果定位九轴与录像，人工判断是否符合动作。
@@ -332,7 +334,7 @@
 
 阶段：辅助工具
 
-![候选预测：逐条复核](../assets/screenshots/manual-331/24-candidates.png)
+![候选预测：逐条复核](../assets/screenshots/manual-332/24-candidates.png)
 
 1. “工具 → 事件候选预测”选择版本和模型，扫描当前完整九轴。
 2. 选中候选定位录像；可标为暂无法判断，或排除该候选。
@@ -344,7 +346,7 @@
 
 阶段：辅助工具
 
-![健康与繁殖的功能边界](../assets/screenshots/manual-331/25-health-boundary.png)
+![健康与繁殖的功能边界](../assets/screenshots/manual-332/25-health-boundary.png)
 
 1. “健康与繁殖”中的发情、产犊、怀孕、疫病用于查看对应功能入口。
 2. 显示“算法待接入”时不能运行，不会生成占位预测或健康结论。
@@ -356,9 +358,9 @@
 
 阶段：设置与帮助
 
-![界面、播放与性能诊断](../assets/screenshots/manual-331/26-settings.png)
+![界面、播放与性能诊断](../assets/screenshots/manual-332/26-settings.png)
 
-![界面、播放与性能诊断](../assets/screenshots/manual-331/26-diagnostics.png)
+![界面、播放与性能诊断](../assets/screenshots/manual-332/26-diagnostics.png)
 
 1. “视图 → 界面与播放设置”调整波形高度、画中画大小及位置。
 2. 按需勾选严格同步或监控兼容缓存；“视图 → 切换硬件 / 软件解码”在重新打开工程后生效。
@@ -370,7 +372,7 @@
 
 阶段：设置与帮助
 
-![录像归档核验](../assets/screenshots/manual-331/27-archive.png)
+![录像归档核验](../assets/screenshots/manual-332/27-archive.png)
 
 1. 在“工具 → 录像索引”打开“归档核验”。
 2. 选择已有录像副本目录，执行核验并保存报告。
@@ -382,9 +384,9 @@
 
 阶段：设置与帮助
 
-![关于、教程和版本更新](../assets/screenshots/manual-331/28-about.png)
+![关于、教程和版本更新](../assets/screenshots/manual-332/28-about.png)
 
-![关于、教程和版本更新](../assets/screenshots/manual-331/28-updates.png)
+![关于、教程和版本更新](../assets/screenshots/manual-332/28-updates.png)
 
 1. “帮助 → 关于”查看版本、构建标识、公司与许可信息。
 2. 点“新手图文教程…”打开本手册；帮助菜单也有同一入口。
@@ -396,7 +398,7 @@
 
 阶段：设置与帮助
 
-![快捷键与遇到问题时](../assets/screenshots/manual-331/29-help.png)
+![快捷键与遇到问题时](../assets/screenshots/manual-332/29-help.png)
 
 1. Ctrl+O打开工程；Ctrl+J打开九轴；Ctrl+S保存；Ctrl+L固定或收起素材列表。
 2. Ctrl+Enter完成本份；Ctrl+PageDown下一份未完成；Ctrl+Shift+O历史回看。
@@ -408,7 +410,7 @@
 
 阶段：设置与帮助
 
-![已有工程与旧版兼容](../assets/screenshots/manual-331/30-legacy.png)
+![已有工程与旧版兼容](../assets/screenshots/manual-332/30-legacy.png)
 
 1. 已有3.1或3.2标注工程可从“文件 → 打开工程”继续打开，先保留原工程备份。
 2. 仅处理旧单视频标签时，使用“文件 → 旧版兼容 → 导入旧单视频工程”。

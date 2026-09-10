@@ -91,6 +91,8 @@ class MainWindow(QMainWindow):
         self.linked = False
         self.active_event = None
         self._draft_preview = None
+        self._draft_plot_ids = {}
+        self._next_draft_plot_id = -1
         self.selection = None
         self.busy_controls = False
         self.dirty = False
@@ -1807,6 +1809,7 @@ class MainWindow(QMainWindow):
         if hasattr(self.plot, "set_clock"):
             self.plot.set_clock(clock)
         if not self.work:
+            self._plot_drafts = {}
             self.events.setRowCount(0)
             self.refresh_action_state()
             return
@@ -1847,19 +1850,28 @@ class MainWindow(QMainWindow):
             if selected == (kind, identifier):
                 self.events.selectRow(i)
         plot_events = [e.to_dict() for e in self.work.project.events]
-        preview = self._draft_preview
-        if preview and preview[0] == self.work.asset_id:
-            draft = next((d for d in self.work.drafts if d["id"] == preview[1] and d.get("confirmation") != "confirmed"), None)
+        self._plot_drafts = {}
+        self._next_draft_plot_id = min(self._next_draft_plot_id, min([0] + [e.id for e in self.work.project.events]) - 1)
+        for draft in self.work.drafts:
+            if draft.get("confirmation") == "confirmed" or self.motion is None:
+                continue
             try:
-                if draft is None or self.motion is None:
-                    raise ValueError("草稿已不在当前记录")
+                if draft.get("cow_id") and draft["cow_id"] != self.work.project.cow_id:
+                    continue
                 start, end = self.work.project_draft(draft, self.motion.duration_ms)
-                plot_events.append({"id": preview[2], "li": draft["label_index"], "t0": start, "t1": end,
+                key = (self.work.asset_id, draft["id"])
+                if key not in self._draft_plot_ids:
+                    self._draft_plot_ids[key] = self._next_draft_plot_id
+                    self._next_draft_plot_id -= 1
+                preview_id = self._draft_plot_ids[key]
+                self._plot_drafts[preview_id] = draft["id"]
+                plot_events.append({"id": preview_id, "li": draft["label_index"], "t0": start, "t1": end,
                                     "confirmation": "video_draft", "note": "九轴待复核预览"})
             except ValueError:
-                self._draft_preview = None
-        else:
-            self._draft_preview = None
+                continue
+        preview = self._draft_preview
+        self._draft_preview = next(((self.work.asset_id, draft_id, key) for key, draft_id in self._plot_drafts.items()
+                                    if preview and preview[:2] == (self.work.asset_id, draft_id)), None)
         self.plot.set_events([label.to_dict() for label in self.work.project.labels], plot_events)
         self.events.setToolTip("已保存标签也可修改：选中一条后点“编辑”或“删除”；双击回看对应位置。修改后需重新复核。")
         self.refresh_action_state()
@@ -1927,13 +1939,17 @@ class MainWindow(QMainWindow):
                     raise ValueError("请等待当前九轴记录读取完成。")
                 start, _ = self.work.project_draft(draft, self.motion.duration_ms)
             except ValueError as exc:
+                self.refresh_events()
                 self.tell(str(exc))
                 return
             # This ID and projection exist only in the plot, never in the work
             # model, exports, evidence archives or confirmed training events.
-            preview_id = min([0] + [e.id for e in self.work.project.events]) - 1
-            self._draft_preview = (self.work.asset_id, draft["id"], preview_id)
             self.refresh_events()
+            preview_id = next((key for key, value in self._plot_drafts.items() if value == draft["id"]), None)
+            if preview_id is None:
+                self.tell("草稿牛号与当前记录不一致，请核对对象")
+                return
+            self._draft_preview = (self.work.asset_id, draft["id"], preview_id)
             self.board.play(False)
             self.plot.focus_event(preview_id)
             self.seek_imu(start)
@@ -2109,8 +2125,8 @@ class MainWindow(QMainWindow):
         self._archive_dialog.show()
 
     def select_plot_event(self, identifier):
-        preview = self._draft_preview
-        target = ("draft", preview[1]) if preview and preview[2] == identifier else ("event", identifier)
+        draft_id = getattr(self, "_plot_drafts", {}).get(identifier)
+        target = ("draft", draft_id) if draft_id is not None else ("event", identifier)
         for i in range(self.events.rowCount()):
             if self.events.item(i, 0).data(Qt.ItemDataRole.UserRole) == target:
                 self.events.selectRow(i)
@@ -2119,9 +2135,9 @@ class MainWindow(QMainWindow):
     def edit_plot_event(self, identifier, start, end):
         if not self.writable_work():
             return
-        preview = self._draft_preview
-        if preview and preview[0] == self.work.asset_id and preview[2] == identifier:
-            draft = next((d for d in self.work.drafts if d["id"] == preview[1] and d.get("confirmation") != "confirmed"), None)
+        draft_id = getattr(self, "_plot_drafts", {}).get(identifier)
+        if draft_id is not None:
+            draft = next((d for d in self.work.drafts if d["id"] == draft_id and d.get("confirmation") != "confirmed"), None)
             if draft is not None:
                 try:
                     self._edit_draft_imu(draft, start, end)
@@ -2271,6 +2287,9 @@ class MainWindow(QMainWindow):
         dialog.resize(1150, 650)
         layout = QVBoxLayout(dialog)
         table = QTableWidget(len(self.rows), 5)
+        guidance = QLabel("悬停“状态 / 开始时间”查看下一步。后台抽查录像时间不代表已匹配当前牛；匹配时间后仍需人工核对画面中的牛。")
+        guidance.setWordWrap(True)
+        layout.addWidget(guidance)
         table.setHorizontalHeaderLabels(["相对路径", "类型", "状态", "开始时间 / 设备", "说明"])
         table.setColumnWidth(0, 360)
         table.horizontalHeader().setStretchLastSection(True)
@@ -2290,14 +2309,27 @@ class MainWindow(QMainWindow):
             for i, row in enumerate(snapshot):
                 explanation = row["error"] or row["metadata"].get("reason") or "; ".join(row["metadata"].get("warnings", []))
                 if row["state"] == "pending" and explanation == "等待文件稳定及可读性检查":
-                    explanation = "尚未索引；选择九轴后自动检索对应录像，也可在录像索引菜单启动完整索引。"
+                    explanation = ("尚未索引；选择九轴后自动检索对应录像，也可在录像索引菜单启动完整索引。" if row["kind"] == "video" else
+                                   "九轴尚未读取；在左侧选择此记录后自动加载，不需要逐一处理所有 JSON。")
                 state = {"pending": "未索引", "ready": "可用", "review": "待复核", "invalid": "异常",
                          "ignored": "已忽略", "missing": "缺失"}.get(row["state"], row["state"])
                 values = [row["path"], row["kind"], state,
                           row["metadata"].get("start_display") or row["metadata"].get("device", ""), explanation]
+                help_text = explanation
+                if row["kind"] == "video":
+                    if row["state"] == "pending":
+                        help_text = ("待确认：录像开始时间尚未可靠读出或索引尚未完成，不等于视频损坏。\n"
+                                     "下一步：先选择要标注的九轴，后台会按其时间查找录像；也可选中此行，点击“重新建立所选视频索引”。\n"
+                                     "状态变为“可用 / 待复核”后，才能点击“核验所选视频时间 / 框选 ROI”人工校准。")
+                    elif row["state"] == "review" or values[3] == "待确认":
+                        help_text = ("待确认 / 待复核：录像时间戳未读清、存在冲突，或只有粗定位信息；不是牛身份已确认。\n"
+                                     "下一步：选中此行，点击“核验所选视频时间 / 框选 ROI”，框住画面时间戳；"
+                                     "或在两个不同播放位置输入画面显示的完整日期时间，保存后核对与九轴是否同步。")
+                    if explanation and help_text != explanation:
+                        help_text += "\n" + explanation
                 for j, value in enumerate(values):
                     item = QTableWidgetItem(str(value))
-                    item.setToolTip(str(value))
+                    item.setToolTip(help_text if j in {2, 3, 4} else str(value))
                     table.setItem(i, j, item)
                 if row["path"] == selected:
                     table.selectRow(i)

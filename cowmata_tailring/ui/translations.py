@@ -2077,5 +2077,14 @@ ZH_TO_EN.update({
 })
 
 
+ZH_TO_EN.update({
+    "九轴尚未读取；在左侧选择此记录后自动加载，不需要逐一处理所有 JSON。": "IMU not read yet. Select this record on the left to load it; reading every JSON is unnecessary.",
+    "复核画面时间：": "Rechecking frame time: ",
+    "待确认 / 待复核：录像时间戳未读清、存在冲突，或只有粗定位信息；不是牛身份已确认。\n下一步：选中此行，点击“核验所选视频时间 / 框选 ROI”，框住画面时间戳；或在两个不同播放位置输入画面显示的完整日期时间，保存后核对与九轴是否同步。": "Pending confirmation/review: the video timestamp is unreadable, conflicting, or only approximate. This does not confirm cow identity.\nNext: select the row, click Verify selected video time / ROI, and outline the visible timestamp; or enter the full on-screen date and time at two different playback positions. Save, then check synchronization with the IMU.",
+    "待确认：录像开始时间尚未可靠读出或索引尚未完成，不等于视频损坏。\n下一步：先选择要标注的九轴，后台会按其时间查找录像；也可选中此行，点击“重新建立所选视频索引”。\n状态变为“可用 / 待复核”后，才能点击“核验所选视频时间 / 框选 ROI”人工校准。": "Pending confirmation: the video start time has not been reliably read or indexing is incomplete; the video is not necessarily damaged.\nNext: select the IMU record to search by its time, or select this row and click Rebuild selected video index.\nOnce the state is Available / Needs review, use Verify selected video time / ROI for manual calibration.",
+    "悬停“状态 / 开始时间”查看下一步。后台抽查录像时间不代表已匹配当前牛；匹配时间后仍需人工核对画面中的牛。": "Hover over State / Start time for next steps. Background time inspection does not identify the current cow; verify the animal after matching the recording time.",
+    "部分画面时间限时未读清；已保留待复核，继续检索其他录像。可框选时间戳或输入人工读数。": "Some frame times remained unreadable within the time limit. Review is pending while other videos are searched. Select the timestamp ROI or enter manual readings.",
+})
+
 if __name__ == "__main__":
     _coverage()

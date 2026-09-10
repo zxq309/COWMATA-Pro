@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.3.2] - 2026-09-10
+
+- Explain pending video time and available next actions on hover, distinguishing time inspection from cow identity.
+- Keep same-window demand refreshes from cancelling and restarting OCR. Bound difficult frame recognition, retain unresolved intervals for review, and continue searching other recordings.
+- Show every closed IMU annotation and projected video draft as a light interval band, with both boundaries visible. Drafts remain unconfirmed and individually editable; stable plot IDs preserve selection across deletions.
+- Cache interval shading during playback and retain the existing timestamp, boundary editing, save/undo and export rules.
+- Update illustrated instructions and publish complete Windows setup, portable and clean source packages.
+
 ## [3.3.1] - 2026-09-10
 
 - Recover playback when a surveillance audio stream lacks its sample rate: retry video-only stream copy for that error, retain healthy audio and source files, and validate the derived timeline.

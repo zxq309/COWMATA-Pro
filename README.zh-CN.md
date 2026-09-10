@@ -1,6 +1,6 @@
 <div align="center">
 
-> **3.3.1 - 2026-09-10：** 修复视频封装失败、播放反复等待、数字标注键和动作状态提示；支持视频草稿在九轴上分别拖动起止边界、按 0.1 秒微调。查看[发布说明](docs/release-331.md)、[验证记录](docs/release-331-validation.md)和[图文说明书](docs/quick-start-illustrated.pdf)。下载[安装包与完整便携包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.1)。
+> **3.3.2 - 2026-09-10：** 修复同一录像反复识别，补充“待确认”悬停指引，九轴标签与草稿显示完整淡色区间。查看[发布说明](docs/release-332.md)、[验证记录](docs/release-332-validation.md)和[图文说明书](docs/quick-start-illustrated.pdf)。下载[安装包与完整便携包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.2)。
 
 > **普通用户直接下载安装包：** 到 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)
 > 下载完整离线安装版 **Setup.exe**，按向导安装，无须配置 Python、pip、VLC、CUDA 工具包或模型。
@@ -13,7 +13,7 @@
 **面向奶牛行为与分娩研究的人机协同视频—九轴 IMU 标注工作台**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-3.3.1-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.1)
+[![Release](https://img.shields.io/badge/release-3.3.2-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.2)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#环境要求)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -22,7 +22,7 @@
 
 </div>
 
-[![3.3.1 真实工作台：数据整理、视频与九轴标注](assets/screenshots/manual-331/09-workspace.png)](docs/quick-start-illustrated.pdf)
+[![3.3.2 真实工作台：数据整理、视频与九轴标注](assets/screenshots/manual-332/09-workspace.png)](docs/quick-start-illustrated.pdf)
 
 <p align="center"><sub>点击图片打开33页图文说明书，每页三个步骤。当前界面实际操作截图，演示九轴、身份及标签为测试数据，牛舍短片用于操作展示；下方历史录屏保留原版本标记。</sub></p>
 
@@ -230,7 +230,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-当前分支为 3.3.1；正式发布附件见 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)，历史记录保留在 [CHANGELOG.md](CHANGELOG.md)。纯源码 CI 跳过缺少条件的二进制模型包和 Windows/VLC 原生集成用例，另用本机完整程序包实测。详见[验证范围](docs/release-331-validation.md)。
+当前分支为 3.3.2；正式发布附件见 [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases)，历史记录保留在 [CHANGELOG.md](CHANGELOG.md)。纯源码 CI 跳过缺少条件的二进制模型包和 Windows/VLC 原生集成用例，另用本机完整程序包实测。详见[验证范围](docs/release-332-validation.md)。
 
 ## 贡献、安全与引用
 
@@ -245,4 +245,4 @@ python -m cowmata_tailring --version
 
 ## 最新更新
 
-**2026-09-10** — 3.3.1：修复视频封装与重复加载、动作按键和状态提示；支持视频草稿两端独立微调，更新33页图文手册。[完整更新记录](CHANGELOG.md)。
+**2026-09-10** — 3.3.2：录像检索不中断重来；待确认指引；完整区间着色。更新33页图文手册。[完整更新记录](CHANGELOG.md)。

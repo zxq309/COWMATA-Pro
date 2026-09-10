@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import ctypes
 import os
 import queue
@@ -34,6 +35,8 @@ class IndexWorker(QObject):
         self.wake = threading.Event()
         self.playback_busy = threading.Event()
         self.commands = queue.Queue()
+        self._demand_lock = threading.Lock()
+        self._requested_demand = None
         self.focus_path = None
         self.window = None
         self.budget = 48
@@ -50,7 +53,22 @@ class IndexWorker(QObject):
 
     def request(self, action="scan", value=None):
         if action in {"focus", "window", "pause"}:
-            self.job_stop.set()
+            # A save/position refresh is not a new search. Restarting OCR here
+            # discards its progress, leaves the row pending and loops at 1/N.
+            # Compare only routing inputs, excluding annotation/UI settings.
+            key = (action, value)
+            if action == "window":
+                start, end, settings = value
+                key = (action, start, end, copy.deepcopy(settings.get("camera_maps", {})),
+                       copy.deepcopy(settings.get("camera_overrides", {})))
+            with self._demand_lock:
+                if key == self._requested_demand:
+                    if action != "window":
+                        return
+                    action, value = "playhead", value[2].get("priority_reference_ms", value[0])
+                else:
+                    self._requested_demand = key
+                    self.job_stop.set()
         self.commands.put((action, value))
         self.wake.set()
 
