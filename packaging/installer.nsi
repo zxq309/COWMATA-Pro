@@ -27,7 +27,7 @@ RequestExecutionLevel user
 SetFont "Microsoft YaHei UI" 9
 ShowInstDetails nevershow
 ShowUninstDetails nevershow
-VIProductVersion "3.3.0.0"
+VIProductVersion "3.3.1.0"
 VIAddVersionKey "ProductName" "COWMATA Annotator"
 VIAddVersionKey "FileDescription" "COWMATA Offline Setup"
 VIAddVersionKey "FileVersion" "${VERSION}"

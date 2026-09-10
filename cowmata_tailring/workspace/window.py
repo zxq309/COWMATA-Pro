@@ -90,6 +90,7 @@ class MainWindow(QMainWindow):
         self.imu_ms = 0.0
         self.linked = False
         self.active_event = None
+        self._draft_preview = None
         self.selection = None
         self.busy_controls = False
         self.dirty = False
@@ -359,12 +360,15 @@ class MainWindow(QMainWindow):
                 shortcut = QShortcut(QKeySequence(label.key), self)
                 shortcut.activated.connect(lambda code=label.code: self.mark_code(code))
         row.addWidget(self.labels, 1)
-        self.mark_button = self._button("开始 / 结束视频动作", lambda: self.mark(self.labels.currentIndex()), row)
+        self.mark_button = self._button("开始视频动作", self.mark_current, row)
+        self.cancel_action_button = self._button("取消本次动作…", self.cancel_active_action, row)
+        self.cancel_action_button.hide()
         self._button("所选九轴区间 → 候选标注", self.mark_selection, row)
         self._button("确认所选草稿为真值", self.confirm_selected, row)
         self._button("保存", self.save_current, row)
         bottom_layout.addLayout(row)
         editing = QHBoxLayout()
+        self._button("九轴起止微调", self.refine_selected, editing)
         self._button("编辑标签 / 边界 / 备注", self.edit_selected, editing)
         self._button("补充当前画面证据", self.update_evidence, editing)
         self._button("回看所选结束点", lambda: self.review_selected(at_end=True), editing)
@@ -373,6 +377,7 @@ class MainWindow(QMainWindow):
         bottom_layout.addLayout(editing)
         self.event_status = QLabel("先看视频即可记录动作草稿，不需要先认出九轴是什么事件。")
         bottom_layout.addWidget(self.event_status)
+        self.labels.currentIndexChanged.connect(self.refresh_action_state)
         self.events = QTableWidget(0, 6)
         self.events.setHorizontalHeaderLabels(["类型", "标签", "开始时间", "结束时间", "状态", "备注"])
         self.events.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -1629,7 +1634,11 @@ class MainWindow(QMainWindow):
 
     def select_range(self, start, end):
         self.selection = sorted((start, end))
-        self.event_status.setText(f"已选九轴区间 {self.selection[0] / 1000:.3f}–{self.selection[1] / 1000:.3f} 秒")
+        clock = self.work.clock if self.work else None
+        values = [reference_text(clock, value, True) if clock and clock.anchors else f"相对 {value / 1000:.3f} 秒"
+                  for value in self.selection]
+        self.event_status.setText(f"已选九轴区间 {values[0]} — {values[1]}")
+        self.refresh_action_state()
 
     def evidence(self):
         evidence = self.board.evidence()
@@ -1672,6 +1681,7 @@ class MainWindow(QMainWindow):
 
     def mark_code(self, code):
         if not self.work:
+            self.tell("请先选择九轴记录，再记录视频动作。")
             return
         index = next((i for i, label in enumerate(self.work.project.labels) if label.code == code), None)
         if index is None:
@@ -1679,8 +1689,50 @@ class MainWindow(QMainWindow):
             return
         self.mark(index)
 
+    def refresh_action_state(self, *_):
+        active = self.active_event
+        label = None
+        if active and self.work and 0 <= active["label"] < len(self.work.project.labels):
+            label = self.work.project.labels[active["label"]]
+        if active:
+            name = label.name if label else active.get("label_name", "未结束动作")
+            key = label.key if label else active.get("label_key", "原标签键")
+            text = f"正在记录：{name} · 起点 {wall_text(active['start'])} · 按 {key} 或“结束{name}”结束"
+            self.event_status.setText(text)
+            self.mark_button.setText(f"结束{name}")
+        else:
+            index = self.labels.currentIndex()
+            label = self.work.project.labels[index] if self.work and 0 <= index < len(self.work.project.labels) else None
+            name = label.name if label else "视频动作"
+            self.mark_button.setText(f"记录{name}" if label and label.is_point else f"开始{name}")
+        self.event_status.show()
+        self.cancel_action_button.setVisible(bool(active))
+        self.mark_button.setToolTip(self.event_status.text())
+
+    def mark_current(self):
+        # The button states which unfinished action it ends, independently of
+        # the next label selected in the combo. Label keys retain their guard.
+        self.mark(self.active_event["label"] if self.active_event else self.labels.currentIndex())
+
+    def cancel_active_action(self):
+        if not self.active_event or not self.writable_work():
+            return
+        name = self.work.project.labels[self.active_event["label"]].name
+        if QMessageBox.question(self, "取消未结束动作",
+                f"取消正在记录的{name}（起点 {wall_text(self.active_event['start'])}）？\n"
+                "仅取消本次尚未闭合的动作；已经保存的草稿和标注继续保留。") != QMessageBox.StandardButton.Yes:
+            return
+        self.active_event = None
+        self.event_status.setText("已取消本次未结束动作，可以重新选择标签开始。")
+        self.refresh_action_state()
+        self.dirty = True
+        self.save_current()
+
     def mark(self, index):
         if not self.writable_work():
+            return
+        if not 0 <= index < len(self.work.project.labels):
+            self.tell("当前动作的标签配置已变化，请先核对标签配置。")
             return
         label = self.work.project.labels[index]
         if label.code == "SYNC_ANCHOR":
@@ -1697,14 +1749,18 @@ class MainWindow(QMainWindow):
         elif self.active_event is None:
             self.active_event = {"label": index, "start": value, "evidence": evidence,
                                  "group_id": uuid.uuid4().hex, "assets": {self.work.asset_id},
-                                 "cow_id": self.work.project.cow_id}
-            self.event_status.setText(f"正在记录：{label.name} · 起点 {wall_text(value)} · 换小视频不会中断，再按同一键结束")
+                                 "cow_id": self.work.project.cow_id,
+                                 "label_name": label.name, "label_key": label.key}
+            self.refresh_action_state()
             self.dirty = True
             self.save_current()
             return
         else:
             if self.active_event["label"] != index:
-                self.tell("请先用原标签键结束正在记录的动作，再开始另一个区间。点事件可单独记录。")
+                self.refresh_action_state()
+                original = self.work.project.labels[self.active_event["label"]]
+                self.tell(f"正在记录{original.name}，请按 {original.key} 或点击“结束{original.name}”；"
+                          "也可确认取消本次动作后重新开始。点事件可单独记录。")
                 return
             active = self.active_event
             if active["cow_id"] != self.work.project.cow_id:
@@ -1745,12 +1801,14 @@ class MainWindow(QMainWindow):
         self.save_current()
 
     def refresh_events(self):
+        selected = self.selected_entry()
         clock = self.work.clock if self.work else None
         self.imu_position.set_clock(clock)
         if hasattr(self.plot, "set_clock"):
             self.plot.set_clock(clock)
         if not self.work:
             self.events.setRowCount(0)
+            self.refresh_action_state()
             return
         # Historic projects own their label order. A new default label must
         # never expose an out-of-range index or relabel an existing event.
@@ -1786,8 +1844,25 @@ class MainWindow(QMainWindow):
                 item.setToolTip(str(text))
                 item.setData(Qt.ItemDataRole.UserRole, (kind, identifier))
                 self.events.setItem(i, j, item)
-        self.plot.set_events([label.to_dict() for label in self.work.project.labels], [e.to_dict() for e in self.work.project.events])
+            if selected == (kind, identifier):
+                self.events.selectRow(i)
+        plot_events = [e.to_dict() for e in self.work.project.events]
+        preview = self._draft_preview
+        if preview and preview[0] == self.work.asset_id:
+            draft = next((d for d in self.work.drafts if d["id"] == preview[1] and d.get("confirmation") != "confirmed"), None)
+            try:
+                if draft is None or self.motion is None:
+                    raise ValueError("草稿已不在当前记录")
+                start, end = self.work.project_draft(draft, self.motion.duration_ms)
+                plot_events.append({"id": preview[2], "li": draft["label_index"], "t0": start, "t1": end,
+                                    "confirmation": "video_draft", "note": "九轴待复核预览"})
+            except ValueError:
+                self._draft_preview = None
+        else:
+            self._draft_preview = None
+        self.plot.set_events([label.to_dict() for label in self.work.project.labels], plot_events)
         self.events.setToolTip("已保存标签也可修改：选中一条后点“编辑”或“删除”；双击回看对应位置。修改后需重新复核。")
+        self.refresh_action_state()
         self.refresh_records()
 
     def selected_entry(self):
@@ -1836,6 +1911,53 @@ class MainWindow(QMainWindow):
             self.plot.focus_event(event.id)
             self.seek_imu(event.t1 if at_end and event.t1 is not None else event.t0)
 
+    def refine_selected(self):
+        if not self.writable_work():
+            return
+        selected = self.selected_entry()
+        if not selected:
+            self.tell("请先在标注列表选择一条视频草稿或九轴标注。")
+            return
+        if selected[0] == "event":
+            self.review_selected()
+        else:
+            draft = next(d for d in self.work.drafts if d["id"] == selected[1])
+            try:
+                if self.motion is None:
+                    raise ValueError("请等待当前九轴记录读取完成。")
+                start, _ = self.work.project_draft(draft, self.motion.duration_ms)
+            except ValueError as exc:
+                self.tell(str(exc))
+                return
+            # This ID and projection exist only in the plot, never in the work
+            # model, exports, evidence archives or confirmed training events.
+            preview_id = min([0] + [e.id for e in self.work.project.events]) - 1
+            self._draft_preview = (self.work.asset_id, draft["id"], preview_id)
+            self.refresh_events()
+            self.board.play(False)
+            self.plot.focus_event(preview_id)
+            self.seek_imu(start)
+        self.event_status.setText("九轴起止微调（待复核）：拖动波形左右边界；也可点“编辑起止”分别前后调整或输入时间。视频草稿预览不会自动成为真值。")
+        self.refresh_action_state()
+
+    def _edit_draft_imu(self, draft, start, end, *, label_index=None, note=None):
+        import math
+        values = (start,) if end is None else (start, end)
+        if not self.work.clock.anchors:
+            raise ValueError("九轴与视频尚无对应关系，草稿已经保留。")
+        if any(not math.isfinite(v) or not 0 <= v <= self.motion.duration_ms for v in values):
+            raise ValueError("起止时间必须在当前九轴记录范围内。")
+        if end is not None and end <= start:
+            raise ValueError("结束时间必须晚于开始时间。")
+        self.work.checkpoint()
+        draft.update(reference_start=self.work.clock.map(start),
+                     reference_end=self.work.clock.map(end) if end is not None else None,
+                     video_evidence=[], confirmation="video_draft")
+        if label_index is not None:
+            draft["label_index"] = label_index
+        if note is not None:
+            draft["note"] = note
+
     def edit_selected(self):
         if not self.writable_work() or not self.selected_entry():
             return
@@ -1843,6 +1965,13 @@ class MainWindow(QMainWindow):
         entry = next(d for d in self.work.drafts if d["id"] == identifier) if kind == "draft" else next(e for e in self.work.project.events if e.id == identifier)
         index = entry["label_index"] if kind == "draft" else entry.li
         start, end = (entry["reference_start"], entry["reference_end"]) if kind == "draft" else (entry.t0, entry.t1)
+        imu_edit = kind == "event" or bool(self.work.clock.anchors and self.motion)
+        if kind == "draft" and imu_edit:
+            try:
+                start, end = self.work.project_draft(entry, self.motion.duration_ms)
+            except ValueError as exc:
+                self.tell(str(exc))
+                return
         dialog = QDialog(self)
         dialog.setWindowTitle("编辑标注（修改后需复核）")
         layout = QVBoxLayout(dialog)
@@ -1851,13 +1980,44 @@ class MainWindow(QMainWindow):
             labels.addItem(label.name)
         labels.setCurrentIndex(index)
         layout.addWidget(labels)
-        layout.addWidget(QLabel("视频草稿填日期时间；九轴标注填相对秒。点事件不填结束。"))
-        begin = QLineEdit(wall_text(start) if kind == "draft" else str(start / 1000))
-        finish = QLineEdit((wall_text(end) if kind == "draft" else str(end / 1000)) if end is not None else "")
+        if imu_edit:
+            layout.addWidget(QLabel("调整九轴起止时间；点事件只记录起点。修改后仍需补充画面证据并复核。"))
+            positions = []
+            for title, object_name, value in (("开始", "event_start", start), ("结束", "event_end", end)):
+                line = QHBoxLayout()
+                line.addWidget(QLabel(title + "时间"))
+                control = TimePositionSpinBox()
+                control.setObjectName(object_name)
+                control.setDecimals(3)
+                control.setRange(0, self.motion.duration_ms / 1000)
+                control.setSingleStep(.1)
+                control.set_clock(self.work.clock)
+                control.setValue((value if value is not None else start) / 1000)
+                line.addWidget(control, 1)
+                minus = self._button(title + " −0.1 秒", lambda _, c=control: c.stepBy(-1), line)
+                plus = self._button(title + " +0.1 秒", lambda _, c=control: c.stepBy(1), line)
+                layout.addLayout(line)
+                positions.append(control)
+                if title == "结束":
+                    end_controls = (control, minus, plus)
+            begin, finish = positions
+
+            def update_end_controls():
+                for control in end_controls:
+                    control.setEnabled(not self.work.project.labels[labels.currentIndex()].is_point)
+
+            labels.currentIndexChanged.connect(update_end_controls)
+            update_end_controls()
+        else:
+            layout.addWidget(QLabel("尚无九轴对应关系，先编辑视频日期时间；点事件不填结束。"))
+            begin = QLineEdit(wall_text(start))
+            finish = QLineEdit(wall_text(end) if end is not None else "")
+            for title, control in (("开始时间", begin), ("结束时间", finish)):
+                layout.addWidget(QLabel(title))
+                layout.addWidget(control)
         note = QLineEdit(entry.get("note", "") if kind == "draft" else entry.note)
         note.setPlaceholderText("备注")
-        for control in (begin, finish, note):
-            layout.addWidget(control)
+        layout.addWidget(note)
         box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         box.accepted.connect(dialog.accept)
         box.rejected.connect(dialog.reject)
@@ -1865,10 +2025,18 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         try:
-            parse = wall_ms if kind == "draft" else lambda value: float(value) * 1000
-            start = parse(begin.text())
-            end = None if self.work.project.labels[labels.currentIndex()].is_point else parse(finish.text())
-            if kind == "draft":
+            if imu_edit:
+                begin.interpretText()
+                finish.interpretText()
+                start, end = begin.value() * 1000, finish.value() * 1000
+            else:
+                start = wall_ms(begin.text())
+                end = None if self.work.project.labels[labels.currentIndex()].is_point else wall_ms(finish.text())
+            if self.work.project.labels[labels.currentIndex()].is_point:
+                end = None
+            if kind == "draft" and imu_edit:
+                self._edit_draft_imu(entry, start, end, label_index=labels.currentIndex(), note=note.text())
+            elif kind == "draft":
                 self.work.checkpoint()
                 if end is not None and start > end:
                     start, end = end, start
@@ -1941,13 +2109,30 @@ class MainWindow(QMainWindow):
         self._archive_dialog.show()
 
     def select_plot_event(self, identifier):
+        preview = self._draft_preview
+        target = ("draft", preview[1]) if preview and preview[2] == identifier else ("event", identifier)
         for i in range(self.events.rowCount()):
-            if self.events.item(i, 0).data(Qt.ItemDataRole.UserRole) == ("event", identifier):
+            if self.events.item(i, 0).data(Qt.ItemDataRole.UserRole) == target:
                 self.events.selectRow(i)
                 break
 
     def edit_plot_event(self, identifier, start, end):
         if not self.writable_work():
+            return
+        preview = self._draft_preview
+        if preview and preview[0] == self.work.asset_id and preview[2] == identifier:
+            draft = next((d for d in self.work.drafts if d["id"] == preview[1] and d.get("confirmation") != "confirmed"), None)
+            if draft is not None:
+                try:
+                    self._edit_draft_imu(draft, start, end)
+                except ValueError as exc:
+                    self.tell(str(exc))
+                    self.refresh_events()
+                    return
+                self.refresh_events()
+                self.dirty = True
+                self.save_current()
+                self.tell("草稿九轴边界已调整；请回看并补充画面证据，再确认真值。")
             return
         event = next((e for e in self.work.project.events if e.id == identifier), None)
         if event:

@@ -83,7 +83,7 @@ def build(source, screenshots, output, font, bold_font):
     pdf.setSubject("准备数据、审查归类、同步标注、保存复核与导出")
     markdown = [f"# {document['title']} {version}", "",
         "操作顺序：准备数据 → 审查归类 → 标注保存 → 复核导出。", "",
-        "截图由当前 3.3.0 软件实际运行取得。牛舍录像为授权短片；九轴、绑定、类别和标签为隔离演示数据，不作研究真值。", ""]
+        document.get("capture_note", "截图来自实际软件操作；演示数据和标签不作研究真值。"), ""]
     used = {}
     for index, page in enumerate(pages, 1):
         pdf.bookmarkPage(f"page-{index}")
@@ -132,7 +132,7 @@ def build(source, screenshots, output, font, bold_font):
         pdf.showPage()
         markdown.extend([f"## {index:02d} {page['title']}", "", f"阶段：{page['stage']}", ""])
         for name in page["images"]:
-            markdown.extend([f"![{page['title']}](../assets/screenshots/manual-330/{name})", ""])
+            markdown.extend([f"![{page['title']}](../{(screenshots/name).relative_to(ROOT).as_posix()})", ""])
             used[name] = hashlib.sha256((screenshots/name).read_bytes()).hexdigest()
         markdown.extend([f"{n}. {step}" for n, step in enumerate(page["steps"], 1)])
         markdown.extend(["", page["note"], ""])

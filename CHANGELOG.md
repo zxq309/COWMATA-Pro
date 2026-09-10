@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.3.1] - 2026-09-10
+
+- Recover playback when a surveillance audio stream lacks its sample rate: retry video-only stream copy for that error, retain healthy audio and source files, and validate the derived timeline.
+- Prepare playback caches after the paused original frame appears. Share preparation across play and repeated seeks, keep GUI lookups responsive, cancel abandoned work and ignore results from an old project.
+- Show the active action, start time and correct end key. Restore numeric shortcuts while the behavior selector has focus; add explicit cancellation for unfinished actions.
+- Connect video drafts to independent IMU boundary dragging and timestamp editing with 0.1-second controls. Keep draft previews separate from confirmed labels and require new evidence after edits.
+- Apply the playback recovery to all five behavior candidate review routes. Deliver a complete portable ZIP, installer and clean source archive; existing users upgrade directly to 3.3.1.
+
+See [release notes](docs/release-331.md), [validation](docs/release-331-validation.md) and the updated [illustrated manual](docs/quick-start-illustrated.pdf).
+
 ## [3.3.0] - 2026-09-10
 
 - Establish organize → annotate/save → review/export. Add a background organization window for single-file, single-device, single-day and multi-day nested sources; normalize view01–08, preview moves, protect active projects, quarantine only classified junk, and resume interrupted work.

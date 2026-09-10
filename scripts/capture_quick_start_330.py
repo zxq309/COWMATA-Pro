@@ -24,15 +24,17 @@ def main():
     parser.add_argument("--components", type=Path, required=True)
     parser.add_argument("--work", type=Path, required=True)
     parser.add_argument("--farm", type=Path, required=True)
+    parser.add_argument("--screenshots", type=Path)
     parser.add_argument("--extras-only", action="store_true")
     parser.add_argument("--history-only", action="store_true")
     parser.add_argument("--refresh-results-only", action="store_true")
     parser.add_argument("--skip-playback", action="store_true")
     args = parser.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
-    shots = args.source / "assets/screenshots/manual-330"
+    shots = args.screenshots or args.source / "assets/screenshots/manual-330"
     shots.mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(args.source))
+    from cowmata_tailring import __version__
     os.environ["VLC_HOME"] = str(args.components / "vendor/vlc")
     os.environ["VLC_PLUGIN_PATH"] = str(args.components / "vendor/vlc/plugins")
     os.environ["FFMPEG_HOME"] = str(args.components / "vendor/ffmpeg/bin")
@@ -75,7 +77,7 @@ def main():
     QSettings.setDefaultFormat(QSettings.Format.IniFormat)
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(args.work / "settings"))
     organization_ui.task_root = lambda: args.work / "tasks"
-    evidence = {"version": "3.3.0", "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    evidence = {"version": __version__, "captured_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "dataset": "Isolated demo: generated IMU + authorized farm excerpts; labels are illustrative only",
                 "operations": [], "screenshots": []}
     def wait_for(predicate=lambda: False, timeout=1):
@@ -403,6 +405,7 @@ def main():
     window.labels.setCurrentIndex(label_index)
     assert ready_at(10000)
     window.mark(label_index)
+    shot(window, "16-active-action", "Actual active action, start timestamp and explicit end/cancel controls")
     assert ready_at(15000)
     window.mark(label_index)
     assert window.work.drafts
@@ -410,6 +413,9 @@ def main():
     window.body.setSizes([260, 860, 350, 0])
     shot(window, "16-drafts", "Actual action-start/action-end buttons produced a saved video draft")
     window.events.selectRow(0)
+    window.refine_selected()
+    shot(window, "16-imu-refine", "Selected video draft projected onto the IMU for independent boundary adjustment")
+    modal(window.edit_selected, "16-boundary-editor", "Actual independent start/end timestamp controls; cancel retains boundaries")
     # Confirmation calls modal evidence capture when visible. Capture and save
     # through its controls inside a timed callback.
     def evidence_action():

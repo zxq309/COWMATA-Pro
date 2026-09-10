@@ -231,7 +231,10 @@ class MainWindow(ControllerWindow):
         review.addLayout(annotation)
         self.event_status.setStyleSheet("font-size:11px; color:#6b8179")
         self.event_status.setWordWrap(True)
-        review.addWidget(self.event_status)
+        action_state = QHBoxLayout()
+        action_state.addWidget(self.event_status, 1)
+        action_state.addWidget(self.cancel_action_button)
+        review.addLayout(action_state)
         self.body.addWidget(center)
 
         self.event_panel = QFrame()
@@ -243,6 +246,10 @@ class MainWindow(ControllerWindow):
         for col, width in enumerate((75, 110, 145, 145, 100, 170)):
             self.events.setColumnWidth(col, width)
         details.addWidget(self.events, 1)
+        boundary_actions = QHBoxLayout()
+        self._button("九轴起止微调", self.refine_selected, boundary_actions)
+        self._button("编辑起止", self.edit_selected, boundary_actions)
+        details.addLayout(boundary_actions)
         event_actions = QMenu(self)
         for title, explanation, handler in (("生成候选", "将选中的九轴区间添加为候选标注", self.mark_selection),
                                ("确认真值", "核对画面与同步关系后确认所选草稿", self.confirm_selected),
@@ -496,6 +503,12 @@ class MainWindow(ControllerWindow):
             if focus and focus.window() == self and isinstance(focus, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
                 modifiers = event.modifiers()
                 if not modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier):
+                    # Choosing a behavior must not swallow its annotation key.
+                    # Cow IDs, timestamps and other editable inputs keep typing.
+                    if focus is self.labels and self.work:
+                        keys = {label.key.upper() for label in self.work.project.labels if label.key}
+                        if event.text().upper() in keys:
+                            return False
                     event.accept()
                     return True
         return False
@@ -558,10 +571,10 @@ class MainWindow(ControllerWindow):
         if text.startswith("录像仍在索引"):
             self.coverage_label.setText("当前时刻暂未匹配录像 · 仍有未检索素材，可在「工具 → 录像索引」继续检索")
 
-    def refresh_events(self):
-        super().refresh_events()
-        self.mark_button.setToolTip(self.event_status.text())
-        self.event_status.setVisible(bool(self.active_event))
+    def refresh_action_state(self, *_):
+        super().refresh_action_state()
+        self.event_status.setStyleSheet("font-size:12px; font-weight:600; color:#815c17" if self.active_event
+                                       else "font-size:11px; color:#6b8179")
 
     def quick_help(self):
         from PySide6.QtWidgets import QMessageBox

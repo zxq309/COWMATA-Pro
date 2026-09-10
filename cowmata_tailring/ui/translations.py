@@ -2034,5 +2034,48 @@ ZH_TO_EN.update({
 })
 
 
+# Playback and annotation recovery, September 2026.
+ZH_TO_EN.update({
+    " +0.1 秒": " +0.1 s",
+    " · 按 ": " · Press ",
+    " −0.1 秒": " -0.1 s",
+    " 或“结束": " or End ",
+    " 或点击“结束": " or click End ",
+    "”结束": " to finish",
+    "”；也可确认取消本次动作后重新开始。点事件可单独记录。": "; alternatively, confirm cancellation of this action and start again. Point events can be recorded separately.",
+    "九轴与视频尚无对应关系，草稿已经保留。": "IMU and video are not aligned yet. The draft has been retained.",
+    "九轴待复核预览": "IMU preview pending review",
+    "九轴起止微调": "Refine IMU boundaries",
+    "九轴起止微调（待复核）：拖动波形左右边界；也可点“编辑起止”分别前后调整或输入时间。视频草稿预览不会自动成为真值。": "Refine IMU boundaries (pending review): drag either boundary on the waveform, or choose Edit boundaries to adjust or type each time independently. A video draft preview is not automatically ground truth.",
+    "兼容缓存暂不可用，原片保持 1× 播放；暂停后重新播放可重试缓存。": "Compatibility cache is unavailable. Original video stays at 1x; pause and play again to retry preparation.",
+    "兼容缓存暂不可用，正在尝试原片 1× 播放：": "Compatibility cache is unavailable; trying the original video at 1x: ",
+    "原标签键": "the original label key",
+    "取消未结束动作": "Cancel unfinished action",
+    "取消本次动作…": "Cancel this action...",
+    "取消正在记录的": "Cancel the active ",
+    "尚无九轴对应关系，先编辑视频日期时间；点事件不填结束。": "IMU is not aligned yet. Edit video date and time first; point events have no end time.",
+    "已取消本次未结束动作，可以重新选择标签开始。": "The unfinished action was cancelled. Select a label to start again.",
+    "开始视频动作": "Start video action",
+    "当前动作的标签配置已变化，请先核对标签配置。": "The active action's label configuration has changed. Check the label configuration first.",
+    "时间": "Time",
+    "未结束动作": "Unfinished action",
+    "本段录像音轨信息异常，播放缓存已跳过音轨；视频无重编码，原片保留。": "This recording has invalid audio metadata. Its playback cache omits audio; video is not re-encoded and the original is retained.",
+    "正在记录": "Recording ",
+    "编辑起止": "Edit boundaries",
+    "草稿九轴边界已调整；请回看并补充画面证据，再确认真值。": "Draft IMU boundaries updated. Review the video and add frame evidence before confirming ground truth.",
+    "草稿已不在当前记录": "The draft is no longer in the current record",
+    "视频动作": "Video action",
+    "记录": "Record",
+    "请先在标注列表选择一条视频草稿或九轴标注。": "Select a video draft or IMU annotation in the annotation list first.",
+    "请先选择九轴记录，再记录视频动作。": "Select an IMU record before recording a video action.",
+    "请等待当前九轴记录读取完成。": "Wait for the current IMU record to finish loading.",
+    "调整九轴起止时间；点事件只记录起点。修改后仍需补充画面证据并复核。": "Adjust the IMU start and end times; point events only have a start. Add frame evidence and review after editing.",
+    "起止时间必须在当前九轴记录范围内。": "Start and end times must be within the current IMU record.",
+    "（起点 ": " (start ",
+    "）？\n仅取消本次尚未闭合的动作；已经保存的草稿和标注继续保留。": ")?\nOnly this unfinished action will be cancelled. Saved drafts and annotations are retained.",
+    "，请按 ": "; press ",
+})
+
+
 if __name__ == "__main__":
     _coverage()

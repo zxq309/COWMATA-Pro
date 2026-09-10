@@ -95,6 +95,8 @@ def main():
         shutil.copy2(input_path("docs/" + name), destination / "docs" / name)
     for name in ("portable_self_test.py", "build_portable.py", "verify_label_history.py", "verify_event_models.py", "verify_candidate_ui.py", "register_event_pack.py", "verify_evidence_archive.py"):
         shutil.copy2(source / "scripts" / name, destination / "scripts" / name)
+    for name in ("release-331.md", "release-331-validation.md", "playback-annotation-fix-20260910.md", "manual-331-validation.md", "manual-331-capture-evidence.json"):
+        shutil.copy2(source / "docs" / name, destination / "docs" / name)
     inventory = []
     for path in sorted(destination.rglob("*")):
         if path.is_file():

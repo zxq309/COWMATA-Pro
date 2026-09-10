@@ -351,6 +351,7 @@ class VideoBoard(QWidget):
     metricsChanged = Signal(object)
     preciseReady = Signal(object)
     compatibilityReady = Signal(object)
+    compatibilityPrepared = Signal(object)
 
     def __init__(self, parent=None, *, engine_factory=None):
         super().__init__(parent)
@@ -378,6 +379,10 @@ class VideoBoard(QWidget):
         self.software_decode = False
         self.compatibility = False
         self.compatibility_cache = None
+        self.compatibility_failures = set()
+        self.compatibility_audio_notified = set()
+        self.compatibility_jobs = {}
+        self.compatibility_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video-remux")
         self.generation = 0
         self.last_tick = time.perf_counter()
         if engine_factory is None:
@@ -391,6 +396,7 @@ class VideoBoard(QWidget):
         self.frame_cache = FrameCache()
         self.preciseReady.connect(self._precise_ready)
         self.compatibilityReady.connect(self._compatibility_ready)
+        self.compatibilityPrepared.connect(self._compatibility_prepared)
         self._closing = False
         self.timer = QTimer(self)
         self.timer.setInterval(40)
@@ -402,7 +408,13 @@ class VideoBoard(QWidget):
 
     def configure(self, catalog, rows, timeline):
         if self.catalog is not catalog:
+            for job in self.compatibility_jobs.values():
+                job["cancelled"] = True
+                job["future"].cancel()
+            self.compatibility_jobs.clear()
             self.compatibility_cache = CompatibilityCache(catalog.meta, readonly=catalog.readonly)
+            self.compatibility_failures.clear()
+            self.compatibility_audio_notified.clear()
         self.catalog = catalog
         self.timeline = timeline
         # Only reconciliation can make a changed source usable again.
@@ -555,6 +567,10 @@ class VideoBoard(QWidget):
             self.notice.emit("当前时刻的录像尚未就绪，请等待检索出画面后再播放")
         previous = self.playing
         self.playing = bool(enabled)
+        if self.playing and not previous:
+            # An explicit pause/play retries a previously failed optional cache;
+            # background ticks never restart that failed job in a loop.
+            self.compatibility_failures.difference_update(t.asset_id for t in self.tiles.values())
         if not self.playing:
             self._held = False
         self.last_tick = time.perf_counter()
@@ -569,6 +585,10 @@ class VideoBoard(QWidget):
     def set_rate(self, rate):
         if rate not in {.25, .5, 1, 2, 4}:
             raise ValueError("播放倍率不支持")
+        if rate != 1 and any(t.asset_id in self.compatibility_failures for t in self.synchronised_tiles()):
+            self.notice.emit("兼容缓存暂不可用，原片保持 1× 播放；暂停后重新播放可重试缓存。")
+            self.rateChanged.emit(self.rate)
+            return
         self.rate = rate
         for tile in self.pool:
             if tile.engine:
@@ -637,13 +657,18 @@ class VideoBoard(QWidget):
                 self._precise_request(tile, source_path, target)
                 return
             native = metadata.get("timeline", {}).get("native")
-            if (self.compatibility or native) and self.playing and metadata.get("format") == "mpeg":
+            if ((self.compatibility or native) and self.playing and metadata.get("format") == "mpeg"
+                    and interval.asset_id not in self.compatibility_failures):
                 cached = self.compatibility_cache.cached(interval.asset_id)
                 if cached is None:
                     self._compatibility_request(tile, interval, target, source_path, metadata)
                     return
                 path = cached.resolve()
                 self.metadata[str(path)] = self.compatibility_cache.playback_metadata(interval.asset_id, metadata)
+                if (self.compatibility_cache.entries.get(interval.asset_id, {}).get("audio_omitted")
+                        and interval.asset_id not in self.compatibility_audio_notified):
+                    self.compatibility_audio_notified.add(interval.asset_id)
+                    self.notice.emit("本段录像音轨信息异常，播放缓存已跳过音轨；视频无重编码，原片保留。")
             if tile.engine is None:
                 tile.engine = self.engine_factory(tile.surface, metadata=lambda p: self.metadata.get(str(Path(p))),
                                                   cache=self.catalog.meta / "cache", parent=tile,
@@ -925,31 +950,73 @@ class VideoBoard(QWidget):
         tile.pending = {"asset": interval.asset_id, "generation": generation, "target": target,
                         "phase": "compat_cache", "start": started}
         tile.status("正在准备本段流畅播放 · 无重编码 · 首次完成后复用")
+        self._schedule_compatibility(interval, path, metadata)
+
+    def _schedule_compatibility(self, interval, path, metadata):
+        """One writer per source; play/seek share work begun at the paused frame."""
         cache = self.compatibility_cache
+        if self._closing or interval.asset_id in self.compatibility_jobs:
+            return
+        wanted = {t.interval.asset_id for t in self.pool if t.interval and
+                  (t in self.tiles.values() or t is self.prewarm)}
+        for asset, old in list(self.compatibility_jobs.items()):
+            if asset not in wanted:
+                old["cancelled"] = True
+                old["future"].cancel()
+                del self.compatibility_jobs[asset]
+        job = {"cancelled": False}
+        self.compatibility_jobs[interval.asset_id] = job
         pinned = [t.engine._path for t in self.pool if t.engine and t.engine._path]
 
         def build():
-            if self._closing or self.generation != generation:
+            def cancelled():
+                return self._closing or job["cancelled"] or self.compatibility_cache is not cache
+
+            if cancelled():
                 return
             error = None
             try:
-                cache.build(interval.asset_id, path, metadata,
-                            cancelled=lambda: self._closing or self.generation != generation, pinned=pinned)
+                cache.build(interval.asset_id, path, metadata, cancelled=cancelled, pinned=pinned)
             except Exception as exc:
                 error = str(exc)
             if not self._closing:
-                self.compatibilityReady.emit((generation, tile, interval, target, started, error))
+                self.compatibilityPrepared.emit((cache, interval.asset_id, job, error))
 
-        self.frame_jobs.append(self.frame_pool.submit(build))
+        job["future"] = self.compatibility_pool.submit(build)
+
+    def _compatibility_prepared(self, result):
+        cache, asset, job, error = result
+        if (self._closing or cache is not self.compatibility_cache or
+                self.compatibility_jobs.get(asset) is not job):
+            return
+        del self.compatibility_jobs[asset]
+        if job["cancelled"]:
+            return
+        if error:
+            # Quiet preparation must not retry on every paused frame. An
+            # explicit play command permits one new attempt below.
+            self.compatibility_failures.add(asset)
+        # The completed source is reusable; the destination must be the latest
+        # still-waiting seek, not the cursor captured when preparation started.
+        for tile in self.pool:
+            pending = tile.pending
+            if (pending and pending["phase"] == "compat_cache" and pending["asset"] == asset
+                    and pending["generation"] == self.generation and tile.interval
+                    and tile.interval.asset_id == asset):
+                self._compatibility_ready((self.generation, tile, tile.interval,
+                                           pending["target"], pending["start"], error))
 
     def _compatibility_ready(self, result):
         generation, tile, interval, target, started, error = result
         if self._closing or generation != self.generation or tile.asset_id != interval.asset_id:
             return
         if error:
-            tile.pending = None
-            tile.status("兼容缓存未启用：" + error)
-            self.notice.emit(error)
+            # A derived cache is optional. Keep the original source available,
+            # and do not repeatedly rebuild the same failed file on every tick.
+            self.compatibility_failures.add(interval.asset_id)
+            self.set_rate(1)
+            self.notice.emit("兼容缓存暂不可用，正在尝试原片 1× 播放：" + error)
+            self._request(tile, interval, target)
             return
         self._request(tile, interval, target, queued_start=started)
 
@@ -978,12 +1045,22 @@ class VideoBoard(QWidget):
         tile.status(f"{wall_text(tile.actual_ms)} · 精确暂停帧 PTS {actual / 1000:.3f}s · 原片", good=True)
         self.latencies.append({"camera": tile.camera, "cold": pending["cold"], "mode": "precise_pause",
                                "seconds": time.perf_counter() - pending["start"], "error_ms": actual - pending["target"]})
+        if tile.camera == self.main_camera and self.compatibility_cache and not self.compatibility_cache.readonly:
+            source = self.catalog.source_path(tile.interval.path)
+            metadata = self.metadata.get(str(source), {})
+            if (metadata.get("format") == "mpeg" and
+                    (self.compatibility or metadata.get("timeline", {}).get("native")) and
+                    asset_id not in self.compatibility_failures and self.compatibility_cache.cached(asset_id) is None):
+                self._schedule_compatibility(tile.interval, source, metadata)
 
     def close(self):
         self._closing = True
         self.timer.stop()
         self.control_timer.stop()
         self.playing = False
+        for job in self.compatibility_jobs.values():
+            job["cancelled"] = True
+        self.compatibility_pool.shutdown(wait=False, cancel_futures=True)
         self.frame_pool.shutdown(wait=False, cancel_futures=True)
         self.frame_cache.clear()
         for tile in self.pool:

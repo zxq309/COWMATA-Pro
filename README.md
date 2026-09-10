@@ -1,6 +1,6 @@
 <div align="center">
 
-> **3.3.0 - 2026-09-10:** organize → annotate/save → review/export. Add background data organization, seven collection categories (including early/mid/late pregnancy), strict device-ear-tag-field-mark folders, and per-record identity across device reuse. Fix pending video discovery, legacy indexes and export/return integration. See the [illustrated manual](docs/quick-start-illustrated.pdf), [release notes](docs/release-330.md), [validation](docs/release-330-validation.md) and [code audit](docs/code-audit-330.md). Download the [complete Windows installer](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.0).
+> **3.3.1 - 2026-09-10:** fix failed surveillance remux, repeated playback waits, numeric annotation shortcuts and hidden action state. Refine video-draft boundaries on the IMU or edit either timestamp in 0.1-second steps. See [release notes](docs/release-331.md), [validation](docs/release-331-validation.md), [manual](docs/quick-start-illustrated.pdf), and [installer / portable downloads](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.1).
 
 > **Self-contained Windows installer:** ordinary users download the complete Setup EXE from
 > [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases).
@@ -14,7 +14,7 @@
 **Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
 
 [![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-3.3.0-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.0)
+[![Release](https://img.shields.io/badge/release-3.3.1-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.3.1)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -23,9 +23,9 @@
 
 </div>
 
-[![3.3.0 actual workspace: organized data, video and IMU annotation](assets/screenshots/manual-330/09-workspace.png)](docs/quick-start-illustrated.pdf)
+[![3.3.1 actual workspace: organized data, video and IMU annotation](assets/screenshots/manual-331/09-workspace.png)](docs/quick-start-illustrated.pdf)
 
-<p align="center"><sub>Open the 32-page illustrated manual, with three short steps per page. Screenshots show actual current UI operations using generated demo IMU, identities and labels with authorized farm excerpts. Historical recordings below retain their original version.</sub></p>
+<p align="center"><sub>Open the 33-page illustrated manual, with three short steps per page. Screenshots show actual current UI operations using generated demo IMU, identities and labels with authorized farm excerpts. Historical recordings below retain their original version.</sub></p>
 
 ## Overview
 
@@ -231,7 +231,7 @@ pytest -q
 python -m cowmata_tailring --version
 ```
 
-This branch contains 3.3.0. Published artifacts are in [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases); historical records remain in [CHANGELOG.md](CHANGELOG.md). Source-only CI skips unavailable binary-pack and native Windows/VLC integration fixtures; those are checked locally against the complete distribution. See the [verification scope](docs/release-330-validation.md).
+This branch contains 3.3.1. Published artifacts are in [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases); historical records remain in [CHANGELOG.md](CHANGELOG.md). Source-only CI skips unavailable binary-pack and native Windows/VLC integration fixtures; those are checked locally against the complete distribution. See the [verification scope](docs/release-331-validation.md).
 
 ## Contributing, security, and citation
 
@@ -246,4 +246,4 @@ Source code is released under the [MIT License](LICENSE). The COWMATA names and 
 
 ## Latest update
 
-**2026-09-10** — 3.3.0: background organization, strict per-record identity, seven collection categories, pending/legacy-index fixes, timestamp and save/export integration, and a 32-page illustrated manual. [Full changelog](CHANGELOG.md).
+**2026-09-10** — 3.3.1: recover surveillance playback, share cache preparation, restore action controls and refine both draft boundaries independently. Updated 33-page manual. [Full changelog](CHANGELOG.md).

@@ -1,6 +1,7 @@
 """Optional bounded, lossless working-set remux for legacy surveillance PS.
 
-Only containers change in this derived cache; video/audio codecs are copied.
+Only containers change in this derived cache; usable video/audio codecs are copied.
+An invalid audio header can be omitted from the derived cache, never the source.
 Originals and human work are never evicted. A discontinuous source is rejected
 unless the remux can be verified to preserve its exposed playback clock.
 """
@@ -30,6 +31,7 @@ class CompatibilityCache:
         self.max_bytes = max_bytes
         self.readonly = readonly
         self.lock = threading.RLock()
+        self._build_lock = threading.Lock()
         self.entries = read_json(self.root / "manifest.json", {})
 
     def cached(self, asset_id):
@@ -48,7 +50,10 @@ class CompatibilityCache:
     def build(self, asset_id, source, metadata, *, cancelled=None, pinned=()):
         if len(asset_id) != 64 or any(c not in "0123456789abcdef" for c in asset_id):
             raise ValueError("非法缓存素材身份")
-        with self.lock:
+        # Serialize writers without holding the manifest lock during FFmpeg.
+        # The GUI reads cached() while other views prepare; a full remux must
+        # never block that lookup or prevent already cached views from playing.
+        with self._build_lock:
             cached = self.cached(asset_id)
             if cached:
                 return cached
@@ -59,7 +64,8 @@ class CompatibilityCache:
                 raise ValueError("该片存在多段 PTS 跳变，不能套用单段兼容缓存；请使用原片或先人工核验")
             required = int(source.stat().st_size * 1.1) + 1024 * 1024
             self.root.mkdir(parents=True, exist_ok=True)
-            self._make_room(required, pinned)
+            with self.lock:
+                self._make_room(required, pinned)
             target = self.root / (asset_id + ".mkv")
             temporary = self.root / (asset_id + ".building.mkv")
             before = file_stamp(source)
@@ -70,6 +76,19 @@ class CompatibilityCache:
                        "-avoid_negative_ts", "make_zero", "-y", str(temporary)]
             try:
                 process = run_cancellable(command, timeout=180, cancelled=cancelled)
+                audio_omitted = bool(process.returncode and
+                                     b"sample rate not set" in process.stderr.lower())
+                if audio_omitted:
+                    # Some camera PS files expose an audio stream with no rate.
+                    # Optional mapping (0:a?) only handles an absent stream; it
+                    # still copies a malformed one and Matroska rejects its header.
+                    # Retry only that known header error, retaining every video
+                    # packet and the same clock validation below. Healthy audio
+                    # and unrelated I/O/codec failures keep their normal path.
+                    video_command = command[:command.index("-map")]
+                    video_command += ["-map", "0:v:0", "-an", "-sn", "-dn", "-c:v", "copy",
+                                      "-avoid_negative_ts", "make_zero", "-y", str(temporary)]
+                    process = run_cancellable(video_command, timeout=180, cancelled=cancelled)
                 if process.returncode:
                     raise ValueError("兼容封装失败：" + process.stderr.decode("utf-8", "replace")[-300:])
                 if file_stamp(source) != before:
@@ -81,12 +100,16 @@ class CompatibilityCache:
                 if cancelled and cancelled():
                     raise RuntimeError("兼容缓存请求已取消")
                 os.replace(temporary, target)
-                self.entries[asset_id] = {"stamp": file_stamp(target), "size": target.stat().st_size,
+                entry = {"stamp": file_stamp(target), "size": target.stat().st_size,
                                           "last_use": time.time(), "source_stamp": before,
                                           "source_duration_ms": source_index.duration_ms,
                                           "cache_duration_ms": index.duration_ms, "method": "stream_copy",
+                                          "audio_omitted": audio_omitted,
                                           "timeline": index.to_dict()}
-                atomic_json(self.root / "manifest.json", self.entries)
+                with self.lock:
+                    self.entries[asset_id] = entry
+                    manifest = {key: dict(value) for key, value in self.entries.items()}
+                atomic_json(self.root / "manifest.json", manifest)
                 return target
             finally:
                 if temporary.exists():
