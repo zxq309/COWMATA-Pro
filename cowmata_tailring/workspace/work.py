@@ -104,6 +104,8 @@ class SessionWork:
         self._sync_identity()
 
     def to_dict(self):
+        from .resource_layout import PPG_PLACEHOLDER
+        self.project.extras.setdefault("ppg", copy.deepcopy(PPG_PLACEHOLDER))
         return {"schema": 1, "asset_id": self.asset_id, "project": self.project.to_dict(),
                 "clock": self.clock.to_dict(), "mapping_history": self.mapping_history,
                 "drafts": self.drafts, "progress": self.progress}
@@ -148,6 +150,8 @@ class SessionWork:
             start, end = end, start
         if not math.isfinite(start) or end is not None and not math.isfinite(end):
             raise ValueError("动作时间必须为有效数值")
+        if end is not None and end == start:
+            raise ValueError("结束时间必须晚于开始时间。")
         self.checkpoint()
         draft = {"id": uuid.uuid4().hex, "group_id": group_id or uuid.uuid4().hex,
                  "label_index": label_index, "reference_start": start, "reference_end": end,
@@ -231,9 +235,13 @@ class SessionWork:
         event = next(e for e in self.project.events if e.id == identifier)
         if not math.isfinite(start) or end is not None and not math.isfinite(end):
             raise ValueError("动作时间必须为有效数值")
+        bounded_start = max(0, min(duration_ms, start))
+        bounded_end = max(0, min(duration_ms, end)) if end is not None else None
+        if bounded_end is not None and bounded_end == bounded_start:
+            raise ValueError("结束时间必须晚于开始时间。")
         self.checkpoint()
-        event.t0 = max(0, min(duration_ms, start))
-        event.t1 = max(0, min(duration_ms, end)) if end is not None else None
+        event.t0 = bounded_start
+        event.t1 = bounded_end
         event.normalise_bounds()
         if label_index is not None:
             event.li = label_index

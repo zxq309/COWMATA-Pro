@@ -15,7 +15,7 @@ from cowmata_tailring.media.native_ps import native_hint
 
 from .catalog import assert_not_being_written, file_stamp
 from .clocks import ClockMap
-from .demand import next_video_task, reference_window
+from .demand import camera_folder, next_video_task, reference_window
 from .probe import SourceInspector
 from .rapid_backend import TIMESTAMP_SIGNATURE
 
@@ -103,14 +103,40 @@ class IndexWorker(QObject):
             task = next_video_task(rows, hints, start, end,
                                    maps=maps, overrides=settings.get("camera_overrides"), attempted=self.attempted | unavailable,
                                    explore=self.hints_used < self.budget)
-            if task and task[0] == "full" and task[1]["path"] in by_path:
+            if task and task[0] == "full" and not task[1].get("_exploratory") and task[1]["path"] in by_path:
                 return task
             # Use the same sparse, batch-aware routing for native headers.
             # Scanning every card first delays other cameras in large projects.
-            if task and task[1]["path"] in by_path:
+            covered_folders = set()
+            for row in rows:
+                if row["kind"] != "video" or row["state"] not in {"ready", "review"}:
+                    continue
+                lo, hi = reference_window(row, start if self.playhead is None else self.playhead,
+                                          end if self.playhead is None else self.playhead,
+                                          maps, settings.get("camera_overrides"))
+                if any(s["wall_start"] <= hi and s["wall_end"] > lo for s in row["metadata"].get("intervals", [])):
+                    covered_folders.add(camera_folder(row["path"]))
+            deferred, skipped = None, set()
+            # A deferred camera must not head-of-line block a missing one.
+            # Bound lookahead to one discovery batch; skipped rows are NOT
+            # marked attempted and remain available when playback pauses.
+            for _ in range(48):
+                if not task or task[1]["path"] not in by_path:
+                    break
                 if task[1]["path"] not in hints:
-                    return "native", task[1]
-                return task
+                    task = ("native", task[1])
+                elif task[0] == "hint" and camera_folder(task[1]["path"]) not in covered_folders:
+                    task = (task[0], {**task[1], "_required_view": True})
+                if self.may_run(task):
+                    return task
+                deferred = deferred or task
+                skipped.add(task[1]["path"])
+                task = next_video_task(rows, hints, start, end,
+                                       maps=maps, overrides=settings.get("camera_overrides"),
+                                       attempted=self.attempted | unavailable | skipped,
+                                       explore=self.hints_used < self.budget)
+            if deferred:
+                return deferred
             checks = []
             for row in rows:
                 if row["metadata"].get("native_check_pending") and row["state"] == "review" and not row["metadata"].get("manual_readings"):
@@ -134,7 +160,7 @@ class IndexWorker(QObject):
         # Playback cannot starve the very next clip in the active IMU window.
         # Full-project/exploratory work still yields to the video renderer.
         return bool(self.window and not task[1].get("_exploratory") and
-                    (task[0] in {"full", "native"} or task[1].get("_guided")))
+                    (task[0] in {"full", "native"} or task[1].get("_guided") or task[1].get("_required_view")))
 
     def run(self):
         if os.name == "nt":

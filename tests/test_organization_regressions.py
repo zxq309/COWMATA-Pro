@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 import pytest
+from legacy_organization import plan_import as legacy_plan_import
 
 from cowmata_tailring.workspace import organization as org
 from cowmata_tailring.workspace.catalog import Catalog, ScanResult
@@ -16,6 +17,8 @@ from cowmata_tailring.workspace.storage import ProjectLock
 
 @pytest.fixture(autouse=True)
 def isolated_registry(monkeypatch, tmp_path):
+    # Exercise replay of the saved 3.3 move-plan format. New GUI uses resource_import.
+    monkeypatch.setattr(org, "plan_import", legacy_plan_import)
     monkeypatch.setenv("COWMATA_ACCESS_DIR", str(tmp_path / "registry"))
 
 
@@ -151,7 +154,7 @@ def test_interrupted_manifest_append_is_recovered_on_resume(tmp_path, monkeypatc
     assert int(rows[0]["size"]) == Path(plan["rows"][0]["target"]).stat().st_size
 
 
-@pytest.mark.parametrize("category", ["calving", "pregnancy_early", "pregnancy_mid", "pregnancy_late"])
+@pytest.mark.parametrize("category", ["calving", "estrus", "pregnancy", "disease", "healthy"])
 def test_gui_organize_then_open_preserves_collection_category(tmp_path, monkeypatch, category):
     from PySide6.QtCore import QSettings, QTimer
     from PySide6.QtWidgets import QApplication, QMessageBox
@@ -197,14 +200,15 @@ def test_gui_organize_then_open_preserves_collection_category(tmp_path, monkeypa
         dialog.preview_import()
         wait_for(lambda: not dialog.running)
         assert dialog.plan is not None and source.exists()
+        destination = Path(dialog.plan["rows"][0]["target"])
+        scope = Path(dialog.plan["target"])
         dialog.execute_plan()
         wait_for(lambda: not dialog.running)
         assert dialog.open_button.isEnabled(), dialog.status.text()
-        destination = target / "九轴/0C3D5EA22E36-21100-w1/2026-09-01/one.json"
-        assert destination.is_file() and not source.exists()
+        assert destination.is_file() and source.exists()
         dialog.open_result()
         wait_for(lambda: window.work is not None)
-        assert window.catalog.root == target
+        assert window.catalog.root == scope
         assert window.work.project.extras["dataset_category"] == category
         assert window.data_category.currentData() == category
         assert len(beats) >= 2

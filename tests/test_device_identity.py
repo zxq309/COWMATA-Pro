@@ -4,6 +4,7 @@ import csv
 import json
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -25,10 +26,10 @@ def test_three_parts_keep_ear_tag_zeros_and_field_mark_case(mark):
     assert identity.folder_name == "546C50CA07D5-00123-" + mark
 
 
-@pytest.mark.parametrize("name", ["546C50CA07E8-y1-22207", "546C50CA07F8-23077E",
+@pytest.mark.parametrize("name", [
                                   "07D5-21014-R", "546C50CA07D5-21100-",
                                   "546C50CA07D5-牛01-A", "546C50CA07D5-21100-Ａ1",
-                                  "546C50CA07D5-21100-A-1", "546C50CA07D5-21100-w1 "])
+                                  "546C50CA07D5-21100-w1 "])
 def test_nonstandard_names_are_not_accepted_as_identity(name):
     from cowmata_tailring.workspace.device_identity import parse_device_folder
     with pytest.raises(ValueError):
@@ -47,7 +48,11 @@ def test_advice_is_explained_without_accepting_or_renaming(tmp_path, name, devic
     path.parent.mkdir(parents=True)
     path.write_text("{}")
     result = resolve_device_identity(path, device)
-    assert result["status"] == "blocked"
+    automatic = name in {"546C50CA07E8-y1-22207", "546C50CA07F8-23077E"}
+    assert result["status"] == ("ready" if automatic else "blocked")
+    if automatic:
+        assert result["folder_name"] == suggestion and path.exists()
+        return
     assert result["source_folder"] == name
     assert result["suggested_folder"] == suggestion
     assert result["message"] and path.exists()
@@ -77,9 +82,9 @@ def test_device_reused_for_another_cow_on_another_day_keeps_both_records(tmp_pat
     plan = org.plan_import(target, [{"path": str(source), "kind": "imu"}], "2026-09-01", "2026-09-02", category="healthy")
     assert len(plan["rows"]) == 2 and all(row["status"] == "ready" for row in plan["rows"])
     assert org.execute(plan, tmp_path / "job")["moved"] == 2
-    assert not first.exists() and not second.exists()
-    assert (target / "九轴/546C50CA07D5-00123-w1/2026-09-01/one.json").is_file()
-    assert (target / "九轴/546C50CA07D5-21100-10/2026-09-02/one.json").is_file()
+    assert first.exists() and second.exists()
+    assert all(Path(r["target"]).is_file() for r in plan["rows"])
+    target = Path(plan["target"])
     with (target / "数据分类.csv").open(encoding="utf-8-sig", newline="") as stream:
         rows = list(csv.DictReader(stream))
     assert {(r["device_id"], r["cow_id"], r["field_mark"], r["record_date"]) for r in rows} == {
@@ -123,8 +128,8 @@ def test_unrepresentable_record_timestamp_is_reported_without_removing_imu(tmp_p
 def test_new_fields_upgrade_legacy_category_table_without_losing_old_assignment(tmp_path):
     from cowmata_tailring.workspace.data_category import CONTEXT_FILE
     source = make_record(tmp_path / "incoming/546C50CA07D5-00123-w1/one.json")
-    target = tmp_path / "target"
-    target.mkdir()
+    target = tmp_path / "target/扬大_高邮牧场/正常"
+    target.mkdir(parents=True)
     with (target / CONTEXT_FILE).open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(["target_relative_path", "dataset_category", "dataset_category_label", "collection_start",
@@ -136,7 +141,7 @@ def test_new_fields_upgrade_legacy_category_table_without_losing_old_assignment(
         rows = {row["target_relative_path"]: row for row in csv.DictReader(stream)}
     assert rows["legacy/old.json"]["dataset_category"] == "calving"
     assert rows["legacy/old.json"]["note"] == "保留原标注"
-    assert rows["九轴/546C50CA07D5-00123-w1/2026-09-01/one.json"]["cow_id"] == "00123"
+    assert rows[Path(plan["rows"][0]["target"]).relative_to(target).as_posix()]["cow_id"] == "00123"
 
 
 def test_gui_lists_naming_advice_and_blocks_move_before_annotation(tmp_path, monkeypatch):
@@ -191,7 +196,7 @@ def test_three_pregnancy_stages_keep_explicit_batch_categories_without_guessing(
         plan = org.plan_import(target, [{"path": str(source), "kind": "imu"}], "2026-09-01", category=category)
         assert plan["rows"][0]["status"] == "ready" and source.exists()
         assert org.execute(plan, tmp_path / ("job-" + category))["completed"]
-        relative = f"九轴/546C50CA07D5-{cow}-w1/2026-09-01/one.json"
+        relative = Path(plan["rows"][0]["target"]).relative_to(target).as_posix()
         saved[relative] = category
     for relative, category in saved.items():
         context = read_context(target, relative)

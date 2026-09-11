@@ -1,10 +1,14 @@
 {
-  "version": "3.3.2",
-  "date": "2026-09-10",
-  "pages": 33,
+  "version": "3.4.1",
+  "date": "2026-09-11",
+  "pages": 38,
   "screenshots_sha256": {
-    "01-install.png": "15ebf882d94a532f6f891f4bf27add3b87854464f64a66b61baf5d7950fa2c73",
-    "01-install-directory.png": "3060c7f0da761f91874676de2ea7fb7077100e40fa696e023577fbbaff49c01c",
+    "../manual-341/01-keyboard.png": "60dc2e67cd644bb2c685bca93fa7e8777870759396501e98163cffc72187e88b",
+    "../manual-341/02-zero-time.png": "c0811f92a2218353ea639b8ce4f67c66445634c56fc45bc03c1d8dafdfbfe366",
+    "../manual-341/03-latest-drag.png": "fbb4408d25ffacf88071987e79c0ccd6a69c9367ee0723084cd9dd0154065dc9",
+    "../manual-341/04-algorithm.png": "df33ef78fd2304e1312b3918b3fab052143484fabd351ce5bbb9dc5442b48300",
+    "../manual-341/05-organization.png": "631021e95044e3609ddcaf42844b9edb960856ae93bf06fc18cac37d9ab01fc9",
+    "../manual-341/06-export.png": "762e388ecd1d3b4d8fb8860cdae52f717786e8780f6873f113c51398a60d0190",
     "02-startup.png": "98ec8336cca05bf4c85667fa914c93d162caa0a6c9087c6a5ecb4129777e08f8",
     "03-sources.png": "c82d84a8c0a21f3ecf8933c5463a6648014f257009ee82921774b5ad1741d678",
     "04-naming-errors.png": "138a6fe71d6b2728e606f0079c45f50982b045eec9bb65dee4dbc167ca53eb71",
@@ -45,5 +49,5 @@
     "29-help.png": "6b69f9aee97f35fc57f1c82d921e65d02e45848a5d99ee6adf1cb9ebab9872d6",
     "30-legacy.png": "b031f2ec38038879ce008cd4c7980e07202ec1deeeda04a40983281aed2dba95"
   },
-  "pdf_sha256": "bd83520f7904ce8302c40d94665b4532f1e2b2d86f618e415e4012ac5de2150d"
+  "pdf_sha256": "a035fcebf0bf69376588e756b9846862348e1e61c2cc769b09476b40bd509687"
 }

@@ -26,10 +26,21 @@ class DeviceIdentity:
 
 
 def parse_device_folder(name):
-    match = FOLDER.fullmatch(str(name))
-    if not match:
+    prefix, separator, rest = str(name).partition("-")
+    if not separator or not DEVICE.fullmatch(prefix):
         raise ValueError("设备目录需规范为：" + RULE)
-    return DeviceIdentity(match[1].upper(), match[2], match[3])
+    if re.match(r"^[0-9]{5}", rest):
+        ear, mark = rest[:5], rest[5:].replace("-", "")
+    else:
+        candidates = list(re.finditer(r"(?<![0-9])[0-9]{5}(?![0-9])", rest))
+        if len(candidates) != 1:
+            raise ValueError("未找到唯一五位耳标，需人工核实")
+        found = candidates[0]
+        ear = found.group()
+        mark = (rest[:found.start()] + rest[found.end():]).replace("-", "")
+    if not re.fullmatch(r"[A-Za-z0-9]+", mark):
+        raise ValueError("现场标记应为非空 ASCII 字母数字")
+    return DeviceIdentity(prefix.upper(), ear, mark)
 
 
 def source_device_folder(source_path):
@@ -57,6 +68,27 @@ def resolve_device_identity(source_path, json_device):
     if folder is None:
         result["message"] = "未找到三段设备目录；请人工确认耳标和现场记号，按" + RULE + "规范来源目录。原件保留。"
         return result
+    if DEVICE.fullmatch(name):
+        # Recover per-file provenance from the prior organizer, never bind a
+        # device globally to one cow. The manifest hash must match this file.
+        import csv
+        import hashlib
+        for parent in Path(source_path).parents:
+            manifest = parent / "整理清单.csv"
+            if not manifest.is_file():
+                continue
+            relative = Path(source_path).relative_to(parent).as_posix()
+            with manifest.open(encoding="utf-8-sig", newline="") as stream:
+                matches = [r for r in csv.DictReader(stream)
+                           if r.get("target_relative_path", "").replace("\\", "/") == relative]
+            if matches:
+                digest = hashlib.sha256(Path(source_path).read_bytes()).hexdigest()
+                names = {source_device_folder(r["source_path"]).name for r in matches
+                         if r.get("sha256") == digest and source_device_folder(r["source_path"])}
+                if len(names) == 1:
+                    name = next(iter(names))
+                    result.update(source_folder=name, identity_provenance="sha256_verified_prior_manifest")
+            break
     try:
         identity = parse_device_folder(name)
     except ValueError:

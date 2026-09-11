@@ -284,13 +284,15 @@ class InteractiveSignalPlotWidget(CachedSignalPlotWidget):
         if self._event_drag is None:
             super().mouseReleaseEvent(event)
             return
-        target = self._event_drag["event"]
+        drag = self._event_drag
+        target = drag["event"]
         self._event_drag = None
         self.unsetCursor()
         self._invalidate_static()
-        self.eventChanged.emit(
-            int(target.get("id", -1)),
-            float(target.get("t0", 0)),
-            target.get("t1"),
-        )
+        if (target.get("t0"), target.get("t1")) != (drag["t0"], drag["t1"]):
+            self.eventChanged.emit(
+                int(target.get("id", -1)),
+                float(target.get("t0", 0)),
+                target.get("t1"),
+            )
         event.accept()

@@ -23,7 +23,7 @@ from cowmata_tailring.media.timeline import (
     probe_media_timeline,
 )
 
-from .catalog import file_stamp
+from .catalog import bind_location_metadata, file_stamp
 from .clocks import wall_text
 from .demand import camera_folder
 from .ocr import TimestampOCR
@@ -155,9 +155,9 @@ def build_observed_intervals(samples: list[dict], timeline: MediaTimelineIndex, 
             span = second["wall_ms"] - first["wall_ms"]
             anchor = first if edge < first["media_ms"] else second
             distance = abs(edge - anchor["media_ms"])
-            if not 1 < distance <= 301000 or delta <= 0 or abs(delta - span) > tolerance_ms:
+            if not 1 < distance <= 301000 or delta <= 0 or span <= 0 or abs(delta - span) > tolerance_ms:
                 continue
-            if any(i["media_start"] <= min(edge, anchor["media_ms"]) and i["media_end"] >= max(edge, anchor["media_ms"]) for i in intervals):
+            if any(i["media_start"] <= min(edge, anchor["media_ms"]) + .01 and i["media_end"] >= max(edge, anchor["media_ms"]) - .01 for i in intervals):
                 continue
             media_start, media_end = sorted((edge, anchor["media_ms"]))
             wall_start = anchor["wall_ms"] + (media_start - anchor["media_ms"]) * span / delta
@@ -180,9 +180,15 @@ class SourceInspector:
         self.opening_cache = None
         self.last_motion = None
         self.timezone_minutes = int(read_json(self.meta / "project.json", {}).get("timezone_offset_minutes", 480))
+        self.resource_records = {r["path"]: r for r in read_json(self.root / "资源索引.json", {}).get("records", [])}
 
     def video_hint(self, path: Path) -> dict:
         """Cheap routing OSD; never a verified interval or evidence identity."""
+        resource = self.resource_records.get(path.relative_to(self.root).as_posix())
+        if resource:
+            offset = resource.get("timezone_offset_minutes", 480) * 60000
+            return {"start_ms": resource["record_start_ms"] + offset,
+                    "end_ms": resource["record_end_ms"] + offset, "hint_only": True}
         hint = native_hint(path, timezone_minutes=self.timezone_minutes, cancelled=self.stop.is_set)
         if hint:
             return hint
@@ -230,6 +236,13 @@ class SourceInspector:
                     "update_time_ms": motion.update_time_ms, "version": motion.version,
                     "warnings": motion.warnings, "time_semantics": "device_acquisition_start",
                     "capture_timing": motion.capture_timing(), "needs_review": False}
+        resource = self.resource_records.get(path.relative_to(self.root).as_posix())
+        if resource and resource.get("sha256") == asset_id:
+            metadata = copy.deepcopy(resource["metadata"])
+            timeline = metadata.get("timeline", {})
+            if timeline:
+                timeline.setdefault("source", {})["path"] = str(path.resolve())
+            return bind_location_metadata(metadata, file_stamp(path))
         return self.video(path, asset_id)
 
     def native_video(self, path, asset_id, native, video, info, roi=None):
@@ -251,12 +264,13 @@ class SourceInspector:
         if deferred:
             frame, _ = extract_frame(path, 0, timeline, cancelled=self.stop.is_set)
             frame.save(frame_dir / f"{asset_id}.jpg", quality=90)
-        # Packet clocks are checked throughout the file above. Only two image
-        # observations are needed here to check the private layout/timezone.
-        # Packet clocks already cover both ends; central images tend to avoid
-        # corrupt opening/closing recorder fragments and speed the visual check.
-        for target in (() if deferred else (duration/2, duration/4, duration*3/4, 0.0, max(0, duration-native["frame_ms"]*2))):
-            if len([s for s in samples if s.get("wall_ms") is not None]) >= 2:
+        # Full packet continuity is checked above. Cross-check the opening
+        # image clock against it; nearby frames recover a damaged opening.
+        targets = tuple(min(t, max(0, duration-native["frame_ms"]*2)) for t in (0, 1000, 2500, 4000))
+        if native["family"] == "hikvision-hk1":
+            targets = targets[:2]  # Then use the pixel-font fallback below.
+        for target in (() if deferred else targets):
+            if any(s.get("wall_ms") is not None for s in samples):
                 break
             self.progress(f"原生时间已读取 · 抽查画面 {path.name} @{target/1000:.1f}s")
             try:
@@ -279,10 +293,47 @@ class SourceInspector:
                 if hasattr(self.ocr, "engine"):
                     self.ocr.engine.cancelled = self.stop.is_set
         good = [s for s in samples if s.get("wall_ms") is not None]
+        if not deferred and not good and native["family"] == "hikvision-hk1":
+            # The fast whole-clock recognizer can fail on the Hikvision pixel
+            # font. Reuse the existing per-digit, multi-variant recognizer.
+            for attempt, fallback_target in enumerate((0, 1200, 2500)):
+                if good:
+                    break
+                target = min(duration-native["frame_ms"]*2, good[-1]["media_ms"] + (attempt+1)*2000) if good else fallback_target
+                try:
+                    frame, actual = extract_frame(path, target, timeline, cancelled=self.stop.is_set)
+                    profile = "hd_no_weekday" if frame.width == 2560 else "sd_with_weekday"
+                    report = self._recognize_bounded(frame, time.monotonic() + 45, filename=path.name,
+                                                     profile_hint=profile)
+                    sample = {"media_ms": actual, "wall_ms": report.get("wall_ms"), "ocr": report}
+                    samples.append(sample)
+                    if report.get("success"):
+                        good.append(sample)
+                except (ValueError, OSError, subprocess.TimeoutExpired):
+                    pass
+        for sample in list(good):
+            if abs(sample["wall_ms"] - native["wall_start"] - sample["media_ms"]) <= 2000:
+                continue
+            # Re-read nearby pixels; never substitute the expected date/digit.
+            matched = next((s for s in good if abs(s["wall_ms"]-native["wall_start"]-s["media_ms"]) <= 2000), None)
+            positions = [sample["media_ms"]+1200, (matched["media_ms"]+2000) if matched else duration*.1]
+            for position in positions:
+                target = min(duration-native["frame_ms"]*2, position)
+                try:
+                    frame, actual = extract_frame(path, target, timeline, cancelled=self.stop.is_set)
+                    report = self.ocr.native_check(frame, filename=path.name, hint=saved_roi,
+                                                   family=native['family'] if not roi else None)
+                    if report.get("success") and abs(report["wall_ms"]-native["wall_start"]-actual) <= 2000:
+                        previous = dict(sample)
+                        sample.update(media_ms=actual, wall_ms=report["wall_ms"], ocr=report, superseded_ocr=previous)
+                        break
+                except (ValueError, OSError, subprocess.TimeoutExpired):
+                    pass
+        good = [s for s in samples if s.get("wall_ms") is not None]
         conflict = any(abs(s["wall_ms"] - native["wall_start"] - s["media_ms"]) > 2000 for s in good)
         if conflict:
             warnings.append("原生时间与画面读数冲突；仅供粗定位，请框选时间戳或输入人工读数复核")
-        verified = len(good) >= 2 and not conflict
+        verified = bool(good) and not conflict
         if good and saved_roi:
             self.roi_hints[profile_key] = saved_roi
             atomic_json(self.meta / "ocr_profiles.json", self.roi_hints)
@@ -346,6 +397,8 @@ class SourceInspector:
                 continue
             if segment.public_start_ms > 0:
                 targets.add(segment.public_start_ms + min(50, segment.duration_ms / 4))
+                targets.add(segment.public_start_ms + min(1500, segment.duration_ms / 3))
+                targets.add(max(segment.public_start_ms, segment.public_end_ms - 1500))
             targets.add(max(segment.public_start_ms, segment.public_end_ms - max(2, timeline.frame_duration_ms * 1.5)))
             point = segment.public_start_ms + 300000
             while point < segment.public_end_ms - 1000:
@@ -353,16 +406,20 @@ class SourceInspector:
                 point += 300000
         samples = []
         layout = "unknown"
+        family_hint = native_hint(path, timezone_minutes=self.timezone_minutes, cancelled=self.stop.is_set)
+        if not roi and family_hint and family_hint.get("family") == "hikvision-hk1":
+            layout = "hd_no_weekday" if video.get("width") == 2560 else "sd_with_weekday"
         saved_roi = roi
         hint_key = "|".join(map(str, (path.relative_to(self.root).parts[0], video.get("width"), video.get("height"))))
-        ocr_deadline = time.monotonic() + 60
+        frame_allowance = 45 if layout in {"hd_no_weekday", "sd_with_weekday"} else 12
+        ocr_deadline = time.monotonic() + max(60, frame_allowance * 3)
         for number, target in enumerate(sorted(targets)):
             if self.stop.is_set():
                 raise RuntimeError("索引已暂停，下次打开会继续")
             if time.monotonic() >= ocr_deadline:
                 samples.append({"media_ms": target, "wall_ms": None, "ocr": self._ocr_limit_report()})
                 continue
-            frame_deadline = min(ocr_deadline, time.monotonic() + 12)
+            frame_deadline = min(ocr_deadline, time.monotonic() + frame_allowance)
             self.progress(f"识别 {path.name} · {number + 1}/{len(targets)}")
             try:
                 cached = None

@@ -4,7 +4,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-CATEGORIES = {"healthy": "正常健康", "estrus": "发情",
+CATEGORIES = {"healthy": "正常", "estrus": "发情", "pregnancy": "怀孕",
               "pregnancy_early": "孕早期", "pregnancy_mid": "孕中期", "pregnancy_late": "孕晚期",
               "calving": "产犊", "disease": "疫病"}
 CONTEXT_FILE = "数据分类.csv"
@@ -16,7 +16,7 @@ FIELDS = [*LEGACY_FIELDS, *IDENTITY_FIELDS]
 
 def category_fields(code):
     if code not in CATEGORIES:
-        raise ValueError("请先选择数据类别：正常健康、发情、孕早期、孕中期、孕晚期、产犊或疫病")
+        raise ValueError("请先选择数据类别：产犊、发情、怀孕、疫病或正常")
     return {"dataset_category": code, "dataset_category_label": CATEGORIES[code]}
 
 

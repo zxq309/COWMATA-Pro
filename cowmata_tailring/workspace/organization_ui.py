@@ -14,6 +14,7 @@ from PySide6.QtCore import QAbstractTableModel, QProcess, QSettings, Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -48,7 +49,7 @@ class PlanModel(QAbstractTableModel):
                ("suggested_folder", "建议目录名（需人工确认）"), ("device", "设备 / 视角"),
                ("cow_id", "牛耳标"), ("field_mark", "现场记号"), ("record_date", "采集日期"),
                ("source", "来源文件"), ("target", "归类目标"), ("size", "大小"), ("message", "审查说明"))
-    STATES = {"ready": "可归类", "skip": "保留原处", "junk": "待隔离", "quarantine": "移至隔离", "invalid": "需核对", "blocked": "已拦截"}
+    STATES = {"ready": "可归类", "skip": "保留原处", "junk": "待隔离", "quarantine": "移至隔离", "invalid": "需核对", "blocked": "已拦截", "existing": "已归档"}
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -162,7 +163,7 @@ class OrganizationWindow(QDialog):
         self.sources.setMinimumHeight(110)
         box.addWidget(self.sources)
         identity_rule = QLabel("九轴设备目录：完整设备编号-牛耳标号-现场记号，例如 546C50CA07D5-00123-w1。\n"
-                               "设备号须为 12 位十六进制；耳标保留前导 0；现场记号保留大小写。异常目录先列出建议，需人工规范后重选来源。")
+                               "设备号须为 12 位十六进制；耳标保留前导 0；现场记号保留大小写。耳标取前5位数字，余下去横线为现场标记；倒序取唯一5位耳标，歧义拦截。")
         identity_rule.setWordWrap(True)
         box.addWidget(identity_rule)
         add_bar = QHBoxLayout()
@@ -180,18 +181,30 @@ class OrganizationWindow(QDialog):
         form = QFormLayout()
         dates = QHBoxLayout()
         self.start_date, self.end_date = QLineEdit(), QLineEdit()
-        self.start_date.setPlaceholderText("已确认日期 YYYY-MM-DD")
-        self.end_date.setPlaceholderText("单日可留空；跨日填写结束日期")
+        self.start_date.setPlaceholderText("可留空：自动读取真实采集日期")
+        self.end_date.setPlaceholderText("可选：仅用于核对开始日期范围")
         dates.addWidget(self.start_date)
         dates.addWidget(QLabel("至"))
         dates.addWidget(self.end_date)
         form.addRow("采集日期", dates)
         self.category = QComboBox()
         self.category.addItem("请选择本批数据类别（必选）", "")
-        for code, label in CATEGORIES.items():
+        for code in ("calving", "estrus", "pregnancy", "disease", "healthy"):
+            label = CATEGORIES[code]
             self.category.addItem(label, code)
         self.category.setToolTip("数据类别随标注保存；所有类别均可自由标注六类通用行为。不同类别请分批整理。")
         form.addRow("数据类别", self.category)
+        self.farm = QLineEdit("扬大_高邮牧场")
+        form.addRow("牧场目录", self.farm)
+        self.transfer_mode = QComboBox()
+        self.transfer_mode.addItem("复制，保留原件", "copy")
+        self.transfer_mode.addItem("同盘移动，跨盘复制", "move")
+        self.transfer_mode.currentIndexChanged.connect(self.invalidate_plan)
+        form.addRow("保存方式", self.transfer_mode)
+        form.addRow("PPG", QLabel("已预留：按实际日期创建 PPG；当前不参与波形或标注计算"))
+        self.allow_partial = QCheckBox("仅归档通过校验项，异常原件保留并列入报告")
+        self.allow_partial.toggled.connect(self.partial_changed)
+        form.addRow("异常处理", self.allow_partial)
         self.note = QLineEdit()
         self.note.setPlaceholderText("例如：沿用现有绑定；设备用于孕晚期行为观察。未知信息留空，不自动生成事件。")
         form.addRow("设备与实验说明", self.note)
@@ -238,7 +251,7 @@ class OrganizationWindow(QDialog):
         for i, width in enumerate((270, 90, 310, 140, 90, 90, 105, 295, 300, 90, 330)):
             self.table.setColumnWidth(i, width)
         outer.addWidget(self.table, 1)
-        self.status = QLabel("其他目录可同时标注；同目录必须先保存并暂停。只有点击执行剪切才会移动文件。")
+        self.status = QLabel("其他目录可同时标注；同目录须先保存并暂停。按所选方式归档，保留校验与恢复记录。")
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         outer.addWidget(self.status)
@@ -248,7 +261,7 @@ class OrganizationWindow(QDialog):
         bottom = QHBoxLayout()
         self.pause_project = QPushButton("保存并暂停当前工程")
         self.pause_project.clicked.connect(self.save_and_pause)
-        self.execute_button = QPushButton("执行剪切归类")
+        self.execute_button = QPushButton("执行归档")
         self.execute_button.setObjectName("primary")
         self.execute_button.clicked.connect(self.execute_plan)
         self.cancel_button = QPushButton("暂停整理")
@@ -259,7 +272,7 @@ class OrganizationWindow(QDialog):
         for button in (self.pause_project, self.execute_button, self.cancel_button, self.open_button):
             bottom.addWidget(button)
         outer.addLayout(bottom)
-        for field in (self.target, self.start_date, self.end_date, self.note):
+        for field in (self.target, self.start_date, self.end_date, self.note, self.farm):
             field.textEdited.connect(self.invalidate_plan)
         self.sources.itemChanged.connect(self.invalidate_plan)
         self.category.currentIndexChanged.connect(self.invalidate_plan)
@@ -277,6 +290,12 @@ class OrganizationWindow(QDialog):
         self.plan = self.plan_job = None
         self.report = None
         self.open_button.setEnabled(False)
+        self.render()
+
+    def partial_changed(self, checked):
+        if self.plan and self.plan.get("schema") == "cowmata-resources-3.4":
+            self.plan["allow_partial"] = checked
+            (self.plan_job / "plan.json").write_text(json.dumps(self.plan, ensure_ascii=False), encoding="utf-8")
         self.render()
 
     def choose_target(self):
@@ -336,7 +355,7 @@ class OrganizationWindow(QDialog):
     def preview_import(self):
         self.start_job({"action": "import", "target": self.target.text().strip(), "sources": self.source_specs(),
                         "start": self.start_date.text().strip(), "end": self.end_date.text().strip(), "note": self.note.text(),
-                        "category": self.category.currentData()})
+                        "category": self.category.currentData(), "farm": self.farm.text().strip(), "transfer": self.transfer_mode.currentData()})
 
     def preview_quarantine(self):
         if self.report:
@@ -421,14 +440,18 @@ class OrganizationWindow(QDialog):
                 self.status.setText("审查完成。可预览隔离临时/空文件，再到数据归类确认目标。异常原件继续保留。")
             elif result.get("completed"):
                 self.plan = None
+                self.completed_target = result["target"]
                 self.status.setText(f"整理完成：{result['moved']} 项，{result['seconds']:.2f} 秒；文件身份校验与任务记录已保存。")
+                if result.get("unresolved"):
+                    self.status.setText(self.status.text() + f" 待核实 {result['unresolved']} 项，见整理异常.csv；原件保留。")
                 self.bar.setValue(1000)
                 self.owner.tell(self.status.text())
                 self.open_button.setEnabled(result["mode"] != "quarantine")
             else:
                 self.plan, self.plan_job = result, self.job
+                self.partial_changed(self.allow_partial.isChecked())
                 self.status.setText("设备命名需先规范：请逐项核对建议并人工修改来源目录后重新审查。本批禁止执行，有效九轴原件保留。" if naming_issues else
-                                    "预览完成，尚未移动文件。核对来源、目标和异常后点击执行；单次任务按同盘移动处理。")
+                                    "预览完成，尚未移动文件。核对来源、目标和异常后点击执行；本批按真实日期归档，支持跨盘复制。")
         else:
             self.status.setText(self.last_error or self.stderr.decode("utf-8", errors="replace") or "任务未完成，请查看任务记录并重试；原文件不会被覆盖。")
         self.render()
@@ -443,9 +466,9 @@ class OrganizationWindow(QDialog):
             self.status.setText(str(exc))
             return
         count = sum(r["status"] in {"ready", "quarantine"} for r in self.plan["rows"])
-        message = f"将按预览移动 {count} 个文件。原文件名保留，已有目标不覆盖。\n"
-        message += "临时/空文件将移到工程外隔离目录，可按任务记录恢复。" if self.plan["mode"] == "quarantine" else "嵌套目录展开为日期目录；非素材文件移至工程外隔离，受保护的标签与异常原件保留。"
-        if QMessageBox.question(self, "确认执行本次剪切", message) != QMessageBox.StandardButton.Yes:
+        message = f"归档 {count} 项；已有目标不覆盖。" + ("同盘原文件将移至新目录，跨盘保留原件。" if self.plan.get("transfer") == "move" else "复制并保留原件。")
+        message += "临时/空文件将移到工程外隔离目录，可按任务记录恢复。" if self.plan["mode"] == "quarantine" else "目录为牧场/类别/Motion、PPG、Video/日期；移动核对文件身份，复制核对 SHA-256。"
+        if QMessageBox.question(self, "确认本次整理", message) != QMessageBox.StandardButton.Yes:
             return
         self.settings.setValue("organization/resume_job", str(self.plan_job))
         self.start_job({"action": "execute"}, self.plan_job)
@@ -467,7 +490,9 @@ class OrganizationWindow(QDialog):
             plan = json.loads((job / "plan.json").read_text(encoding="utf-8"))
             if plan.get("mode") not in {"import", "normalize", "quarantine"} or not isinstance(plan.get("rows"), list):
                 raise ValueError("Invalid organization plan")
-            self.target.setText(plan["target"])
+            self.target.setText(plan.get("resource_root", plan["target"]))
+            self.farm.setText(plan.get("farm", "扬大_高邮牧场"))
+            self.transfer_mode.setCurrentIndex(max(0, self.transfer_mode.findData(plan.get("transfer", "copy"))))
             self.start_date.setText(plan.get("start", ""))
             self.end_date.setText(plan.get("end", ""))
             self.category.setCurrentIndex(max(0, self.category.findData(plan.get("category", ""))))
@@ -482,6 +507,7 @@ class OrganizationWindow(QDialog):
             return
         self.plan = plan
         self.plan_job = job
+        self.allow_partial.setChecked(bool(plan.get("allow_partial")))
         self.model.set_rows(self.plan["rows"])
         self.status.setText("已恢复原计划。点击执行后核对文件身份，跳过已完成项。")
         self.render()
@@ -510,7 +536,7 @@ class OrganizationWindow(QDialog):
 
     def open_result(self):
         if not self.running and self.target.text().strip():
-            self.owner.open_project(self.target.text().strip())
+            self.owner.open_project(getattr(self, "completed_target", self.target.text().strip()))
             self.owner.raise_()
 
     def export_report(self):
@@ -521,12 +547,12 @@ class OrganizationWindow(QDialog):
 
     def render(self):
         busy = self.running or self.pause_pending
-        for widget in (self.target, self.target_browse, self.sources, self.start_date, self.end_date, self.note, self.category,
+        for widget in (self.target, self.target_browse, self.sources, self.start_date, self.end_date, self.note, self.category, self.farm, self.transfer_mode, self.allow_partial,
                        self.audit_button, self.preview_button, self.normalize_button, self.resume_button, self.load_task_button, *self.add_buttons):
             widget.setEnabled(not busy)
         self.clean_button.setEnabled(not busy and bool(self.report and any(r.get("quarantine") for r in self.report["rows"])))
-        self.execute_button.setEnabled(not busy and bool(self.plan and any(r["status"] in {"ready", "quarantine"} for r in self.plan["rows"])
-                                                     and not any(r["status"] == "blocked" for r in self.plan["rows"])))
+        self.execute_button.setEnabled(not busy and bool(self.plan and any(r["status"] in {"ready", "existing", "quarantine"} for r in self.plan["rows"])
+                                                     and (self.plan.get("allow_partial") or not any(r["status"] in {"blocked", "invalid"} for r in self.plan["rows"]))))
         self.cancel_button.setEnabled(self.running)
         self.pause_project.setEnabled(not busy and bool(getattr(self.owner, "catalog", None)))
         self.export_button.setEnabled(not busy and bool(self.job and (self.job / "report.csv").is_file()))

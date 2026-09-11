@@ -43,8 +43,9 @@ def main():
         if action == "audit":
             result = core.audit(request["roots"], cancelled, progress)
         elif action == "import":
-            result = core.plan_import(request["target"], request["sources"], request["start"], request.get("end"),
-                                      request.get("note", ""), cancelled, progress, category=request.get("category"))
+            from cowmata_tailring.workspace.resource_import import plan_import
+            result = plan_import(request["target"], request["sources"], request["start"], request.get("end"),
+                                      request.get("note", ""), cancelled, progress, category=request.get("category"), farm=request.get("farm", "扬大_高邮牧场"), cache=request.get("cache"), transfer=request.get("transfer", "copy"))
         elif action == "normalize":
             result = core.plan_normalize(request["target"], cancelled, progress)
         elif action == "quarantine":

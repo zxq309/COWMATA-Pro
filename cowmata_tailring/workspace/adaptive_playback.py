@@ -188,19 +188,24 @@ class AdaptiveVideoBoard(VideoBoard):
                 tile.stack.hide()
                 tile.status("源文件变化，请刷新索引")
                 return
-            if not self.timeline.locate(camera, self.reference_ms, prefer=tile.asset_id):
+            match = self.timeline.locate(camera, self.reference_ms, prefer=tile.asset_id)
+            if not match:
                 tile.interval = None
                 tile.stack.hide()
-                tile.status("此时刻无录像覆盖 · 不显示旧预览")
+                tile.status(self.coverage_message(camera))
                 return
-            self._preview_status(tile)
-            return
+            if match[0].asset_id == tile.asset_id:
+                tile.interval = match[0]
+                self._preview_status(tile)
+                return
+            # The frozen still belongs to the old clip, not this camera's
+            # next recording. Fall through to request a new dated preview.
         match = self.timeline.locate(camera, self.reference_ms, prefer=tile.asset_id)
         if not match or match[0].asset_id in self.blocked_assets:
             tile.interval = None
             tile.ready = False
             tile.stack.hide()
-            tile.status("此时刻无录像覆盖 · 不显示旧预览")
+            tile.status(self.coverage_message(camera))
             return
         interval, target = match
         changed = tile.asset_id != interval.asset_id
@@ -303,7 +308,11 @@ class AdaptiveVideoBoard(VideoBoard):
         if tile.pending and tile.pending["phase"] == "decoder_queue":
             return
         if tile in self.tiles.values() and self.is_preview(tile.camera):
-            self._preview_status(tile)
+            # Keep source/coverage errors from _preview_position. Otherwise
+            # an unavailable source misleadingly becomes "paused, click play"
+            # every timer tick although there is no clip that can be played.
+            if tile.interval and tile.asset_id not in self.blocked_assets:
+                self._preview_status(tile)
             return
         super()._observe(tile, now)
 

@@ -169,6 +169,8 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
                                Qt.PenStyle.SolidLine if target.get("confirmation") == "confirmed" else Qt.PenStyle.DashLine))
             for x in (x0, x1):
                 painter.drawLine(QPointF(x, self.TOP), QPointF(x, self._plot_rect().bottom()))
+                if selected:
+                    painter.fillRect(QRectF(x - 5, self.TOP + 3, 10, 18), color)
         painter.restore()
 
     def _draw_curves(self, p):
@@ -263,7 +265,8 @@ class EventStrip(QWidget):
         self.wave = wave
         self.hits = []
         self.setMinimumHeight(26)
-        self.setToolTip("独立标签轨道：单击选中；在波形上拖动所选事件边界，或在标注列表中编辑")
+        self.setMouseTracking(True)
+        self.setToolTip("单击标签选中；拖动左右两端调整起止，拖动中间整体平移。波形上也可拖动所选标签边界；修改后需复核。")
 
     def refresh(self):
         used = sorted({int(e["li"]) for e in self.wave._events if 0 <= int(e["li"]) < len(self.wave._labels)})
@@ -299,6 +302,9 @@ class EventStrip(QWidget):
                     pen = QPen(QColor("#124f50"), 2)
                 p.setPen(pen)
                 p.drawRoundedRect(rect, 4, 4)
+                if item["id"] == self.wave._selected_event_id and item.get("t1") is not None:
+                    for edge in (x0, x1):
+                        p.fillRect(QRectF(edge - 3, row * 26 + 5, 6, 16), QColor("#ffffff"))
                 self.hits.append((rect, int(item["id"])))
             p.restore()
         x = self.wave._x_for_time(self.wave._playhead_ms)
@@ -311,9 +317,44 @@ class EventStrip(QWidget):
             for rect, identifier in reversed(self.hits):
                 if rect.contains(event.position()):
                     self.wave.set_selected_event(identifier)
+                    target = self.wave._selected_event()
+                    if target and getattr(self.wave, "event_editable", True):
+                        mode = self._drag_mode(rect, target, event.position().x())
+                        self.wave._event_drag = {"event": target, "mode": mode, "start_x": event.position().x(),
+                                                 "t0": target["t0"], "t1": target.get("t1")}
                     self.selected.emit(identifier)
                     self.update()
+                    event.accept()
                     return
+
+    @staticmethod
+    def _drag_mode(rect, target, x):
+        if target.get("t1") is not None:
+            if abs(x - rect.left()) <= 9:
+                return "left"
+            if abs(x - rect.right()) <= 9:
+                return "right"
+        return "move"
+
+    def mouseMoveEvent(self, event):
+        if self.wave._event_drag is not None:
+            # The strip and waveform share the same x/time scale and constraints.
+            self.wave.mouseMoveEvent(event)
+            self.update()
+            return
+        for rect, identifier in reversed(self.hits):
+            if rect.contains(event.position()):
+                target = next(e for e in self.wave._events if e["id"] == identifier)
+                mode = self._drag_mode(rect, target, event.position().x())
+                self.setCursor(Qt.CursorShape.SizeAllCursor if mode == "move" else Qt.CursorShape.SizeHorCursor)
+                return
+        self.unsetCursor()
+
+    def mouseReleaseEvent(self, event):
+        if self.wave._event_drag is not None:
+            self.wave.mouseReleaseEvent(event)
+            self.update()
+        self.unsetCursor()
 
 
 class SignalPanel(QWidget):
@@ -344,6 +385,9 @@ class SignalPanel(QWidget):
         legend.setStyleSheet("color:#6c8385; font-size:11px")
         legend.setToolTip("X：青绿 · Y：蓝紫 · Z：琥珀；同组共用物理尺度，悬停显示数值与单位")
         self.toolbar.addWidget(legend)
+        hint = QLabel("标签：拖动两端改起止 · 拖动中间平移")
+        hint.setToolTip("先单击标注列表或标签轨道选中；波形上的左右手柄也可直接拖动。修改后请回看复核。")
+        self.toolbar.addWidget(hint)
         self.toolbar.addStretch(1)
         layout.addLayout(self.toolbar)
         layout.addWidget(self.wave, 1)

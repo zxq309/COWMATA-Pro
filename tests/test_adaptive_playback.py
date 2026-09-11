@@ -149,7 +149,7 @@ def test_focus_still_is_frozen_and_never_becomes_evidence(app, monkeypatch):
     tile = b.tiles["B"]
     tile.asset_id, tile.actual_ms = "sample", 10000
     tile._preview_only = True
-    tile.interval = SimpleNamespace(verified=True)
+    tile.interval = SimpleNamespace(verified=True, asset_id="sample")
     monkeypatch.setattr(b.timeline, "locate", lambda *a, **kw: (tile.interval, 0))
     b.frozen_previews.add((b.generation, "B", "sample"))
     b.reference_ms = 50000

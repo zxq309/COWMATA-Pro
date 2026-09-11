@@ -238,7 +238,8 @@ class VideoTile(QFrame):
                             lambda: self.enlarged.emit(self))
         self.overlay.hide()
         self._control_state = None
-        self.message = QLabel("等待选择视角")
+        self.message = PausedFrame("等待选择视角")
+        self.message.clicked.connect(self.activate_preview)
         # Avoid repeated native video resize/reflow on every clock update.
         self.message.setWordWrap(False)
         self.message.setMinimumWidth(0)
@@ -261,6 +262,17 @@ class VideoTile(QFrame):
         timeline_bar.addWidget(self.seek_slider, 1)
         timeline_bar.addWidget(self.seek_clock)
         layout.addLayout(timeline_bar)
+
+    def activate_preview(self):
+        if getattr(self, "_preview_only", False) and self.interval:
+            self.transportRequested.emit(self, "play", 0)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and getattr(self, "_preview_only", False):
+            self.activate_preview()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
 
     @staticmethod
     def _duration_text(ms):
@@ -369,6 +381,7 @@ class VideoBoard(QWidget):
         self.timeline = VideoTimeline([])
         self.catalog = None
         self.metadata = {}
+        self.camera_discovery = {}
         self.source_stamps = {}
         self.blocked_assets = set()
         self.reference_ms = 0.0
@@ -613,7 +626,7 @@ class VideoBoard(QWidget):
             tile.interval = None
             tile.surface.hide()
             tile.stack.hide()
-            tile.status("此时刻无录像覆盖 · 不会用上一帧冒充现场")
+            tile.status(self.coverage_message(camera))
             return
         interval, target = match
         if tile.asset_id != interval.asset_id and self.prewarm and self.prewarm.asset_id == interval.asset_id and self.prewarm.ready:
@@ -632,6 +645,16 @@ class VideoBoard(QWidget):
         tile.interval = interval
         if tile.asset_id != interval.asset_id or force or not had_interval:
             self._request(tile, interval, target)
+
+    def coverage_message(self, camera):
+        if self.timeline.locate(camera, self.reference_ms):
+            return "当前时刻有录像覆盖；仍需核对画面中的牛与同步时间。"
+        state = self.camera_discovery.get(camera)
+        if state == "pending":
+            return "本视角仍有录像未索引，尚不能确认此时刻覆盖；可在索引核验中查看。"
+        if state == "review":
+            return "本视角仍有录像时间待核验；请在索引核验中框选时间或输入读数。"
+        return "此时刻无录像覆盖 · 不会用上一帧冒充现场"
 
     def _request(self, tile, interval, target, *, queued_start=None):
         if not self.catalog:
@@ -843,12 +866,14 @@ class VideoBoard(QWidget):
             if not any(t.interval for t in self.tiles.values()) and self.tiles:
                 self.play(False)
                 self.notice.emit("所选视角当前没有已定位的录像画面；已暂停，可检查其他视角或跳到下一覆盖时段")
-            self.timeChanged.emit(self.reference_ms)
         for tile in list(self.tiles.values()):
             self._observe(tile, now)
         if self.prewarm:
             self._observe(self.prewarm, now)
         if self.playing:
+            # Recovery above can replace the requested clock with the actual
+            # decoded position. Publish that final value to the IMU this tick.
+            self.timeChanged.emit(self.reference_ms)
             self._prepare_next()
 
     def _prepare_next(self):

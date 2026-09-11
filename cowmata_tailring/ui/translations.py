@@ -41,6 +41,9 @@ ZH_TO_EN: dict[str, str] = {
     "新记录；切换时自动保存并保留为未完成。": "New record; switching saves it as unfinished.",
     "无法打开工程": "Cannot open project",
     "本视角录像进度": "This camera's clip progress",
+    "当前时刻有录像覆盖；仍需核对画面中的牛与同步时间。": "Footage covers this time; verify the cow in the image and the time alignment.",
+    "本视角仍有录像未索引，尚不能确认此时刻覆盖；可在索引核验中查看。": "This camera has unindexed recordings; coverage at this time is not yet known. Check Index validation.",
+    "本视角仍有录像时间待核验；请在索引核验中框选时间或输入读数。": "This camera has recording times awaiting verification. Select the timestamp region or enter a reading in Index validation.",
     "标注工程目录不能是指向其他位置的链接": "The annotation directory cannot link to another location",
     "正在取消": "Cancelling",
     "正在取消后台读取并保存退出，界面仍可响应…": "Cancelling background reads and saving before exit; the interface remains responsive…",
@@ -2084,6 +2087,106 @@ ZH_TO_EN.update({
     "待确认：录像开始时间尚未可靠读出或索引尚未完成，不等于视频损坏。\n下一步：先选择要标注的九轴，后台会按其时间查找录像；也可选中此行，点击“重新建立所选视频索引”。\n状态变为“可用 / 待复核”后，才能点击“核验所选视频时间 / 框选 ROI”人工校准。": "Pending confirmation: the video start time has not been reliably read or indexing is incomplete; the video is not necessarily damaged.\nNext: select the IMU record to search by its time, or select this row and click Rebuild selected video index.\nOnce the state is Available / Needs review, use Verify selected video time / ROI for manual calibration.",
     "悬停“状态 / 开始时间”查看下一步。后台抽查录像时间不代表已匹配当前牛；匹配时间后仍需人工核对画面中的牛。": "Hover over State / Start time for next steps. Background time inspection does not identify the current cow; verify the animal after matching the recording time.",
     "部分画面时间限时未读清；已保留待复核，继续检索其他录像。可框选时间戳或输入人工读数。": "Some frame times remained unreadable within the time limit. Review is pending while other videos are searched. Select the timestamp ROI or enter manual readings.",
+})
+
+ZH_TO_EN.update({
+    " 个文件，视频文件名记录已核验的起止时间。原件保留，已有目标不覆盖。\n": " files. Verified recording times appear in video names. Originals remain; existing targets are not overwritten.\n",
+    " 待核实 ": " Pending review: ",
+    " 超出所填日期范围；留空可自动识别": " is outside the entered date range; leave the range blank to detect dates automatically.",
+    " 项，见整理异常.csv；原件保留。": " items; see the organization exceptions report. Originals remain.",
+    "PPG · 已预留，当前无波形 / 标签": "PPG reserved; no waveform or labels yet",
+    "PPG 以采集时间独立索引，支持跨日；数据接入后沿用同步与导出接口。": "PPG has an independent acquisition timeline with cross-day support and reserved synchronization and export interfaces.",
+    "PPG 预留：后续接入原始采集时间、通道和标注；当前无有效 PPG 数据。\n": "PPG reserved for acquisition timestamps, channels and annotations. No valid PPG data are currently present.\n",
+    "九轴设备目录：完整设备编号-牛耳标号-现场记号，例如 546C50CA07D5-00123-w1。\n设备号须为 12 位十六进制；耳标保留前导 0；现场记号保留大小写。耳标取前5位数字，余下去横线为现场标记；倒序取唯一5位耳标，歧义拦截。": "IMU folders: device-ear tag-field mark, e.g. 546C50CA07D5-00123-w1.\nDevice IDs have 12 hexadecimal characters. Preserve ear-tag leading zeros and field-mark case. The first five digits form the ear tag; remove dashes from the remaining mark. Reversed names require one unambiguous five-digit tag.",
+    "仅归档通过校验项，异常原件保留并列入报告": "Archive verified items only; retain and report unresolved originals",
+    "任务记录需位于素材目录之外": "Task logs must be outside the source directories",
+    "全部采集日期": "All acquisition dates",
+    "其他目录可同时标注；同目录必须先保存并暂停。复制归档并核验 SHA-256；原始文件保留。": "Other datasets can remain open. Save and pause overlapping projects. Archive copies are SHA-256 verified; originals remain.",
+    "内部时间戳 + OCR 复核：": "Embedded timestamps and OCR verification: ",
+    "占位说明.txt": "placeholder.txt",
+    "历史标注冲突": "Historical annotation conflicts",
+    "可留空：自动读取真实采集日期": "Optional: detect acquisition dates automatically",
+    "可选：仅用于核对开始日期范围": "Optional: validate the recording start-date range",
+    "复制后 SHA-256 不一致，保留原件与任务记录": "Copied SHA-256 differs; originals and task records are retained",
+    "复制期间来源变化": "Source changed during copying",
+    "审查期间源文件变化": "Source changed during inspection",
+    "将按预览复制 ": "Copy according to preview: ",
+    "已存在目标校验失败：": "Existing target verification failed: ",
+    "已归档": "Already archived",
+    "已预留：按实际日期创建 PPG；当前不参与波形或标注计算": "Reserved: create PPG directories by acquisition date; no PPG waveform or annotation computation yet",
+    "开始时间已由内部时钟和两处 OCR 核实；文件可归档，部分播放区间仍待复核": "The start is verified by the embedded clock and two OCR observations. The file can be archived; some playback intervals still need review.",
+    "异常处理": "Unresolved items",
+    "执行校验复制": "Copy and verify",
+    "扬大_高邮牧场": "Yangzhou University_Gaoyou Farm",
+    "按真实覆盖日期筛选，包含从前日延续到当日的九轴记录；视频仍按时间区间匹配。": "Filter by actual coverage date, including IMU files continuing from the previous day. Videos are matched by their time intervals.",
+    "整理异常.csv": "organization-exceptions.csv",
+    "无有效素材或存在待核实项，请先核对报告": "No valid media, or unresolved items exist. Review the report first.",
+    "未找到唯一五位耳标，需人工核实": "No unambiguous five-digit ear tag was found; review is required",
+    "本批重复内容，已有同身份目标": "Duplicate content in this batch already has the same destination identity",
+    "来源与目标不能重叠": "Source and destination must not overlap",
+    "来源已变化，请重新预览": "Source changed; create a new preview",
+    "来源重复：": "Repeated source: ",
+    "来源须为九轴或视角01至视角08；PPG 暂留占位": "Sources must be IMU or views 01 through 08; PPG is reserved",
+    "标注工程/writer.lock": "annotation-project/writer.lock",
+    "正常": "Normal",
+    "牧场目录": "Farm directory",
+    "现场标记应为非空 ASCII 字母数字": "Field marks must contain ASCII letters or digits and cannot be empty",
+    "目录为牧场/类别/Motion、PPG、Video/日期；每份文件复制后核验 SHA-256。": "Layout: farm/category/Motion, PPG, Video/date. Verify each copied file with SHA-256.",
+    "目标同名但内容不同，停止覆盖": "A destination has the same name but different content; overwriting is blocked",
+    "相同内容已归档，无需再次复制": "Identical content is already archived; no additional copy is needed",
+    "真实开始日期 ": "Actual recording start date: ",
+    "确认本次整理": "Confirm organization",
+    "视频内部时钟与 OCR 尚未一致确认；请在标注工具复核时间戳后重试": "The video clock and OCR are not yet consistently verified; review the timestamp and retry",
+    "视频开始时间未通过两处独立画面复核": "The video start time has not passed two independent image observations",
+    "计划路径越界": "A plan path is outside the allowed roots",
+    "请先选择数据类别：产犊、发情、怀孕、疫病或正常": "Select a category: calving, estrus, pregnancy, disease or normal",
+    "请添加九轴或视频来源；PPG 目录自动保留占位": "Add IMU or video sources; PPG directories are reserved automatically",
+    "资源索引.json": "resource-index.json",
+    "采集时间已确认；跨日按真实覆盖索引，复制后再次校验 SHA-256": "Acquisition time verified. Index actual cross-day coverage and verify copied SHA-256.",
+    "采集结束时间必须晚于开始时间": "The acquisition end must be later than its start",
+    "预览完成，尚未移动文件。核对来源、目标和异常后点击执行；本批按真实日期归档，支持跨盘复制。": "Preview ready; no files have moved. Review sources, targets and exceptions before execution. Archive by acquisition date; cross-volume copying is supported."
+})
+
+ZH_TO_EN.update({
+    " 项；已有目标不覆盖。": " items; existing destinations are never overwritten.",
+    "保存方式": "Transfer mode",
+    "同盘原文件将移至新目录，跨盘保留原件。": "Move originals on the same volume; retain originals across volumes.",
+    "同盘移动，跨盘复制": "Move on same volume; copy across volumes",
+    "复制并保留原件。": "Copy and retain originals.",
+    "复制，保留原件": "Copy; retain originals",
+    "归档 ": "Archive ",
+    "执行归档": "Execute import",
+    "资源迁移.json": "resource-relocation.json"
+})
+
+ZH_TO_EN["视频全为零字节，仅为空白占位，需补齐原始录像"] = "The video contains only zero bytes; restore the original recording"
+
+ZH_TO_EN.update({
+    "时间待复核": "Time pending review",
+    "时间复核清单.csv": "time-review-list.csv",
+    "流内时钟完整，按原生时间归档；OCR 未读清，时间待复核，未确认区间不能保存已核验证据": "Complete packet clock: archive using native time. OCR is unreadable; time remains pending review and unverified intervals cannot be saved as verified evidence.",
+    "视频开始时间未通过流内时钟与画面读数复核": "Video start time could not be cross-checked between packet clock and image OCR",
+    "开始时间已由流内时钟和 OCR 核实；部分播放区间时间待复核": "Start time cross-checked with packet clock and OCR; some playback intervals still need time review",
+    "__时间待复核__": "__time-pending-review__"
+})
+
+ZH_TO_EN.update({
+    "按流内首帧时间归档；OCR 未读清，时间待复核，未确认区间不能保存已核验证据": "Archive by the first native frame timestamp; OCR is unreadable. Time is pending review and unverified intervals cannot be saved as verified evidence."
+})
+
+ZH_TO_EN.update({
+    "其他目录可同时标注；同目录须先保存并暂停。按所选方式归档，保留校验与恢复记录。": "Other directories can be annotated concurrently; save and pause this directory first. Archive with the selected transfer mode and retain verification and recovery records.",
+    "目录为牧场/类别/Motion、PPG、Video/日期；移动核对文件身份，复制核对 SHA-256。": "Layout: farm/category/Motion, PPG, Video/date. Verify file identity for moves and SHA-256 for copies."
+})
+
+ZH_TO_EN.update({
+    "结束时间必须晚于开始时间。请播放或定位到结束画面后再结束；当前起点已保留。": "The end must follow the start. Play or seek to the end frame and finish again; the current start is retained.",
+    "单击标签选中；拖动左右两端调整起止，拖动中间整体平移。波形上也可拖动所选标签边界；修改后需复核。": "Click to select; drag either edge to resize or the center to move. The selected waveform boundaries are also draggable. Review after editing.",
+    "标签：拖动两端改起止 · 拖动中间平移": "Labels: drag edges to resize; drag center to move",
+    "先单击标注列表或标签轨道选中；波形上的左右手柄也可直接拖动。修改后请回看复核。": "Select in the annotation list or label strip; the waveform edge handles can also be dragged. Review the video after editing.",
+    "人工标注：① 双击算法结果定位（无结果也可自行浏览）；② 点击上方按钮选择行为；③ 观察视频，在动作开始、结束画面分别点击下方动作按钮；④ 回看并确认。此按钮只选类型，不会自动生成标签。": "Manual labeling: 1. Double-click a result to seek, or browse independently. 2. Choose the behavior above. 3. Watch the video and click the action button at its start and end. 4. Review and confirm. This button selects a type; it does not create labels.",
+    "已选择「": "Selected: ",
+    "」。请观察视频，用下方动作按钮记录开始和结束，再回看确认；点事件只记录一次。": ". Watch the video, record start and end with the action button, then review and confirm. Record point events once."
 })
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ import uuid
 from collections import Counter, OrderedDict, deque
 from pathlib import Path
 
-from PySide6.QtCore import QFileSystemWatcher, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QFileSystemWatcher, QSettings, QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -55,7 +55,14 @@ from cowmata_tailring.ui.widgets import PlotSeries
 from .catalog import Catalog, file_stamp
 from .clocks import ClockMap, VideoTimeline, intervals_from_rows, wall_ms, wall_text
 from .coverage import continuation_target, video_coverage
-from .demand import device_aliases, device_name, natural_key, relevant_rows
+from .demand import (
+    camera_inventory,
+    device_aliases,
+    device_name,
+    natural_key,
+    relevant_rows,
+    resolve_camera_choices,
+)
 from .dialogs import MappingDialog, SourceTimeDialog
 from .playback import VideoBoard
 from .signal_panel import TimePositionSpinBox, reference_text
@@ -386,6 +393,7 @@ class MainWindow(QMainWindow):
         self.events.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.events.horizontalHeader().setStretchLastSection(True)
         self.events.doubleClicked.connect(self.review_selected)
+        self.events.itemSelectionChanged.connect(self.sync_event_selection)
         bottom_layout.addWidget(self.events)
         right.addWidget(bottom)
         right.setSizes([720, 220])
@@ -942,13 +950,20 @@ class MainWindow(QMainWindow):
         self.coverage_timeline = VideoTimeline(intervals_from_rows(
             [r for r in self.rows if r["kind"] == "video"], self.settings.get("camera_overrides", {})), mappings)
         self.board.configure(self.catalog, videos, timeline)
-        camera_names = list(timeline.cameras)
+        inventory = camera_inventory(self.rows, self.settings.get("camera_overrides", {}))
+        self.board.camera_discovery = {
+            name: ("pending" if any(r["state"] == "pending" for r in group) else
+                   "review" if any(r["state"] in {"review", "invalid"} or not r["metadata"].get("intervals") for r in group) else "indexed")
+            for name, group in inventory.items()}
+        camera_names = list(inventory)
         previous = self.settings.get("device_views", {}).get(str(self.devices.currentData()), self.settings.get("selected_cameras", [])) or self.board.selected
-        order = self.settings.get("camera_order", [])
+        order = resolve_camera_choices(self.settings.get("camera_order", []), inventory)
         camera_names.sort(key=lambda c: (c not in order, order.index(c) if c in order else c))
-        matched = [c for c in previous if c in camera_names]
+        matched = resolve_camera_choices(previous, inventory)
         covered = [c for c in camera_names if timeline.locate(c, self.board.reference_ms)]
-        if str(self.devices.currentData()) not in self._manual_view_devices:
+        if (not self.motion or not self.work) and not timeline.intervals:
+            matched = []
+        elif str(self.devices.currentData()) not in self._manual_view_devices:
             if not matched or covered and not any(c in covered for c in matched):
                 matched = (covered or camera_names)[:1]
         previous = matched
@@ -959,6 +974,7 @@ class MainWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, name)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if name in previous else Qt.CheckState.Unchecked)
+            item.setToolTip(name + "\n" + self.board.coverage_message(name))
             self.cameras.addItem(item)
         self.cameras.blockSignals(False)
         selected = self.checked_cameras()
@@ -966,6 +982,9 @@ class MainWindow(QMainWindow):
             self.board.select(selected)
         elif any(not t.interval and timeline.locate(c, self.board.reference_ms) for c, t in self.board.tiles.items()):
             self.board.seek(self.board.reference_ms)
+        for camera, tile in self.board.tiles.items():
+            if not tile.interval:
+                tile.status(self.board.coverage_message(camera))
         if self.motion and not self.board.reference_ms and timeline.bounds():
             self.board.seek(self.work.clock.map(self.imu_ms))
 
@@ -1381,11 +1400,15 @@ class MainWindow(QMainWindow):
                 self.dirty = True
                 self.save_current()
 
-    def _set_imu(self, value):
+    def _set_imu(self, value, *, snap=True):
         if not self.motion:
             return
-        index = self.motion.nearest_sample_index(value)
-        self.imu_ms = float(self.motion.times_ms[index])
+        if snap:
+            index = self.motion.nearest_sample_index(value)
+            value = float(self.motion.times_ms[index])
+        # A missing sample is not a stopped video clock. Follow the mapped
+        # time through real gaps; manual sample positioning still snaps.
+        self.imu_ms = max(0.0, min(float(value), self.motion.duration_ms))
         self.imu_position.setValue(self.imu_ms / 1000)
         self.plot.set_playhead(self.imu_ms)
 
@@ -1486,7 +1509,7 @@ class MainWindow(QMainWindow):
         if self.linked and self.work and self.work.clock.anchors:
             candidate = self.work.clock.map(value, inverse=True)
             if 0 <= candidate <= self.motion.duration_ms:
-                self._set_imu(candidate)
+                self._set_imu(candidate, snap=False)
             else:
                 if candidate > self.motion.duration_ms and self.board.playing:
                     self.board.play(False)
@@ -1747,7 +1770,7 @@ class MainWindow(QMainWindow):
             return
         value = main["reference_ms"]
         if label.is_point:
-            self.work.add_draft(index, value, None, evidence)
+            latest = self.work.add_draft(index, value, None, evidence)
         elif self.active_event is None:
             self.active_event = {"label": index, "start": value, "evidence": evidence,
                                  "group_id": uuid.uuid4().hex, "assets": {self.work.asset_id},
@@ -1768,6 +1791,9 @@ class MainWindow(QMainWindow):
             if active["cow_id"] != self.work.project.cow_id:
                 self.tell("正在记录的动作牛号与当前记录不一致，请切回原记录结束。")
                 return
+            if active.get("end", value) <= active["start"]:
+                self.tell("结束时间必须晚于开始时间。请播放或定位到结束画面后再结束；当前起点已保留。")
+                return
             # Retrying a failed write must keep the observed end frame and must
             # not duplicate the portions already persisted in other records.
             active.setdefault("end", value)
@@ -1778,6 +1804,8 @@ class MainWindow(QMainWindow):
                     target = self.work if asset_id == self.work.asset_id else SessionWork.from_dict(read_json(self.catalog.work_path(asset_id)))
                     if not any(draft["group_id"] == active["group_id"] for draft in target.drafts):
                         target.add_draft(index, active["start"], active["end"], active["evidence"] + active["end_evidence"], group_id=active["group_id"])
+                    if target is self.work:
+                        latest = next(d for d in target.drafts if d["group_id"] == active["group_id"])
                     atomic_json(self.catalog.work_path(asset_id), target.to_dict())
             except (OSError, ValueError, TypeError, KeyError) as exc:
                 self.dirty = True
@@ -1786,7 +1814,7 @@ class MainWindow(QMainWindow):
                 return
             self.active_event = None
             self.event_status.setText("动作已保存为视频草稿；同步核对后可确认对应九轴范围。")
-        self.refresh_events()
+        self.refresh_events(preferred=("draft", latest["id"]))
         self.dirty = True
         self.save_current()
 
@@ -1797,13 +1825,18 @@ class MainWindow(QMainWindow):
             self.tell("九轴所选区间尚无视频对应关系，请先钉住同步点；也可以直接记录视频动作草稿。")
             return
         start, end = (self.work.clock.map(value) for value in self.selection)
-        self.work.add_draft(self.labels.currentIndex(), start, end, self.evidence())
-        self.refresh_events()
+        try:
+            latest = self.work.add_draft(self.labels.currentIndex(), start, end, self.evidence())
+        except ValueError as exc:
+            self.tell(str(exc))
+            return
+        self.refresh_events(preferred=("draft", latest["id"]))
         self.dirty = True
         self.save_current()
 
-    def refresh_events(self):
-        selected = self.selected_entry()
+    def refresh_events(self, *, preferred=None):
+        selected = preferred or self.selected_entry()
+        selection_blocker = QSignalBlocker(self.events)
         clock = self.work.clock if self.work else None
         self.imu_position.set_clock(clock)
         if hasattr(self.plot, "set_clock"):
@@ -1817,12 +1850,12 @@ class MainWindow(QMainWindow):
         # never expose an out-of-range index or relabel an existing event.
         titles = [f"[{label.key}] {label.name}" for label in self.work.project.labels]
         if titles != [self.labels.itemText(i) for i in range(self.labels.count())]:
-            selected = self.labels.currentText()
+            selected_label = self.labels.currentText()
             self.labels.blockSignals(True)
             self.labels.clear()
             for i, title in enumerate(titles):
                 self.labels.addItem(title, i)
-            self.labels.setCurrentIndex(max(0, self.labels.findText(selected)))
+            self.labels.setCurrentIndex(max(0, self.labels.findText(selected_label)))
             self.labels.blockSignals(False)
         entries = [("draft", draft) for draft in self.work.drafts if draft.get("confirmation") != "confirmed"]
         entries += [("event", event) for event in self.work.project.events]
@@ -1873,6 +1906,10 @@ class MainWindow(QMainWindow):
         self._draft_preview = next(((self.work.asset_id, draft_id, key) for key, draft_id in self._plot_drafts.items()
                                     if preview and preview[:2] == (self.work.asset_id, draft_id)), None)
         self.plot.set_events([label.to_dict() for label in self.work.project.labels], plot_events)
+        selection_blocker.unblock()
+        self.sync_event_selection()
+        if preferred and self.events.currentItem():
+            self.events.scrollToItem(self.events.currentItem())
         self.events.setToolTip("已保存标签也可修改：选中一条后点“编辑”或“删除”；双击回看对应位置。修改后需重新复核。")
         self.refresh_action_state()
         self.refresh_records()
@@ -1880,6 +1917,15 @@ class MainWindow(QMainWindow):
     def selected_entry(self):
         item = self.events.item(self.events.currentRow(), 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def sync_event_selection(self):
+        selected = self.selected_entry()
+        identifier = None
+        if selected:
+            kind, value = selected
+            identifier = value if kind == "event" else next(
+                (key for key, draft_id in getattr(self, "_plot_drafts", {}).items() if draft_id == value), None)
+        self.plot.set_selected_event(identifier)
 
     def confirm_selected(self):
         if not self.writable_work():

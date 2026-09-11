@@ -206,6 +206,10 @@ def intervals_from_rows(rows: list[dict], camera_overrides: dict[str, str] | Non
             continue
         seen.add((row["asset_id"], camera))
         for item in metadata.get("intervals", []):
+            if item["wall_end"] <= item["wall_start"] or item["media_end"] <= item["media_start"]:
+                # Historical same-second edge estimates are not mappings.
+                # Keep the source available for review without crashing all views.
+                continue
             intervals.append(VideoInterval(row["asset_id"], row["path"], camera,
                                            item["wall_start"], item["wall_end"],
                                            item["media_start"], item["media_end"],

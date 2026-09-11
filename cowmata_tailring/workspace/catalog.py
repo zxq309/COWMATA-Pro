@@ -102,9 +102,11 @@ class Catalog:
 
     def __init__(self, root: Path | str, *, stability_seconds: float = 3.0,
                  load_session: bool = False, meta_path: Path | None = None, organization_owner=None):
-        self.root = Path(root).resolve(strict=True)
+        from .resource_layout import resource_context
+        self.root = resource_context(Path(root).resolve(strict=True))
         if not self.root.is_dir():
             raise ValueError("请选择工程文件夹")
+        self.resource_index = read_json(self.root / "资源索引.json", {})
         self.meta = Path(meta_path).resolve() if meta_path else self.root / META_DIR
         if self.meta.is_symlink() or getattr(self.meta, "is_junction", lambda: False)():
             raise ValueError("标注工程目录不能是指向其他位置的链接")
@@ -301,6 +303,8 @@ class Catalog:
                 if kind is None or path.is_symlink():
                     continue
                 relative = path.relative_to(self.root).as_posix()
+                if "PPG" in Path(relative).parts or path.name == "资源索引.json":
+                    continue
                 try:
                     before = file_stamp(path)
                     cached = cached_locations.get(relative)

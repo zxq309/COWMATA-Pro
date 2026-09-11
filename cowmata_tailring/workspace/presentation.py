@@ -138,7 +138,7 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
             expanded = self.main_camera
         if self.presentation == "C" and self.main_camera in self.selected:
             expanded = self.main_camera
-        self.aux_scroll.hide()
+        scrolling = False
         if expanded:
             positions = {expanded: (0, 0, w, h)}
         elif self.presentation == "A" and len(self.selected) > 1:
@@ -169,6 +169,9 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
             cell_w, cell_h = (w - gap * (columns - 1)) // columns, (h - gap * (rows - 1)) // rows
             positions = {camera: ((i % columns) * (cell_w + gap), (i // columns) * (cell_h + gap),
                                    cell_w, cell_h) for i, camera in enumerate(self.selected)}
+        # Hiding and showing a pressed scrollbar loses Qt's mouse grab. Keep
+        # it visible for the whole gesture; only layout-mode changes hide it.
+        self.aux_scroll.setVisible(scrolling)
         pending_shows = []
         for camera, geometry in positions.items():
             tile = self.tiles[camera]

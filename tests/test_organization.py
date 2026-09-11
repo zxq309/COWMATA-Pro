@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
+from legacy_organization import plan_import as legacy_plan_import
 
 from cowmata_tailring.workspace import organization as org
 from cowmata_tailring.workspace.catalog import Catalog
@@ -16,6 +17,8 @@ from cowmata_tailring.workspace.dataset_access import DatasetLease, ensure_avail
 
 @pytest.fixture(autouse=True)
 def isolated_access(monkeypatch, tmp_path):
+    # Exercise replay of the saved 3.3 move-plan format. New GUI uses resource_import.
+    monkeypatch.setattr(org, "plan_import", legacy_plan_import)
     monkeypatch.setenv("COWMATA_ACCESS_DIR", str(tmp_path / "access"))
 
 

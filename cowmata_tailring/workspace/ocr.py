@@ -111,7 +111,7 @@ class TimestampOCR:
                 patch = np.array(img.crop((left, top, left+8*step, top+2*step)))
                 gray = cv2.cvtColor(patch, cv2.COLOR_RGB2GRAY)
                 passes, values = [], []
-                for name, pixels in [('raw',gray),('black10',np.where(gray<10,0,255).astype(np.uint8)),
+                for name, pixels in [('raw',gray),('inverse',255-gray),('black10',np.where(gray<10,0,255).astype(np.uint8)),
                                      ('black30',np.where(gray<30,0,255).astype(np.uint8)),
                                      ('white235',np.where(gray>235,0,255).astype(np.uint8)),
                                      ('white245',np.where(gray>245,0,255).astype(np.uint8))]:
@@ -134,7 +134,24 @@ class TimestampOCR:
                           self.routing_read(img, filename=filename, hint=hint, max_passes=15, minimum_votes=2))
                 result.update(date_passes=dates, clock_passes=passes)
                 return result
-        return self.routing_read(img, filename=filename, hint=hint, max_passes=15, minimum_votes=2)
+        result = self.routing_read(img, filename=filename, hint=hint, max_passes=15, minimum_votes=2)
+        if result.get("success") or not (family or "").startswith("shenmo"):
+            return result
+        # White OSD over light cattle can disappear in the ordinary dark-text
+        # variants. Require the same full date/time in two independent masks;
+        # neither the native timestamp nor an expected digit enters OCR.
+        gray = cv2.cvtColor(np.array(img.convert("RGB")), cv2.COLOR_RGB2GRAY)
+        attempts = []
+        for threshold in (245, 250):
+            pixels = np.where(gray > threshold, 0, 255).astype(np.uint8)
+            observed = self.routing_read(Image.fromarray(pixels).convert("RGB"), filename=filename,
+                                         hint=hint or (.4, .82, 1, 1), max_passes=1, raw_only=True)
+            attempts.append({"threshold": threshold, "report": observed})
+        first, second = (a["report"] for a in attempts)
+        if first.get("success") and second.get("success") and first["wall_ms"] == second["wall_ms"]:
+            result = dict(first)
+        result["white_osd_checks"] = attempts
+        return result
 
     def recognize(self, img: Image.Image, *, filename="frame", roi=None, hint=None, profile_hint=None) -> dict:
         report = self._recognize_once(img, filename=filename, roi=roi, hint=hint, profile_hint=profile_hint)

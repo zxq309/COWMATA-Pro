@@ -70,6 +70,42 @@ def camera_folder(relative):
                 parts[0] if len(parts) > 1 else "录像")
 
 
+def camera_inventory(rows, overrides=None):
+    """Keep source views visible independently of the active record's coverage.
+
+    Unread rows may use the one known camera in their folder as a UI identity;
+    this does not create timestamps, intervals or camera calibration.
+    """
+    videos = [r for r in rows if r["kind"] == "video" and r["state"] not in {"missing", "ignored"}]
+    known = defaultdict(set)
+    for row in videos:
+        if row["metadata"].get("camera") or (overrides or {}).get(row.get("asset_id")):
+            known[camera_folder(row["path"])].add(camera_name(row, overrides))
+    result = defaultdict(list)
+    for row in videos:
+        name = camera_name(row, overrides)
+        candidates = known[camera_folder(row["path"])]
+        if not row["metadata"].get("camera") and not (overrides or {}).get(row.get("asset_id")) and len(candidates) == 1:
+            name = next(iter(candidates))
+        result[name].append(row)
+    return dict(result)
+
+
+def resolve_camera_choices(names, inventory):
+    """Retain checked folder placeholders after an unambiguous first inspection."""
+    folders = defaultdict(set)
+    for camera, rows in inventory.items():
+        for row in rows:
+            folders[camera_folder(row['path'])].add(camera)
+    result = []
+    for name in names:
+        candidates = folders.get(name, set())
+        resolved = name if name in inventory else next(iter(candidates)) if len(candidates) == 1 else None
+        if resolved is not None and resolved not in result:
+            result.append(resolved)
+    return result
+
+
 def source_span(row, hints):
     spans = row["metadata"].get("intervals", [])
     if spans and (row["state"] in {"ready", "review"} or

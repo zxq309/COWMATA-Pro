@@ -157,6 +157,11 @@ class MainWindow(ControllerWindow):
         legend.setToolTip("切换记录自动保存并恢复上次位置；只有明确点击完成才变为已完成。")
         sources.addWidget(legend)
         sources.addWidget(self.devices)
+        self.date_choice = QComboBox()
+        self.date_choice.addItem("全部采集日期", "")
+        self.date_choice.setToolTip("按真实覆盖日期筛选，包含从前日延续到当日的九轴记录；视频仍按时间区间匹配。")
+        self.date_choice.currentIndexChanged.connect(self.filter_records)
+        sources.addWidget(self.date_choice)
         self.record_search = QLineEdit()
         self.record_search.setPlaceholderText("搜索文件名 / 查看进度")
         self.record_search.setClearButtonEnabled(True)
@@ -166,6 +171,10 @@ class MainWindow(ControllerWindow):
         sources.addWidget(self.cow)
         sources.addWidget(self.identity_label)
         sources.addWidget(self.data_category)
+        self.ppg_placeholder = QLabel("PPG · 已预留，当前无波形 / 标签")
+        self.ppg_placeholder.setWordWrap(True)
+        self.ppg_placeholder.setToolTip("PPG 以采集时间独立索引，支持跨日；数据接入后沿用同步与导出接口。")
+        sources.addWidget(self.ppg_placeholder)
         sources.addWidget(self._heading("视角 · 勾选并拖动排序"))
         sources.addWidget(self.cameras, 2)
         source_actions = QHBoxLayout()
@@ -491,6 +500,17 @@ class MainWindow(ControllerWindow):
         return button
 
     def eventFilter(self, watched, event):
+        if event.type() in (QEvent.Type.ShortcutOverride, QEvent.Type.KeyPress):
+            focus = QApplication.focusWidget()
+            if (isinstance(focus, QComboBox) and focus.window() == self and not focus.isEditable()
+                    and QApplication.activePopupWidget() is None and event.key() == Qt.Key.Key_Space
+                    and event.modifiers() == Qt.KeyboardModifier.NoModifier):
+                # A closed selector retains keyboard focus after choosing an item.
+                # Handle both phases so Qt neither opens it nor fires Space twice.
+                if event.type() == QEvent.Type.KeyPress and not event.isAutoRepeat():
+                    self.toggle_play()
+                event.accept()
+                return True
         if hasattr(self, "source_hide_timer") and watched in (self.source_toggle, getattr(self, "source_panel", None)):
             if event.type() == QEvent.Type.Enter:
                 self.source_hide_timer.stop()
@@ -526,9 +546,25 @@ class MainWindow(ControllerWindow):
         if not hasattr(self, "record_search"):
             return
         text = self.record_search.text().strip().casefold()
+        index = getattr(self.catalog, "resource_index", {}) if self.catalog else {}
+        records = {r["path"]: r for r in index.get("records", [])}
+        days = index.get("dates", [])
+        if getattr(self, "_resource_days", None) != days:
+            self._resource_days = days
+            current = self.date_choice.currentData()
+            self.date_choice.blockSignals(True)
+            self.date_choice.clear()
+            self.date_choice.addItem("全部采集日期", "")
+            for day in days:
+                self.date_choice.addItem(day, day)
+            self.date_choice.setCurrentIndex(max(0, self.date_choice.findData(current)))
+            self.date_choice.blockSignals(False)
+        day = self.date_choice.currentData()
         for i in range(self.records.count()):
             item = self.records.item(i)
-            item.setHidden(text not in (item.text() + item.toolTip()).casefold())
+            row = item.data(Qt.ItemDataRole.UserRole)
+            coverage = records.get(row.get("path"), {}).get("covered_dates", [])
+            item.setHidden(text not in (item.text() + item.toolTip()).casefold() or bool(day and coverage and day not in coverage))
 
     def refresh_records(self, *_):
         super().refresh_records()
