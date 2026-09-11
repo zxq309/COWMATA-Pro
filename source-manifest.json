@@ -2163,8 +2163,8 @@
     },
     {
       "path": "packaging/installer.nsi",
-      "size": 17974,
-      "sha256": "8b8e5bb276a783fd6fd1e1fecfbc4623e3b4a987aaa92b9c22e553a607791ca3"
+      "size": 17979,
+      "sha256": "754bf619dd317c1840f23eb0f5cf16fde1d834af2382e0e8139234e159e32fbe"
     },
     {
       "path": "portable_start.py",
