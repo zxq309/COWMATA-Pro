@@ -19,6 +19,61 @@ def video_metadata(start, duration=20000):
     )
 
 
+def test_attach_from_recursive_mixed_tree_respects_farm_category_and_date(tmp_path, monkeypatch):
+    from datetime import datetime
+
+    from test_resources_v34 import record
+
+    from cowmata_tailring.workspace.probe import SourceInspector
+    from cowmata_tailring.workspace.resource_import import execute, plan_import
+    from cowmata_tailring.workspace.resource_layout import TZ
+
+    farm = tmp_path / '自选牧场'
+    root = farm / '产犊'
+    raw = record(root / 'Motion')
+    day = datetime(2026, 8, 4, tzinfo=TZ).timestamp() * 1000
+    index = {'dataset_category': 'calving', 'records': [dict(kind='imu', path=raw.relative_to(root).as_posix(),
+        sha256=hashlib.sha256(raw.read_bytes()).hexdigest(), size=raw.stat().st_size,
+        record_start_ms=day-20000, record_end_ms=day+2*86400000, cow_id='00123')]}
+    (root / '资源索引.json').write_text(json.dumps(index), encoding='utf-8')
+    labels = root / '标注工程/annotations/keep.json'
+    labels.parent.mkdir(parents=True)
+    labels.write_text('{"original":true}')
+    incoming = tmp_path / '2026.8扬州大学高邮牧场测试'
+    videos = incoming / '8月4日/录像/视角01/嵌套'
+    videos.mkdir(parents=True)
+    movie = videos / 'cross.MP4'
+    movie.write_bytes(b'cross midnight video')
+    later = videos / 'later.mp4'
+    later.write_bytes(b'later video')
+    unused = incoming / '未整理九轴/bad.json'
+    unused.parent.mkdir()
+    unused.write_text('not even JSON')
+    (incoming / '标签.csv').write_text('untouched')
+    monkeypatch.setattr(SourceInspector, 'video', lambda self, path, sha:
+        video_metadata(day+28800000-10000 if path == movie else day+28800000+86400000, 20000))
+    before = {p: p.read_bytes() for p in (raw, labels, unused, incoming/'标签.csv')}
+    plan = plan_import(farm, [dict(kind='auto', path=str(incoming), camera='auto')],
+        '2026-08-04', '2026-08-04', category='calving', farm=str(farm),
+        scenario='attach_video', cache=tmp_path/'cache')
+    assert plan['target'] == str(root)
+    assert len(plan['rows']) == 2 and all(r['kind'] == 'video' for r in plan['rows'])
+    ready = [r for r in plan['rows'] if r['status'] == 'ready']
+    assert len(ready) == 1 and ready[0]['target'].endswith('2026-08-03_23-59-50.mp4')
+    assert execute(plan, tmp_path/'job')['completed']
+    assert all(p.read_bytes() == content for p, content in before.items())
+    assert movie.exists() and later.exists()
+
+
+def test_reversed_dates_are_rejected_before_reading_media(tmp_path):
+    import pytest
+
+    from cowmata_tailring.workspace.resource_import import plan_import
+    with pytest.raises(ValueError, match='日期'):
+        plan_import(tmp_path/'out', [dict(kind='video', path=str(tmp_path/'missing'))],
+                    '2026-09-05', '2026-09-04', category='healthy')
+
+
 def test_nested_mixed_root_selects_only_raw_imu_and_video(tmp_path, monkeypatch):
     from test_resources_v34 import record
 

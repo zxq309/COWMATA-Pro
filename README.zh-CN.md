@@ -1,6 +1,6 @@
-# COWMATA 3.5.0 纯净版
+# COWMATA 3.5.1 纯净版
 
-安装包、便携包和纯净源码见 [GitHub Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest)。便携包完整解压后运行 COWMATA.exe，安装版运行 Setup.exe。不要在压缩包内运行。
+安装包、便携包和纯净源码见 [3.5.1 发布页](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.5.1)。便携包完整解压后运行 COWMATA.exe，安装版运行 Setup.exe。不要在压缩包内运行。
 
 1. 打开工程统一为“确认牧场 → 类别/孕期 → Motion → 单日”，首份九轴与首路视频优先出现，其余后台继续。
 2. 单个九轴查找当日 Video；单个视频配对指定九轴，可跨盘。单文件保存必须选择并确认位置。
@@ -9,6 +9,6 @@
 5. 数据集按行为、耳标构建，按牛划分，冲突和未知真值不进训练。文件名只保留身份与起始时间，行为样本保留毫秒，完整校验值在索引中。
 6. 包含 3.4.x 的空格、拖动、零时长、排序、状态互斥、视频时长、重复视角和人工核验修复。
 
-[图文教程](docs/daily-project-guide.html) · [详细流程](docs/legacy-dataset-workflow.md) · [版本说明](docs/release-350.md)
+[图文教程](docs/daily-project-guide.html) · [详细流程](docs/legacy-dataset-workflow.md) · [版本说明](docs/release-351.md)
 
-运行依赖与模型已经随安装/便携包提供；源码包不含二进制依赖、原始数据和运行缓存。启动沿用联网更新检查，进入工程后可离线标注。PPG 尚未接入波形解析。
+运行依赖与模型已经随安装/便携包提供；源码包不含二进制依赖、原始数据和运行缓存。启动检查更新；网络失败可选择进入软件，继续离线标注。PPG 尚未接入波形解析。

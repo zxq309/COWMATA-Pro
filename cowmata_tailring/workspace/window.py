@@ -1907,6 +1907,11 @@ class MainWindow(QMainWindow):
         if label.is_point:
             latest = self.work.add_draft(index, value, None, evidence)
         elif self.active_event is None:
+            try:
+                self.work.assert_state_interval(index, value, None)
+            except ValueError as exc:
+                self.tell(str(exc) + ' 请定位到已有区间之外再开始，或选中原标签编辑。')
+                return
             self.active_event = {"label": index, "start": value, "evidence": evidence,
                                  "group_id": uuid.uuid4().hex, "assets": {self.work.asset_id},
                                  "cow_id": self.work.project.cow_id,
@@ -1931,12 +1936,23 @@ class MainWindow(QMainWindow):
                 return
             # Retrying a failed write must keep the observed end frame and must
             # not duplicate the portions already persisted in other records.
+            # Validate every affected recording before latching an end or
+            # writing any portion. A rejected endpoint must remain movable.
+            try:
+                targets = []
+                for asset_id in sorted(active['assets']):
+                    target = self.work if asset_id == self.work.asset_id else SessionWork.from_dict(read_json(self.catalog.work_path(asset_id)))
+                    if not any(d['group_id'] == active['group_id'] for d in target.drafts):
+                        target.assert_state_interval(index, active['start'], active.get('end', value))
+                    targets.append((asset_id, target))
+            except (OSError, ValueError, TypeError, KeyError) as exc:
+                self.tell('当前动作尚未结束：' + str(exc) + ' 请调整结束位置；若原起点有冲突，可取消本次动作后重新开始。')
+                return
             active.setdefault("end", value)
             active.setdefault("end_evidence", evidence)
             try:
                 self.snapshot_writer.flush()
-                for asset_id in sorted(active["assets"]):
-                    target = self.work if asset_id == self.work.asset_id else SessionWork.from_dict(read_json(self.catalog.work_path(asset_id)))
+                for asset_id, target in targets:
                     if not any(draft["group_id"] == active["group_id"] for draft in target.drafts):
                         target.add_draft(index, active["start"], active["end"], active["evidence"] + active["end_evidence"], group_id=active["group_id"])
                     if target is self.work:

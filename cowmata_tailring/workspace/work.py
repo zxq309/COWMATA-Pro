@@ -164,20 +164,22 @@ class SessionWork:
                 event.extras["confirmation"] = "needs_review"
 
     def assert_state_interval(self, label_index, start, end, *, exclude_draft=None, exclude_event=None):
-        if self.project.labels[label_index].code not in {'STANDING','LYING','WALKING'} or end is None:
+        if self.project.labels[label_index].code not in {'STANDING','LYING','WALKING'}:
             return
+        def intersects(lo, hi):
+            return lo <= start < hi if end is None else start < hi and end > lo
         for draft in self.drafts:
             if draft['id']==exclude_draft or draft.get('confirmation')=='confirmed':
                 continue
             if self.project.labels[draft['label_index']].code in {'STANDING','LYING','WALKING'}:
-                if draft['reference_end'] is not None and start<draft['reference_end'] and end>draft['reference_start']:
+                if draft['reference_end'] is not None and intersects(draft['reference_start'], draft['reference_end']):
                     raise ValueError('站立、躺卧、行走互斥；当前区间与已有状态标签重叠，请先调整起止或修改原标签。')
         if self.clock.anchors:
             for event in self.project.events:
                 if event.id==exclude_event or event.extras.get('draft_id')==exclude_draft and exclude_draft is not None:
                     continue
                 if self.project.labels[event.li].code in {'STANDING','LYING','WALKING'} and event.t1 is not None:
-                    if start<self.clock.map(event.t1) and end>self.clock.map(event.t0):
+                    if intersects(self.clock.map(event.t0), self.clock.map(event.t1)):
                         raise ValueError('站立、躺卧、行走互斥；当前区间与已有状态标签重叠，请先调整起止或修改原标签。')
 
     def add_draft(self, label_index, start, end, evidence, *, group_id=None, note=""):

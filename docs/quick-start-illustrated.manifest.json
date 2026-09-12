@@ -1,8 +1,14 @@
 {
-  "version": "3.4.3",
+  "version": "3.5.1",
   "date": "2026-09-12",
-  "pages": 47,
+  "pages": 52,
   "screenshots_sha256": {
+    "../manual-351/01-video-intake.png": "9981636925b02357f7469adf7599c4b08dc82cbf636ded77917d246db029bebf",
+    "../manual-351/06-date-fields.png": "54f0894a0ebe53a89142c22e1a3ae3458cf191b162f0491a3f115e2a0cc45c9c",
+    "../manual-351/04-report.png": "0b110f77313b1486a7c897a65af0a540bc10f2d65085db01c58845feee2f8c9f",
+    "../manual-351/05-offline-start.png": "f92f151abd204586c7be052a6b8681fc5bbf817b0a57e086f09d4edc4c233e4f",
+    "../../../docs/images/daily-picker.png": "7e98174d60188bd49d3bf397af170f7e33e709bc60f7cbb700e5c83ff3f51947",
+    "../../../docs/images/single-multiview.png": "c8d494dd1d70ce662e6468f09120d37f6206551c05f078b2ee89f3e85a65f44e",
     "../manual-343/01-manual-reading.png": "5aff0b9db0a7a2209b5b127f224fc4115bc95ef481a0b8713ae35a75aab5b6cf",
     "../manual-343/02-manual-restores-video.png": "1c054e14c30ed467a336a26968cc7ab7074053d6c31b4f2c9d762c25fa006075",
     "../manual-343/03-sorted-fixed-labels.png": "38e29b39114d5775cc315838a8f9dc3cf38298e32abb843badc497e5147a4b5d",
@@ -18,10 +24,9 @@
     "../manual-341/04-algorithm.png": "df33ef78fd2304e1312b3918b3fab052143484fabd351ce5bbb9dc5442b48300",
     "../manual-341/05-organization.png": "631021e95044e3609ddcaf42844b9edb960856ae93bf06fc18cac37d9ab01fc9",
     "../manual-341/06-export.png": "762e388ecd1d3b4d8fb8860cdae52f717786e8780f6873f113c51398a60d0190",
-    "02-startup.png": "20296cc6c7a7501c6918d6b366498c76fff7c851bd2263fc6fc8eaaaa4dc5e14",
-    "03-sources.png": "516b6bc9e8853cd6bec19db91226dfee3b73885d38802a566eaa35e5e54caa8c",
     "04-naming-errors.png": "c659adbbfcd448b200c3f1ab669898809d63d53de838af229f74770e94084f31",
     "04-seven-categories.png": "70a8b01b672c075b5db602f1290cd2dabe47facab22ed0131a6e4e88886568f7",
+    "03-sources.png": "516b6bc9e8853cd6bec19db91226dfee3b73885d38802a566eaa35e5e54caa8c",
     "05-audit.png": "bfd93629ee293e4a459d86b3ced2d0654814006c9d7f4e1d31ee4dcea567cc98",
     "06-report.png": "192d2b83ff8f81332cfc5ec831183dfff0de13b8f4f628edd1991e357bfa58ee",
     "07-preview.png": "e1e173c33d814afae7f82a398a74947d450e7484aadcce329cb17ad5937c81bd",
@@ -58,5 +63,5 @@
     "29-help.png": "6b69f9aee97f35fc57f1c82d921e65d02e45848a5d99ee6adf1cb9ebab9872d6",
     "30-legacy.png": "b031f2ec38038879ce008cd4c7980e07202ec1deeeda04a40983281aed2dba95"
   },
-  "pdf_sha256": "ef893fdcadc5bb7451a7f4f154a4da38a25b5e50cf3e4722fe3efbffd47b95fc"
+  "pdf_sha256": "424143d36e9895037c09b367dbf4d6072dfd2effff77f3feee2129cd80d15d17"
 }

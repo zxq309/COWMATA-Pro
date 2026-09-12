@@ -10,6 +10,8 @@ import shutil
 import time
 import uuid
 from contextlib import ExitStack
+from datetime import date, datetime, timedelta
+from datetime import time as daytime
 from functools import lru_cache
 from pathlib import Path
 
@@ -17,7 +19,7 @@ from . import organization as core
 from .catalog import assert_not_being_written, digest_file, file_stamp
 from .data_category import category_fields, category_root, update_context
 from .dataset_access import DatasetLease
-from .resource_layout import MODALITIES, covered_days, day_at, start_stamp
+from .resource_layout import MODALITIES, TZ, covered_days, day_at, start_stamp
 from .storage import atomic_json
 
 
@@ -330,18 +332,40 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
 
     if transfer not in {"copy", "move"}:
         raise ValueError("Invalid transfer mode")
+    date_lo, date_hi = float('-inf'), float('inf')
+    if end and not start:
+        raise ValueError('请先选择起始日期，再选择结束日期')
+    if start:
+        try:
+            first, last = date.fromisoformat(start), date.fromisoformat(end or start)
+        except ValueError as exc:
+            raise ValueError('日期格式须为 YYYY-MM-DD，请用日历选择') from exc
+        if first > last:
+            raise ValueError('结束日期不能早于起始日期')
+        date_lo = datetime.combine(first, daytime(), TZ).timestamp() * 1000
+        date_hi = datetime.combine(last + timedelta(days=1), daytime(), TZ).timestamp() * 1000
     resource_root = core.safe_path(target)
-    farm = core.safe_name(farm.strip())
+    farm_value = farm.strip()
+    farm_path = core.safe_path(farm_value) if Path(farm_value).is_absolute() else None
+    farm = farm_path.name if farm_path else core.safe_name(farm_value) if farm_value else resource_root.name
     reference=[]
     if scenario=='attach_video':
-        root,category,reference=reference_motion_scope(resource_root)
+        selected_root = farm_path or resource_root
+        existing_scope = next((p for p in (selected_root, *selected_root.parents) if (p/'Motion').is_dir()), None)
+        scope = existing_scope or (category_root(selected_root, farm, category) if category else selected_root)
+        root,existing_category,reference=reference_motion_scope(scope)
+        if category and category != existing_category:
+            raise ValueError('所选类别与已有九轴类别不一致，请核对牧场目录和数据类别')
+        category = existing_category
         farm=root.parent.parent.name if root.parent.name=='怀孕' else root.parent.name
-        start,end='',None
+        reference = [r for r in reference if r['record_start_ms'] < date_hi and r['record_end_ms'] > date_lo]
+        if not reference:
+            raise ValueError('所选日期范围没有已归类九轴，请调整起止日期')
     elif scenario=='mixed':
         category_fields(category)
         if category == 'pregnancy':
             raise ValueError('请先选择孕期阶段：孕早期、孕中期或孕晚期。')
-        root = category_root(resource_root, farm, category)
+        root = category_root(farm_path or resource_root, farm, category)
     else:
         raise ValueError('未知整理场景')
     if not sources:
@@ -401,7 +425,8 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
                         owner, modality = camera, "Video"
                         row["metadata"] = {**metadata, "camera": camera}
                         if reference:
-                            matched=[r for r in reference if lo<r['record_end_ms'] and hi>r['record_start_ms']]
+                            matched=[r for r in reference if lo < min(r['record_end_ms'], date_hi)
+                                     and hi > max(r['record_start_ms'], date_lo)]
                             row['matched_imu_records']=len(matched)
                             if not matched:
                                 row.update(status='skip',message='此录像没有覆盖所选九轴工程的时段，保留原处')
@@ -410,7 +435,7 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
                             row['reference_cow_ids']=sorted({r.get('cow_id','') for r in matched if r.get('cow_id')})
                     days = covered_days(lo, hi)
                     day = day_at(lo)
-                    if start and (day < start or day > (end or start)):
+                    if scenario != 'attach_video' and start and (day < start or day > (end or start)):
                         raise ValueError(f"真实开始日期 {day} 超出所填日期范围；留空可自动识别")
                     filename = f"{start_stamp(lo)}{path.suffix.lower()}"
                     if kind == "video":
@@ -455,7 +480,8 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
             "target": str(root), "resource_root": str(resource_root), "farm": farm,
             "sources": sources, "category": category, "note": note, "created_at": core.now(),
             "scenario":scenario,"reference_records":reference,"ignored_files":ignored,
-            "transfer": transfer,
+            "transfer": transfer, "requested_start": start, "requested_end": end or '',
+            "farm_path": str(farm_path) if farm_path else str(root.parent.parent if root.parent.name == '怀孕' else root.parent),
             "start": min((r["record_date"] for r in dated), default=start),
             "end": max((r["covered_dates"][-1] for r in dated), default=end or start), "rows": rows}
 
@@ -520,15 +546,12 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
                         raise ValueError("Moved file identity changed")
                     moved += 1
                 else:
-                    # The task-owned partial is safe to restart after cancellation.
-                    with source.open("rb") as inp, temporary.open("wb") as out:
-                        while block := inp.read(4 * 1024 * 1024):
-                            core.check_cancel(cancelled)
-                            out.write(block)
-                        out.flush()
-                        os.fsync(out.fileno())
-                    if digest_file(temporary, cancelled=cancelled) != row["sha256"]:
-                        raise ValueError("复制后 SHA-256 不一致，保留原件与任务记录")
+                    from .fast_transfer import copy_verified
+                    transfer_stats = copy_verified(source, temporary, row['sha256'], cancelled=cancelled,
+                        progress=lambda current, total, phase: progress(current, total,
+                            ('快速复制' if phase == 'copy' else '校验目标') + ' · ' + str(source.name)))
+                    core.append_journal(job / 'journal.jsonl', {'phase': 'copy_verified',
+                        'source': str(source), 'target': str(destination), **transfer_stats})
                     if core.identity(source) != row["identity"]:
                         raise ValueError("复制期间来源变化")
                     shutil.copystat(source, temporary)

@@ -1,4 +1,4 @@
-# COWMATA 3.5.0
+# COWMATA 3.5.1
 
 Windows multiview video and nine-axis annotation workstation. Setup, portable ZIP and clean source are published in [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest).
 
@@ -11,6 +11,6 @@ Windows multiview video and nine-axis annotation workstation. Setup, portable ZI
 
 Launch `COWMATA.exe` after extracting the complete portable folder, or install the setup. Private Python, Qt, VLC, FFmpeg, OCR weights and reviewed event models are bundled. The inherited startup update check requires network access; annotation can continue offline after startup.
 
-[中文说明](README.zh-CN.md) · [Illustrated guide](docs/daily-project-guide.html) · [Workflow](docs/legacy-dataset-workflow.md) · [3.5 release notes](docs/release-350.md)
+[中文说明](README.zh-CN.md) · [Illustrated guide](docs/daily-project-guide.html) · [Workflow](docs/legacy-dataset-workflow.md) · [3.5 release notes](docs/release-351.md)
 
 Source and tests are in `cowmata_tailring` and `tests`. The source archive excludes runtimes, model binaries, customer recordings and generated caches; binary dependencies are supplied by the portable release.

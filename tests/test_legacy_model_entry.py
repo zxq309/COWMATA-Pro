@@ -1,5 +1,6 @@
 """Compatibility windows must keep manual work usable without optional models."""
 import builtins
+import os
 import sys
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from cowmata_tailring.model_assist import assist
 def legacy_window(monkeypatch, tmp_path):
     # These are real native-player UI integration tests, not media stubs.
     # The Windows distribution supplies VLC; source-only CI does not.
-    package = Path(__file__).resolve().parents[2] / "COWMATA Annotator"
+    package = Path(os.environ.get('COWMATA_TEST_PACKAGE', str(Path(__file__).resolve().parents[2] / "COWMATA Annotator")))
     if sys.platform != "win32":
         pytest.skip("Legacy native player UI requires Windows")
     if not (package / "vendor/vlc/libvlc.dll").is_file():

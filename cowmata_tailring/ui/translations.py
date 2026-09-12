@@ -2475,5 +2475,37 @@ ZH_TO_EN.update({
     "采集日期（单选）": "Recording date (one day)"
 })
 
+ZH_TO_EN.update({
+    ' 请定位到已有区间之外再开始，或选中原标签编辑。': ' Start outside existing intervals, or select the original label to edit it.',
+    ' 请调整结束位置；若原起点有冲突，可取消本次动作后重新开始。': ' Adjust the end position; cancel and restart if the original start conflicts.',
+    '写入未完成，请检查磁盘空间或连接': 'Write incomplete. Check disk space or the connection.',
+    '发现更新将下载、校验并安装，完成后重新打开软件。\n网络异常或暂不更新，可点击“进入软件”继续使用，无须逐版升级。': 'Updates download, verify and install, then reopen the app.\nOpen the application to work offline or update later; intermediate releases are skipped.',
+    '发现软件更新，可稍后安装': 'Update available; installation can wait',
+    '可选结束日期（包含当日）': 'Optional end date (inclusive)',
+    '启动时检查最新版。网络异常或暂不更新时，可选择“进入软件”继续使用；进入工程后也可离线标注。\n原位置升级仅支持安装版，便携版/源码副本可下载安装包后手动安装。': 'Startup checks for updates. Open the application to work offline or update later.\nIn-place updates require an installed copy; source and portable copies can install manually.',
+    '复制临时文件不是独立的普通文件': 'The partial is not an independent regular file',
+    '复制临时文件路径不安全': 'Unsafe partial-file path',
+    '复制后内容校验不一致，原件和临时文件保留': 'Destination verification failed; source and partial are retained',
+    '复制期间来源内容发生变化，未发布目标文件': 'Source content changed while copying; destination was not published',
+    '当前动作尚未结束：': 'Action is still open: ',
+    '快速复制': 'Fast copy',
+    '所选日期范围没有已归类九轴，请调整起止日期': 'No classified IMU overlaps the selected dates; adjust the date range',
+    '所选类别与已有九轴类别不一致，请核对牧场目录和数据类别': 'Selected category disagrees with existing IMU; check the farm and category',
+    '打开日历选择日期；清空则不限日期': 'Open the calendar; clear the field for all dates',
+    '整理已暂停，已复制部分保留，下次校验后续传': 'Organization paused; copied bytes are retained for verified resume',
+    '日期格式须为 YYYY-MM-DD，请用日历选择': 'Use YYYY-MM-DD or choose a date from the calendar',
+    '更新暂未完成，可点击“进入软件”继续使用，或重试更新。\n原因：': 'Update incomplete. Open the application to continue working, or retry.\nReason: ',
+    '校验目标': 'Verify destination',
+    '留空不限日期；点击右侧日历选择起始日期': 'All dates if blank; use the calendar on the right',
+    '留空自动读取真实日期；右侧日历可选择': 'Read actual dates if blank; or choose from the calendar',
+    '结束日期不能早于起始日期': 'End date must not precede start date',
+    '请先选择起始日期，再选择结束日期': 'Choose a start date before the end date',
+    '进入软件（稍后更新）': 'Open application (update later)',
+    '选择已整理九轴和标签的牧场目录': 'Select the farm containing organized IMU and annotations',
+    '选择已整理的牧场目录及类别；从来源大目录递归筛选视频，忽略九轴、标签和其他文件。起止日期可选，只补充覆盖所选九轴时段的录像。': 'Choose the organized farm and category. Recursively select videos from the source tree, ignoring IMU, annotations and other files. Optional dates limit videos to the selected IMU coverage.',
+    '选择本批数据所属牧场的完整目录': 'Select the full farm directory for this batch',
+    '选择牧场目录…': 'Choose farm directory...',
+})
+
 if __name__ == "__main__":
     _coverage()

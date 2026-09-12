@@ -10,10 +10,11 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QAbstractTableModel, QProcess, QSettings, Qt, QUrl
+from PySide6.QtCore import QAbstractTableModel, QDate, QPoint, QProcess, QSettings, Qt, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCalendarWidget,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -26,10 +27,12 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTableView,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -42,6 +45,37 @@ from .theme import STYLE
 
 def task_root():
     return Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "COWMATA Annotator" / "organization-tasks"
+
+
+class OptionalDateEdit(QLineEdit):
+    """A blank date means all recordings; selecting a day invalidates previews."""
+
+    def __init__(self):
+        super().__init__()
+        self.setTextMargins(0, 0, 30, 0)
+        self.calendar_button = QToolButton(self)
+        self.calendar_button.setText('▾')
+        self.calendar_button.setToolTip('打开日历选择日期；清空则不限日期')
+        self.calendar = QCalendarWidget(self)
+        self.calendar.setWindowFlags(Qt.WindowType.Popup)
+        self.calendar.hide()
+        self.calendar_button.clicked.connect(self.show_calendar)
+        self.calendar.clicked.connect(self.select_date)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.calendar_button.setGeometry(self.width() - 29, 1, 28, self.height() - 2)
+
+    def show_calendar(self):
+        date = QDate.fromString(self.text(), 'yyyy-MM-dd')
+        self.calendar.setSelectedDate(date if date.isValid() else QDate.currentDate())
+        self.calendar.move(self.mapToGlobal(QPoint(0, self.height())))
+        self.calendar.show()
+
+    def select_date(self, date):
+        self.setText(date.toString('yyyy-MM-dd'))
+        self.textEdited.emit(self.text())
+        self.calendar.hide()
 
 
 class PlanModel(QAbstractTableModel):
@@ -155,7 +189,14 @@ class OrganizationWindow(QDialog):
         audit_actions.addWidget(self.clean_button)
         audit_actions.addStretch()
         audit_box.addLayout(audit_actions)
-        box = QVBoxLayout(classify_page)
+        self.classify_scroll = QScrollArea()
+        self.classify_scroll.setWidgetResizable(True)
+        classify_content = QWidget()
+        self.classify_scroll.setWidget(classify_content)
+        classify_outer = QVBoxLayout(classify_page)
+        classify_outer.setContentsMargins(0, 0, 0, 0)
+        classify_outer.addWidget(self.classify_scroll)
+        box = QVBoxLayout(classify_content)
         scenario_row=QHBoxLayout()
         scenario_row.addWidget(QLabel('整理场景'))
         self.scenario=QComboBox()
@@ -193,7 +234,7 @@ class OrganizationWindow(QDialog):
         box.addWidget(self.add_mixed_button)
         form = QFormLayout()
         dates = QHBoxLayout()
-        self.start_date, self.end_date = QLineEdit(), QLineEdit()
+        self.start_date, self.end_date = OptionalDateEdit(), OptionalDateEdit()
         self.start_date.setPlaceholderText("可留空：自动读取真实采集日期")
         self.end_date.setPlaceholderText("可选：仅用于核对开始日期范围")
         dates.addWidget(self.start_date)
@@ -214,8 +255,14 @@ class OrganizationWindow(QDialog):
         self.pregnancy_stage.setToolTip("归入怀孕/孕早期、孕中期或孕晚期；不根据行为或产犊日期自动推断孕期。")
         form.addRow("孕期阶段", self.pregnancy_stage)
         self.pregnancy_stage.setEnabled(False)
-        self.farm = QLineEdit("扬大_高邮牧场")
-        form.addRow("牧场目录", self.farm)
+        self.farm = QLineEdit()
+        self.farm.setPlaceholderText('选择本批数据所属牧场的完整目录')
+        farm_row = QHBoxLayout()
+        farm_row.addWidget(self.farm, 1)
+        self.farm_browse = QPushButton('选择牧场目录…')
+        self.farm_browse.clicked.connect(self.choose_farm)
+        farm_row.addWidget(self.farm_browse)
+        form.addRow("牧场目录", farm_row)
         self.transfer_mode = QComboBox()
         self.transfer_mode.addItem("复制，保留原件", "copy")
         self.transfer_mode.addItem("同盘移动，跨盘复制", "move")
@@ -325,6 +372,23 @@ class OrganizationWindow(QDialog):
         value = QFileDialog.getExistingDirectory(self, "选择数据工程目录", self.target.text())
         if value:
             self.target.setText(value)
+            selected = Path(value)
+            scope = next((p for p in (selected, *selected.parents) if (p/'Motion').is_dir()), None)
+            code = next((k for k, label in CATEGORIES.items() if scope and label == scope.name), None)
+            if code:
+                self.farm.setText(str(scope.parent.parent if code in PREGNANCY_STAGES else scope.parent))
+                self.category.setCurrentIndex(self.category.findData('pregnancy' if code in PREGNANCY_STAGES else code))
+                if code in PREGNANCY_STAGES:
+                    self.pregnancy_stage.setCurrentIndex(self.pregnancy_stage.findData(code))
+            else:
+                self.farm.setText(value)
+            self.invalidate_plan()
+
+    def choose_farm(self):
+        value = QFileDialog.getExistingDirectory(self, '选择已整理九轴和标签的牧场目录', self.farm.text() or self.target.text())
+        if value:
+            self.farm.setText(value)
+            self.target.setText(value)
             self.invalidate_plan()
 
     def add_source(self, kind, path, camera="视角01"):
@@ -374,8 +438,10 @@ class OrganizationWindow(QDialog):
 
     def scenario_changed(self):
         attach=self.scenario.currentData()=='attach_video'
-        self.scenario_hint.setText('选择已归类九轴的具体类别工程作为上方目标；类别和日期自动沿用，只整理时间覆盖相交的视频，九轴原件不动。' if attach else
+        self.scenario_hint.setText('选择已整理的牧场目录及类别；从来源大目录递归筛选视频，忽略九轴、标签和其他文件。起止日期可选，只补充覆盖所选九轴时段的录像。' if attach else
             '支持多层目录；只筛选九轴和录像。混合批次需先明确类别，各路摄像头的视角编号可在来源表调整。')
+        self.start_date.setPlaceholderText('留空不限日期；点击右侧日历选择起始日期' if attach else '留空自动读取真实日期；右侧日历可选择')
+        self.end_date.setPlaceholderText('可选结束日期（包含当日）')
         self.invalidate_plan()
 
     def source_specs(self):
@@ -389,7 +455,7 @@ class OrganizationWindow(QDialog):
 
     def preview_import(self):
         category = self.category.currentData()
-        if category == "pregnancy" and self.scenario.currentData()!='attach_video':
+        if category == "pregnancy":
             category = self.pregnancy_stage.currentData()
             if not category:
                 self.status.setText("请先选择孕期阶段：孕早期、孕中期或孕晚期。")
@@ -542,10 +608,10 @@ class OrganizationWindow(QDialog):
             if plan.get("mode") not in {"import", "normalize", "quarantine"} or not isinstance(plan.get("rows"), list):
                 raise ValueError("Invalid organization plan")
             self.target.setText(plan.get("resource_root", plan["target"]))
-            self.farm.setText(plan.get("farm", "扬大_高邮牧场"))
+            self.farm.setText(plan.get('farm_path', plan.get('farm', '')))
             self.transfer_mode.setCurrentIndex(max(0, self.transfer_mode.findData(plan.get("transfer", "copy"))))
-            self.start_date.setText(plan.get("start", ""))
-            self.end_date.setText(plan.get("end", ""))
+            self.start_date.setText(plan.get('requested_start', plan.get("start", "")))
+            self.end_date.setText(plan.get('requested_end', plan.get("end", "")))
             code = plan.get("category", "")
             self.scenario.setCurrentIndex(max(0,self.scenario.findData(plan.get('scenario','mixed'))))
             self.category.setCurrentIndex(max(0, self.category.findData("pregnancy" if code in PREGNANCY_STAGES else code)))
@@ -601,7 +667,7 @@ class OrganizationWindow(QDialog):
 
     def render(self):
         busy = self.running or self.pause_pending
-        for widget in (self.scenario,self.add_mixed_button,self.target, self.target_browse, self.sources, self.start_date, self.end_date, self.note, self.category, self.farm, self.transfer_mode, self.allow_partial,
+        for widget in (self.scenario,self.add_mixed_button,self.target, self.target_browse, self.sources, self.start_date, self.end_date, self.note, self.category, self.farm, self.farm_browse, self.transfer_mode, self.allow_partial,
                        self.audit_button, self.preview_button, self.normalize_button, self.resume_button, self.load_task_button, *self.add_buttons):
             widget.setEnabled(not busy)
         self.clean_button.setEnabled(not busy and bool(self.report and any(r.get("quarantine") for r in self.report["rows"])))
@@ -610,7 +676,7 @@ class OrganizationWindow(QDialog):
         self.cancel_button.setEnabled(self.running)
         self.pregnancy_stage.setEnabled(not busy and self.category.currentData() == "pregnancy")
         if self.scenario.currentData()=='attach_video':
-            for widget in (self.category,self.pregnancy_stage,self.start_date,self.end_date,self.farm,*self.add_buttons[:2]):
+            for widget in self.add_buttons[:2]:
                 widget.setEnabled(False)
         self.pause_project.setEnabled(not busy and bool(getattr(self.owner, "catalog", None)))
         self.export_button.setEnabled(not busy and bool(self.job and (self.job / "report.csv").is_file()))

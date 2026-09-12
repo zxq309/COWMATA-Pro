@@ -127,7 +127,8 @@ def test_cancelled_copy_holds_lease_and_resumes(tmp_path):
     plan = org.plan_import(tmp_path/'out', [{'path': str(good.parent), 'kind': 'imu'}], category='pregnancy_late', cache=tmp_path/'cache')
     done = []
     with pytest.raises(InterruptedError):
-        org.execute(plan, tmp_path/'job', cancelled=lambda: bool(done), progress=lambda *_: done.append(1))
+        org.execute(plan, tmp_path/'job', cancelled=lambda: bool(done),
+                    progress=lambda _n, _total, path: done.append(1) if Path(path).is_file() else None)
     with pytest.raises(OSError, match='未完成'):
         ensure_available([plan['target']])
     assert org.execute(plan, tmp_path/'job')['copied'] == 1

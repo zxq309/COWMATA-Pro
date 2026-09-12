@@ -393,9 +393,9 @@ class UpdateController(QObject):
             return
         self.info.setText(self.status)
         self.notes.setPlainText(self.update.get("notes", "") if self.update else tr(
-            "启动时必须完成最新版检查。检查或更新未完成时，请重试或退出；进入工程后可继续离线标注。"
+            "启动时检查最新版。网络异常或暂不更新时，可选择“进入软件”继续使用；进入工程后也可离线标注。"
             "\n原位置升级仅支持安装版，便携版/源码副本可下载安装包后手动安装。",
-            "Startup requires a successful latest-version check. Retry or exit if checking/updating fails; an open workspace can continue offline."
+            "Startup checks for updates. Choose Open application to work offline when the network is unavailable or to update later."
             "\nIn-place updates require an installed copy; source/portable copies support download for manual installation."))
         enabled = [not self.busy, bool(self.update) and not self.busy,
                    self.busy, bool(self.update) and not self.busy and not self.pending_job,
@@ -405,7 +405,7 @@ class UpdateController(QObject):
 
 
 class StartupUpdateController(UpdateController):
-    """Keep the workspace unopened until the current release is verified."""
+    """Offer automatic updates with an explicit path into the local client."""
 
     def __init__(self, window):
         super().__init__(window, automatic=False)
@@ -417,7 +417,7 @@ class StartupUpdateController(UpdateController):
         if update is None:
             self.window.accept()
             return
-        self.window.setWindowTitle(tr("必须更新后才能开始标注", "Update required before annotation"))
+        self.window.setWindowTitle(tr("发现软件更新，可稍后安装", "Update available; installation can wait"))
         self.window.version.setText(__version__ + " → " + update["version"])
         # Startup checks/downloads are mandatory, independent of optional
         # background reminders, saved preferences or previously dismissed UI.
@@ -435,7 +435,8 @@ class StartupUpdateController(UpdateController):
 
     def _failed(self, message):
         self.busy = False
-        self.status = tr("检查或更新未完成，请重试或退出：", "Check/update incomplete. Retry or exit: ") + message
+        self.pending_job = None
+        self.status = tr("更新暂未完成，可点击“进入软件”继续使用，或重试更新。\n原因：", "Update incomplete. Open the application to continue working, or retry.\nReason: ") + message
         self.render()
 
     def _progress(self, current, total):
@@ -458,8 +459,8 @@ class StartupUpdateDialog(QDialog):
         box = QVBoxLayout(self)
         self.version = QLabel("COWMATA Annotator " + __version__)
         box.addWidget(self.version)
-        instruction = QLabel(tr("发现更新将自动下载、校验并安装，完成后重新打开软件。\n更新完成前不能进入标注；只安装最新版，无须逐版更新。",
-                                "Updates download, verify and install automatically, then reopen the app.\nAnnotation starts only when up to date; intermediate releases are skipped."))
+        instruction = QLabel(tr("发现更新将下载、校验并安装，完成后重新打开软件。\n网络异常或暂不更新，可点击“进入软件”继续使用，无须逐版升级。",
+                                "Updates download, verify and install, then reopen the app.\nOpen the application to work offline or update later; intermediate releases are skipped."))
         instruction.setWordWrap(True)
         box.addWidget(instruction)
         self.info = QLabel()
@@ -471,16 +472,23 @@ class StartupUpdateDialog(QDialog):
         buttons = QHBoxLayout()
         self.retry = QPushButton(tr("重试更新", "Retry update"))
         self.folder = QPushButton(tr("打开安装包目录", "Open installer folder"))
+        self.continue_button = QPushButton(tr("进入软件（稍后更新）", "Open application (update later)"))
         leave = QPushButton(tr("退出软件", "Exit application"))
-        for button in (self.retry, self.folder, leave):
+        for button in (self.retry, self.folder, self.continue_button, leave):
             buttons.addWidget(button)
         box.addLayout(buttons)
         self.updater = StartupUpdateController(self)
         self.retry.clicked.connect(self.updater.check)
         self.folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.updater.setup.parent))) if self.updater.setup else None)
         leave.clicked.connect(self.reject)
+        self.continue_button.clicked.connect(self.continue_local)
         self.updater.render()
         QTimer.singleShot(0, self.updater.check)
+
+    def continue_local(self):
+        self.updater.stop.set()
+        self.updater.pending_job = None
+        self.accept()
 
 
 def verify_startup_update():
