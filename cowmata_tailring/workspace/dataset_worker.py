@@ -19,7 +19,20 @@ def main():
     def progress(current, total, path):
         print(json.dumps({'current':current,'total':total,'path':path},ensure_ascii=True),flush=True)
     try:
-        if request['action'] == 'legacy_preview':
+        if request['action'] in {'dataset_audit','behavior_build','decision_build'}:
+            from cowmata_tailring.workspace.behavior_dataset import (
+                audit_annotations,
+                build_behavior_dataset,
+                build_decision_dataset,
+            )
+            if request['action']=='dataset_audit':
+                result=audit_annotations(request['sources'],progress=progress,cancelled=cancelled)
+            elif request['action']=='behavior_build':
+                result=build_behavior_dataset(request['sources'],request['target'],behaviors=request.get('behaviors'),
+                    native_features=request.get('native_features',False),progress=progress,cancelled=cancelled)
+            else:
+                result=build_decision_dataset(request['sources'],request['target'],progress=progress,cancelled=cancelled)
+        elif request['action'] == 'legacy_preview':
             from cowmata_tailring.workspace.legacy_migration import plan_migration
             result = plan_migration(request['labels'],request['raw'],request['target'],category=request['category'],
                 identity_policy='review',progress=progress,cancelled=cancelled)

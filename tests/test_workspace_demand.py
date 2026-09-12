@@ -191,7 +191,7 @@ def test_save_progress_is_only_in_project_metadata(window):
 
 def test_native_menu_bar_tooltips_checkmark_and_update_location(window):
     titles = [a.text().split("(")[0] for a in window.menuBar().actions()]
-    assert titles == ["文件", "编辑", "视图", "工具", "数据整理", "行为识别", "健康与繁殖", "帮助"]
+    assert titles == ["文件", "编辑", "视图", "工具", "数据整理", "数据集构建", "行为识别", "健康与繁殖", "帮助"]
     assert not window.menuBar().isHidden()
     assert window.banner.isHidden() and window.alignment_label.isHidden()
     assert "check_visible.svg" in window.styleSheet()

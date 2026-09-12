@@ -12,6 +12,11 @@ def main():
     request = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
     root,title,pack = Path(request['dataset']),request['head'],Path(request['pack'])
     folder = root/'事件识别'/title
+    behavior=root/'行为数据集'/({'起立':'起立过程','卧倒':'卧倒过程'}.get(title,title))
+    if behavior.is_dir():
+        folder=behavior
+        if not (folder/'readiness.json').is_file():
+            raise ValueError('请先在行为构建中勾选生成已接入算法的训练特征。')
     readiness = json.loads((folder/'readiness.json').read_text(encoding='utf-8'))
     if not readiness['ready_to_fit']:
         raise ValueError(readiness['reason'])

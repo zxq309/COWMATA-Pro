@@ -177,13 +177,14 @@ class MainWindow(QMainWindow):
         files = self.menuBar().addMenu("工程")
         self._action(files, "打开数据工程…", self.choose_project, "Ctrl+O")
         self._action(files, "打开指定九轴 JSON…", self.choose_record, "Ctrl+J")
-        self._action(files, "保存人工成果", self.save_current, "Ctrl+S")
+        self._action(files, '打开单个视频并配对九轴…', self.choose_video_record)
+        self._action(files, "保存人工成果", self.save_user_annotations, "Ctrl+S")
         self._action(files, "导出当前成果…", self.export_work)
         self._action(files, "导出所选九轴片段（含标签）…", lambda: self.export_work(snippet=True))
         self._action(files, "打开历史标注回看…", self.open_history, "Ctrl+Shift+O")
         self._action(files, "接收多人标注成果…", self.import_team_labels)
         self._action(files, "训练与兼容格式（批量导出）…", self.export_training)
-        self._action(files, "旧标签迁移与算法数据集…", lambda: self.open_dataset_workflow(0))
+        self._action(files, "数据集构建…", lambda: self.open_dataset_workflow(1))
         self._action(files, "导入旧单视频工程…", self.import_legacy)
         self._action(files, "打开旧版单视频窗口", self.open_legacy)
         materials = self.menuBar().addMenu("素材")
@@ -375,7 +376,7 @@ class MainWindow(QMainWindow):
         self.cancel_action_button.hide()
         self._button("所选九轴区间 → 候选标注", self.mark_selection, row)
         self._button("确认所选草稿为真值", self.confirm_selected, row)
-        self._button("保存", self.save_current, row)
+        self._button("保存", self.save_user_annotations, row)
         bottom_layout.addLayout(row)
         editing = QHBoxLayout()
         self._button("九轴起止微调", self.refine_selected, editing)
@@ -454,29 +455,107 @@ class MainWindow(QMainWindow):
         QApplication.alert(self, 3000)
 
     def choose_project(self):
-        root = QFileDialog.getExistingDirectory(self, "选择包含九轴和多视角录像的工程目录")
-        if root:
-            self.open_project(root)
+        from .project_picker import ProjectPicker
+        settings=QSettings()
+        root = QFileDialog.getExistingDirectory(self, '第一步：选择本批数据所属的牧场根目录',
+            settings.value('workspace/last_farm','',type=str))
+        if not root:
+            return
+        dialog=ProjectPicker(root,self)
+        if dialog.exec()==QDialog.DialogCode.Accepted:
+            selected=dialog.selection()
+            settings.setValue('workspace/last_farm',selected['farm'])
+            self.open_project(selected['root'],day=selected['day'])
 
     def choose_record(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择任意原始九轴 JSON", str(self.catalog.root) if self.catalog else "", "JSON (*.json)")
+        if path:
+            self.open_standalone(path)
+
+    def choose_video_record(self):
+        video,_=QFileDialog.getOpenFileName(self,'选择单个录像文件','','Video (*.mp4 *.dav *.mkv *.avi *.ts *.mov *.h264 *.h265)')
+        if not video:
+            return
+        raw,_=QFileDialog.getOpenFileName(self,'选择与该录像配对的单个九轴文件','','JSON (*.json)')
+        if raw:
+            self.open_standalone(raw,video=video)
+
+    def open_standalone(self,raw,*,video=None,video_directory=None):
+        from .io_task import run_io_task
+        from .standalone import source_context
+        try:
+            root,day=run_io_task(self,'正在读取单个九轴的日期与来源…',lambda:source_context(raw))
+            if video is None and video_directory is None:
+                video_directory=root/'Video'/day
+                if not video_directory.is_dir():
+                    selected=QFileDialog.getExistingDirectory(self,'未找到当天 Video 目录；可选择该日录像目录，取消则仅加载九轴',str(root))
+                    video_directory=Path(selected) if selected else video_directory
+            self.open_project(root,preferred_json=Path(raw),day=day,
+                standalone=dict(raw=Path(raw),video=video,video_directory=video_directory))
+            if self.catalog and getattr(self.catalog,'standalone',False):
+                self.tell('单文件模式：点击保存时必须选择标注结果存放位置。原始九轴和录像不会被改写。')
+        except (OSError,ValueError,RuntimeError) as exc:
+            self.tell('单文件加载失败：'+str(exc))
+
+    def standalone_signature(self):
+        if not self.work:
+            return ''
+        value=self.work.to_dict()
+        value={k:v for k,v in value.items() if k not in {'progress','history_video'}}
+        value['camera_maps']=self.settings.get('camera_maps',{})
+        value['camera_overrides']=self.settings.get('camera_overrides',{})
+        return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+
+    def standalone_unsaved(self):
+        return bool(self.catalog and getattr(self.catalog,'standalone',False) and self.work
+            and (self.work.project.events or self.work.drafts or self.active_event or self.work.clock.basis=='manual' or self.settings.get('camera_maps'))
+            and self.standalone_signature()!=getattr(self,'_standalone_saved_signature',None))
+
+    def save_user_annotations(self,*_):
+        if not self.catalog or not getattr(self.catalog,'standalone',False):
+            self.save_current()
+            return not self.dirty
+        if not self.work or not self.motion:
+            self.tell('请等待九轴读取完成后再保存标注。')
+            return False
+        from .resource_layout import start_stamp
+        name=getattr(self,'_standalone_saved_path','') or str(self.catalog.default_label_path().with_name(start_stamp(self.motion.epoch_at(0))+'.标注.json'))
+        path,_=QFileDialog.getSaveFileName(self,'保存单文件标注：请选择并确认存放位置',name,'标注 JSON (*.标注.json *.json)')
         if not path:
-            return
-        path = Path(path).resolve()
-        if self.catalog and path.is_relative_to(self.catalog.root) and not path.is_relative_to(self.catalog.meta):
-            self.open_record_path(path)
-            return
-        root = QFileDialog.getExistingDirectory(self, "选择该九轴所属的工程根目录（含多视角录像）", str(path.parent))
-        if root:
-            if not path.is_relative_to(Path(root).resolve()):
-                self.tell("所选九轴不在这个工程目录内，请重新选择工程根目录。")
-                return
-            self.open_project(root, preferred_json=path)
+            return False
+        self.save_current()
+        if self.dirty:
+            return False
+        from .io_task import run_io_task
+        from .label_file import save_label_file
+        from .standalone import prepare_evidence, standalone_document
+        catalog,motion=self.catalog,self.motion
+        snapshot=SessionWork.from_dict(copy.deepcopy(self.work.to_dict()))
+        settings,rows=copy.deepcopy(self.settings),list(self.rows)
+        protected=[catalog.source_path(r['path']) for r in rows]
+        signature=self.standalone_signature()
+        def write_selected():
+            document=standalone_document(catalog,snapshot,motion,settings,rows)
+            prepare_evidence(catalog,document)
+            save_label_file(Path(path),document,protected=protected,evidence_root=catalog.meta)
+        try:
+            run_io_task(self,'正在保存所选位置的标注文件…',write_selected)
+        except (OSError,ValueError,RuntimeError) as exc:
+            self.tell('标注保存失败，内容仍在当前窗口：'+str(exc))
+            return False
+        self._standalone_saved_path=path
+        self._standalone_saved_signature=signature
+        self.root_label.setToolTip('标注保存位置：'+path)
+        self.tell('标注已保存到：'+path)
+        return True
 
     def open_record_path(self, path):
         path = Path(path).resolve()
         if not self.catalog or not path.is_relative_to(self.catalog.root) or path.is_relative_to(self.catalog.meta):
             raise ValueError("Choose an original JSON inside the open project")
+        if not self.catalog.in_scope(path.relative_to(self.catalog.root).as_posix()):
+            self.tell('此九轴不属于当前单日工程，请通过打开工程选择对应日期。')
+            return
         self.save_current()
         if self.dirty:
             return
@@ -700,7 +779,7 @@ class MainWindow(QMainWindow):
         catalog.close()
         self.retired = [(w, c) for w, c in self.retired if w is not worker]
 
-    def open_project(self, root, *, preferred_json=None):
+    def open_project(self, root, *, preferred_json=None, day=None, standalone=None):
         from .dataset_access import ensure_available
         if getattr(self, "_organization_pausing", False):
             self.tell("正在保存并暂停工程，请稍候再打开")
@@ -710,20 +789,36 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.tell(str(exc))
             return
+        if self.standalone_unsaved() and not self.save_user_annotations():
+            return
         self.save_current()
         if self.dirty and self.catalog and not self.catalog.readonly:
             return
         self._retire_project()
         try:
             self._load_started = time.monotonic()
-            self.catalog = Catalog(root, load_session=True)
+            if standalone:
+                import tempfile
+
+                from .standalone import StandaloneCatalog
+                cache=Path(tempfile.mkdtemp(prefix='cowmata-single-'))
+                self.catalog=StandaloneCatalog(**standalone,day=day,meta_path=cache)
+                self._standalone_saved_path=''
+                self._standalone_saved_signature=None
+            else:
+                self.catalog = Catalog(root, load_session=True,day=day)
             self.settings = self.catalog.settings()
+            self._daily_auto_views=bool(day and not self.settings.get('selected_cameras'))
+            if day:
+                self.settings['active_day']=day
+                if not self.catalog.in_scope(self.settings.get('current_path','')):
+                    self.settings.pop('current_path',None)
+                self._loading_path=None
             if preferred_json is not None:
                 preferred = Path(preferred_json).resolve().relative_to(self.catalog.root).as_posix()
                 self._loading_path = preferred
                 self.settings["current_path"] = preferred
-            saved_dir = self.catalog.meta / "annotations"
-            self._saved_work_assets = {p.stem for p in saved_dir.glob("*.json") if len(p.stem) == 64}
+            self._saved_work_assets = self.catalog.saved_work_assets()
             self.active_event = self.settings.get("active_event")
             if self.active_event:
                 self.active_event["assets"] = set(self.active_event["assets"])
@@ -734,7 +829,7 @@ class MainWindow(QMainWindow):
             self.motion_cache.clear()
             self.plot.clear_data()
             self.imu_position.set_clock(None)
-            self.root_label.setText("   " + str(self.catalog.root) + "   ")
+            self.root_label.setText("   " + str(self.catalog.root) + (" · "+day if day else "") + "   ")
             self.board.software_decode = self.settings.get("software_decode", False)
             self.layout_choice.setCurrentIndex(self.settings.get("layout", 0))
             self.strict.setChecked(self.settings.get("strict_sync", False))
@@ -782,9 +877,14 @@ class MainWindow(QMainWindow):
             self.tell(str(exc))
 
     def open_dataset_workflow(self, tab=0):
-        from .dataset_workflow_ui import DatasetWorkflowWindow
+        from .dataset_build_ui import DatasetBuildWindow
+        single=bool(self.catalog and getattr(self.catalog,'standalone',False))
+        if single and (not getattr(self,'_standalone_saved_path','') or self.standalone_unsaved()) and not self.save_user_annotations():
+            return
         if getattr(self, '_dataset_workflow_window', None) is None:
-            self._dataset_workflow_window = DatasetWorkflowWindow(self, tab)
+            self._dataset_workflow_window = DatasetBuildWindow(self, tab)
+        if single:
+            self._dataset_workflow_window.sources.setPlainText(self._standalone_saved_path)
         self._dataset_workflow_window.tabs.setCurrentIndex(tab)
         self._dataset_workflow_window.show()
         self._dataset_workflow_window.raise_()
@@ -910,7 +1010,8 @@ class MainWindow(QMainWindow):
             return
         if result is not None:
             self._last_scan_complete = result.complete
-            directories = [p for p in result.directories if Path(p) != self.catalog.root]
+            aliases=getattr(self.catalog,'virtual_directories',{})
+            directories = [aliases.get(p,p) for p in result.directories if Path(p) != self.catalog.root]
             # Directory root is watched too; ignore metadata-only notifications by
             # creating the single metadata directory before watcher registration.
             directories.insert(0, str(self.catalog.root))
@@ -990,7 +1091,9 @@ class MainWindow(QMainWindow):
         if (not self.motion or not self.work) and not timeline.intervals:
             matched = []
         elif str(self.devices.currentData()) not in self._manual_view_devices:
-            if not matched or covered and not any(c in covered for c in matched):
+            if getattr(self,'_daily_auto_views',False):
+                matched=camera_names[:8]
+            elif not matched or covered and not any(c in covered for c in matched):
                 matched = (covered or camera_names)[:1]
         previous = matched
         self.cameras.blockSignals(True)
@@ -1159,6 +1262,9 @@ class MainWindow(QMainWindow):
             return
         self.work.progress["status"] = "in_progress" if choice is save_exit else "done"
         self.dirty = True
+        if getattr(self.catalog,'standalone',False) and not self.save_user_annotations():
+            self.work.progress['status']='in_progress'
+            return
         self.save_current()
         if self.dirty:
             return
@@ -1301,7 +1407,7 @@ class MainWindow(QMainWindow):
         self.motion_cache[row["asset_id"]] = motion
         while len(self.motion_cache) > 2:
             self.motion_cache.popitem(last=False)
-        raw = read_json(self.catalog.work_path(row["asset_id"]), None)
+        raw = self.catalog.read_work(row['asset_id']) if getattr(self.catalog,'standalone',False) else read_json(self.catalog.work_path(row["asset_id"]), None)
         self.work = SessionWork.from_dict(raw) if raw else SessionWork(row["asset_id"])
         from .data_category import read_context
         if not self.work.project.extras.get("dataset_category"):
@@ -1337,6 +1443,7 @@ class MainWindow(QMainWindow):
             self.board.two_view_ratio = profile.get("two_view_ratio", 50)
             self.board.set_main(profile.get("main", self.settings.get("main_camera", self.board.main_camera)))
         self.work.project.source.update({"name": Path(row["path"]).name, "path": row["path"], "asset_id": row["asset_id"],
+                                         "project_root_hint":str(self.catalog.root),
                                          "device": motion.device, "uid": motion.uid, "durationMs": motion.duration_ms,
                                          "createTimeMs": motion.create_time_ms,
                                          "create_time_semantics": "device_acquisition_start",
@@ -1563,6 +1670,8 @@ class MainWindow(QMainWindow):
         previous = self._work_cache.get(cache_key)
         if previous is None or previous[0] != stamp:
             raw = read_json(path, None)
+            if raw:
+                raw=raw.get('work',raw)
             # Continuation needs only identity/alignment, not every annotation.
             brief = {"project": {"cow_id": raw.get("project", {}).get("cow_id")},
                      "clock": raw.get("clock", {})} if raw else None
@@ -1832,7 +1941,9 @@ class MainWindow(QMainWindow):
                         target.add_draft(index, active["start"], active["end"], active["evidence"] + active["end_evidence"], group_id=active["group_id"])
                     if target is self.work:
                         latest = next(d for d in target.drafts if d["group_id"] == active["group_id"])
-                    atomic_json(self.catalog.work_path(asset_id), target.to_dict())
+                    from .annotation_store import updated_work
+                    destination=self.catalog.work_path(asset_id)
+                    atomic_json(destination,updated_work(destination,target))
             except (OSError, ValueError, TypeError, KeyError) as exc:
                 self.dirty = True
                 self.refresh_events()
@@ -2304,7 +2415,14 @@ class MainWindow(QMainWindow):
             snapshot = []
             if self.work:
                 self.work.progress.update(imu_ms=self.imu_ms, reference_ms=self.board.reference_ms)
-                snapshot.append((self.catalog.work_path(self.work.asset_id), copy.deepcopy(self.work.to_dict())))
+                destination=self.catalog.work_path(self.work.asset_id,for_write=True)
+                if self.catalog.dated_annotations and self.motion:
+                    from .annotation_store import LAYOUT, work_document
+                    snapshot.append((destination,work_document(self.catalog,self.work,self.motion,self.settings)))
+                    if not (self.catalog.meta/'annotation-layout.json').is_file():
+                        snapshot.append((self.catalog.meta/'annotation-layout.json',{'schema':LAYOUT}))
+                else:
+                    snapshot.append((destination,copy.deepcopy(self.work.to_dict())))
                 if self.current_row:
                     self.settings.setdefault("review_progress", {})[self.current_row["path"]] = {
                         "asset_id": self.work.asset_id, "stamp": self.current_stamp,
@@ -2325,7 +2443,7 @@ class MainWindow(QMainWindow):
                 "order": [self.cameras.item(i).text() for i in range(self.cameras.count())],
                 "layout": self.layout_choice.currentIndex(), "two_view_ratio": self.board.two_view_ratio}
             self.settings["active_event"] = {**self.active_event, "assets": sorted(self.active_event["assets"])} if self.active_event else None
-            snapshot.append((self.catalog.meta / "project.json", copy.deepcopy(self.settings)))
+            snapshot.append((self.catalog.settings_path(), copy.deepcopy(self.settings)))
             if background:
                 self.snapshot_writer.submit(snapshot)
             else:
@@ -2482,9 +2600,9 @@ class MainWindow(QMainWindow):
             self.tell("请先在九轴波形上拖选要保存的片段")
             return
         from .label_file import build_label_file, save_label_file
-        suffix = ".片段.标注.json" if snippet else ".标注.json"
-        range_name = f"_{min(self.selection) / 1000:.3f}-{max(self.selection) / 1000:.3f}s" if snippet else ""
-        name = self.motion.source_path.stem + "_" + self.work.asset_id[:8] + range_name + suffix
+        from .resource_layout import start_stamp
+        start=self.motion.epoch_at(min(self.selection) if snippet else 0)
+        name=start_stamp(start,milliseconds=snippet)+'.标注.json'
         path, _ = QFileDialog.getSaveFileName(self, "保存一个标注文件（可放在任意位置）", name, "JSON (*.json)")
         if not path:
             return
@@ -2692,6 +2810,11 @@ class MainWindow(QMainWindow):
             self.save_timer.stop()  # Do not autosave while choosing Discard.
             choice = self._close_choice or self.confirm_close()
             if choice == "cancel":
+                self.save_timer.start()
+                event.ignore()
+                return
+            if choice=='save' and self.standalone_unsaved() and not self.save_user_annotations():
+                self._close_choice=None
                 self.save_timer.start()
                 event.ignore()
                 return

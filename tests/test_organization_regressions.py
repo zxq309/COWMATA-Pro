@@ -209,6 +209,7 @@ def test_gui_organize_then_open_preserves_collection_category(tmp_path, monkeypa
         wait_for(lambda: not dialog.running)
         assert dialog.open_button.isEnabled(), dialog.status.text()
         assert destination.is_file() and source.exists()
+        monkeypatch.setattr(window,'choose_project',lambda:window.open_project(scope,day='2026-09-01'))
         dialog.open_result()
         wait_for(lambda: window.work is not None)
         assert window.catalog.root == scope
@@ -217,7 +218,7 @@ def test_gui_organize_then_open_preserves_collection_category(tmp_path, monkeypa
         assert len(beats) >= 2
         window.save_current()
         saved = json.loads(window.catalog.work_path(window.work.asset_id).read_text(encoding="utf-8"))
-        assert saved["project"]["dataset_category"] == category
+        assert saved.get('work',saved)["project"]["dataset_category"] == category
     finally:
         timer.stop()
         if dialog.running:

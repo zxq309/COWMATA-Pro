@@ -156,6 +156,16 @@ class OrganizationWindow(QDialog):
         audit_actions.addStretch()
         audit_box.addLayout(audit_actions)
         box = QVBoxLayout(classify_page)
+        scenario_row=QHBoxLayout()
+        scenario_row.addWidget(QLabel('整理场景'))
+        self.scenario=QComboBox()
+        self.scenario.addItem('九轴与视频一起整理','mixed')
+        self.scenario.addItem('九轴已归类，仅补整理视频','attach_video')
+        scenario_row.addWidget(self.scenario)
+        box.addLayout(scenario_row)
+        self.scenario_hint=QLabel('支持多层目录；只筛选九轴和录像。混合批次需先明确类别，各路摄像头的视角编号可在来源表调整。')
+        self.scenario_hint.setWordWrap(True)
+        box.addWidget(self.scenario_hint)
         self.sources = QTableWidget(0, 3)
         self.sources.setHorizontalHeaderLabels(["素材类型", "来源绝对路径（文件或目录）", "固定视角"])
         self.sources.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -178,6 +188,9 @@ class OrganizationWindow(QDialog):
             add_bar.addWidget(button)
             self.add_buttons.append(button)
         box.addLayout(add_bar)
+        self.add_mixed_button=QPushButton('添加混合大目录（递归筛选）…')
+        self.add_mixed_button.clicked.connect(self.add_mixed_directory)
+        box.addWidget(self.add_mixed_button)
         form = QFormLayout()
         dates = QHBoxLayout()
         self.start_date, self.end_date = QLineEdit(), QLineEdit()
@@ -224,9 +237,6 @@ class OrganizationWindow(QDialog):
         self.normalize_button.clicked.connect(lambda: self.start_job({"action": "normalize", "target": self.target.text().strip()}))
         classify_actions.addWidget(self.preview_button)
         classify_actions.addWidget(self.normalize_button)
-        self.legacy_dataset_button = QPushButton("旧标签与算法数据集…")
-        self.legacy_dataset_button.clicked.connect(lambda: self.owner.open_dataset_workflow(0))
-        classify_actions.addWidget(self.legacy_dataset_button)
         classify_actions.addStretch()
         box.addLayout(classify_actions)
         report_box = QVBoxLayout(report_page)
@@ -288,6 +298,7 @@ class OrganizationWindow(QDialog):
         self.category.currentIndexChanged.connect(self.invalidate_plan)
         self.category.currentIndexChanged.connect(lambda: self.pregnancy_stage.setEnabled(self.category.currentData() == "pregnancy" and not self.running))
         self.pregnancy_stage.currentIndexChanged.connect(self.invalidate_plan)
+        self.scenario.currentIndexChanged.connect(self.scenario_changed)
         self.render()
 
     @property
@@ -319,15 +330,17 @@ class OrganizationWindow(QDialog):
     def add_source(self, kind, path, camera="视角01"):
         row = self.sources.rowCount()
         self.sources.insertRow(row)
-        item = QTableWidgetItem("九轴" if kind == "imu" else "录像")
+        item = QTableWidgetItem("九轴" if kind == "imu" else "混合" if kind=='auto' else "录像")
         item.setData(Qt.ItemDataRole.UserRole, kind)
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.sources.setItem(row, 0, item)
         self.sources.setItem(row, 1, QTableWidgetItem(str(path)))
         combo = QComboBox()
+        combo.addItem('按目录识别','auto')
         combo.addItems(VIEWS)
-        combo.setCurrentText(camera)
-        combo.setEnabled(kind == "video")
+        if camera!='auto':
+            combo.setCurrentText(camera)
+        combo.setEnabled(kind in {'video','auto'})
         combo.currentTextChanged.connect(self.invalidate_plan)
         self.sources.setCellWidget(row, 2, combo)
         self.invalidate_plan()
@@ -342,22 +355,32 @@ class OrganizationWindow(QDialog):
         patterns = " ".join("*" + ext for ext in sorted(VIDEO_SUFFIXES))
         paths, _ = QFileDialog.getOpenFileNames(self, "选择单个或多个录像", "", "Video (" + patterns + ")")
         for path in paths:
-            self.add_source("video", path)
+            self.add_source("video", path, 'auto')
 
     def add_directory(self, kind):
         path = QFileDialog.getExistingDirectory(self, "选择九轴目录" if kind == "imu" else "选择一路录像目录")
         if path:
-            used = sum(self.sources.item(i, 0).data(Qt.ItemDataRole.UserRole) == "video" for i in range(self.sources.rowCount()))
-            self.add_source(kind, path, VIEWS[min(used, 7)])
+            self.add_source(kind, path, 'auto')
 
     def remove_source(self):
         for row in sorted({i.row() for i in self.sources.selectedIndexes()}, reverse=True):
             self.sources.removeRow(row)
         self.invalidate_plan()
 
+    def add_mixed_directory(self):
+        path=QFileDialog.getExistingDirectory(self,'选择含九轴或视频的多层目录')
+        if path:
+            self.add_source('auto',path,'auto')
+
+    def scenario_changed(self):
+        attach=self.scenario.currentData()=='attach_video'
+        self.scenario_hint.setText('选择已归类九轴的具体类别工程作为上方目标；类别和日期自动沿用，只整理时间覆盖相交的视频，九轴原件不动。' if attach else
+            '支持多层目录；只筛选九轴和录像。混合批次需先明确类别，各路摄像头的视角编号可在来源表调整。')
+        self.invalidate_plan()
+
     def source_specs(self):
         return [{"kind": self.sources.item(i, 0).data(Qt.ItemDataRole.UserRole),
-                 "path": self.sources.item(i, 1).text().strip(), "camera": self.sources.cellWidget(i, 2).currentText()}
+                 "path": self.sources.item(i, 1).text().strip(), "camera": self.sources.cellWidget(i, 2).currentData() or self.sources.cellWidget(i, 2).currentText()}
                 for i in range(self.sources.rowCount())]
 
     def start_audit(self):
@@ -366,14 +389,15 @@ class OrganizationWindow(QDialog):
 
     def preview_import(self):
         category = self.category.currentData()
-        if category == "pregnancy":
+        if category == "pregnancy" and self.scenario.currentData()!='attach_video':
             category = self.pregnancy_stage.currentData()
             if not category:
                 self.status.setText("请先选择孕期阶段：孕早期、孕中期或孕晚期。")
                 return
         self.start_job({"action": "import", "target": self.target.text().strip(), "sources": self.source_specs(),
                         "start": self.start_date.text().strip(), "end": self.end_date.text().strip(), "note": self.note.text(),
-                        "category": category, "farm": self.farm.text().strip(), "transfer": self.transfer_mode.currentData()})
+                        "category": category, "farm": self.farm.text().strip(), "transfer": self.transfer_mode.currentData(),
+                        "scenario":self.scenario.currentData()})
 
     def preview_quarantine(self):
         if self.report:
@@ -467,6 +491,15 @@ class OrganizationWindow(QDialog):
                 self.open_button.setEnabled(result["mode"] != "quarantine")
             else:
                 self.plan, self.plan_job = result, self.job
+                if result.get('scenario')=='attach_video':
+                    code=result['category']
+                    self.category.blockSignals(True)
+                    self.pregnancy_stage.blockSignals(True)
+                    self.category.setCurrentIndex(self.category.findData('pregnancy' if code in PREGNANCY_STAGES else code))
+                    if code in PREGNANCY_STAGES:
+                        self.pregnancy_stage.setCurrentIndex(self.pregnancy_stage.findData(code))
+                    self.category.blockSignals(False)
+                    self.pregnancy_stage.blockSignals(False)
                 self.partial_changed(self.allow_partial.isChecked())
                 self.status.setText("设备命名需先规范：请逐项核对建议并人工修改来源目录后重新审查。本批禁止执行，有效九轴原件保留。" if naming_issues else
                                     "预览完成，尚未移动文件。核对来源、目标和异常后点击执行；本批按真实日期归档，支持跨盘复制。")
@@ -514,12 +547,13 @@ class OrganizationWindow(QDialog):
             self.start_date.setText(plan.get("start", ""))
             self.end_date.setText(plan.get("end", ""))
             code = plan.get("category", "")
+            self.scenario.setCurrentIndex(max(0,self.scenario.findData(plan.get('scenario','mixed'))))
             self.category.setCurrentIndex(max(0, self.category.findData("pregnancy" if code in PREGNANCY_STAGES else code)))
             self.pregnancy_stage.setCurrentIndex(max(0, self.pregnancy_stage.findData(code)))
             self.note.setText(plan.get("note", ""))
             self.sources.setRowCount(0)
             for spec in plan["sources"]:
-                if spec.get("kind") in {"imu", "video"}:
+                if spec.get("kind") in {"imu", "video", "auto"}:
                     self.add_source(spec["kind"], spec["path"], spec.get("camera", VIEWS[0]))
         except (OSError, ValueError, KeyError, TypeError) as exc:
             self.status.setText(str(exc))
@@ -556,7 +590,7 @@ class OrganizationWindow(QDialog):
 
     def open_result(self):
         if not self.running and self.target.text().strip():
-            self.owner.open_project(getattr(self, "completed_target", self.target.text().strip()))
+            self.owner.choose_project()
             self.owner.raise_()
 
     def export_report(self):
@@ -567,7 +601,7 @@ class OrganizationWindow(QDialog):
 
     def render(self):
         busy = self.running or self.pause_pending
-        for widget in (self.target, self.target_browse, self.sources, self.start_date, self.end_date, self.note, self.category, self.farm, self.transfer_mode, self.allow_partial,
+        for widget in (self.scenario,self.add_mixed_button,self.target, self.target_browse, self.sources, self.start_date, self.end_date, self.note, self.category, self.farm, self.transfer_mode, self.allow_partial,
                        self.audit_button, self.preview_button, self.normalize_button, self.resume_button, self.load_task_button, *self.add_buttons):
             widget.setEnabled(not busy)
         self.clean_button.setEnabled(not busy and bool(self.report and any(r.get("quarantine") for r in self.report["rows"])))
@@ -575,6 +609,9 @@ class OrganizationWindow(QDialog):
                                                      and (self.plan.get("allow_partial") or not any(r["status"] in {"blocked", "invalid"} for r in self.plan["rows"]))))
         self.cancel_button.setEnabled(self.running)
         self.pregnancy_stage.setEnabled(not busy and self.category.currentData() == "pregnancy")
+        if self.scenario.currentData()=='attach_video':
+            for widget in (self.category,self.pregnancy_stage,self.start_date,self.end_date,self.farm,*self.add_buttons[:2]):
+                widget.setEnabled(False)
         self.pause_project.setEnabled(not busy and bool(getattr(self.owner, "catalog", None)))
         self.export_button.setEnabled(not busy and bool(self.job and (self.job / "report.csv").is_file()))
 

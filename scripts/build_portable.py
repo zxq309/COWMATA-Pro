@@ -88,24 +88,23 @@ def main():
     for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ("workspace-acceptance.md", "portable-components.md", "algorithm-phase1-acceptance.md", "ui-next-stage-proposal.md", "ui-phase2-acceptance.md", "ui-performance-acceptance.md", "annotation-history-acceptance.md", "event-models-acceptance.md", "windows-distribution.md", "ocr-lightweight-integration.md", "live-demos.md"):
-        shutil.copy2(input_path("docs/" + name), destination / "docs" / name)
+    for name in ("daily-project-guide.html", "legacy-dataset-workflow.md", "release-350.md",
+                 "capture-timing.md", "client-updates.md", "evidence-archive.md", "team-returns.md",
+                 "native-video-timing.md", "algorithm-inspection.md", "portable-components.md"):
+        shutil.copy2(source / "docs" / name, destination / "docs" / name)
+    shutil.copytree(source / "docs/images", destination / "docs/images")
     (destination / "scripts").mkdir()
-    for name in ("capture-timing.md", "client-updates.md", "evidence-archive.md", "on-demand-indexing.md", "team-returns.md", "native-video-timing.md", "playback-performance-312.md", "algorithm-inspection.md", "release-320-validation.md", "release-321-validation.md", "release-321.md", "data-organization.md", "release-330.md", "release-330-validation.md", "code-audit-330.md", "quick-start-illustrated.pdf", "quick-start-illustrated.md", "quick-start-illustrated.source.json", "quick-start-illustrated.manifest.json", "manual-330-validation.md", "manual-330-capture-evidence.json"):
-        shutil.copy2(input_path("docs/" + name), destination / "docs" / name)
-    for name in ("portable_self_test.py", "build_portable.py", "verify_label_history.py", "verify_event_models.py", "verify_candidate_ui.py", "register_event_pack.py", "verify_evidence_archive.py", "train_mother_dataset.py"):
+    for name in ("portable_self_test.py", "verify_label_history.py", "verify_event_models.py",
+                 "verify_candidate_ui.py", "register_event_pack.py", "verify_evidence_archive.py",
+                 "train_mother_dataset.py"):
         shutil.copy2(source / "scripts" / name, destination / "scripts" / name)
-    for name in ("release-331.md", "release-331-validation.md", "playback-annotation-fix-20260910.md", "manual-331-validation.md", "manual-331-capture-evidence.json", "release-332.md", "release-332-validation.md", "manual-332-validation.md", "release-340.md", "release-341.md", "release-341-validation.md"):
-        shutil.copy2(source / "docs" / name, destination / "docs" / name)
-    for name in ("release-342.md", "release-342-validation.md", "legacy-dataset-workflow.md", "release-343.md", "release-343-validation.md"):
-        shutil.copy2(source / "docs" / name, destination / "docs" / name)
     inventory = []
     for path in sorted(destination.rglob("*")):
         if path.is_file():
             with path.open("rb") as stream:
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
             inventory.append({"path": path.relative_to(destination).as_posix(), "size": path.stat().st_size, "sha256": digest})
-    (destination / "package-manifest.json").write_text(json.dumps({"files": inventory}, indent=2), encoding="utf-8")
+    (destination / "package-manifest.json").write_text(json.dumps({"version": "3.5.0", "files": inventory}, indent=2), encoding="utf-8")
     print(json.dumps({"directory": str(destination), "files": len(inventory), "bytes": sum(x["size"] for x in inventory)}), flush=True)
     if not args.no_zip:
         with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=3) as bundle:

@@ -12,6 +12,7 @@ from pathlib import Path
 from .catalog import digest_file
 from .label_file import build_label_file, read_index, read_label_file
 from .legacy_labels import normalized_cow
+from .resource_layout import dataset_filename
 from .storage import atomic_json
 from .work import SessionWork
 
@@ -39,6 +40,11 @@ def _write_table(path, rows, fields):
 def _documents(source):
     source = Path(source).resolve(strict=True)
     current_assets = set()
+    from .annotation_store import dated_documents
+    for path in dated_documents(source):
+        document=read_label_file(path)
+        current_assets.add(document['source']['asset_id'])
+        yield path,document
     work_directory = source/'标注工程/annotations'
     if source.is_dir() and work_directory.is_dir():
         from cowmata_tailring.annotation.data import load_motion_json
@@ -49,6 +55,8 @@ def _documents(source):
             locations.update({r['sha256']:r['path'] for r in json.loads(registry.read_text(encoding='utf-8')).get('records',[]) if r['kind']=='imu'})
         for saved in sorted(work_directory.glob('*.json')):
             work = SessionWork.from_dict(json.loads(saved.read_text(encoding='utf-8')))
+            if work.asset_id in current_assets:
+                continue
             current_assets.add(work.asset_id)
             if not work.project.events:
                 continue
@@ -73,24 +81,36 @@ def _documents(source):
             yield path, document
 
 
+def _source_scopes(sources):
+    """A farm selection uses each category's current saved work and raw registry."""
+    result = []
+    for source in sources:
+        source = Path(source).resolve(strict=True)
+        nested = sorted({p.parent for p in source.rglob('标注工程') if p.is_dir()}) if source.is_dir() and not (source/'标注工程').is_dir() else []
+        result.extend(nested or [source])
+    return list(dict.fromkeys(result))
+
+
 def _all_documents(sources):
     seen = set()
-    for source in sources:
+    for source in _source_scopes(sources):
         for path, document in _documents(source):
             if path not in seen:
                 seen.add(path)
                 yield path, document
 
 
-def export_dataset(source, target, *, split_map=None, progress=lambda *_:None, cancelled=lambda:False):
+def export_dataset(source, target, *, split_map=None, views=True, progress=lambda *_:None, cancelled=lambda:False):
     target = Path(target).resolve()
     if target.exists():
         raise ValueError('数据集目标已存在；请使用新批次目录，避免覆盖旧训练集')
-    source_roots = [Path(p).resolve() for p in source] if isinstance(source, (list,tuple)) else [Path(source).resolve()]
+    source_roots = _source_scopes(source if isinstance(source, (list,tuple)) else [source])
     if any(p == target or p in target.parents for p in source_roots):
         raise ValueError('数据集不能导出到标注来源内部')
     target.mkdir(parents=True)
     sources, events, inputs = {}, [], []
+    manual_bindings = {}
+    manual_conflicts = set()
     for index, (path, doc) in enumerate(_all_documents(source_roots)):
         if cancelled():
             raise InterruptedError('数据集导出已暂停；未完成目录不可作为训练集')
@@ -117,6 +137,21 @@ def export_dataset(source, target, *, split_map=None, progress=lambda *_:None, c
                                   'sha256':asset, 'capture_timing':doc['source'].get('capture_timing', {})}
         inputs.append({'path':str(path), 'sha256':digest_file(path)})
         identity = work.project.extras.get('device_identity', {})
+        if asset in sources:
+            cow = normalized_cow(work.project.cow_id)
+            prior = sources[asset]
+            same_cow = not prior.get('cow_id') or prior['cow_id'] == cow
+            timing = doc['source'].get('capture_timing', {})
+            prior.update(cow_id=cow, device_id=identity.get('device_id') or doc['source'].get('device',''),
+                field_mark=identity.get('field_mark',''),
+                record_start_ms=timing.get('sample_start_epoch_ms'),
+                record_end_ms=timing.get('sample_end_epoch_ms'),
+                identity_eligible=prior.get('identity_eligible',True) and same_cow and bool(cow)
+                    and identity.get('status') not in {'conflict','blocked'})
+        if identity.get('status')=='manual_override' and identity.get('manual_cow_id')==normalized_cow(work.project.cow_id):
+            if asset in manual_bindings and manual_bindings[asset]['cow_id']!=normalized_cow(work.project.cow_id):
+                manual_conflicts.add(asset)
+            manual_bindings[asset]={**identity,'cow_id':normalized_cow(work.project.cow_id)}
         for event in work.project.events:
             label = work.project.labels[event.li]
             legacy = event.extras.get('legacy', {})
@@ -152,7 +187,8 @@ def export_dataset(source, target, *, split_map=None, progress=lambda *_:None, c
         raise ValueError('未找到新版单文件母标签；请先保存并导出标注')
     # Decision models need continuous recordings, including unlabelled packets.
     # Only canonical registered sources are included; review archives stay separate.
-    conflict_devices = {e['device_id'] for e in events if e['exclusion_reason']=='identity_review' and e['device_id']}
+    conflict_assets = ({e['source_asset_id'] for e in events if e['exclusion_reason']=='identity_review'} |
+        {asset for asset,row in sources.items() if row.get('identity_eligible') is False} | manual_conflicts)
     for scope in source_roots:
         registry = scope/'资源索引.json'
         if not registry.is_file():
@@ -163,6 +199,9 @@ def export_dataset(source, target, *, split_map=None, progress=lambda *_:None, c
             if cancelled():
                 raise InterruptedError('连续九轴导出已暂停')
             asset = record['sha256']
+            if asset in manual_bindings and asset not in manual_conflicts:
+                record={**record,**{k:manual_bindings[asset].get(k,record.get(k)) for k in ('cow_id','device_id','field_mark')},
+                        'identity_status':'manual_override'}
             original = (scope/record['path']).resolve()
             if not original.is_relative_to(scope) or digest_file(original) != asset:
                 raise ValueError('连续九轴来源校验失败：'+str(original))
@@ -173,13 +212,22 @@ def export_dataset(source, target, *, split_map=None, progress=lambda *_:None, c
                 if digest_file(destination) != asset:
                     raise ValueError('连续九轴副本校验失败')
                 sources[asset] = {'asset_id':asset,'path':destination.relative_to(target).as_posix(),'sha256':asset}
+            prior_cow=sources[asset].get('cow_id')
+            if prior_cow and record.get('cow_id') and prior_cow!=record['cow_id']:
+                conflict_assets.add(asset)
             sources[asset].update({k:record.get(k) for k in ('cow_id','device_id','field_mark','record_start_ms','record_end_ms')})
-            sources[asset]['identity_eligible'] = bool(record.get('cow_id')) and record.get('device_id') not in conflict_devices
+            sources[asset]['identity_eligible'] = bool(record.get('cow_id')) and asset not in conflict_assets and record.get('identity_status')!='conflict'
             sources[asset]['source_project'] = str(scope)
             sources[asset]['source_path'] = record['path']
             progress(len(sources),0,record['path'])
     unique = {}
     for event in events:
+        binding=manual_bindings.get(event['source_asset_id'])
+        if (event['source_asset_id'] in conflict_assets or
+                sources.get(event['source_asset_id'],{}).get('identity_eligible') is False or
+                binding and event['cow_id']!=binding['cow_id']):
+            event['training_eligible']=False
+            event['exclusion_reason']='identity_review'
         if event['event_id'] in unique:
             prior = unique[event['event_id']]
             # A conflict in any copy is never silently promoted by another copy.
@@ -195,6 +243,21 @@ def export_dataset(source, target, *, split_map=None, progress=lambda *_:None, c
         raise ValueError('Invalid cow split')
     for event in events:
         event['split'] = splits.get(event['cow_id'],'unassigned') if event['training_eligible'] else 'review'
+    for record in sources.values():
+        start=record.get('record_start_ms') or record.get('capture_timing',{}).get('sample_start_epoch_ms')
+        if start is None or not record.get('device_id'):
+            from cowmata_tailring.annotation.data import load_motion_json
+            motion=load_motion_json(target/record['path'])
+            if start is None:
+                start=motion.epoch_at(0)
+            record['device_id']=record.get('device_id') or motion.device
+        destination=target/'原始JSON'/dataset_filename(record.get('cow_id'),record.get('device_id'),start,'.json')
+        original=target/record['path']
+        if original!=destination:
+            if destination.exists():
+                raise ValueError('耳标、设备和起始时间相同的九轴存在不同版本，请先复核')
+            original.rename(destination)
+            record['path']=destination.relative_to(target).as_posix()
     for filename, rows in [('events.jsonl',events),('sources.jsonl',list(sources.values()))]:
         with (target/filename).open('w',encoding='utf-8') as stream:
             for row in rows:
@@ -202,10 +265,21 @@ def export_dataset(source, target, *, split_map=None, progress=lambda *_:None, c
     fields = ['event_id','source_asset_id','cow_id','device_id','field_mark','dataset_category','code','label','type',
               'coordinates','start_ms','end_ms','start_epoch_ms','end_epoch_ms','role','split','training_eligible','exclusion_reason']
     _write_table(target/'母标签.csv',events,fields)
-    for code,title in EVENT_HEADS.items():
+    label_tables={}
+    for event in events:
+        record=sources.get(event['source_asset_id'],{})
+        start=record.get('record_start_ms') or record.get('capture_timing',{}).get('sample_start_epoch_ms') or event['start_epoch_ms']
+        if start is None:
+            continue
+        name=dataset_filename(record.get('cow_id') or event['cow_id'],record.get('device_id') or event['device_id'],start,'.标注.csv')
+        label_tables.setdefault(name,[]).append(event)
+    for name,values in label_tables.items():
+        _write_table(target/'标注'/name,values,fields)
+    for code,title in EVENT_HEADS.items() if views else []:
         selected = [e for e in events if e['code']==code or code in e['negative_for']]
         _write_table(target/'事件识别'/title/'events.csv',selected,fields)
-    _write_table(target/'综合决策/产犊与行为.csv',events,fields)
+    if views:
+        _write_table(target/'综合决策/产犊与行为.csv',events,fields)
     atomic_json(target/'cow-splits.json',splits)
     atomic_json(target/'PPG/预留.json',{'status':'reserved','channels':[],'annotations':[]})
     counts = Counter(e['role'] if e['training_eligible'] else 'review' for e in events)

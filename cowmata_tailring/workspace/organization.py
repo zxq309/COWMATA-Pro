@@ -423,7 +423,8 @@ def relocate_metadata(plan, job, *, validate_only=False):
                             db.execute("UPDATE assets SET metadata=? WHERE id=?", (json.dumps(changed, ensure_ascii=False), asset))
             finally:
                 db.close()
-        for path in [meta / "project.json", *sorted((meta / "annotations").glob("*.json"))]:
+        from .annotation_store import dated_documents
+        for path in [meta / "project.json", *sorted((meta / "annotations").glob("*.json")),*dated_documents(root),*sorted((meta/'.会话').glob('*.json'))]:
             if not path.is_file():
                 continue
             raw = path.read_bytes()

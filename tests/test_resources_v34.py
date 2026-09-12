@@ -48,7 +48,7 @@ def test_copy_and_repeat_resume_cross_midnight(tmp_path):
     p = record(tmp_path)
     target = tmp_path / 'resources'
     specs = [{'path': str(p.parent), 'kind': 'imu'}]
-    plan = org.plan_import(target, specs, category='pregnancy', cache=tmp_path/'cache')
+    plan = org.plan_import(target, specs, category='pregnancy_late', cache=tmp_path/'cache')
     assert [r['status'] for r in plan['rows']] == ['ready']
     row = plan['rows'][0]
     assert row['covered_dates'] == ['2026-08-03', '2026-08-04']
@@ -57,7 +57,7 @@ def test_copy_and_repeat_resume_cross_midnight(tmp_path):
     assert result['copied'] == 1 and p.exists()
     assert Path(row['target']).read_bytes() == p.read_bytes()
     assert org.execute(plan, tmp_path/'job')['copied'] == 0
-    again = org.plan_import(target, specs, category='pregnancy', cache=tmp_path/'cache')
+    again = org.plan_import(target, specs, category='pregnancy_late', cache=tmp_path/'cache')
     assert again['rows'][0]['status'] == 'existing'
     assert org.execute(again, tmp_path/'job2')['copied'] == 0
     scope = Path(result['target'])
@@ -74,7 +74,7 @@ def test_copy_and_repeat_resume_cross_midnight(tmp_path):
 
 def test_original_changed_after_plan_stops(tmp_path):
     p = record(tmp_path)
-    plan = org.plan_import(tmp_path/'resources', [{'path': str(p), 'kind': 'imu'}], category='pregnancy', cache=tmp_path/'cache')
+    plan = org.plan_import(tmp_path/'resources', [{'path': str(p), 'kind': 'imu'}], category='pregnancy_late', cache=tmp_path/'cache')
     p.write_text('{}')
     with pytest.raises(ValueError, match='来源已变化'):
         org.execute(plan, tmp_path/'job')
@@ -107,7 +107,7 @@ def test_partial_import_keeps_invalid_original_and_reports_it(tmp_path):
     value = json.loads(good.read_text())
     value['imu'] = base64.b64encode(bytes(19)).decode()
     bad.write_text(json.dumps(value))
-    plan = org.plan_import(tmp_path/'out', [{'path': str(good.parent), 'kind': 'imu'}], category='pregnancy', cache=tmp_path/'cache')
+    plan = org.plan_import(tmp_path/'out', [{'path': str(good.parent), 'kind': 'imu'}], category='pregnancy_late', cache=tmp_path/'cache')
     with pytest.raises(ValueError):
         org.execute(plan, tmp_path/'job')
     plan['allow_partial'] = True
@@ -124,7 +124,7 @@ def test_cancelled_copy_holds_lease_and_resumes(tmp_path):
     value = json.loads(good.read_text())
     value['create_time'] += 1000
     second.write_text(json.dumps(value))
-    plan = org.plan_import(tmp_path/'out', [{'path': str(good.parent), 'kind': 'imu'}], category='pregnancy', cache=tmp_path/'cache')
+    plan = org.plan_import(tmp_path/'out', [{'path': str(good.parent), 'kind': 'imu'}], category='pregnancy_late', cache=tmp_path/'cache')
     done = []
     with pytest.raises(InterruptedError):
         org.execute(plan, tmp_path/'job', cancelled=lambda: bool(done), progress=lambda *_: done.append(1))
@@ -145,7 +145,7 @@ def test_legacy_writer_lock_and_annotations(tmp_path):
     sha = digest_file(good)
     saved = {'asset_id': sha, 'project': {'source': {'path': 'one.json'}, 'labels': [{'human': 'keep'}]}}
     atomic_json(meta/'annotations'/f'{sha}.json', saved)
-    plan = org.plan_import(tmp_path/'out', [{'path': str(old), 'kind': 'imu'}], category='pregnancy', cache=tmp_path/'cache')
+    plan = org.plan_import(tmp_path/'out', [{'path': str(old), 'kind': 'imu'}], category='pregnancy_late', cache=tmp_path/'cache')
     lock = ProjectLock(meta/'writer.lock')
     try:
         with pytest.raises(OSError, match='仍在标注'):
@@ -170,7 +170,7 @@ def test_video_timestamp_naming_and_unverified_clock_blocks(tmp_path, monkeypatc
         return {'needs_review': False, 'intervals': [{'wall_start':lo, 'wall_end':lo+10000,
                  'media_start':0, 'media_end':10000, 'verified': True}]}
     monkeypatch.setattr(SourceInspector, 'video', verified)
-    plan = org.plan_import(tmp_path/'out', [{'path':str(source),'kind':'video','camera':'视角08'}], category='pregnancy',cache=tmp_path/'cache')
+    plan = org.plan_import(tmp_path/'out', [{'path':str(source),'kind':'video','camera':'视角08'}], category='pregnancy_late',cache=tmp_path/'cache')
     row = plan['rows'][0]
     assert row['covered_dates'] == ['2026-08-03','2026-08-04']
     assert Path(row['target']).name == '2026-08-03_23-59-55.mp4'
@@ -181,7 +181,7 @@ def test_video_timestamp_naming_and_unverified_clock_blocks(tmp_path, monkeypatc
     hint = SourceInspector(scope, scope/'标注工程').video_hint(Path(row['target']))
     assert hint['start_ms'] == lo and hint['end_ms'] == lo+10000
     monkeypatch.setattr(SourceInspector,'video',lambda *_: {'needs_review': True, 'intervals': []})
-    bad = org.plan_import(tmp_path/'out', [{'path':str(source),'kind':'video','camera':'视角08'}], category='pregnancy',cache=tmp_path/'other-cache')
+    bad = org.plan_import(tmp_path/'out', [{'path':str(source),'kind':'video','camera':'视角08'}], category='pregnancy_late',cache=tmp_path/'other-cache')
     assert bad['rows'][0]['status'] == 'blocked'
     with pytest.raises(ValueError):
         org.execute(bad,tmp_path/'job')
@@ -195,7 +195,7 @@ def test_move_preserves_file_identity_and_redirects_old_project(tmp_path):
     good = record(tmp_path)
     old = good.parent
     atomic_json(old/'标注工程/project.json', {'current_path':'one.json'})
-    plan = org.plan_import(tmp_path/'out', [{'path':str(old),'kind':'imu'}],category='pregnancy',cache=tmp_path/'cache',transfer='move')
+    plan = org.plan_import(tmp_path/'out', [{'path':str(old),'kind':'imu'}],category='pregnancy_late',cache=tmp_path/'cache',transfer='move')
     before = identity(good)
     result = org.execute(plan,tmp_path/'job')
     assert result['same_volume_moved'] == 1 and result['copied'] == 0
@@ -209,7 +209,7 @@ def test_move_preserves_file_identity_and_redirects_old_project(tmp_path):
 def test_move_resumes_after_atomic_rename_before_journal(tmp_path, monkeypatch):
     from cowmata_tailring.workspace import organization as core
     good = record(tmp_path)
-    plan = org.plan_import(tmp_path/'out', [{'path':str(good),'kind':'imu'}],category='pregnancy',cache=tmp_path/'cache',transfer='move')
+    plan = org.plan_import(tmp_path/'out', [{'path':str(good),'kind':'imu'}],category='pregnancy_late',cache=tmp_path/'cache',transfer='move')
     original = core.move_no_replace
     def crash(source,destination):
         original(source,destination)
@@ -255,11 +255,11 @@ def test_verified_hash_cache_invalidates_changed_source(tmp_path):
 def test_later_batch_keeps_previous_exception_report(tmp_path):
     import csv
     good = record(tmp_path)
-    plan = org.plan_import(tmp_path/'out', [{'path':str(good),'kind':'imu'}], category='pregnancy',cache=tmp_path/'cache')
+    plan = org.plan_import(tmp_path/'out', [{'path':str(good),'kind':'imu'}], category='pregnancy_late',cache=tmp_path/'cache')
     plan['allow_partial'] = True
     plan['rows'].append({'source':str(tmp_path/'broken.json'),'status':'invalid','message':'broken original'})
     org.execute(plan,tmp_path/'job1')
-    later = org.plan_import(tmp_path/'out', [{'path':str(good),'kind':'imu'}],category='pregnancy',cache=tmp_path/'cache')
+    later = org.plan_import(tmp_path/'out', [{'path':str(good),'kind':'imu'}],category='pregnancy_late',cache=tmp_path/'cache')
     org.execute(later,tmp_path/'job2')
     with (Path(plan['target'])/'整理异常.csv').open(encoding='utf-8-sig',newline='') as f:
         assert [r['source'] for r in csv.DictReader(f)] == [str(tmp_path/'broken.json')]
@@ -276,7 +276,7 @@ def test_native_clock_preferred_pending_and_conflicting_ocr(tmp_path,monkeypatch
               'samples':[] if ocr_offset is None else [{'media_ms':1000,'wall_ms':lo+1000+ocr_offset,'ocr':{'success':True}}],
               'intervals':[{'wall_start':lo,'wall_end':lo+2000,'media_start':0,'media_end':2000,'verified':False}]}
     monkeypatch.setattr(SourceInspector,'video',lambda *_:metadata)
-    row=org.plan_import(tmp_path/'out',[{'path':str(source),'kind':'video','camera':'视角01'}],category='pregnancy',cache=tmp_path/'cache')['rows'][0]
+    row=org.plan_import(tmp_path/'out',[{'path':str(source),'kind':'video','camera':'视角01'}],category='pregnancy_late',cache=tmp_path/'cache')['rows'][0]
     if ocr_offset==86400000:
         assert row['status']=='blocked'
     else:
@@ -290,7 +290,7 @@ def test_native_clock_preferred_pending_and_conflicting_ocr(tmp_path,monkeypatch
 def test_zero_filled_video_is_reported_without_decoder(tmp_path):
     p=tmp_path/'blank.mp4'
     p.write_bytes(bytes(4096))
-    row=org.plan_import(tmp_path/'out',[{'path':str(p),'kind':'video','camera':'视角01'}],category='pregnancy',cache=tmp_path/'cache')['rows'][0]
+    row=org.plan_import(tmp_path/'out',[{'path':str(p),'kind':'video','camera':'视角01'}],category='pregnancy_late',cache=tmp_path/'cache')['rows'][0]
     assert row['status']=='blocked' and '零字节' in row['message']
     assert p.read_bytes()==bytes(4096)
 
@@ -307,7 +307,7 @@ def test_verified_ocr_uses_native_start_even_when_ocr_rounds_to_previous_second(
         'needs_review': False, 'intervals': [{'wall_start': lo, 'wall_end': lo+10000,
         'media_start': 0, 'media_end': 10000, 'verified': True}]})
     row = org.plan_import(tmp_path/'out', [{'path': str(source), 'kind': 'video', 'camera': '视角01'}],
-                          category='pregnancy', cache=tmp_path/'cache')['rows'][0]
+                          category='pregnancy_late', cache=tmp_path/'cache')['rows'][0]
     assert row['status'] == 'ready'
     assert Path(row['target']).name == '2026-08-03_12-00-01.mp4'
     assert row['record_start_ms'] == lo+1000-28800000
@@ -326,7 +326,7 @@ def test_second_precision_name_collision_never_silently_skips_different_video(tm
         'needs_review': False, 'intervals': [{'wall_start': lo, 'wall_end': lo+2000,
         'media_start': 0, 'media_end': 2000, 'verified': True}]})
     plan = org.plan_import(tmp_path/'out', [{'path': str(source), 'kind': 'video', 'camera': '视角01'}],
-                           category='pregnancy', cache=tmp_path/'cache')
+                           category='pregnancy_late', cache=tmp_path/'cache')
     assert [r['status'] for r in plan['rows']] == ['ready', 'skip' if same_content else 'blocked']
     assert Path(plan['rows'][0]['target']).name == '2026-08-03_12-00-00.mp4'
     assert all(p.exists() for p in source.iterdir())

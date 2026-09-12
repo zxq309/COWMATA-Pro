@@ -128,8 +128,11 @@ class MainWindow(ControllerWindow):
         self._action(organize, "数据归类…", lambda: self.open_organization(1))
         self._action(organize, "数据异常报告…", lambda: self.open_organization(2))
         self._action(organize, "导出标准 MP4 副本…", self.export_standard_video)
-        self._action(organize, "旧标签迁移…", lambda: self.open_dataset_workflow(0))
-        self._action(organize, "从标注生成算法数据集…", lambda: self.open_dataset_workflow(1))
+        datasets = self.menuBar().addMenu('数据集构建(&G)')
+        for index,title in enumerate(('标签与来源检查…','按行为与耳标构建…','综合决策数据集…','按牛划分与构建说明…')):
+            self._action(datasets,title,lambda _checked=False,tab=index:self.open_dataset_workflow(tab))
+        datasets.addSeparator()
+        datasets.addMenu(self._annotation_exports)
         self._build_algorithm_menus()
         help_menu = self.menuBar().addMenu("帮助(&H)")
         from cowmata_tailring.ui.about import show_about
@@ -238,7 +241,7 @@ class MainWindow(ControllerWindow):
         annotation.addWidget(self.mark_button)
         self.event_toggle = self._icon_button("Text Bullet List", "标注列表", self.toggle_events, annotation)
         self.event_toggle.setCheckable(True)
-        self._icon_button("Save", "保存", self.save_current, annotation)
+        self._icon_button("Save", "保存", self.save_user_annotations, annotation)
         self._button("完成本份…", self.finish_record, annotation).setToolTip("确认整份已检查，选择下一份或保存退出；Ctrl+Enter")
         review.addLayout(annotation)
         self.event_status.setStyleSheet("font-size:11px; color:#6b8179")
@@ -353,7 +356,14 @@ class MainWindow(ControllerWindow):
             menu = self.menuBar().addMenu(title)
             menu.setToolTipsVisible(True)
             for spec in specs:
-                action = self._action(menu, spec.title, lambda _checked=False, s=spec: self.open_algorithm(s))
+                if spec.domain=='health' and spec.code.startswith('PREGNANCY_'):
+                    pregnancy=next((a.menu() for a in menu.actions() if a.text()=='怀孕'),None)
+                    if pregnancy is None:
+                        pregnancy=menu.addMenu('怀孕')
+                    owner_menu=pregnancy
+                else:
+                    owner_menu=menu
+                action = self._action(owner_menu, spec.title, lambda _checked=False, s=spec: self.open_algorithm(s))
                 action.setCheckable(True)
                 action.setToolTip("单摄像头算法检查 · " + ("对应标签 " + spec.code if spec.domain == "behavior" else "待接入，不生成健康结论"))
                 self.algorithm_group.addAction(action)
@@ -422,6 +432,9 @@ class MainWindow(ControllerWindow):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         path = Path(__file__).resolve().parents[2] / "docs/quick-start-illustrated.pdf"
+        current = Path(__file__).resolve().parents[2] / 'docs/daily-project-guide.html'
+        if current.is_file():
+            path = current
         if path.is_file():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
         else:
@@ -429,13 +442,18 @@ class MainWindow(ControllerWindow):
 
     def _organize_menus(self, files, materials, sync, edit, view, tools):
         """One-level categories; existing actions retain handlers and shortcuts."""
-        exports = QMenu("导出", self)
+        exports = QMenu('标注分享与片段', self)
+        self._annotation_exports=exports
         legacy = QMenu("旧版兼容", self)
         collaboration = QMenu("多人协作", self)
         evidence = QMenu("标注与证据", self)
         for menu in (files, materials, sync, edit, view):
             for action in list(menu.actions()):
                 original = action.text()
+                if menu is files and original=='数据集构建…':
+                    menu.removeAction(action)
+                    action.deleteLater()
+                    continue
                 action.setToolTip(original)
                 action.setStatusTip(original)
                 target = None
@@ -469,7 +487,6 @@ class MainWindow(ControllerWindow):
                 if short:
                     action.setText(short)
             menu.setToolTipsVisible(True)
-        files.addMenu(exports)
         files.addMenu(legacy)
         tools.addMenu(collaboration)
         edit.addMenu(evidence)
@@ -551,13 +568,26 @@ class MainWindow(ControllerWindow):
         text = self.record_search.text().strip().casefold()
         index = getattr(self.catalog, "resource_index", {}) if self.catalog else {}
         records = {r["path"]: r for r in index.get("records", [])}
-        days = index.get("dates", [])
+        import re
+
+        from .resource_layout import covered_days
+        active_day=getattr(self.catalog,'day',None)
+        for row in self.rows:
+            if row['kind']!='imu' or row['path'] in records:
+                continue
+            timing=row['metadata'].get('capture_timing',{})
+            lo,hi=timing.get('sample_start_epoch_ms'),timing.get('sample_end_epoch_ms')
+            coverage=covered_days(lo,hi+1) if lo is not None and hi is not None else [p for p in Path(row['path']).parts[:-1] if re.fullmatch(r'\d{4}-\d{2}-\d{2}',p)]
+            records[row['path']]={'covered_dates':coverage}
+        days=[active_day] if active_day else index.get('dates') or sorted({d for r in records.values() for d in r.get('covered_dates',[])})
+        self.date_choice.setEnabled(not active_day)
         if getattr(self, "_resource_days", None) != days:
             self._resource_days = days
             current = self.date_choice.currentData()
             self.date_choice.blockSignals(True)
             self.date_choice.clear()
-            self.date_choice.addItem("全部采集日期", "")
+            if not active_day:
+                self.date_choice.addItem("全部采集日期", "")
             for day in days:
                 self.date_choice.addItem(day, day)
             self.date_choice.setCurrentIndex(max(0, self.date_choice.findData(current)))
@@ -620,10 +650,10 @@ class MainWindow(ControllerWindow):
         QMessageBox.information(self, "逐份标注 · 快速开始",
             "1. 新数据先进入「数据整理」：选择采集类别，检查命名、审查并按日期归类。\n"
             "   九轴目录：完整设备编号-牛耳标号-现场记号；同设备跨日期复用分别保留。\n"
-            "2. 文件 → 打开工程：已有工程可直接打开；选择九轴后自动检索对应录像。\n"
+            "2. 打开工程：先确认牧场，再选择类别、Motion 和一个日期；同步检索当天录像。\n"
             "3. 核对设备、牛耳标、现场记号及时间同步，再观察录像并标注。\n"
             "4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n"
-            "5. 复核后在「文件 → 导出」输出完整成果、所选片段或训练数据。\n\n"
+            "5. 标注自动按日期保存；在「数据集构建」生成行为数据集或分享标注片段。\n\n"
             "未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n"
             "未检索不等于无录像。未找到时可用「工具 → 录像索引 → 扩大当前检索」。\n"
             "更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。")
@@ -676,10 +706,10 @@ class MainWindow(ControllerWindow):
         self.stage.pip_position = (1.0, 0.0)
         self.stage.arrange()
 
-    def open_project(self, root, *, preferred_json=None):
+    def open_project(self, root, *, preferred_json=None, day=None, standalone=None):
         self.exit_algorithm()
         self.banner.hide()
-        super().open_project(root, preferred_json=preferred_json)
+        super().open_project(root, preferred_json=preferred_json,day=day,standalone=standalone)
         if not self.catalog:
             return
         self.restore_presentation(self.settings.get("presentation", {}))

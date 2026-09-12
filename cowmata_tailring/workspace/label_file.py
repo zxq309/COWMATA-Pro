@@ -22,6 +22,7 @@ import numpy as np
 from cowmata_tailring.annotation.core import Project
 from cowmata_tailring.annotation.data import load_motion_json, parse_motion_object
 
+from .annotation_store import FORMAT
 from .catalog import (
     META_DIR,
     assert_not_being_written,
@@ -32,8 +33,6 @@ from .catalog import (
 from .clocks import ClockMap, VideoTimeline, intervals_from_rows
 from .storage import atomic_json
 from .work import SessionWork
-
-FORMAT = "cowmata-annotation"
 
 
 def contained(root, relative):
@@ -169,18 +168,38 @@ def read_label_file(path):
     end = max([float(work.project.source.get("durationMs") or 0)] +
               [e.t1 if e.t1 is not None else e.t0 for e in work.project.events])
     return {"format": FORMAT, "version": 1, "coordinates": "parent_imu_ms", "legacy": True,
-            "work": work.to_dict(), "source": {"asset_id": work.asset_id, "path": work.project.source.get("path", "")},
-            "view": {"start_ms": 0, "end_ms": end}, "video": {}, "embedded_imu": None}
+            "work": work.to_dict(), "source": {**work.project.source,"asset_id": work.asset_id, "path": work.project.source.get("path", "")},
+            "view": {"start_ms": 0, "end_ms": end}, "video": copy.deepcopy(work.history_video), "embedded_imu": None}
 
 
 def read_index(root):
     path = Path(root) / META_DIR / "index.sqlite"
-    if not path.is_file():
-        return [], {}
-    with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
-        db.row_factory = sqlite3.Row
-        rows = [{**dict(r), "metadata": json.loads(r["metadata"] or "{}")} for r in db.execute(
-            "SELECT l.*,a.metadata FROM locations l LEFT JOIN assets a ON l.asset_id=a.id ORDER BY l.path")]
+    rows=[]
+    if path.is_file():
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
+            db.row_factory = sqlite3.Row
+            rows = [{**dict(r), "metadata": json.loads(r["metadata"] or "{}")} for r in db.execute(
+                "SELECT l.*,a.metadata FROM locations l LEFT JOIN assets a ON l.asset_id=a.id ORDER BY l.path")]
+    registry=Path(root)/'资源索引.json'
+    if registry.is_file():
+        by_path={r['path']:r for r in rows}
+        for record in json.loads(registry.read_text(encoding='utf-8')).get('records',[]):
+            if record.get('kind') not in {'imu','video'} or not record.get('sha256'):
+                continue
+            current=by_path.get(record['path'])
+            if current and current.get('asset_id')==record['sha256'] and current['state'] in {'ready','review'}:
+                continue
+            try:
+                source=contained(root,record['path'])
+                if not source.is_file() or source.stat().st_size!=record.get('size'):
+                    continue
+            except (OSError,ValueError):
+                continue
+            metadata=record.get('metadata',{})
+            by_path[record['path']]={'path':record['path'],'kind':record['kind'],'asset_id':record['sha256'],
+                'state':'review' if metadata.get('needs_review') else 'ready','stamp':'archive_requires_sha256',
+                'metadata':metadata}
+        rows=list(by_path.values())
     settings_file = path.parent / "project.json"
     settings = json.loads(settings_file.read_text(encoding="utf-8-sig")) if settings_file.is_file() else {}
     return rows, settings
@@ -196,8 +215,18 @@ class HistoryData:
     timeline: VideoTimeline
     warnings: list[str]
 
+    def source_path(self,relative):
+        row=next((r for r in self.rows if r['path']==relative),{})
+        if row.get('resolved_source'):
+            return Path(row['resolved_source'])
+        local=contained(self.root,relative)
+        if local.is_file():
+            return local
+        return Path(row['external_source']).resolve() if row.get('external_source') else local
+
 
 def load_history(path, root=None, *, cancelled=lambda: False):
+    explicit_root=root is not None
     doc = read_label_file(path)
     work = SessionWork.from_dict(doc["work"])
     if doc.get("coordinates") == "unix_epoch_ms":
@@ -206,6 +235,9 @@ def load_history(path, root=None, *, cancelled=lambda: False):
             [f"旧人工标签：绝对时间记录；未连接九轴，不生成虚构波形。另有 {unknown} 条记录待核，原行随文件保留。"])
     hint = doc["source"].get("project_root_hint", "")
     root = Path(root).resolve() if root else Path(hint).resolve() if hint and Path(hint).is_dir() else None
+    if root is None and not explicit_root:
+        root=next((p for p in Path(path).resolve().parents if
+            all((p/name).is_dir() for name in ('Motion','Video','PPG','标注工程'))),None)
     warnings = []
     from .evidence import evidence_summary
     stills = evidence_summary(doc, Path(path).parent)
@@ -271,6 +303,18 @@ def load_history(path, root=None, *, cancelled=lambda: False):
     elif not work.clock.anchors:
         warnings.append("没有可用九轴采集时间或校准锚点；不会用文件名或服务器收包时间对齐视频。")
     saved = doc.get("video", {})
+    video_root_hint=saved.get('archive',{}).get('archive_root_hint') or hint
+    saved_ids={r['asset_id'] for r in saved.get('rows',[])}
+    local_match=any(r['kind']=='video' and r.get('asset_id') in saved_ids for r in rows)
+    has_local_video=any(r['kind']=='video' for r in rows)
+    if not explicit_root and not local_match and (saved.get('rows') or not has_local_video and saved.get('archive')) and video_root_hint and Path(video_root_hint).is_dir():
+        root=Path(video_root_hint).resolve()
+        try:
+            rows,settings=read_index(root)
+        except (OSError,ValueError,sqlite3.Error):
+            rows,settings=[],{}
+    elif local_match:
+        video_root_hint=hint
     maps = {k: ClockMap.from_dict(v) for k, v in {**settings.get("camera_maps", {}), **saved.get("camera_maps", {})}.items()}
     overrides = {**settings.get("camera_overrides", {}), **saved.get("camera_overrides", {})}
     saved_rows = saved.get("rows", [])
@@ -302,16 +346,18 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         seen.add(row["path"])
         try:
             source = contained(root, row["path"])
+            if row.get('external_source') and (not source.is_file() or not explicit_root and Path(row['external_source']).is_file()):
+                source=Path(row['external_source']).resolve(strict=True)
             before = file_stamp(source)
             assert_not_being_written(source)
             # Stored stamps are only a fast path at the original root. A moved
             # project is checked against SHA-256 before archived timing is used.
-            if root != Path(hint) or before != row["stamp"]:
+            if root != Path(video_root_hint) or before != row["stamp"]:
                 if digest_file(source) != row["asset_id"]:
                     raise OSError("Different video content")
             if before != file_stamp(source):
                 raise OSError("Changing video")
-            usable.append({**row, "stamp": before, "metadata": bind_location_metadata(row["metadata"], before)})
+            usable.append({**row, "stamp": before,"resolved_source":str(source), "metadata": bind_location_metadata(row["metadata"], before)})
         except OSError:
             warnings.append("录像缺失或已变化：" + row["path"])
     timeline = VideoTimeline(intervals_from_rows(usable, overrides), maps)

@@ -180,11 +180,25 @@ class SourceInspector:
         self.opening_cache = None
         self.last_motion = None
         self.timezone_minutes = int(read_json(self.meta / "project.json", {}).get("timezone_offset_minutes", 480))
-        self.resource_records = {r["path"]: r for r in read_json(self.root / "资源索引.json", {}).get("records", [])}
+        self._resource_records = None
+
+    @property
+    def resource_records(self):
+        if self._resource_records is None:
+            self._resource_records={r['path']:r for r in read_json(self.root/'资源索引.json',{}).get('records',[])}
+        return self._resource_records
+
+    def relative_path(self,path):
+        try:
+            return path.relative_to(self.root)
+        except ValueError:
+            # Explicit single-file pairings may live on different volumes.
+            import hashlib
+            return Path('external')/hashlib.sha256(str(path.parent).encode()).hexdigest()[:12]/path.name
 
     def video_hint(self, path: Path) -> dict:
         """Cheap routing OSD; never a verified interval or evidence identity."""
-        resource = self.resource_records.get(path.relative_to(self.root).as_posix())
+        resource = self.resource_records.get(self.relative_path(path).as_posix())
         if resource:
             offset = resource.get("timezone_offset_minutes", 480) * 60000
             return {"start_ms": resource["record_start_ms"] + offset,
@@ -236,7 +250,7 @@ class SourceInspector:
                     "update_time_ms": motion.update_time_ms, "version": motion.version,
                     "warnings": motion.warnings, "time_semantics": "device_acquisition_start",
                     "capture_timing": motion.capture_timing(), "needs_review": False}
-        resource = self.resource_records.get(path.relative_to(self.root).as_posix())
+        resource = self.resource_records.get(self.relative_path(path).as_posix())
         if resource and resource.get("sha256") == asset_id:
             metadata = copy.deepcopy(resource["metadata"])
             timeline = metadata.get("timeline", {})
@@ -256,7 +270,7 @@ class SourceInspector:
             self.ocr = self.ocr or TimestampOCR()
         if not deferred and hasattr(self.ocr, "engine"):
             self.ocr.engine.cancelled = self.stop.is_set
-        profile_key = f"native|{path.parent.relative_to(self.root)}|{native['family']}|{video.get('width')}"
+        profile_key = f"native|{self.relative_path(path).parent}|{native['family']}|{video.get('width')}"
         samples, warnings = [], []
         saved_roi = roi or self.roi_hints.get(profile_key) or ((.4, .82, 1, 1) if native["family"].startswith("shenmo") else (0, 0, .8, .18))
         frame_dir = self.meta / "previews"
@@ -340,7 +354,7 @@ class SourceInspector:
         if not verified:
             warnings.append("原生时间已读取，画面抽查未全部确认；仅供粗定位，需复核后保存证据")
         start = native["wall_start"]
-        folder = camera_folder(path.relative_to(self.root).as_posix())
+        folder = camera_folder(self.relative_path(path).as_posix())
         corner = "unknown"
         if saved_roi:
             corner = ("top" if (saved_roi[1]+saved_roi[3])/2 < .5 else "bottom") + ("_left" if (saved_roi[0]+saved_roi[2])/2 < .5 else "_right")
@@ -410,7 +424,7 @@ class SourceInspector:
         if not roi and family_hint and family_hint.get("family") == "hikvision-hk1":
             layout = "hd_no_weekday" if video.get("width") == 2560 else "sd_with_weekday"
         saved_roi = roi
-        hint_key = "|".join(map(str, (path.relative_to(self.root).parts[0], video.get("width"), video.get("height"))))
+        hint_key = "|".join(map(str, (self.relative_path(path).parts[0], video.get("width"), video.get("height"))))
         frame_allowance = 45 if layout in {"hd_no_weekday", "sd_with_weekday"} else 12
         ocr_deadline = time.monotonic() + max(60, frame_allowance * 3)
         for number, target in enumerate(sorted(targets)):
@@ -510,7 +524,7 @@ class SourceInspector:
         if saved_roi:
             self.roi_hints[hint_key] = saved_roi
             atomic_json(self.meta / "ocr_profiles.json", self.roi_hints)
-        relative = path.relative_to(self.root)
+        relative = self.relative_path(path)
         folder = camera_folder(relative.as_posix())
         # Folder is only a tentative grouping; separate visibly different layouts.
         corner = "unknown"

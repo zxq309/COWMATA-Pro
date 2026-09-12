@@ -33,7 +33,7 @@ from .clocks import wall_text
 from .dataset_access import DatasetLease
 from .evidence import context_matches
 from .evidence_ui import EvidenceGallery
-from .label_file import contained, load_history, read_label_file
+from .label_file import load_history, read_label_file
 from .materials import GLASS_STYLE, FrostedCanvas, apply_mica
 from .presentation import PresentationVideoBoard
 from .signal_panel import SignalPanel, reference_text
@@ -164,9 +164,15 @@ class HistoryWindow(QMainWindow):
         path = self.path
 
         def guarded_load():
-            hint = read_label_file(path)["source"].get("project_root_hint", "")
+            document=read_label_file(path)
+            hint = document["source"].get("project_root_hint", "")
             selected = root or (hint if hint and Path(hint).is_dir() else None)
-            lease = DatasetLease([selected]) if selected else None
+            selected_roots=[selected] if selected else []
+            archive=document.get('video',{}).get('archive',{}).get('archive_root_hint')
+            if root is None and archive and Path(archive).is_dir():
+                selected_roots.append(archive)
+            selected_roots.extend(r['external_source'] for r in document.get('video',{}).get('rows',[]) if r.get('external_source'))
+            lease = DatasetLease(selected_roots) if selected_roots else None
             if lease:
                 self.source_leases.append(lease)
             try:
@@ -236,7 +242,7 @@ class HistoryWindow(QMainWindow):
             self.events.addItem(item)
         if data.root:
             facade = SimpleNamespace(root=data.root, meta=Path(self.cache.name), readonly=True,
-                                     source_path=lambda relative: contained(data.root, relative))
+                                     source_path=data.source_path)
             self.board.configure(facade, data.rows, data.timeline)
         self.cameras.blockSignals(True)
         preferred = data.document.get("video", {}).get("selected_cameras", []) or data.timeline.cameras[:8]
@@ -323,7 +329,7 @@ class HistoryWindow(QMainWindow):
             if not interval or interval.asset_id in self.board.blocked_assets:
                 continue
             try:
-                if file_stamp(contained(self.data.root, interval.path)) == self.board.source_stamps.get(interval.path):
+                if file_stamp(self.data.source_path(interval.path)) == self.board.source_stamps.get(interval.path):
                     continue
             except OSError:
                 pass

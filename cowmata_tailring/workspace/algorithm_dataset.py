@@ -169,6 +169,8 @@ def main():
     import pandas as pd
     request = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
     root,title,pack = Path(request['dataset']),request['head'],request['pack']
+    output=Path(request.get('output',str(root/'事件识别'/title))).resolve()
+    output.relative_to(root.resolve())
     events = [json.loads(line) for line in (root/'events.jsonl').read_text(encoding='utf-8').splitlines()]
     sources = [json.loads(line) for line in (root/'sources.jsonl').read_text(encoding='utf-8').splitlines()]
     splits = json.loads((root/'cow-splits.json').read_text(encoding='utf-8'))
@@ -195,13 +197,13 @@ def main():
         print(json.dumps(dict(head=title,current=i+1,total=len(sources))),flush=True)
     x = pd.concat(xs,ignore_index=True) if xs else pd.DataFrame()
     m = pd.concat(ms,ignore_index=True) if ms else pd.DataFrame(columns=['candidate_id','session_key','cow_group','spot_s','role','event_id','split'])
-    result = save_consumer(root/'事件识别'/title,title,x,m,audit)
+    result = save_consumer(output,title,x,m,audit)
     matched = set(m.loc[m.role.eq('P'),'event_id'])
     unmatched = [e for e in events if e['code']==CODES[title] and e['training_eligible'] and e['event_id'] not in matched]
-    pd.DataFrame(unmatched).to_csv(root/'事件识别'/title/'unmatched_events.csv',index=False,encoding='utf-8-sig')
+    pd.DataFrame(unmatched).to_csv(output/'unmatched_events.csv',index=False,encoding='utf-8-sig')
     result['unmatched_events'] = len(unmatched)
     result['source_errors'] = sum(bool(q.get('error')) for q in audit)
-    (root/'事件识别'/title/'readiness.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+    (output/'readiness.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
 
 
 if __name__ == '__main__':

@@ -18,6 +18,21 @@ VIDEO_SUFFIXES = {".mp4", ".mkv", ".avi", ".dav", ".h264", ".h265", ".ts", ".mov
 EXCLUDE_DIRS = {META_DIR, ".git", ".venv", "__pycache__", "node_modules", "runtime", "dist"}
 
 
+def previous_video_files(video,day):
+    if not video.is_dir():
+        return
+    previous=sorted((p for p in video.iterdir() if p.is_dir() and not p.is_symlink()
+        and not getattr(p,'is_junction',lambda:False)() and re.fullmatch(r'\d{4}-\d{2}-\d{2}',p.name) and p.name<day),reverse=True)
+    if not previous:
+        return
+    for view in previous[0].iterdir():
+        if not view.is_dir() or view.is_symlink() or getattr(view,'is_junction',lambda:False)():
+            continue
+        files=sorted((p for p in view.iterdir() if p.is_file() and not p.is_symlink() and p.suffix.lower() in VIDEO_SUFFIXES),key=lambda p:p.name)
+        if files:
+            yield files[-1]
+
+
 class SourceBusyError(OSError):
     pass
 
@@ -101,13 +116,24 @@ class Catalog:
     """
 
     def __init__(self, root: Path | str, *, stability_seconds: float = 3.0,
-                 load_session: bool = False, meta_path: Path | None = None, organization_owner=None):
+                 load_session: bool = False, meta_path: Path | None = None, organization_owner=None, day=None):
         from .resource_layout import resource_context
         self.root = resource_context(Path(root).resolve(strict=True))
         if not self.root.is_dir():
             raise ValueError("请选择工程文件夹")
-        self.resource_index = read_json(self.root / "资源索引.json", {})
+        self.day = day
+        if day:
+            from datetime import date
+            date.fromisoformat(day)
+            if not (self.root/'Motion'/day).is_dir():
+                raise ValueError('所选日期没有九轴目录')
+        self._extra_day_paths = set()
+        # The full resource registry can contain large video packet indexes.
+        # It is not needed to open a daily catalog or recover human work.
+        self.resource_index = {}
+        self._resource_records = None
         self.meta = Path(meta_path).resolve() if meta_path else self.root / META_DIR
+        self.dated_annotations=bool(day or read_json(self.meta/'annotation-layout.json',{}).get('schema')=='dated-annotations-v1')
         if self.meta.is_symlink() or getattr(self.meta, "is_junction", lambda: False)():
             raise ValueError("标注工程目录不能是指向其他位置的链接")
         new = not self.meta.exists()
@@ -191,7 +217,12 @@ class Catalog:
             # Re-probe only legacy IMU metadata. Human work and expensive video
             # OCR remain untouched; source identities remain content hashes.
             with self.db:
-                for row in self.db.execute("SELECT id,metadata FROM assets WHERE kind='imu'").fetchall():
+                query="SELECT id,metadata FROM assets WHERE kind='imu'"
+                parameters=()
+                if self.day:
+                    query+=' AND id IN (SELECT asset_id FROM locations WHERE path LIKE ?)'
+                    parameters=('Motion/'+self.day+'/%',)
+                for row in self.db.execute(query,parameters).fetchall():
                     metadata = json.loads(row["metadata"])
                     if not metadata.get("ignored") and metadata.get("capture_timing", {}).get("revision") != 1:
                         metadata["recheck"] = True
@@ -254,16 +285,43 @@ class Catalog:
                 pass
 
     def settings(self) -> dict:
-        return read_json(self.meta / "project.json", {})
+        settings=read_json(self.meta / "project.json", {})
+        if self.day:
+            daily=read_json(self.settings_path(),None)
+            if daily is not None:
+                settings.update(daily)
+            elif settings.get('active_day')!=self.day:
+                for key in ('active_event','current_path','current_asset','reference_ms'):
+                    settings.pop(key,None)
+        return settings
+
+    def settings_path(self):
+        return self.meta/'.会话'/(self.day+'.json') if self.day else self.meta/'project.json'
 
     def save_settings(self, settings: dict):
         self._write_check()
-        atomic_json(self.meta / "project.json", settings)
+        atomic_json(self.settings_path(), settings)
 
-    def work_path(self, asset_id: str) -> Path:
+    def work_path(self, asset_id: str, *, for_write=False) -> Path:
         if len(asset_id) != 64 or any(c not in "0123456789abcdef" for c in asset_id):
             raise ValueError("非法素材标识")
-        return self.meta / "annotations" / (asset_id + ".json")
+        legacy=self.meta / "annotations" / (asset_id + ".json")
+        if self.dated_annotations:
+            from .annotation_store import dated_path
+            with self.mutex:
+                rows=self.db.execute('SELECT path FROM locations WHERE asset_id=? AND kind=\'imu\' ORDER BY path',(asset_id,)).fetchall()
+            for row in sorted(rows,key=lambda r:not self.in_scope(r['path'])):
+                destination=dated_path(self.meta,row['path'])
+                if destination is not None:
+                    return legacy if not for_write and not destination.exists() and legacy.exists() else destination
+        return legacy
+
+    def saved_work_assets(self):
+        if not self.dated_annotations:
+            return {p.stem for p in (self.meta/'annotations').glob('*.json') if len(p.stem)==64}
+        with self.mutex:
+            assets={r[0] for r in self.db.execute('SELECT asset_id,path FROM locations WHERE kind=\'imu\' AND asset_id IS NOT NULL') if self.in_scope(r[1])}
+        return {asset for asset in assets if self.work_path(asset).is_file()}
 
     def source_path(self, relative: str) -> Path:
         path = (self.root / relative).resolve()
@@ -287,7 +345,7 @@ class Catalog:
         if not self.root.is_dir():
             error(OSError("工程根目录暂不可访问；保留原索引，不判定文件删除"))
             return result
-        for folder, dirs, files in os.walk(self.root, onerror=error, followlinks=False):
+        for folder, dirs, files in self.walk_scope(error):
             if cancelled and cancelled():
                 raise InterruptedError("目录清点已取消")
             dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS
@@ -298,11 +356,14 @@ class Catalog:
                 if cancelled and cancelled():
                     raise InterruptedError("目录清点已取消")
                 path = Path(folder) / filename
+                if path.is_symlink():
+                    continue
+                relative = path.relative_to(self.root).as_posix()
+                path = self.source_path(relative)
                 suffix = path.suffix.lower()
                 kind = "imu" if suffix == ".json" else "video" if suffix in VIDEO_SUFFIXES else None
                 if kind is None or path.is_symlink():
                     continue
-                relative = path.relative_to(self.root).as_posix()
                 if "PPG" in Path(relative).parts or path.name == "资源索引.json":
                     continue
                 try:
@@ -360,18 +421,37 @@ class Catalog:
                                     (now, fingerprint, relative))
             if result.complete:
                 for relative, previous in old.items():
-                    if relative not in found and previous["state"] != "missing":
+                    if self.in_scope(relative) and relative not in found and previous["state"] != "missing":
                         result.missing.append(relative)
                         self.db.execute("UPDATE locations SET state='missing',error='源文件已不在原位置' WHERE path=?",
                                         (relative,))
         return result
+
+    def in_scope(self, relative):
+        return not self.day or relative.startswith(('Motion/'+self.day+'/', 'Video/'+self.day+'/')) or relative in self._extra_day_paths
+
+    def walk_scope(self,error):
+        if not self.day:
+            yield from os.walk(self.root,onerror=error,followlinks=False)
+            return
+        self._extra_day_paths=set()
+        # Enumerate only the chosen day's two material subtrees.
+        for kind in ('Motion','Video'):
+            directory=self.root/kind/self.day
+            if directory.is_dir():
+                yield from os.walk(directory,onerror=error,followlinks=False)
+        # One last recording per camera from the nearest previous date is a
+        # search candidate, never an assumed clock or proven coverage.
+        for path in previous_video_files(self.root/'Video',self.day):
+            self._extra_day_paths.add(path.relative_to(self.root).as_posix())
+            yield str(path.parent),[],[path.name]
 
     def video_hints(self):
         with self.mutex:
             rows = self.db.execute("""SELECT h.path,h.metadata FROM video_hints h
                 JOIN locations l ON l.path=h.path AND l.stamp=h.stamp
                 WHERE l.state NOT IN ('missing','ignored')""").fetchall()
-        return {r["path"]: json.loads(r["metadata"]) for r in rows}
+        return {r["path"]: json.loads(r["metadata"]) for r in rows if self.in_scope(r['path'])}
 
     def save_video_hint(self, relative, stamp, metadata):
         self._write_check()
@@ -384,9 +464,17 @@ class Catalog:
         return True
 
     def rows(self, *, kind: str | None = None) -> list[dict]:
+        where,parameters='',[]
+        if self.day:
+            terms=['l.path LIKE ?','l.path LIKE ?']
+            parameters=['Motion/'+self.day+'/%','Video/'+self.day+'/%']
+            if self._extra_day_paths:
+                terms.append('l.path IN ('+','.join('?' for _ in self._extra_day_paths)+')')
+                parameters.extend(sorted(self._extra_day_paths))
+            where=' WHERE ('+' OR '.join(terms)+')'
         with self.mutex:
             rows = self.db.execute("""SELECT l.*,a.metadata FROM locations l
-                LEFT JOIN assets a ON l.asset_id=a.id ORDER BY l.path""").fetchall()
+                LEFT JOIN assets a ON l.asset_id=a.id"""+where+' ORDER BY l.path',parameters).fetchall()
         return [{**dict(r), "metadata": bind_location_metadata(json.loads(r["metadata"] or "{}"), r["stamp"])
                  if r["state"] in {"ready", "review"} else json.loads(r["metadata"] or "{}")}
                 for r in rows if kind is None or r["kind"] == kind]
@@ -412,10 +500,19 @@ class Catalog:
             if before != row["stamp"] or (now - row["stable_since"] < self.stability_seconds and not (eager and os.name == "nt")):
                 return None
             assert_not_being_written(path)
-            asset_id = digest_file(path, cancelled=cancelled)
+            archived=self.archived_record(relative) if row['kind']=='video' else {}
+            known=archived.get('sha256','')
+            cached_identity=(archived.get('verified_stamp')==before and len(known)==64
+                and all(c in '0123456789abcdef' for c in known))
+            asset_id = known if cached_identity else digest_file(path, cancelled=cancelled)
             with self.mutex:
                 cached = self.db.execute("SELECT metadata FROM assets WHERE id=?", (asset_id,)).fetchone()
             metadata = json.loads(cached[0]) if cached else {}
+            if not metadata and archived.get('sha256')==asset_id:
+                from cowmata_tailring.media.native_ps import SIGNATURE
+                value=archived.get('metadata',{})
+                if value.get('time_engine')==SIGNATURE and not value.get('recheck'):
+                    metadata=bind_location_metadata(value,before)
             if not metadata or metadata.get("recheck"):
                 previous_camera = metadata.get("camera")
                 metadata = inspect(path, row["kind"], asset_id)
@@ -487,6 +584,12 @@ class Catalog:
                                 ("OCR 算法已升级，等待复核；人工标签和校准记录保留", row["path"]))
                 queued += 1
         return queued
+
+    def archived_record(self,relative):
+        if self._resource_records is None:
+            registry=read_json(self.root/'资源索引.json',{})
+            self._resource_records={r['path']:r for r in registry.get('records',[]) if r.get('kind')=='video' and self.in_scope(r.get('path',''))}
+        return self._resource_records.get(relative,{})
 
     def recheck(self, relative: str):
         self._write_check()

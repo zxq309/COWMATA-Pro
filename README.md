@@ -1,15 +1,16 @@
-# COWMATA 3.4.3
+# COWMATA 3.5.0
 
-Portable multiview video and nine-axis cattle annotation workstation. Launch `COWMATA.exe` or `START_ANNOTATOR.bat`. Private Python, Qt, VLC, FFmpeg, OCR weights and event models are included. The inherited startup update check requires a network connection; annotation can continue offline after startup.
+Windows multiview video and nine-axis annotation workstation. Setup, portable ZIP and clean source are published in [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases/latest).
 
-Version 3.4 imports resources into `farm/category/{Motion,PPG,Video}/acquisition-date`. Categories are selected for each batch. Video clocks are checked against independent image OCR; cross-midnight files are indexed by real coverage and stored under their start date. Same-volume moves preserve file identity, cross-volume copies verify SHA-256, and saved import plans support recovery without overwriting files.
+- Confirm a farm, category and one recording day. The first waveform and video appear while remaining indexing continues in the background.
+- Open one IMU recording with its day’s videos, or pair one video with a specific IMU file across drives. Single-file Save always asks for a destination.
+- Recursively organize mixed inputs or add videos to an already classified IMU project. Stream clocks are preferred and checked with image OCR.
+- Keep one dated working annotation; construct behavior datasets with ear-tag filenames and shared cow-disjoint splits. Unknown and conflicting truth are excluded from training.
+- Resource filenames contain only start seconds. Dataset filenames add ear tag and device; behavior starts keep milliseconds. Internal timestamps and hashes remain intact.
+- PPG and pregnancy stages are represented explicitly; PPG waveform parsing remains reserved.
 
-Device-ear-tag-field-mark identities preserve leading zeros and support unambiguous reversed field names. PPG directories and saved/exported fields are reserved; no PPG parser or waveform is supplied yet.
+Launch `COWMATA.exe` after extracting the complete portable folder, or install the setup. Private Python, Qt, VLC, FFmpeg, OCR weights and reviewed event models are bundled. The inherited startup update check requires network access; annotation can continue offline after startup.
 
-See [Chinese usage](README.zh-CN.md), `使用说明.txt`, and [release notes](docs/release-340.md). Source is in `cowmata_tailring`; regression tests are in `tests`. Historical project readers and task replay remain supported.
+[中文说明](README.zh-CN.md) · [Illustrated guide](docs/daily-project-guide.html) · [Workflow](docs/legacy-dataset-workflow.md) · [3.5 release notes](docs/release-350.md)
 
-3.4.1 fixes Space after selecting speed/behavior, rejects zero-length intervals, selects new annotations, and restores direct label dragging. See [release notes](docs/release-341.md) and [illustrated tutorial](docs/quick-start-illustrated.md).
-
-3.4.2: [旧标签迁移与算法数据集流程](docs/legacy-dataset-workflow.md) · [更新说明](docs/release-342.md) · [图文教程](docs/quick-start-illustrated.pdf)。
-
-3.4.3: [六项修复说明](docs/release-343.md)；摄像头、核验、标签位置、排序与互斥以此版本为准。
+Source and tests are in `cowmata_tailring` and `tests`. The source archive excludes runtimes, model binaries, customer recordings and generated caches; binary dependencies are supplied by the portable release.

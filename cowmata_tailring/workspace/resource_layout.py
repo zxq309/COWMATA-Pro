@@ -16,6 +16,18 @@ def stamp_at(ms):
     return datetime.fromtimestamp(ms / 1000, TZ).strftime("%Y-%m-%d_%H-%M-%S-%f")[:-3]
 
 
+def start_stamp(ms, *, milliseconds=False):
+    return stamp_at(ms) if milliseconds else stamp_at(ms)[:19]
+
+
+def dataset_filename(cow,device,start,suffix,*,milliseconds=False):
+    import re
+    cow,device=str(cow or 'NA'),str(device or 'NA')
+    if any(not re.fullmatch(r'[A-Za-z0-9-]+',value) for value in (cow,device)):
+        raise ValueError('数据集耳标或设备编号不能作为文件名，请先核对归类')
+    return f'{cow}_{device}_{start_stamp(start,milliseconds=milliseconds)}{suffix}'
+
+
 def covered_days(start, end):
     if end <= start:
         raise ValueError("采集结束时间必须晚于开始时间")

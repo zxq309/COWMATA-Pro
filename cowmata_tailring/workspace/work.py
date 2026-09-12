@@ -20,6 +20,7 @@ class SessionWork:
     drafts: list[dict] = field(default_factory=list)
     progress: dict = field(default_factory=dict)
     undo: UndoStack = field(default_factory=lambda: UndoStack(limit=100), repr=False)
+    history_video: dict = field(default_factory=dict)
 
     def set_category(self, code, *, context=None):
         from .data_category import category_fields
@@ -108,13 +109,18 @@ class SessionWork:
         self.project.extras.setdefault("ppg", copy.deepcopy(PPG_PLACEHOLDER))
         return {"schema": 1, "asset_id": self.asset_id, "project": self.project.to_dict(),
                 "clock": self.clock.to_dict(), "mapping_history": self.mapping_history,
-                "drafts": self.drafts, "progress": self.progress}
+                "drafts": self.drafts, "progress": self.progress,
+                **({'history_video':self.history_video} if self.history_video else {})}
 
     @classmethod
     def from_dict(cls, data):
-        return cls(data["asset_id"], Project.from_dict(data["project"]),
+        video=data.get('video',{}) if 'work' in data else data.get('history_video',{})
+        data=data.get('work',data)
+        result=cls(data["asset_id"], Project.from_dict(data["project"]),
                    ClockMap.from_dict(data.get("clock", {})), data.get("mapping_history", []),
                    data.get("drafts", []), data.get("progress", {}))
+        result.history_video=copy.deepcopy({key:video[key] for key in ('archive','camera_maps','camera_overrides','selected_cameras') if key in video})
+        return result
 
     def checkpoint(self):
         self.undo.push(self.to_dict())
@@ -123,7 +129,7 @@ class SessionWork:
 
     def restore(self, data):
         other = self.from_dict(data)
-        for key in ("project", "clock", "mapping_history", "drafts", "progress"):
+        for key in ("project", "clock", "mapping_history", "drafts", "progress", "history_video"):
             setattr(self, key, getattr(other, key))
 
     def undo_once(self, *, redo=False):

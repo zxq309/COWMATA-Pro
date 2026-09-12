@@ -73,6 +73,7 @@ def restore_label(catalog, path, *, require_done=False):
             raise ValueError('回传标签超出原始九轴范围，请回传人员核对后重新导出')
     destination = catalog.work_path(asset)
     existing = read_json(destination,{})
+    existing=existing.get('work',existing)
     same = existing == incoming
     local_project = existing.get('project', {})
     incoming_project = incoming.get('project', {})
@@ -91,7 +92,13 @@ def restore_label(catalog, path, *, require_done=False):
         atomic_json(returned,document)
     if not conflict and not same:
         copy_evidence(document,path.parent,catalog.meta)
-        atomic_json(destination,incoming)
+        if catalog.dated_annotations:
+            incoming_document={**document,'version':1,'embedded_imu':None,
+                'source':{**document['source'],'path':selected['path'],'project_root_hint':str(catalog.root)}}
+            copy_evidence(incoming_document,catalog.meta,destination.parent)
+            atomic_json(destination,incoming_document)
+        else:
+            atomic_json(destination,incoming)
     return {'status':'conflict' if conflict else 'unchanged' if same else 'imported',
             'asset_id':asset,'path':selected['path'],'stamp':selected['stamp'],
             'archive':str(returned),'progress':incoming.get('progress',{}), 'work':incoming if not conflict else None}

@@ -69,10 +69,16 @@ def read_legacy_table(path, *, identity_policy='review'):
     meta_path = path.with_name(path.name.replace('.events.csv', '.events_meta.json'))
     metadata = json.loads(meta_path.read_text(encoding='utf-8-sig')) if meta_path != path and meta_path.is_file() else {}
     folder = folder_identity(path)
-    reader = csv.DictReader(io.StringIO(content.decode('utf-8-sig')))
+    try:
+        decoded=content.decode('utf-8-sig')
+        encoding='utf-8-sig'
+    except UnicodeDecodeError:
+        decoded=content.decode('gb18030')
+        encoding='gb18030'
+    reader = csv.DictReader(io.StringIO(decoded))
     if not reader.fieldnames or not ({'label', 'Behavior'} & set(reader.fieldnames)):
         raise ValueError('不支持的旧标签表头')
-    result = {'source': str(path.resolve()), 'sha256': sha, 'metadata': metadata,
+    result = {'source': str(path.resolve()), 'sha256': sha, 'metadata': metadata, 'encoding':encoding,
               'folder_identity': folder, 'events': [], 'unresolved': [], 'empty_rows': 0}
     for line, row in enumerate(reader, 2):
         if not any(str(v or '').strip() for v in row.values()):

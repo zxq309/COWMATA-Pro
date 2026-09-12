@@ -20,7 +20,8 @@ BEHAVIORS = (
     Algorithm("MOUNTING", "爬跨"), Algorithm("STRAINING_BOUT", "努责"),
 )
 HEALTH = tuple(Algorithm(code, title, "health") for code, title in (
-    ("ESTRUS", "发情"), ("CALVING", "产犊"), ("PREGNANCY", "怀孕"), ("DISEASE", "疫病")))
+    ("ESTRUS", "发情"), ("CALVING", "产犊"), ("PREGNANCY_EARLY", "孕早期"),
+    ("PREGNANCY_MID", "孕中期"), ("PREGNANCY_LATE", "孕晚期"), ("DISEASE", "疫病")))
 
 
 def bindings(spec, packs):

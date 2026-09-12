@@ -45,7 +45,7 @@ def main():
         elif action == "import":
             from cowmata_tailring.workspace.resource_import import plan_import
             result = plan_import(request["target"], request["sources"], request["start"], request.get("end"),
-                                      request.get("note", ""), cancelled, progress, category=request.get("category"), farm=request.get("farm", "扬大_高邮牧场"), cache=request.get("cache"), transfer=request.get("transfer", "copy"))
+                                      request.get("note", ""), cancelled, progress, category=request.get("category"), farm=request.get("farm", "扬大_高邮牧场"), cache=request.get("cache"), transfer=request.get("transfer", "copy"),scenario=request.get('scenario','mixed'))
         elif action == "normalize":
             result = core.plan_normalize(request["target"], cancelled, progress)
         elif action == "quarantine":
