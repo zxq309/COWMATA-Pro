@@ -2321,5 +2321,29 @@ ZH_TO_EN.update({
     "确认负事件": "Verified negative events", "结果目录": "Output directory"
 })
 
+ZH_TO_EN.update({
+    " 帧；原件未改动。": " frames; original unchanged.", " 秒，": " seconds, ",
+    "不能覆盖原始录像或已有结果，请选择新的输出文件。": "Cannot overwrite the original or an existing output; choose a new file.",
+    "人工读数位置超出录像实际时长，请重新读取画面。": "The reading lies outside the actual video duration; decode the frame again.",
+    "人工读数外推，仅供浏览；该区间尚未确认真值": "Extrapolated from manual readings for browsing; this interval is not verified truth",
+    "人工读数缺少实际帧位置或完整时间，请重新核验。": "A manual reading lacks the actual frame position or full time; verify again.",
+    "仅导出已校验的视频画面；原始文件和其音频、私有数据包仍保留。": "Only verified video frames are exported; the original file, audio and private packets are retained.",
+    "原始录像在导出期间发生变化，请重试。": "The original video changed during export; retry.",
+    "另存标准 MP4 视频画面副本（保留原件）": "Save a standard MP4 video copy (retain original)",
+    "同一路旧相机校准存在冲突，请重新核对相机同步。": "Legacy calibrations for this camera conflict; verify camera synchronization again.",
+    "导出标准 MP4 副本…": "Export standard MP4 copy...",
+    "录像在核验期间发生变化，请刷新后重新核验。": "The video changed during review; refresh and verify again.",
+    "未找到连续且可核验的流内时间，本功能不猜测录像时长。": "No continuous verifiable native clock was found; video duration will not be guessed.",
+    "标准 MP4 导出失败，原始录像保留：": "Standard MP4 export failed; original retained: ",
+    "标准 MP4 已保存：": "Standard MP4 saved: ",
+    "标准 MP4 未通过完整帧数校验，保留临时结果供排查。": "Standard MP4 frame verification failed; temporary output retained for investigation.",
+    "标准 MP4 的帧数或时长与流内记录不一致，未交付为有效结果。": "Standard MP4 frame count or duration differs from native records; output was not published as valid.",
+    "标准MP4": "StandardMP4",
+    "正在按流内时间导出视频画面并核对帧数。原始录像、音频与私有数据包保留。": "Exporting video using native timestamps and verifying frame count. Original video, audio and private packets are retained.",
+    "站立、躺卧、行走互斥；当前区间与已有状态标签重叠，请先调整起止或修改原标签。": "Standing, lying and walking are mutually exclusive. This interval overlaps an existing state; adjust the boundaries or edit the original label first.",
+    "请先确认至少一个实际画面读数，再保存核验。": "Confirm at least one actual frame reading before saving the review.",
+    "选择需核查时长的原始录像": "Choose the original video whose duration needs checking"
+})
+
 if __name__ == "__main__":
     _coverage()

@@ -344,8 +344,8 @@ class SourceInspector:
         corner = "unknown"
         if saved_roi:
             corner = ("top" if (saved_roi[1]+saved_roi[3])/2 < .5 else "bottom") + ("_left" if (saved_roi[0]+saved_roi[2])/2 < .5 else "_right")
-        camera = folder if re.match(r"^视角\d", folder) else f"{folder} · {video.get('width')}×{video.get('height')} · {corner}"
-        return {"camera": camera,
+        camera = folder
+        return {"camera": camera, "ocr_corner": corner,
                 "width": video.get("width"), "height": video.get("height"), "codec": video.get("codec_name"),
                 "format": info.get("format", {}).get("format_name"), "header_duration": info.get("format", {}).get("duration"),
                 "duration_ms": duration, "timeline": timeline.to_dict(), "samples": samples,
@@ -516,11 +516,11 @@ class SourceInspector:
         corner = "unknown"
         if saved_roi:
             corner = ("top" if (saved_roi[1] + saved_roi[3]) / 2 < .5 else "bottom") + ("_left" if (saved_roi[0] + saved_roi[2]) / 2 < .5 else "_right")
-        camera = folder if re.match(r"^视角\d", folder) else f"{folder} · {video.get('width')}×{video.get('height')} · {corner}"
+        camera = folder
         valid = [s for s in samples if s.get("wall_ms") is not None]
         if not valid:
             warnings.append("时间戳识别失败：可浏览原片，需框选或输入人工读数")
-        return {"camera": camera, "width": video.get("width"), "height": video.get("height"),
+        return {"camera": camera, "ocr_corner": corner, "width": video.get("width"), "height": video.get("height"),
                 "codec": video.get("codec_name"), "format": info.get("format", {}).get("format_name"),
                 "header_duration": info.get("format", {}).get("duration"),
                 "duration_ms": timeline.duration_ms, "timeline": timeline.to_dict(),

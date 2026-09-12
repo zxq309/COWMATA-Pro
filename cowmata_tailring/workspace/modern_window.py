@@ -127,6 +127,7 @@ class MainWindow(ControllerWindow):
         self._action(organize, "数据审查…", lambda: self.open_organization(0))
         self._action(organize, "数据归类…", lambda: self.open_organization(1))
         self._action(organize, "数据异常报告…", lambda: self.open_organization(2))
+        self._action(organize, "导出标准 MP4 副本…", self.export_standard_video)
         self._action(organize, "旧标签迁移…", lambda: self.open_dataset_workflow(0))
         self._action(organize, "从标注生成算法数据集…", lambda: self.open_dataset_workflow(1))
         self._build_algorithm_menus()

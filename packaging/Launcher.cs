@@ -9,8 +9,8 @@ using System.Text;
 [assembly: AssemblyTitle("COWMATA Annotator")]
 [assembly: AssemblyDescription("Offline cattle video and IMU annotation workstation")]
 [assembly: AssemblyCompany("Yangling Yuanshangyuan Intelligent Technology Co., Ltd.")]
-[assembly: AssemblyVersion("3.4.2.0")]
-[assembly: AssemblyFileVersion("3.4.2.0")]
+[assembly: AssemblyVersion("3.4.3.0")]
+[assembly: AssemblyFileVersion("3.4.3.0")]
 
 internal static class Launcher
 {

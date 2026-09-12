@@ -9,7 +9,7 @@ import bisect
 import math
 import re
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta
 
 EPOCH = datetime(1970, 1, 1)
@@ -135,7 +135,22 @@ class VideoInterval:
 class VideoTimeline:
     def __init__(self, intervals: list[VideoInterval], camera_maps: dict[str, ClockMap] | None = None):
         self.intervals = sorted(intervals, key=lambda s: (s.camera, s.wall_start, s.path))
-        self.camera_maps = camera_maps or {}
+        from .demand import stable_camera_name
+        self.camera_maps = dict(camera_maps or {})
+        self.mapping_conflicts = []
+        for camera in {s.camera for s in intervals}:
+            if camera in self.camera_maps:
+                continue
+            candidates=[value for name,value in self.camera_maps.items() if stable_camera_name(name,camera)==camera]
+            if candidates:
+                first=candidates[0]
+                if all([(a.source_ms,a.reference_ms) for a in v.anchors]==[(a.source_ms,a.reference_ms) for a in first.anchors]
+                       and v.breaks==first.breaks for v in candidates):
+                    self.camera_maps[camera]=first
+                else:
+                    self.mapping_conflicts.append(camera)
+        self.intervals=[replace(s,verified=False,warnings=s.warnings+('同一路旧相机校准存在冲突，请重新核对相机同步。',))
+                        if s.camera in self.mapping_conflicts else s for s in self.intervals]
         self._groups: dict[str, list[VideoInterval]] = {}
         for interval in self.intervals:
             self._groups.setdefault(interval.camera, []).append(interval)
@@ -192,6 +207,42 @@ class VideoTimeline:
                 max(self.reference_time(s.camera, s.wall_end) for s in self.intervals))
 
 
+def manual_video_metadata(metadata, readings):
+    """Preserve browsable edges without presenting extrapolation as verified."""
+    import copy
+
+    from cowmata_tailring.media.timeline import MediaTimelineIndex
+    value=copy.deepcopy(metadata)
+    if any(not isinstance(r,dict) or 'media_ms' not in r or 'wall_ms' not in r for r in readings):
+        raise ValueError('人工读数缺少实际帧位置或完整时间，请重新核验。')
+    readings=sorted(copy.deepcopy(readings),key=lambda r:r['media_ms'])
+    if not readings:
+        raise ValueError('请先确认至少一个实际画面读数，再保存核验。')
+    mapping=ClockMap([Anchor(r['media_ms'],r['wall_ms']) for r in readings])
+    duration=float(value.get('duration_ms') or 0)
+    if duration<=0 or any(not 0<=r['media_ms']<duration for r in readings):
+        raise ValueError('人工读数位置超出录像实际时长，请重新读取画面。')
+    timeline=MediaTimelineIndex.from_dict(value['timeline']) if value.get('timeline') else None
+    ranges=[(s.public_start_ms,s.public_end_ms) for s in timeline.segments] if timeline else [(0,duration)]
+    intervals=[]
+    for lo,hi in ranges:
+        points=[r for r in readings if lo<=r['media_ms']<hi]
+        if not points:
+            continue
+        local=ClockMap([Anchor(r['media_ms'],r['wall_ms']) for r in points])
+        edges=sorted(set([lo,hi]+[r['media_ms'] for r in points]))
+        for left,right in zip(edges,edges[1:]):
+            verified=len(points)>=2 and points[0]['media_ms']<=left and right<=points[-1]['media_ms']
+            intervals.append(dict(wall_start=local.map(left),wall_end=local.map(right),
+                media_start=left,media_end=right,verified=verified,
+                warnings=['人工确认两端；中间仍应抽查'] if verified else ['人工读数外推，仅供浏览；该区间尚未确认真值']))
+    value.update(manual_readings=readings,intervals=intervals,needs_review=any(not i['verified'] for i in intervals),
+        native_check_pending=False,start_display=wall_text(mapping.map(0),filename=True),
+        warnings=[])
+    value.pop('recheck',None)
+    return value
+
+
 def intervals_from_rows(rows: list[dict], camera_overrides: dict[str, str] | None = None):
     from .demand import camera_name
     intervals = []
@@ -201,6 +252,11 @@ def intervals_from_rows(rows: list[dict], camera_overrides: dict[str, str] | Non
         if row["state"] not in {"ready", "review"} or not row["asset_id"]:
             continue
         metadata = row["metadata"]
+        if metadata.get('manual_readings') and metadata.get('duration_ms') and all('media_ms' in r and 'wall_ms' in r for r in metadata['manual_readings']):
+            try:
+                metadata = manual_video_metadata(metadata,metadata['manual_readings'])
+            except ValueError:
+                continue
         camera = camera_name(row, overrides)
         if (row["asset_id"], camera) in seen:
             continue

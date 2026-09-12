@@ -140,10 +140,39 @@ class SessionWork:
     def set_clock(self, updated):
         self.checkpoint()
         self.mapping_history.append(self.clock.to_dict())
+        if self.clock.anchors and updated.anchors:
+            for draft in self.drafts:
+                previous = {'reference_start':draft['reference_start'],'reference_end':draft['reference_end'],
+                            'mapping_revision':self.clock.revision}
+                start = self.clock.map(draft['reference_start'],inverse=True)
+                end = self.clock.map(draft['reference_end'],inverse=True) if draft['reference_end'] is not None else None
+                draft.setdefault('alignment_history',[]).append(previous)
+                draft.update(reference_start=updated.map(start),reference_end=updated.map(end) if end is not None else None)
+                # A confirmed draft remains hidden behind its unchanged IMU event.
+                if draft.get('confirmation')!='confirmed':
+                    draft['confirmation']='needs_review'
+                draft['video_evidence']=[]
         self.clock = updated
         for event in self.project.events:
             if event.extras.get("confirmation") == "confirmed":
                 event.extras["confirmation"] = "needs_review"
+
+    def assert_state_interval(self, label_index, start, end, *, exclude_draft=None, exclude_event=None):
+        if self.project.labels[label_index].code not in {'STANDING','LYING','WALKING'} or end is None:
+            return
+        for draft in self.drafts:
+            if draft['id']==exclude_draft or draft.get('confirmation')=='confirmed':
+                continue
+            if self.project.labels[draft['label_index']].code in {'STANDING','LYING','WALKING'}:
+                if draft['reference_end'] is not None and start<draft['reference_end'] and end>draft['reference_start']:
+                    raise ValueError('站立、躺卧、行走互斥；当前区间与已有状态标签重叠，请先调整起止或修改原标签。')
+        if self.clock.anchors:
+            for event in self.project.events:
+                if event.id==exclude_event or event.extras.get('draft_id')==exclude_draft and exclude_draft is not None:
+                    continue
+                if self.project.labels[event.li].code in {'STANDING','LYING','WALKING'} and event.t1 is not None:
+                    if start<self.clock.map(event.t1) and end>self.clock.map(event.t0):
+                        raise ValueError('站立、躺卧、行走互斥；当前区间与已有状态标签重叠，请先调整起止或修改原标签。')
 
     def add_draft(self, label_index, start, end, evidence, *, group_id=None, note=""):
         if end is not None and end < start:
@@ -152,12 +181,28 @@ class SessionWork:
             raise ValueError("动作时间必须为有效数值")
         if end is not None and end == start:
             raise ValueError("结束时间必须晚于开始时间。")
+        self.assert_state_interval(label_index,start,end)
         self.checkpoint()
         draft = {"id": uuid.uuid4().hex, "group_id": group_id or uuid.uuid4().hex,
                  "label_index": label_index, "reference_start": start, "reference_end": end,
                  "video_evidence": copy.deepcopy(evidence), "cow_id": self.project.cow_id,
                  "confirmation": "video_draft", "note": note, **self.category_fields(), **self.identity_fields()}
         self.drafts.append(draft)
+        return draft
+
+    def edit_draft(self, identifier, start, end, *, label_index=None, note=None):
+        draft=next(d for d in self.drafts if d['id']==identifier)
+        if not math.isfinite(start) or end is not None and not math.isfinite(end):
+            raise ValueError('动作时间必须为有效数值')
+        if end is not None and end<=start:
+            raise ValueError('结束时间必须晚于开始时间。')
+        index=draft['label_index'] if label_index is None else label_index
+        self.assert_state_interval(index,start,end,exclude_draft=identifier)
+        self.checkpoint()
+        draft.update(label_index=index,reference_start=start,reference_end=end,
+                     video_evidence=[],confirmation='video_draft')
+        if note is not None:
+            draft['note']=note
         return draft
 
     def project_draft(self, draft, duration_ms):
@@ -184,6 +229,7 @@ class SessionWork:
         if draft.get("cow_id") and draft["cow_id"] != self.project.cow_id:
             raise ValueError("草稿牛号与当前记录不一致，请核对对象")
         start, end = self.project_draft(draft, duration_ms)
+        self.assert_state_interval(draft['label_index'],draft['reference_start'],draft['reference_end'],exclude_draft=draft_id)
         if any(self.clock.quality(v) != "interpolated" for v in (start, end if end is not None else start)):
             raise ValueError("该范围尚未被前后校准点覆盖，或位于未确认区间；可继续保存视频草稿")
         if end is not None and any(a < end and b > start for a, b in self.clock.breaks):
@@ -239,6 +285,11 @@ class SessionWork:
         bounded_end = max(0, min(duration_ms, end)) if end is not None else None
         if bounded_end is not None and bounded_end == bounded_start:
             raise ValueError("结束时间必须晚于开始时间。")
+        if self.clock.anchors:
+            self.assert_state_interval(event.li if label_index is None else label_index,
+                self.clock.map(min(bounded_start,bounded_end)) if bounded_end is not None else self.clock.map(bounded_start),
+                self.clock.map(max(bounded_start,bounded_end)) if bounded_end is not None else None,
+                exclude_event=identifier,exclude_draft=event.extras.get('draft_id'))
         self.checkpoint()
         event.t0 = bounded_start
         event.t1 = bounded_end

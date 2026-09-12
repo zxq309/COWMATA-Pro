@@ -764,6 +764,23 @@ class MainWindow(QMainWindow):
             self.worker.request()
             self.tell("已请求重新核对。正在复制的文件仍需通过稳定性和可读性检查，不会强行加载。")
 
+    def export_standard_video(self):
+        source,_=QFileDialog.getOpenFileName(self,'选择需核查时长的原始录像','','Video (*.mp4 *.dav *.ps *.mpeg);;All (*)')
+        if not source:
+            return
+        target,_=QFileDialog.getSaveFileName(self,'另存标准 MP4 视频画面副本（保留原件）',str(Path(source).parent/'标准MP4'/Path(source).with_suffix('.mp4').name),'MP4 (*.mp4)')
+        if not target:
+            return
+        from cowmata_tailring.media.standard_video import export_standard_video
+
+        from .io_task import run_io_task
+        try:
+            result=run_io_task(self,'正在按流内时间导出视频画面并核对帧数。原始录像、音频与私有数据包保留。',
+                lambda:export_standard_video(source,target))
+            self.tell(f"标准 MP4 已保存：{result['duration_ms']/1000:.3f} 秒，{result['video_frames']} 帧；原件未改动。")
+        except (ValueError,OSError) as exc:
+            self.tell(str(exc))
+
     def open_dataset_workflow(self, tab=0):
         from .dataset_workflow_ui import DatasetWorkflowWindow
         if getattr(self, '_dataset_workflow_window', None) is None:
@@ -1868,6 +1885,9 @@ class MainWindow(QMainWindow):
             self.labels.blockSignals(False)
         entries = [("draft", draft) for draft in self.work.drafts if draft.get("confirmation") != "confirmed"]
         entries += [("event", event) for event in self.work.project.events]
+        entries.sort(key=lambda pair: (
+            pair[1]['reference_start'] if pair[0]=='draft' else clock.map(pair[1].t0) if clock.anchors else pair[1].t0,
+            pair[0], str(pair[1]['id'] if pair[0]=='draft' else pair[1].id)))
         self.events.setRowCount(len(entries))
         for i, (kind, entry) in enumerate(entries):
             if kind == "draft":
@@ -2020,14 +2040,8 @@ class MainWindow(QMainWindow):
             raise ValueError("起止时间必须在当前九轴记录范围内。")
         if end is not None and end <= start:
             raise ValueError("结束时间必须晚于开始时间。")
-        self.work.checkpoint()
-        draft.update(reference_start=self.work.clock.map(start),
-                     reference_end=self.work.clock.map(end) if end is not None else None,
-                     video_evidence=[], confirmation="video_draft")
-        if label_index is not None:
-            draft["label_index"] = label_index
-        if note is not None:
-            draft["note"] = note
+        self.work.edit_draft(draft['id'],self.work.clock.map(start),
+            self.work.clock.map(end) if end is not None else None,label_index=label_index,note=note)
 
     def edit_selected(self):
         if not self.writable_work() or not self.selected_entry():
@@ -2108,11 +2122,9 @@ class MainWindow(QMainWindow):
             if kind == "draft" and imu_edit:
                 self._edit_draft_imu(entry, start, end, label_index=labels.currentIndex(), note=note.text())
             elif kind == "draft":
-                self.work.checkpoint()
                 if end is not None and start > end:
                     start, end = end, start
-                entry.update(label_index=labels.currentIndex(), reference_start=start, reference_end=end,
-                             note=note.text(), video_evidence=[], confirmation="video_draft")
+                self.work.edit_draft(entry['id'],start,end,label_index=labels.currentIndex(),note=note.text())
             else:
                 self.work.edit_event(identifier, start, end, self.motion.duration_ms, label_index=labels.currentIndex(), note=note.text())
             self.dirty = True
@@ -2413,31 +2425,24 @@ class MainWindow(QMainWindow):
         dialog = SourceTimeDialog(self.catalog, row, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        metadata = copy.deepcopy(row["metadata"])
-        metadata["manual_readings"] = dialog.readings
+        from .clocks import manual_video_metadata
+        try:
+            if file_stamp(self.catalog.source_path(row['path'])) != row['stamp']:
+                raise ValueError('录像在核验期间发生变化，请刷新后重新核验。')
+            metadata = manual_video_metadata(row['metadata'],dialog.readings)
+        except (ValueError,OSError) as exc:
+            self.tell(str(exc))
+            return
         metadata["roi"] = dialog.canvas.roi
         self.settings.setdefault("camera_overrides", {})[row["asset_id"]] = dialog.camera.text().strip()
-        if dialog.readings:
-            readings = sorted(dialog.readings, key=lambda r: r["media_ms"])
-            intervals = []
-            if len(readings) == 1:
-                start = readings[0]["wall_ms"] - readings[0]["media_ms"]
-                intervals.append({"wall_start": start, "wall_end": start + metadata["duration_ms"], "media_start": 0,
-                                  "media_end": metadata["duration_ms"], "verified": False, "warnings": ["单个人工读数，只可粗定位"]})
-            else:
-                for left, right in zip(readings, readings[1:]):
-                    intervals.append({"wall_start": left["wall_ms"], "wall_end": right["wall_ms"],
-                                      "media_start": left["media_ms"], "media_end": right["media_ms"],
-                                      "verified": True, "warnings": ["人工确认两端；中间仍应抽查"]})
-            metadata["intervals"] = intervals
-            metadata["needs_review"] = len(readings) < 2
-        self.catalog.update_metadata(row["asset_id"], metadata)
         # Manual work is also outside the rebuildable DB.
         atomic_json(self.catalog.meta / "video_corrections" / (row["asset_id"] + ".json"),
                     {"asset_id": row["asset_id"], "readings": dialog.readings, "roi": dialog.canvas.roi,
                      "camera": dialog.camera.text().strip(), "intervals": metadata.get("intervals", [])})
+        self.catalog.update_metadata(row["asset_id"], metadata)
         self.save_current()
         self.scan_completed(None)
+        self.board.seek(self.board.reference_ms)
 
     def new_batch(self):
         if not self.catalog or self.catalog.readonly:

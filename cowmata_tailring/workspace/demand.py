@@ -52,7 +52,7 @@ def device_name(row, aliases=None):
 def camera_name(row, overrides=None):
     override = (overrides or {}).get(row.get("asset_id"))
     if override:
-        return override
+        return stable_camera_name(override, camera_folder(row['path']))
     metadata = row["metadata"]
     name = metadata.get("camera")
     folder = camera_folder(row["path"])
@@ -61,7 +61,13 @@ def camera_name(row, overrides=None):
     if re.match(r"^视角\d", folder) and not metadata.get("manual_readings"):
         if not name or re.fullmatch(r".+ · (?:\d+|None)×(?:\d+|None) · [a-z_]+", name):
             return folder
-    return name or folder
+    return stable_camera_name(name or folder, folder)
+
+
+def stable_camera_name(name, folder):
+    """Resolution and OCR location describe a recording, not a camera identity."""
+    match = re.fullmatch(r'(.+) · (?:\d+|None)×(?:\d+|None) · [a-z_]+',name)
+    return folder if match and match[1] == folder else name
 
 
 def camera_folder(relative):
@@ -99,6 +105,8 @@ def resolve_camera_choices(names, inventory):
             folders[camera_folder(row['path'])].add(camera)
     result = []
     for name in names:
+        for folder in folders:
+            name = stable_camera_name(name,folder)
         candidates = folders.get(name, set())
         resolved = name if name in inventory else next(iter(candidates)) if len(candidates) == 1 else None
         if resolved is not None and resolved not in result:
@@ -121,7 +129,7 @@ def source_span(row, hints):
 
 def reference_window(row, start, end, maps, overrides):
     mapping = maps.get(camera_name(row, overrides))
-    if mapping is None and not row["metadata"].get("camera"):
+    if mapping is None:
         prefix = camera_folder(row["path"]) + " · "
         matches = [value for name, value in maps.items() if name.startswith(prefix)]
         if len(matches) == 1:

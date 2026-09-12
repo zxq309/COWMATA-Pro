@@ -137,7 +137,7 @@ def test_pending_camera_selection_survives_first_identified_timestamp(window, mo
     window.rows[1] = row('乐橙/imou1.mp4', identified, 100000)
     window.rows.append(row('乐橙/imou2.mp4', None))
     window.refresh_lists()
-    assert set(window.board.selected) == {'右1', identified}
+    assert set(window.board.selected) == {'右1', '乐橙'}
     assert window.cameras.count() == 2, 'unread files must not duplicate their known camera'
 
 

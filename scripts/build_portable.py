@@ -97,7 +97,7 @@ def main():
         shutil.copy2(source / "scripts" / name, destination / "scripts" / name)
     for name in ("release-331.md", "release-331-validation.md", "playback-annotation-fix-20260910.md", "manual-331-validation.md", "manual-331-capture-evidence.json", "release-332.md", "release-332-validation.md", "manual-332-validation.md", "release-340.md", "release-341.md", "release-341-validation.md"):
         shutil.copy2(source / "docs" / name, destination / "docs" / name)
-    for name in ("release-342.md", "release-342-validation.md", "legacy-dataset-workflow.md"):
+    for name in ("release-342.md", "release-342-validation.md", "legacy-dataset-workflow.md", "release-343.md", "release-343-validation.md"):
         shutil.copy2(source / "docs" / name, destination / "docs" / name)
     inventory = []
     for path in sorted(destination.rglob("*")):

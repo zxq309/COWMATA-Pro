@@ -120,7 +120,8 @@ class SourceTimeDialog(QDialog):
         self.timestamp = QLineEdit()
         self.timestamp.setPlaceholderText("2026-08-03 12:44:58（日期必须人工确认）")
         form.addRow("画面读数", self.timestamp)
-        self.camera = QLineEdit(self.metadata.get("camera", ""))
+        from .demand import camera_name
+        self.camera = QLineEdit(camera_name(row,getattr(parent,'settings',{}).get('camera_overrides')))
         form.addRow("逻辑视角名称", self.camera)
         layout.addLayout(form)
         buttons = QHBoxLayout()
@@ -210,7 +211,8 @@ class SourceTimeDialog(QDialog):
 
     def validate_accept(self):
         try:
-            ClockMap([Anchor(r["media_ms"], r["wall_ms"]) for r in self.readings])
+            from .clocks import manual_video_metadata
+            manual_video_metadata(self.metadata,self.readings)
             if not self.camera.text().strip():
                 raise ValueError("请填写逻辑视角名称")
             self.accept()

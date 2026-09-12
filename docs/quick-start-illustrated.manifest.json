@@ -1,8 +1,12 @@
 {
-  "version": "3.4.2",
+  "version": "3.4.3",
   "date": "2026-09-12",
-  "pages": 43,
+  "pages": 47,
   "screenshots_sha256": {
+    "../manual-343/01-manual-reading.png": "5aff0b9db0a7a2209b5b127f224fc4115bc95ef481a0b8713ae35a75aab5b6cf",
+    "../manual-343/02-manual-restores-video.png": "1c054e14c30ed467a336a26968cc7ab7074053d6c31b4f2c9d762c25fa006075",
+    "../manual-343/03-sorted-fixed-labels.png": "38e29b39114d5775cc315838a8f9dc3cf38298e32abb843badc497e5147a4b5d",
+    "../manual-343/04-exclusive-states.png": "c570f4d0caaa016c2adea64b64503fd6b787396f68ba891b8bf536fe53a6f538",
     "../manual-342/01-pregnancy-stage.png": "5a2b0758aee003172c0a0ddc6b55ac1ad3e5b1e2aad307004ba3d0e38aa1eb62",
     "../manual-342/02-legacy-preview.png": "d6e6b090eaba8b73b6e47f977d8ac2d5eb599188d2a3a7998b2da679e69c7e71",
     "../manual-342/03-migration-complete.png": "04f28d4f662264d0b3c2d6f731a96f2d7f2918b1ed4801254204aadf230b8d16",
@@ -54,5 +58,5 @@
     "29-help.png": "6b69f9aee97f35fc57f1c82d921e65d02e45848a5d99ee6adf1cb9ebab9872d6",
     "30-legacy.png": "b031f2ec38038879ce008cd4c7980e07202ec1deeeda04a40983281aed2dba95"
   },
-  "pdf_sha256": "6474211af723502d9869a8804a426aa5ea14811d492d94e6d7132ada8a5f6154"
+  "pdf_sha256": "ef893fdcadc5bb7451a7f4f154a4da38a25b5e50cf3e4722fe3efbffd47b95fc"
 }

@@ -281,7 +281,7 @@ class VideoTile(QFrame):
 
     def _preview_seek(self, value):
         if self.seek_bounds:
-            duration = self.seek_bounds[1] - self.seek_bounds[0]
+            duration = self.seek_display_duration
             self.seek_clock.setText(f"{self._duration_text(duration * value / 1000000)} / {self._duration_text(duration)}")
 
     def _commit_seek(self):
@@ -295,15 +295,20 @@ class VideoTile(QFrame):
             # Keyboard/page actions commit once after Qt updates the position.
             QTimer.singleShot(0, self._commit_seek)
 
-    def update_seek(self, start, end, reference_ms):
+    def update_seek(self, start, end, reference_ms, *, media_duration_ms=None):
         if self.seek_slider.isSliderDown():
             return  # Freeze this clip's bounds until the gesture is committed.
         self.seek_bounds = (start, end) if end > start else None
+        self.seek_display_duration = end-start if media_duration_ms is None else media_duration_ms
         self.seek_slider.setEnabled(self.seek_bounds is not None)
         if self.seek_bounds:
             fraction = max(0, min(1, (reference_ms - start) / (end - start)))
             self.seek_slider.setValue(round(fraction * 1000000))
-            self._preview_seek(self.seek_slider.value())
+            position=round(fraction*self.seek_display_duration,6)
+            self.seek_clock.setText(f"{self._duration_text(position)} / {self._duration_text(self.seek_display_duration)}")
+        else:
+            self.seek_slider.setValue(0)
+            self.seek_clock.setText('--:--:-- / --:--:--')
 
     def status(self, text, *, good=False):
         if self.message.text() != text:
@@ -461,10 +466,17 @@ class VideoBoard(QWidget):
             preview = hasattr(self, "is_preview") and self.is_preview(camera)
             tile.update_controls(self.playing and not preview, self.rate, self.expanded == camera)
             spans = [s for s in self.timeline._groups.get(camera, []) if s.asset_id == tile.asset_id]
-            if spans:
-                start = self.timeline.reference_time(camera, min(s.wall_start for s in spans))
-                end = self.timeline.reference_time(camera, max(s.wall_end for s in spans))
-                tile.update_seek(start, end, self.reference_ms)
+            if spans and tile.interval:
+                span = tile.interval or spans[0]
+                metadata = self.metadata.get(str(self.catalog.source_path(span.path)),{}) if self.catalog else {}
+                duration = metadata.get('duration_ms')
+                if duration:
+                    start = self.timeline.reference_time(camera, span.wall_at(0))
+                    end = self.timeline.reference_time(camera, span.wall_at(duration))
+                else:
+                    start = self.timeline.reference_time(camera, min(s.wall_start for s in spans))
+                    end = self.timeline.reference_time(camera, max(s.wall_end for s in spans))
+                tile.update_seek(start, end, self.reference_ms,media_duration_ms=duration)
             else:
                 tile.update_seek(0, 0, 0)
 

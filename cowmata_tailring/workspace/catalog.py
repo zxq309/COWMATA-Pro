@@ -425,23 +425,29 @@ class Catalog:
                 raise InterruptedError("素材检查已暂停")
             if not isinstance(metadata, dict):
                 raise ValueError("素材检查未返回有效结果")
-            correction = read_json(self.meta / "video_corrections" / (asset_id + ".json"), None)
-            if correction and correction.get("asset_id") == asset_id:
-                metadata["manual_readings"] = correction.get("readings", [])
-                metadata["roi"] = correction.get("roi")
-                if correction.get("camera"):
-                    metadata["camera"] = correction["camera"]
-                if correction.get("readings"):
-                    metadata["intervals"] = correction["intervals"]
-                    metadata["needs_review"] = len(correction["readings"]) < 2
             assert_not_being_written(path)
             if file_stamp(path) != before:
                 raise SourceBusyError("读取期间文件变化；等待复制完成后重试")
-            state = "ignored" if metadata.get("ignored") else "review" if metadata.get("needs_review") else "ready"
             with self.mutex, self.db:
                 current = self.db.execute("SELECT stamp,state FROM locations WHERE path=?", (relative,)).fetchone()
                 if current is None or current[0] != before or current[1] == "missing":
                     return None
+                # Read the authoritative human record inside publication lock.
+                # A slower background inspector cannot overwrite a newer save.
+                correction = read_json(self.meta / "video_corrections" / (asset_id + ".json"), None)
+                if correction and correction.get("asset_id") == asset_id:
+                    metadata["manual_readings"] = correction.get("readings", [])
+                    metadata["roi"] = correction.get("roi")
+                    if correction.get("camera"):
+                        metadata["camera"] = correction["camera"]
+                    if correction.get("readings"):
+                        from .clocks import manual_video_metadata
+                        if metadata.get('duration_ms') and all('media_ms' in r and 'wall_ms' in r for r in correction['readings']):
+                            metadata = manual_video_metadata(metadata,correction['readings'])
+                        else:
+                            metadata['intervals']=correction.get('intervals',[])
+                            metadata['needs_review']=len(correction['readings'])<2
+                state = "ignored" if metadata.get("ignored") else "review" if metadata.get("needs_review") else "ready"
                 self.db.execute("INSERT INTO assets VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata,indexed_at=excluded.indexed_at",
                                 (asset_id, row["kind"], json.dumps(metadata, ensure_ascii=False), now))
                 self.db.execute("UPDATE locations SET asset_id=?,state=?,error='',attempt_at=? WHERE path=?",
