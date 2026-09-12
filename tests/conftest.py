@@ -5,6 +5,15 @@ import time
 import pytest
 
 
+@pytest.fixture(scope="session", autouse=True)
+def qt_application():
+    """Keep the Qt application alive across module fixtures and queued calls."""
+    from PySide6.QtWidgets import QApplication
+
+    application = QApplication.instance() or QApplication([])
+    yield application
+
+
 @pytest.fixture(scope="session")
 def qt_window_registry():
     """Own Python wrappers until Qt-thread teardown, including cancelled closes."""

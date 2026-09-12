@@ -61,6 +61,5 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         # Capture Python output without redirecting native Qt file descriptors.
-        # The Windows 3.12 runner aborts inside pytest's FDCapture.snap when
-        # deferred Qt work and the snapshot writer are still active.
+        # Native Qt diagnostics remain visible in the Actions log.
         run: pytest -v --capture=sys -o faulthandler_timeout=30

@@ -160,8 +160,14 @@ def test_delivered_handoff_keeps_video_clock_layout_and_play_state(tmp_path, app
     assert window.work.clock.anchors[0].reference_ms == 20000
     window.motion = motion
     window.linked = True
+    # This test checks the handoff and notification scheduling, not a modal
+    # completion form. Deliver the queued prompt while its test owner is alive.
+    end_prompts = []
+    monkeypatch.setattr(window, "prompt_record_end", lambda generation, asset: end_prompts.append(asset))
     window.board.reference_ms = 32000
     window.video_time_changed(32000)
+    app.processEvents()
+    assert end_prompts == [second]
     deadline = time.monotonic() + 2
     while window._continuation_pending and time.monotonic() < deadline:
         app.processEvents()
