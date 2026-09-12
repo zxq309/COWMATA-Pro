@@ -1,0 +1,57 @@
+{
+  "kind": "nonnegative_ridge_logistic",
+  "feature_names": [
+    "B_selected_reference_drop",
+    "B_relative_rmssd_gain",
+    "B_relative_width_gain",
+    "B_absolute_variability_support"
+  ],
+  "coef": [
+    0.3786822332155213,
+    0.41140693287310126,
+    0.09905200897707742,
+    2.268918445369589
+  ],
+  "intercept": -1.5880397245706595,
+  "ridge_lambda": 0.01,
+  "training_cows": [
+    "20230",
+    "21314",
+    "22146",
+    "22225",
+    "22281",
+    "23060",
+    "23077",
+    "23103",
+    "23132",
+    "23158",
+    "23263",
+    "24096"
+  ],
+  "objective": 0.5712570467903748,
+  "decision_config": {
+    "history_hours": 96.0,
+    "min_c": 30.0,
+    "max_c": 42.0,
+    "observation_sd_c": 0.06,
+    "process_level_sd_c_per_sqrt_min": 0.025,
+    "process_slope_sd_cpm": 0.0015,
+    "slope_damping_minutes": 20.0,
+    "maximum_slope_c_per_minute": 0.08,
+    "maximum_imu_gap_ms": 1000.0,
+    "regime_drop_c": 4.0,
+    "regime_min_points": 10,
+    "rmssd_floor_c": 0.01,
+    "width_floor_c": 0.05,
+    "medium_score": 70.0,
+    "high_score": 90.0,
+    "clear_margin": 0,
+    "hold_minutes": 60,
+    "high_confirmations": 2,
+    "clear_confirmations": 1,
+    "maximum_confirmation_gap_minutes": 90.0,
+    "maximum_observation_age_to_escalate_minutes": 15.0
+  },
+  "selection_scope": "development_all",
+  "selection_method": "inner_cow_out_predictions"
+}

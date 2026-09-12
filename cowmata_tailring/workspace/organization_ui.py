@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .data_category import CATEGORIES
+from .data_category import CATEGORIES, PREGNANCY_STAGES
 from .dataset_access import ensure_available, overlaps
 from .organization import VIEWS
 from .theme import STYLE
@@ -194,6 +194,13 @@ class OrganizationWindow(QDialog):
             self.category.addItem(label, code)
         self.category.setToolTip("数据类别随标注保存；所有类别均可自由标注六类通用行为。不同类别请分批整理。")
         form.addRow("数据类别", self.category)
+        self.pregnancy_stage = QComboBox()
+        self.pregnancy_stage.addItem("请选择孕期阶段（怀孕批次必选）", "")
+        for code in PREGNANCY_STAGES:
+            self.pregnancy_stage.addItem(CATEGORIES[code], code)
+        self.pregnancy_stage.setToolTip("归入怀孕/孕早期、孕中期或孕晚期；不根据行为或产犊日期自动推断孕期。")
+        form.addRow("孕期阶段", self.pregnancy_stage)
+        self.pregnancy_stage.setEnabled(False)
         self.farm = QLineEdit("扬大_高邮牧场")
         form.addRow("牧场目录", self.farm)
         self.transfer_mode = QComboBox()
@@ -217,6 +224,9 @@ class OrganizationWindow(QDialog):
         self.normalize_button.clicked.connect(lambda: self.start_job({"action": "normalize", "target": self.target.text().strip()}))
         classify_actions.addWidget(self.preview_button)
         classify_actions.addWidget(self.normalize_button)
+        self.legacy_dataset_button = QPushButton("旧标签与算法数据集…")
+        self.legacy_dataset_button.clicked.connect(lambda: self.owner.open_dataset_workflow(0))
+        classify_actions.addWidget(self.legacy_dataset_button)
         classify_actions.addStretch()
         box.addLayout(classify_actions)
         report_box = QVBoxLayout(report_page)
@@ -276,6 +286,8 @@ class OrganizationWindow(QDialog):
             field.textEdited.connect(self.invalidate_plan)
         self.sources.itemChanged.connect(self.invalidate_plan)
         self.category.currentIndexChanged.connect(self.invalidate_plan)
+        self.category.currentIndexChanged.connect(lambda: self.pregnancy_stage.setEnabled(self.category.currentData() == "pregnancy" and not self.running))
+        self.pregnancy_stage.currentIndexChanged.connect(self.invalidate_plan)
         self.render()
 
     @property
@@ -353,9 +365,15 @@ class OrganizationWindow(QDialog):
         self.start_job({"action": "audit", "roots": roots})
 
     def preview_import(self):
+        category = self.category.currentData()
+        if category == "pregnancy":
+            category = self.pregnancy_stage.currentData()
+            if not category:
+                self.status.setText("请先选择孕期阶段：孕早期、孕中期或孕晚期。")
+                return
         self.start_job({"action": "import", "target": self.target.text().strip(), "sources": self.source_specs(),
                         "start": self.start_date.text().strip(), "end": self.end_date.text().strip(), "note": self.note.text(),
-                        "category": self.category.currentData(), "farm": self.farm.text().strip(), "transfer": self.transfer_mode.currentData()})
+                        "category": category, "farm": self.farm.text().strip(), "transfer": self.transfer_mode.currentData()})
 
     def preview_quarantine(self):
         if self.report:
@@ -495,7 +513,9 @@ class OrganizationWindow(QDialog):
             self.transfer_mode.setCurrentIndex(max(0, self.transfer_mode.findData(plan.get("transfer", "copy"))))
             self.start_date.setText(plan.get("start", ""))
             self.end_date.setText(plan.get("end", ""))
-            self.category.setCurrentIndex(max(0, self.category.findData(plan.get("category", ""))))
+            code = plan.get("category", "")
+            self.category.setCurrentIndex(max(0, self.category.findData("pregnancy" if code in PREGNANCY_STAGES else code)))
+            self.pregnancy_stage.setCurrentIndex(max(0, self.pregnancy_stage.findData(code)))
             self.note.setText(plan.get("note", ""))
             self.sources.setRowCount(0)
             for spec in plan["sources"]:
@@ -554,6 +574,7 @@ class OrganizationWindow(QDialog):
         self.execute_button.setEnabled(not busy and bool(self.plan and any(r["status"] in {"ready", "existing", "quarantine"} for r in self.plan["rows"])
                                                      and (self.plan.get("allow_partial") or not any(r["status"] in {"blocked", "invalid"} for r in self.plan["rows"]))))
         self.cancel_button.setEnabled(self.running)
+        self.pregnancy_stage.setEnabled(not busy and self.category.currentData() == "pregnancy")
         self.pause_project.setEnabled(not busy and bool(getattr(self.owner, "catalog", None)))
         self.export_button.setEnabled(not busy and bool(self.job and (self.job / "report.csv").is_file()))
 

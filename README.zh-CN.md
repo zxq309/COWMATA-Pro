@@ -1,4 +1,4 @@
-# COWMATA 3.4.1 纯净优化版
+# COWMATA 3.4.2 纯净优化版
 
 双击 `COWMATA.exe` 或 `START_ANNOTATOR.bat`。随包提供私有运行环境、播放器、FFmpeg、OCR 权重及事件模型。启动沿用原版的联网版本检查；进入工程后可离线标注。
 
@@ -13,3 +13,5 @@
 代码在 `cowmata_tailring`，回归测试在 `tests`。旧任务回放和恢复仍保留；一次性修改脚本及闲置生产代码已按用户二次确认清理。
 
 3.4.1：修复下拉框空格播放、零时长区间和新标签选择；恢复标签轨道拖动与波形手柄，补充人工标签提示。见 [更新说明](docs/release-341.md) 和 [图文教程](docs/quick-start-illustrated.md)。
+
+3.4.2: [旧标签迁移与算法数据集流程](docs/legacy-dataset-workflow.md) · [更新说明](docs/release-342.md) · [图文教程](docs/quick-start-illustrated.pdf)。

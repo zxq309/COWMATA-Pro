@@ -183,6 +183,7 @@ class MainWindow(QMainWindow):
         self._action(files, "打开历史标注回看…", self.open_history, "Ctrl+Shift+O")
         self._action(files, "接收多人标注成果…", self.import_team_labels)
         self._action(files, "训练与兼容格式（批量导出）…", self.export_training)
+        self._action(files, "旧标签迁移与算法数据集…", lambda: self.open_dataset_workflow(0))
         self._action(files, "导入旧单视频工程…", self.import_legacy)
         self._action(files, "打开旧版单视频窗口", self.open_legacy)
         materials = self.menuBar().addMenu("素材")
@@ -762,6 +763,14 @@ class MainWindow(QMainWindow):
         if self.worker:
             self.worker.request()
             self.tell("已请求重新核对。正在复制的文件仍需通过稳定性和可读性检查，不会强行加载。")
+
+    def open_dataset_workflow(self, tab=0):
+        from .dataset_workflow_ui import DatasetWorkflowWindow
+        if getattr(self, '_dataset_workflow_window', None) is None:
+            self._dataset_workflow_window = DatasetWorkflowWindow(self, tab)
+        self._dataset_workflow_window.tabs.setCurrentIndex(tab)
+        self._dataset_workflow_window.show()
+        self._dataset_workflow_window.raise_()
 
     def open_organization(self, tab=0):
         from .organization_ui import OrganizationWindow

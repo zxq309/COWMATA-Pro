@@ -12,6 +12,25 @@ LEGACY_FIELDS = ["target_relative_path", "dataset_category", "dataset_category_l
           "collection_end", "task_id", "confirmed_at", "note"]
 IDENTITY_FIELDS = ["device_id", "cow_id", "field_mark", "source_folder", "record_date", "record_start_ms", "identity_provenance"]
 FIELDS = [*LEGACY_FIELDS, *IDENTITY_FIELDS]
+PREGNANCY_STAGES = ('pregnancy_early', 'pregnancy_mid', 'pregnancy_late')
+
+
+def category_parts(code):
+    label = category_fields(code)['dataset_category_label']
+    return ('怀孕', label) if code in PREGNANCY_STAGES else (label,)
+
+
+def category_root(target, farm, code):
+    """Accept a resource root, a farm or an existing category without nesting farms."""
+    target = Path(target)
+    farm_root = target / farm
+    for candidate in (target, target.parent, target.parent.parent):
+        if candidate.name == farm:
+            remainder = target.relative_to(candidate).parts
+            if not remainder or all(part in CATEGORIES.values() for part in remainder):
+                farm_root = candidate
+                break
+    return farm_root.joinpath(*category_parts(code))
 
 
 def category_fields(code):

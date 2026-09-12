@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import organization as core
 from .catalog import assert_not_being_written, digest_file
-from .data_category import category_fields, update_context
+from .data_category import category_fields, category_root, update_context
 from .dataset_access import DatasetLease
 from .resource_layout import MODALITIES, covered_days, day_at, stamp_at
 from .storage import atomic_json
@@ -166,15 +166,12 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
     from .device_identity import resolve_device_identity
     from .probe import SourceInspector
 
-    label = category_fields(category)["dataset_category_label"]
+    category_fields(category)
     if transfer not in {"copy", "move"}:
         raise ValueError("Invalid transfer mode")
     resource_root = core.safe_path(target)
     farm = core.safe_name(farm.strip())
-    root = resource_root / farm / label
-    # Selecting the category scope itself is also supported.
-    if resource_root.name == label and resource_root.parent.name == farm:
-        root = resource_root
+    root = category_root(resource_root, farm, category)
     if not sources:
         raise ValueError("请添加九轴或视频来源；PPG 目录自动保留占位")
     token = uuid.uuid4().hex

@@ -140,11 +140,18 @@ def read_label_file(path):
     if not isinstance(data, dict):
         raise ValueError("Not an annotation document")
     if data.get("format") == FORMAT:
-        if data.get("version") not in {1, 2} or data.get("coordinates") != "parent_imu_ms":
+        annotation_only = (data.get("version") == 3 and data.get("coordinates") == "unix_epoch_ms"
+                           and data.get("source", {}).get("kind") == "annotation_only")
+        if not annotation_only and (data.get("version") not in {1, 2} or data.get("coordinates") != "parent_imu_ms"):
             raise ValueError("Unsupported annotation version or coordinates")
         work = SessionWork.from_dict(data["work"])
         if data["source"]["asset_id"] != work.asset_id:
             raise ValueError("Annotation source identities disagree")
+        if annotation_only:
+            original = data.get("embedded_labels", {})
+            digest = hashlib.sha256(base64.b64decode(original.get("original_base64", ""), validate=True)).hexdigest()
+            if digest != original.get("sha256") or digest != work.asset_id:
+                raise ValueError("Legacy label source failed integrity validation")
         lo, hi = (float(data["view"][key]) for key in ("start_ms", "end_ms"))
         if not math.isfinite(lo + hi) or lo < 0 or hi < lo:
             raise ValueError("Invalid annotation view range")
@@ -193,6 +200,10 @@ class HistoryData:
 def load_history(path, root=None, *, cancelled=lambda: False):
     doc = read_label_file(path)
     work = SessionWork.from_dict(doc["work"])
+    if doc.get("coordinates") == "unix_epoch_ms":
+        unknown = len(doc.get("legacy_import", {}).get("unresolved", []))
+        return HistoryData(doc, work, None, None, [], VideoTimeline([]),
+            [f"旧人工标签：绝对时间记录；未连接九轴，不生成虚构波形。另有 {unknown} 条记录待核，原行随文件保留。"])
     hint = doc["source"].get("project_root_hint", "")
     root = Path(root).resolve() if root else Path(hint).resolve() if hint and Path(hint).is_dir() else None
     warnings = []

@@ -1,4 +1,4 @@
-# COWMATA 3.4.1
+# COWMATA 3.4.2
 
 Portable multiview video and nine-axis cattle annotation workstation. Launch `COWMATA.exe` or `START_ANNOTATOR.bat`. Private Python, Qt, VLC, FFmpeg, OCR weights and event models are included. The inherited startup update check requires a network connection; annotation can continue offline after startup.
 
@@ -9,3 +9,5 @@ Device-ear-tag-field-mark identities preserve leading zeros and support unambigu
 See [Chinese usage](README.zh-CN.md), `使用说明.txt`, and [release notes](docs/release-340.md). Source is in `cowmata_tailring`; regression tests are in `tests`. Historical project readers and task replay remain supported.
 
 3.4.1 fixes Space after selecting speed/behavior, rejects zero-length intervals, selects new annotations, and restores direct label dragging. See [release notes](docs/release-341.md) and [illustrated tutorial](docs/quick-start-illustrated.md).
+
+3.4.2: [旧标签迁移与算法数据集流程](docs/legacy-dataset-workflow.md) · [更新说明](docs/release-342.md) · [图文教程](docs/quick-start-illustrated.pdf)。

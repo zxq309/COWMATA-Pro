@@ -182,6 +182,9 @@ def test_gui_organize_then_open_preserves_collection_category(tmp_path, monkeypa
     dialog.start_date.setText("2026-09-01")
     dialog.end_date.setText("2026-09-01")
     dialog.category.setCurrentIndex(dialog.category.findData(category))
+    if category == 'pregnancy':
+        dialog.pregnancy_stage.setCurrentIndex(dialog.pregnancy_stage.findData('pregnancy_late'))
+        category = 'pregnancy_late'
     dialog.add_source("imu", source.parent.parent)
     beats = []
     timer = QTimer()
