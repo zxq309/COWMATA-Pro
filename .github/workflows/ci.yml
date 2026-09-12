@@ -37,6 +37,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+          # Use the same pytest release as the verified local acceptance run.
+          # pytest 9.1.1 on Windows/Python 3.12 aborts during Qt teardown.
+          pip install "pytest==8.3.5"
 
       - name: Lint
         run: ruff check cowmata_tailring tests
