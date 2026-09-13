@@ -1418,8 +1418,8 @@
     },
     {
       "path": "cowmata_tailring/app/update_ui.py",
-      "size": 24306,
-      "sha256": "06479f1a9adece2f2011dfd8217320d860b8dfe995b1a44c479e2a0323cbb63c"
+      "size": 24434,
+      "sha256": "e133cdca82e215f21fef8615e1360e832926a85034b4eee91e86cbc4f410d9d2"
     },
     {
       "path": "cowmata_tailring/app/update_worker.py",
@@ -2973,8 +2973,8 @@
     },
     {
       "path": "tests/test_shutdown_update_v353.py",
-      "size": 5050,
-      "sha256": "8891a167e17c58275780dced372dfb36a712948fb5d0f1ffd941d3bfb1959bcb"
+      "size": 5743,
+      "sha256": "72313b7ac049623f8e656f7be0a5ad3bb98f420161eaa604cf7dea2397bae00f"
     },
     {
       "path": "tests/test_signal_axis_spacing.py",

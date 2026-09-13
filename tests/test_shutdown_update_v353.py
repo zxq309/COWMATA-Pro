@@ -107,6 +107,25 @@ def test_pending_async_save_does_not_cancel_scheduled_update(monkeypatch, tmp_pa
     window.close()
 
 
+def test_update_close_ignores_orphan_qobject_wrappers(monkeypatch, tmp_path):
+    from PySide6.QtCore import QObject
+    from PySide6.QtWidgets import QMainWindow
+
+    from cowmata_tailring.app.update_ui import UpdateController
+
+    window = QMainWindow()
+    window.show()
+    controller = UpdateController(window, automatic=False)
+    controller.pending_job = tmp_path / 'job.json'
+    orphan = QObject()
+    monkeypatch.setattr(QApplication, 'closeAllWindows', lambda: None)
+    monkeypatch.setattr(QApplication, 'topLevelWidgets', lambda: [orphan, window])
+    controller._close_for_update()
+    assert controller.pending_job is None
+    controller.close_timer.stop()
+    window.close()
+
+
 def test_stuck_child_can_be_stopped_without_waiting_forever(tmp_path):
     from cowmata_tailring.workspace.modern_window import MainWindow
 

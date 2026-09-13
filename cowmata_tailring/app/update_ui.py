@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTextBrowser,
     QVBoxLayout,
+    QWidget,
 )
 
 from cowmata_tailring import __version__
@@ -302,7 +303,9 @@ class UpdateController(QObject):
 
     def _close_for_update(self):
         QApplication.closeAllWindows()
-        visible = [w for w in QApplication.topLevelWidgets() if w.isVisible()]
+        from shiboken6 import isValid
+        visible = [w for w in [self.window, *QApplication.topLevelWidgets()]
+                   if isinstance(w, QWidget) and isValid(w) and w.isVisible()]
         if any(getattr(w,'_closing_requested',False) or getattr(w,'_closing_due_to_organization',False)
                or getattr(w,'_export_running',False) for w in visible):
             self.close_timer.start(200)
