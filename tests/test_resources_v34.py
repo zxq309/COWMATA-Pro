@@ -61,7 +61,8 @@ def test_copy_and_repeat_resume_cross_midnight(tmp_path):
     assert again['rows'][0]['status'] == 'existing'
     assert org.execute(again, tmp_path/'job2')['copied'] == 0
     scope = Path(result['target'])
-    assert (scope/'PPG/2026-08-04/占位说明.txt').is_file()
+    assert (scope/'PPG/2026-08-04').is_dir()
+    assert not list((scope/'PPG').rglob('*.txt'))
     assert len(list((scope/'Video/2026-08-04').iterdir())) == 8
     from cowmata_tailring.workspace.catalog import Catalog
     cat = Catalog(scope/'Motion/2026-08-04', stability_seconds=0)

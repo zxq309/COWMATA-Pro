@@ -83,13 +83,14 @@ def probe(path, cancelled):
             "8388608",
             "-analyzeduration",
             "3000000",
+            "-skip_estimate_duration_from_pts", "1",
             "-show_streams",
             "-show_format",
             "-of",
             "json",
             str(path),
         ],
-        timeout=20,
+        timeout=90,
         cancelled=cancelled,
     )
     if result.returncode:
@@ -113,6 +114,7 @@ def opening_frame(path, media_ms, cancelled):
             "8388608",
             "-analyzeduration",
             "3000000",
+            "-skip_estimate_duration_from_pts", "1",
             "-i",
             str(path),
             "-map",
@@ -131,7 +133,7 @@ def opening_frame(path, media_ms, cancelled):
             "png",
             "pipe:1",
         ],
-        timeout=25,
+        timeout=90,
         cancelled=cancelled,
     )
     match = re.search(
@@ -142,6 +144,25 @@ def opening_frame(path, media_ms, cancelled):
     return Image.open(io.BytesIO(result.stdout)).convert("RGB"), float(match[1]) * 1000
 
 
+def parse_archive_stamp(text):
+    """Recover OCR punctuation only; never invent missing date/time digits."""
+    from .ocr import parse_stamp
+    strict = parse_stamp(text)
+    if strict:
+        return strict
+    import unicodedata
+    from datetime import datetime
+    text = unicodedata.normalize('NFKC', text)
+    pattern = r'(?<!\d)(20\d{2})\s*[-/.年]\s*(\d{2})\s*[-/.月]\s*(\d{2})[ T日]*(\d{2})[ :：_.-]*(\d{2})[ :：_.-]*(\d{2})(?!\d)'
+    stamps = set()
+    for match in re.finditer(pattern, text):
+        try:
+            stamps.add(datetime(*map(int, match.groups())).strftime('%Y-%m-%d %H:%M:%S'))
+        except ValueError:
+            pass
+    return stamps.pop() if len(stamps) == 1 else None
+
+
 def read_clock(frame, path, cancelled, *, quick=False):
     from .ocr import TimestampOCR
 
@@ -150,7 +171,12 @@ def read_clock(frame, path, cancelled, *, quick=False):
     _local.ocr.engine.cancelled = cancelled
     from .hik_osd import PROFILES
 
-    if frame.size in PROFILES:
+    try:
+        with path.open('rb') as stream:
+            dahua = b'DHGS' in stream.read(4096)
+    except OSError:
+        dahua = False
+    if frame.size in PROFILES and not dahua:
         pixel_candidate = True
         if hasattr(_local.ocr, "native_check"):
             fast = _local.ocr.native_check(
@@ -173,8 +199,15 @@ def read_clock(frame, path, cancelled, *, quick=False):
             and (_local.ocr._hik_read(frame, report) or report.get("enhancement_conflict"))
         ):
             return report
-    # One image, at most four corner crops. No temporal sampling or enhancement loop.
-    return _local.ocr.routing_read(frame, filename=path.name, raw_only=True, max_passes=4)
+    hints = getattr(_local, 'clock_rois', {})
+    key = str(path.parent)
+    report = _local.ocr.routing_read(frame, filename=path.name, hint=hints.get(key), raw_only=True, max_passes=5, parser=parse_archive_stamp)
+    if not report.get('success') and not quick:
+        report = _local.ocr.routing_read(frame, filename=path.name, hint=hints.get(key), raw_only=False, max_passes=15, parser=parse_archive_stamp)
+    if report.get('success') and report.get('roi'):
+        hints[key] = report['roi']
+        _local.clock_rois = hints
+    return report
 
 
 def native_first_start(path, cancelled=lambda: False):
@@ -238,16 +271,24 @@ def opening_timestamp(path, cancelled):
                 return frame, actual, report, estimate, "opening_ocr_estimate"
         except (OSError, ValueError, RuntimeError) as exc:
             last_error = str(exc)
-    raise ValueError("开头自动尝试仍未取得可靠时间，已保留并跳过。" + last_error)
+    core.check_cancel(cancelled)
+    # Recover timestamped source names, never filesystem modification times.
+    match = re.search(r'(20\d{2})[-_](\d{2})[-_](\d{2})[ _T](\d{2})[-_:](\d{2})[-_:](\d{2})', path.stem)
+    if match:
+        from datetime import datetime
+        wall = (datetime(*map(int, match.groups())) - datetime(1970, 1, 1)).total_seconds()*1000
+        frame, actual = opening_frame(path, 0, cancelled)
+        return frame, actual, dict(success=True, wall_ms=wall), wall, 'source_filename'
+    raise ValueError("视频时间仍未确定，需补充采集日期后继续归类：" + last_error)
 
 
 def inspect(path, cache, cancelled=lambda: False):
     path, cache = Path(path), Path(cache)
     external_cancelled = cancelled
-    deadline = time.monotonic() + 40
+    started = time.monotonic()
 
     def cancelled():
-        return external_cancelled() or time.monotonic() >= deadline
+        return external_cancelled()
 
     row = {"source": str(path), "kind": "video", "device": "", "status": "blocked", "message": ""}
     try:
@@ -271,10 +312,15 @@ def inspect(path, cache, cancelled=lambda: False):
             try:
                 result = json.loads(saved.read_text(encoding="utf-8"))
                 if result.get("identity") == row["identity"] and result.get("status") == "ready":
-                    return result
+                    return {**result, 'recognition_seconds': round(time.monotonic() - started, 3), 'recognition_cached': True}
             except (OSError, ValueError):
                 pass
-            info = probe(path, cancelled)
+            # PS cameras store a private stream clock. Probing the entire tail
+            # first caused false timeouts on busy disks and padded recordings.
+            with path.open('rb') as stream:
+                is_ps = stream.read(4) == b'\x00\x00\x01\xba'
+            info = (dict(streams=[dict(codec_type='video')], format=dict(format_name='mpeg'))
+                    if is_ps else probe(path, cancelled))
             video = next(
                 (
                     s
@@ -361,6 +407,7 @@ def inspect(path, cache, cancelled=lambda: False):
                 metadata=metadata,
                 extension=extension,
                 message={
+                    "source_filename": "按来源文件名日期归类，时间尚待复核",
                     "native_first_frame": "按流内绝对时间命名",
                     "first_frame_ocr": "按首帧画面时间命名",
                     "opening_ocr_estimate": "按开头邻近帧回推开始秒命名",
@@ -370,8 +417,12 @@ def inspect(path, cache, cancelled=lambda: False):
                 raise ValueError("识别期间文件变化，保留原处")
             cache.mkdir(parents=True, exist_ok=True)
             atomic_json(saved, row)
+    except InterruptedError:
+        raise
     except Exception as exc:
+        core.check_cancel(external_cancelled)
         row.update(status="blocked", message=str(exc))
+    row['recognition_seconds'] = round(time.monotonic() - started, 3)
     return row
 
 
@@ -463,6 +514,9 @@ def plan_import(
     )
     cache.mkdir(parents=True, exist_ok=True)
     reference_days = {d for r in reference for d in r["covered_dates"]}
+    index_path = root / '资源索引.json'
+    existing_index = json.loads(index_path.read_text(encoding='utf-8')) if index_path.is_file() else {}
+    already = {os.path.normcase(str(Path(r['source']))): r for r in existing_index.get('records', []) if r.get('source')}
     jobs = {}
     for spec in sources:
         source = core.safe_path(spec["path"])
@@ -496,7 +550,12 @@ def plan_import(
             camera = spec.get("camera") or "auto"
             explicit = camera in core.VIEWS
             if not explicit:
+                aliases = {'乐橙': '视角01', '右1': '视角02', '右2': '视角03', '右3': '视角04',
+                           '左1': '视角05', '左2': '视角06', '左3': '视角07'}
                 for parent in path.parents:
+                    if parent.name in aliases:
+                        camera = aliases[parent.name]
+                        break
                     match = re.match(r"^视角0?([1-8])(?:$|[_\- ])", parent.name)
                     if match:
                         camera = f"视角{int(match[1]):02d}"
@@ -506,7 +565,7 @@ def plan_import(
                 kind=kind,
                 camera=camera,
                 explicit=explicit,
-                delete_allowed=declared == "video",
+                delete_allowed=declared == "video" and not streaming,
                 source_root=source,
             )
             previous = jobs.get(str(path))
@@ -520,13 +579,41 @@ def plan_import(
 
     def prepare(entry):
         path = entry["path"]
+        known = already.get(os.path.normcase(str(path)))
+        if known and known.get('sha256') and known.get('verified_stamp'):
+            from .catalog import file_stamp
+            try:
+                destination = core.safe_path(root / known['path'])
+                current = core.identity(path)
+                source_identity = known.get('source_identity')
+                if source_identity is None:
+                    # Upgrade the old full-hash cache without rereading videos.
+                    saved_hash = cache / (hashlib.sha256(str(path).encode()).hexdigest() + '.source.json')
+                    cached_hash = json.loads(saved_hash.read_text(encoding='utf-8'))
+                    if cached_hash.get('sha256') == known['sha256']:
+                        source_identity = cached_hash.get('identity')
+                camera_ok = not entry['explicit'] or known.get('owner') == entry['camera']
+                if (camera_ok and source_identity == current and destination.is_relative_to(root)
+                        and destination.is_file() and file_stamp(destination) == known['verified_stamp']):
+                    row = {**known, 'source': str(path), 'target': str(destination), 'identity': current,
+                           'status': 'done', 'existing_verified': True, 'resumed_complete': True,
+                           'record_date': day_at(known['record_start_ms']), 'file_seconds': 0,
+                           'recognition_seconds': 0, 'transfer_seconds': 0,
+                           'message': '已归类，文件未变化，直接复用'}
+                    return entry, row
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
         if entry["kind"] == "imu":
             try:
+                from .ppg_intake import plan_ppg
+                ppg = plan_ppg(path, root, cache, transfer, cancelled, digest=legacy.verified_source_digest)
+                if ppg is not None:
+                    return entry, ppg
                 result = legacy.plan_import(
                     resource_root,
                     [{"kind": "imu", "path": str(path)}],
-                    start,
-                    end,
+                    '',
+                    None,
                     note,
                     cancelled,
                     category=category,
@@ -544,7 +631,12 @@ def plan_import(
                     message=str(exc),
                 )
         row = inspect(path, cache, cancelled)
-        if row["status"] in {"ready", "nonvideo"}:
+        if row['status'] == 'blocked' and any(word in row.get('message', '') for word in ('timed out', '占用', '媒体格式无法确认')):
+            core.check_cancel(cancelled)
+            first_error = row['message']
+            row = inspect(path, cache, cancelled)
+            row['retry_reason'] = first_error
+        if row["status"] in {"ready", "nonvideo"} and (not streaming or transfer == 'move' or row['kind'] == 'nonvideo'):
             try:
                 row["sha256"] = legacy.verified_source_digest(path, cache, cancelled)
             except Exception as exc:
@@ -597,55 +689,53 @@ def plan_import(
                         message="确认非录像，执行时删除：" + row["message"],
                     )
                 else:
-                    row.update(status="skip", message="混合来源中的非视频保留")
+                    row.update(status="invalid" if streaming else "skip", message="不是视频内容，原文件保留")
             elif row["kind"] == "video" and row["status"] == "ready":
                 day, camera = row["record_date"], entry["camera"]
                 if camera not in core.VIEWS:
-                    row.update(status="blocked", message="视角未明确，请在来源表指定视角01至视角08")
-                elif (
-                    start
-                    and not start <= day <= (end or start)
-                    or reference
-                    and day not in reference_days
-                ):
-                    row.update(
-                        status="skip", message="开始日期不在所选日期或已有九轴日期内，保留原处"
-                    )
-                else:
-                    base = (
-                        root
-                        / "Video"
-                        / day
-                        / camera
-                        / (start_stamp(row["record_start_ms"]) + row["extension"])
-                    )
-                    destination = base
-                    counter = 0
-                    while True:
-                        key = os.path.normcase(str(destination))
-                        known = reserved.get(key)
-                        if destination.exists() and known is None:
-                            known = legacy.verified_source_digest(destination, cache, cancelled)
-                        if known is None or known == row["sha256"]:
-                            break
-                        counter += 1
-                        destination = base.with_name(f"{base.stem}__{counter:03d}{base.suffix}")
-                    row.update(
-                        target=str(destination),
-                        owner=camera,
-                        batch=day,
-                        timezone_offset_minutes=480,
-                        time_basis="unix_epoch_ms",
-                        transfer="move"
-                        if transfer == "move" and core.volume(path) == core.volume(root)
-                        else "copy",
-                    )
-                    row["metadata"]["camera"] = camera
-                    if key in reserved:
-                        row.update(status="skip", message="相同内容本批已列入归档")
-                    elif destination.exists():
-                        row.update(status="existing", message="相同内容已归档")
-                    reserved[key] = row["sha256"]
+                    # Preserve an unknown camera's source identity, never merge
+                    # unrelated cameras into one arbitrary numbered view.
+                    camera = '来源_' + core.safe_name(path.parent.name)
+                if reference and day not in reference_days:
+                    row['message'] += '；该日没有九轴记录，仍按视频实际日期归类'
+                if start and not start <= day <= (end or start):
+                    row['message'] += '；扩展日期范围以保留正常视频'
+                base = (
+                    root
+                    / "Video"
+                    / day
+                    / camera
+                    / (start_stamp(row["record_start_ms"]) + row["extension"])
+                )
+                destination = base
+                counter = 0
+                while True:
+                    key = os.path.normcase(str(destination))
+                    known = reserved.get(key)
+                    if destination.exists() and known is None:
+                        known = legacy.verified_source_digest(destination, cache, cancelled)
+                    if known is not None and not row.get('sha256'):
+                        row['sha256'] = legacy.verified_source_digest(path, cache, cancelled)
+                    if known is None or known == row.get("sha256"):
+                        break
+                    counter += 1
+                    destination = base.with_name(f"{base.stem}__{counter:03d}{base.suffix}")
+                row.update(
+                    target=str(destination),
+                    owner=camera,
+                    batch=day,
+                    timezone_offset_minutes=480,
+                    time_basis="unix_epoch_ms",
+                    transfer="move"
+                    if transfer == "move" and core.volume(path) == core.volume(root)
+                    else "copy",
+                )
+                row["metadata"]["camera"] = camera
+                if key in reserved:
+                    row.update(status="existing", message="相同内容本批共用已验证归档目标")
+                elif destination.exists():
+                    row.update(status="existing", message="相同内容已归档")
+                reserved[key] = row.get("sha256") or "pending:" + str(path)
             rows.append(row)
             if row.get("record_date"):
                 day = row["record_date"]
@@ -654,7 +744,9 @@ def plan_import(
             if not streaming:
                 on_row(dict(row))
             yield row
-            progress(len(rows), len(jobs), str(path))
+            if row.get('target') and row.get('sha256'):
+                reserved[os.path.normcase(row['target'])] = row['sha256']
+            progress(len(rows), plan['total_files'], str(path))
 
     if streaming:
         return plan, generate()
@@ -689,25 +781,58 @@ def organize(
 
     final_rows = {}
 
+    started = time.monotonic()
+    from .organization_live import LiveReport
+    live = LiveReport(job)
+
     def completed(row):
-        if row["status"] in {"blocked", "invalid"}:
-            row = {
-                **row,
-                "message": row.get("message", "").replace("待确认", "").rstrip("；。")
-                + "；本次已自动跳过，原文件保留。",
-            }
-        final_rows[row["source"]] = dict(row)
+        row = dict(row)
+        row['task_seconds'] = round(time.monotonic() - started, 3)
+        final_rows[row['source']] = row
+        live.row(row)
         on_row(row)
 
     saved = job / "plan.json"
     previous = json.loads(saved.read_text(encoding="utf-8")) if saved.is_file() else None
     recovered = set()
-    if previous and previous.get("streaming"):
-        if any(r["status"] in {"ready", "existing"} for r in previous["rows"]):
-            legacy.execute(previous, job, stopped, progress, on_row=completed)
-            recovered = {
-                key for key, row in final_rows.items() if row["status"] in {"done", "deleted"}
-            }
+    recovered_rows = []
+    if previous and previous.get('streaming'):
+        from .catalog import file_stamp
+        index_path = Path(previous['target']) / '资源索引.json'
+        index = json.loads(index_path.read_text(encoding='utf-8')) if index_path.is_file() else {}
+        indexed = {r['path']: r for r in index.get('records', [])}
+        remaining = []
+        for row in previous['rows']:
+            if row['status'] not in {'ready', 'existing', 'done'} or not row.get('target'):
+                continue
+            destination = Path(row['target'])
+            source = Path(row['source'])
+            try:
+                relative = destination.relative_to(Path(previous['target'])).as_posix()
+                archived = indexed.get(relative, {})
+                source_ok = (core.identity(source) == row['identity'] if source.exists() else row.get('transfer') == 'move')
+                if (source_ok and destination.is_file() and archived.get('verified_stamp') == file_stamp(destination)
+                        and archived.get('sha256') == row.get('sha256') and row.get('sha256')):
+                    done = {**row, 'status': 'done', 'resumed_complete': True, 'message': '已归类，来源与目标身份未变化，无需重复复制'}
+                    recovered.add(row['source'])
+                    recovered_rows.append(done)
+                    completed(done)
+                    continue
+            except (OSError, ValueError, KeyError):
+                pass
+            remaining.append({**row, 'status': 'ready'})
+        if remaining:
+            # Complete only interrupted transfers. Never rehash hundreds of GB
+            # whose full verification and file identity are already recorded.
+            legacy.execute({**previous, 'rows': remaining}, job, stopped, progress, on_row=completed)
+            for key, row in final_rows.items():
+                if row['status'] in {'done', 'deleted'} and key not in recovered:
+                    recovered.add(key)
+                    recovered_rows.append(row)
+    from .fast_transfer import transfer_policy
+    requested_workers = max(1, int(options.get('workers', 4)))
+    if any(transfer_policy(s['path'], target) == 'bulk' for s in sources):
+        options['workers'] = min(2, requested_workers)
     plan, rows = plan_import(
         target,
         sources,
@@ -723,13 +848,21 @@ def organize(
     )
     if previous and previous.get("streaming"):
         plan["id"] = previous["id"]
-    atomic_json(saved, plan)
+    plan['rows'].extend(recovered_rows)
+    plan['total_files'] += len(recovered_rows)
+    atomic_json(saved, plan, backup=False)
     try:
         result = legacy.execute(plan, job, stopped, progress, on_row=completed, row_stream=rows)
         result["rows"] = list(final_rows.values())
         result["archived_files"] = sum(r["status"] == "done" for r in result["rows"])
+        result['seconds'] = round(time.monotonic() - started, 3)
+        result['completed'] = not result.get('unresolved')
+        result['requires_attention'] = bool(result.get('unresolved'))
+        result['report_path'] = str(live.path)
+        result['reused_files'] = sum(bool(r.get('existing_verified') or r.get('resumed_complete')) for r in result['rows'])
         atomic_json(job / "result.json", result)
         return result
     finally:
         local_stop.set()
         rows.close()
+        atomic_json(saved, plan, backup=False)

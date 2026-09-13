@@ -54,7 +54,7 @@ class TimestampOCR:
         else:
             raise ValueError("Unknown OCR backend: " + backend)
 
-    def routing_read(self, img: Image.Image, *, filename="frame", hint=None, max_passes=None, minimum_votes=1, raw_only=False) -> dict:
+    def routing_read(self, img: Image.Image, *, filename="frame", hint=None, max_passes=None, minimum_votes=1, raw_only=False, parser=None) -> dict:
         """Bounded single-pass routing, NEVER a verified OCR observation.
 
         Two nearby routing frames prioritize candidate files. The normal
@@ -81,7 +81,7 @@ class TimestampOCR:
                 rows, _ = self.engine(Image.fromarray(variant), use_cls=False)
                 rows = [r for r in (rows or []) if float(r[2]) >= .8]
                 rows.sort(key=lambda r: (round(min(p[1] for p in r[0])/30), min(p[0] for p in r[0])))
-                stamp = parse_stamp(" ".join(r[1] for r in rows))
+                stamp = (parser or parse_stamp)(" ".join(r[1] for r in rows))
                 if not stamp:
                     continue
                 votes[stamp] += 1

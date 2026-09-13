@@ -138,8 +138,9 @@ def copy_verified(source, partial, expected_sha, *, cancelled=lambda: False,
                         write(block)
             out.flush()
             os.fsync(out.fileno())
-    if offset != size or hasher.hexdigest() != expected_sha:
+    if offset != size or expected_sha and hasher.hexdigest() != expected_sha:
         raise ValueError('复制期间来源内容发生变化，未发布目标文件')
+    expected_sha = expected_sha or hasher.hexdigest()
     verified = hashlib.sha256()
     with partial.open('rb', buffering=0) as saved:
         count = 0
@@ -150,5 +151,5 @@ def copy_verified(source, partial, expected_sha, *, cancelled=lambda: False,
             progress(count, size, 'verify')
     if verified.hexdigest() != expected_sha:
         raise ValueError('复制后内容校验不一致，原件和临时文件保留')
-    return {'policy': policy, 'resumed_bytes': resumed, 'written_bytes': size-resumed,
+    return {'sha256': expected_sha, 'policy': policy, 'resumed_bytes': resumed, 'written_bytes': size-resumed,
             'verified_bytes': size, 'seconds': time.monotonic()-started}

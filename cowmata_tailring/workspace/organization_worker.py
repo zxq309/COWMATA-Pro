@@ -1,7 +1,6 @@
 """Private child process: directory work never holds the GUI's Python GIL."""
 from __future__ import annotations
 
-import csv
 import json
 import os
 import sys
@@ -30,15 +29,19 @@ def main():
     def cancelled():
         return (job / "cancel").exists()
     last = 0.0
+    from cowmata_tailring.workspace.organization_live import LiveReport
+    live = LiveReport(job)
 
     def progress(current, total, path):
         nonlocal last
         when = time.monotonic()
         if when - last >= .2 or total and current == total:
-            emit({"event": "progress", "current": current, "total": total, "path": path})
+            emit({"event": "progress", "current": current, "total": total, "path": path, "unit": "bytes" if str(path).startswith(("快速复制", "校验目标")) else "files"})
             last = when
 
     def on_row(row):
+        if request.get('action') != 'organize':
+            live.row(row)
         emit({'event': 'row', 'row': row})
 
     try:
@@ -76,13 +79,9 @@ def main():
         if action not in {"audit", "execute", "organize"}:
             (job / "plan.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
         (job / "result.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
-        with (job / "report.csv").open("w", encoding="utf-8-sig", newline="") as stream:
-            fields = ["source", "target", "kind", "device", "size", "status", "message",
-                      "source_folder", "device_id", "cow_id", "field_mark", "record_date",
-                      "record_start_ms", "suggested_folder", "identity_provenance"]
-            writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(result.get("rows", []))
+        if action not in {'organize', 'execute'}:
+            for row in result.get('rows', []):
+                live.row(row)
         emit({"event": "result", "path": str(job / "result.json")})
         return 0
     except Exception as exc:

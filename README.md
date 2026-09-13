@@ -1,17 +1,17 @@
-# COWMATA Annotator 3.5.3
+# COWMATA Annotator 3.6.0
 
-A Windows workstation for organizing cattle recordings, synchronizing multiview video with continuous nine-axis IMU, annotating behavior, and reviewing evidence. Offline Python, Qt, VLC, FFmpeg and OCR dependencies are bundled.
+A Windows workstation for classifying and downloading cattle sensor records, synchronizing multiview video with continuous IMU, annotating behavior, and reviewing evidence. Python, Qt, VLC, FFmpeg and offline OCR models are bundled.
 
-[Setup](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.5.3/COWMATA-Annotator-3.5.3-Setup.exe) · [Portable ZIP](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.5.3/COWMATA-Annotator-3.5.3-Portable.zip) · [Illustrated manual](docs/quick-start-illustrated.md) · [56-page PDF](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.5.3/COWMATA-3.5.3-Manual.pdf) · [中文](README.zh-CN.md)
+[Setup](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Setup.exe) · [Portable](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Portable.zip) · [Source](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Source.zip) · [Release notes](docs/release-360.md) · [中文](README.zh-CN.md)
 
-Version 3.5.3 fixes the workflow that displayed planned destination names without transferring files. Start organization directly: bounded parallel recognition feeds verified file transfers, and each completed file appears on disk before the remaining batch finishes.
+- **Tools / Data classification** offers one window for mixed JSON/video intake or adding videos to existing JSON records. Unchanged archived files are reused without repeating OCR, full hashing or copying. Missing destinations are repaired.
+- **Pause and resume** retain the original task and verified partial copies. Live CSV records include file status, elapsed time and reuse.
+- **Dates and directories** prefer native recording clocks and tolerate missing OCR punctuation. Videos are retained by their recording date even when no IMU record exists for that day. Unresolved dates remain explicit; no timestamps are invented.
+- **Tools / Edge data download** supports manual, automatic and scheduled Motion/PPG JSON downloads, retries, late arrivals, multiple farms and optional SSH tunnels. [Download guide](docs/edge-download.md)
+- **Clean releases** contain no local keys, user settings, download history, logs, caches or field datasets. Existing annotation, history, evidence export and dataset construction remain available.
 
-- Add multiple directories with independent view01–view08 assignments. Inputs are searched recursively in both video-only and mixed IMU/video workflows.
-- Filter video extensions first. Prefer supported native absolute timestamps, then first-frame OCR and bounded opening-frame retries. Unresolved files remain in place while other files continue.
-- Store video under `Video/date/view/start-time`, without binding shared footage to a single cow. IMU naming and annotation references retain their existing conventions.
-- Closing the organization window stops its worker and permits normal main-window shutdown. Updates show independent progress, restart the verified application before old-file cleanup, and skip the redundant post-update network gate.
-- Retain daily projects, cross-drive file pairing, layered annotations, historical review, evidence export and cow-disjoint dataset construction. PPG waveform parsing remains reserved.
+Extract the complete portable archive and run `COWMATA.exe`, or install into a new application directory. Keep acquisition data outside the application folder.
 
-Close the old version and run Setup, or extract the entire portable ZIP and launch `COWMATA.exe`. For the first migration from an older updater, run this installer directly. Explicit preview mode does not transfer files.
+Automatic and scheduled downloads require the application to remain running. The 3090 raw service supplies Motion only; PPG requires a pulse-data endpoint. Remote services have not been acceptance-tested; protocol and task controls are validated against a local HTTP test server.
 
-Naming timestamps and opening-frame estimates do not certify continuous synchronization. Model candidates and demonstration labels are not field-validation evidence. See [release notes](docs/release-353.md) for verification and limits.
+Archive routing dates do not establish verified synchronization or ground-truth labels. [Existing annotation guide](docs/quick-start-illustrated.md)

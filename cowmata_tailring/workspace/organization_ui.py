@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -157,7 +156,8 @@ class PlanModel(QAbstractTableModel):
         ("source", "来源文件"),
         ("target", "归类目标"),
         ("size", "大小"),
-        ("message", "审查说明"),
+        ("message", "处理说明"),
+        ("file_seconds", "耗时 / 秒"),
     )
     STATES = {
         "ready": "可执行",
@@ -171,8 +171,8 @@ class PlanModel(QAbstractTableModel):
         "deleted": "已删除",
     }
     STATES["processing"] = "正在写入"
-    STATES["blocked"] = "自动跳过"
-    STATES["invalid"] = "自动跳过"
+    STATES["blocked"] = "需要处理"
+    STATES["invalid"] = "文件异常"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -247,6 +247,8 @@ class PlanModel(QAbstractTableModel):
             if key == "size":
                 return f"{row.get(key, 0) / 1024**2:,.2f} MiB"
             if key == "status":
+                if row.get('existing_verified'):
+                    return '已复用'
                 return self.STATES.get(row.get(key), row.get(key, ""))
             if key == "device":
                 return row.get("device_id") or row.get("owner") or row.get("device", "")
@@ -281,7 +283,7 @@ class OrganizationWindow(QDialog):
         self._shutdown_timer = QTimer(self)
         self._shutdown_timer.setInterval(100)
         self._shutdown_timer.timeout.connect(self._poll_shutdown)
-        self.setWindowTitle("COWMATA · 数据整理")
+        self.setWindowTitle("COWMATA · 数据归类")
         self.resize(1240, 790)
         self.setMinimumSize(950, 650)
         self.setStyleSheet(
@@ -576,6 +578,98 @@ class OrganizationWindow(QDialog):
         self.allow_partial.setChecked(True)
         self.scenario_changed()
         self.render()
+        self.compact_layout(outer)
+
+    def compact_layout(self, original):
+        # Retain legacy task readers, remove their three-page operator workflow.
+        legacy = QWidget(self)
+        legacy.setLayout(original)
+        legacy.hide()
+        outer = QVBoxLayout(self)
+        outer.setSpacing(8)
+        heading = QLabel('数据归类')
+        heading.setStyleSheet('font-size:20px; font-weight:700;')
+        outer.addWidget(heading)
+        outer.addWidget(QLabel('选择来源和牧场，一键按采集日期归类；暂停后可继续。'))
+        def add(layout, widget, stretch=0):
+            widget.setParent(self)
+            widget.show()
+            layout.addWidget(widget, stretch)
+        row = QHBoxLayout()
+        row.addWidget(QLabel('归类方式'))
+        self.scenario.setItemText(0, 'Motion、PPG JSON 与视频一起归类')
+        self.scenario.setItemText(1, '已有 Motion / PPG JSON，补充归类视频')
+        add(row, self.scenario, 1)
+        add(row, self.transfer_mode)
+        outer.addLayout(row)
+        row = QHBoxLayout()
+        row.addWidget(QLabel('牧场目录'))
+        add(row, self.target, 1)
+        add(row, self.target_browse)
+        row.addWidget(QLabel('类别'))
+        add(row, self.category)
+        add(row, self.pregnancy_stage)
+        outer.addLayout(row)
+        self.target.textEdited.connect(lambda value: self.farm.setText(value))
+        self.pregnancy_stage.setVisible(self.category.currentData() == 'pregnancy')
+        self.category.currentIndexChanged.connect(lambda: self.pregnancy_stage.setVisible(self.category.currentData() == 'pregnancy'))
+        add(outer, self.sources)
+        self.sources.setFixedHeight(125)
+        row = QHBoxLayout()
+        self.add_mixed_button.setText('添加来源目录…')
+        add(row, self.add_mixed_button)
+        self.bulk_video_button.setText('指定多路视频…')
+        add(row, self.bulk_video_button)
+        self.add_buttons[-1].setText('移除所选')
+        add(row, self.add_buttons[-1])
+        row.addStretch()
+        self.resume_button.setText('继续上次归类')
+        add(row, self.resume_button)
+        outer.addLayout(row)
+        add(outer, self.summary)
+        add(outer, self.table, 1)
+        self.table.setMinimumHeight(140)
+        for key in ('source_folder', 'suggested_folder', 'cow_id', 'field_mark', 'size'):
+            self.table.setColumnHidden(next(i for i,c in enumerate(self.model.COLUMNS) if c[0] == key), True)
+        header = self.table.horizontalHeader()
+        for position, (key, width) in enumerate((('status', 80), ('record_date', 165), ('device', 85), ('source', 155), ('target', 165), ('file_seconds', 78), ('message', 240))):
+            column = next(i for i, c in enumerate(self.model.COLUMNS) if c[0] == key)
+            header.moveSection(header.visualIndex(column), position)
+            self.table.setColumnWidth(column, width)
+        header.setSectionResizeMode(next(i for i,c in enumerate(self.model.COLUMNS) if c[0] == 'message'), QHeaderView.ResizeMode.Stretch)
+        self.record_details.setMinimumHeight(48)
+        self.record_details.setMaximumHeight(65)
+        add(outer, self.record_details)
+        add(outer, self.status)
+        add(outer, self.bar)
+        row = QHBoxLayout()
+        add(row, self.execute_top)
+        self.cancel_button.setText('暂停')
+        add(row, self.cancel_button)
+        self.export_button.setText('打开实时 CSV')
+        add(row, self.export_button)
+        self.open_directory_button.setText('打开归类目录')
+        add(row, self.open_directory_button)
+        outer.addLayout(row)
+        self.resize(1120, 760)
+        self.setMinimumSize(900, 650)
+        self._elapsed_start = None
+        self._live_timer = QTimer(self)
+        self._live_timer.setInterval(1000)
+        self._live_timer.timeout.connect(self.refresh_live)
+        self._live_timer.start()
+        self.summary.setText('等待开始 · 原件保留 · 记录实时保存')
+
+    def refresh_live(self):
+        self.export_button.setEnabled(bool(self.job and any(self.job.glob('report*.csv'))))
+        if self.running and self._elapsed_start:
+            seconds = time.monotonic() - self._elapsed_start
+            done = sum(r.get('status') == 'done' for r in self.model.rows)
+            problems = sum(r.get('status') in {'blocked', 'invalid'} for r in self.model.rows)
+            finished_now = [r for r in self.model.rows if r.get('status') == 'done' and r.get('transfer_seconds') is not None and not r.get('resumed_complete')]
+            remaining = max(0, getattr(self, '_total_files', 0) - done - problems)
+            estimate = f' · 预计剩余 {seconds / len(finished_now) * remaining / 60:.1f} 分钟' if finished_now and remaining else ''
+            self.summary.setText(f'已归类 {done} 项 · 需处理 {problems} 项 · 本次运行 {seconds:.0f} 秒' + estimate)
 
     @property
     def running(self):
@@ -699,14 +793,14 @@ class OrganizationWindow(QDialog):
                 if attach
                 else "九轴沿用原命名规范；视频按首帧时间整理，不绑定单头牛。"
             )
-            + "\n视频先按后缀筛选；流内时间优先，无流内时间则识别开头画面。识别一条就实际归档一条；异常自动跳过，不阻断整批。可批量添加多个视角目录。"
+            + "\n视频先按后缀筛选；流内时间优先，无流内时间则识别开头画面。识别一条就实际归档一条；异常明确记录，可修复后继续。可批量添加多个视角目录。"
         )
         for key in ("source_folder", "suggested_folder", "cow_id", "field_mark", "size"):
             self.table.setColumnHidden(
                 next(i for i, c in enumerate(self.model.COLUMNS) if c[0] == key),
-                attach or self._job_action == "organize",
+                True,
             )
-        if attach or self._job_action == "organize":
+        if (attach or self._job_action == "organize") and not hasattr(self, '_live_timer'):
             header = self.table.horizontalHeader()
             for position, key in enumerate(
                 ("status", "record_date", "device", "source", "target", "message")
@@ -779,6 +873,18 @@ class OrganizationWindow(QDialog):
 
     def start_organize(self, request, job=None):
         paths = [request["target"], *(s["path"] for s in request["sources"])]
+        from .organization_live import pending_job
+        try:
+            pending = pending_job(paths)
+            if pending and (job is None or Path(job) != pending):
+                self.load_task(pending)
+                if self.plan_job != pending:
+                    return
+                request = self.import_request('organize')
+                job = pending
+        except (OSError, ValueError) as exc:
+            self.status.setText(str(exc))
+            return
         catalog = getattr(self.owner, "catalog", None)
         if catalog and any(overlaps(catalog.root, p) for p in paths):
             self._pending_organize_request = (request, job)
@@ -801,6 +907,8 @@ class OrganizationWindow(QDialog):
     def start_job(self, request, job=None):
         if self.running or self.pause_pending:
             return
+        self._elapsed_start = time.monotonic()
+        self._total_files = 0
         self._job_action = request["action"]
         self._close_requested = False
         self._shutdown_started = None
@@ -881,9 +989,11 @@ class OrganizationWindow(QDialog):
                 if total:
                     self.bar.setRange(0, 1000)
                     self.bar.setValue(round(current / total * 1000))
-                self.status.setText(
-                    f"已处理 {current}" + (f" / {total}" if total else "") + " · " + message["path"]
-                )
+                if message.get('unit') == 'bytes':
+                    self.status.setText(f"{message['path']} · {current / 1024**2:.1f} / {total / 1024**2:.1f} MiB")
+                else:
+                    self._total_files = total or getattr(self, '_total_files', 0)
+                    self.status.setText(f"已处理 {current}" + (f" / {total}" if total else "") + " · " + message["path"])
             elif message["event"] == "result":
                 self.result_pending = self.job / "result.json"
             elif message["event"] == "row":
@@ -919,20 +1029,20 @@ class OrganizationWindow(QDialog):
                 self.status.setText(
                     "审查完成。可预览隔离临时/空文件，再到数据归类确认目标。异常原件继续保留。"
                 )
-            elif result.get("completed"):
+            elif result.get("completed") or result.get('requires_attention'):
                 if result.get("streaming"):
                     self.summary.setText(
-                        f"实际已归档 {counts['done']} 项 · 自动跳过 {counts['blocked'] + counts['invalid']} 项 · 保留 {counts['skip']} 项"
+                        f"已归类 {counts['done']} 项 · 本次新增 {result.get('copied', 0) + result.get('same_volume_moved', 0)} 项 · 直接复用 {result.get('reused_files', 0)} 项 · 需处理 {counts['blocked'] + counts['invalid']} 项"
                     )
                 self.plan = None
                 self.completed_target = result["target"]
                 self.status.setText(
-                    f"整理完成：实际归档 {result.get('archived_files', result['moved'])} 项，{result['seconds']:.2f} 秒；可打开实际目标目录核对。"
+                    f"归类结束：本次新增 {result.get('copied', 0) + result.get('same_volume_moved', 0)} 项，直接复用 {result.get('reused_files', 0)} 项，耗时 {result['seconds']:.2f} 秒。"
                 )
                 if result.get("unresolved"):
                     self.status.setText(
                         self.status.text()
-                        + f" 已自动跳过 {result['unresolved']} 项，原因见整理异常.csv；原件保留。"
+                        + f" 仍有 {result['unresolved']} 项未完成；可打开实时 CSV 查看原因并继续归类。"
                     )
                 self.bar.setValue(1000)
                 self.owner.tell(self.status.text())
@@ -963,6 +1073,8 @@ class OrganizationWindow(QDialog):
                     self.tabs.hide()
                     self.options_toggle.setText("展开整理选项")
         else:
+            if self.job and (self.job / 'plan.json').is_file():
+                self.load_task(self.job)
             self.status.setText(
                 self.last_error
                 or self.stderr.decode("utf-8", errors="replace")
@@ -1022,11 +1134,27 @@ class OrganizationWindow(QDialog):
         self.start_job({"action": "execute"}, self.plan_job)
 
     def resume_task(self):
-        job = Path(self.settings.value("organization/resume_job", "", type=str))
-        if not (job / "plan.json").is_file():
-            self.status.setText("没有可继续的整理任务。")
+        if self.running:
             return
-        self.load_task(job)
+        from .organization_live import pending_job
+        try:
+            paths = [p for p in [self.target.text().strip(), *(s['path'] for s in self.source_specs())] if p]
+            job = pending_job(paths) if paths else None
+            job = job or Path(self.settings.value('organization/resume_job', '', type=str))
+            if not (job / 'plan.json').is_file():
+                request_path = job / 'request.json'
+                if request_path.is_file():
+                    request = json.loads(request_path.read_text(encoding='utf-8'))
+                    if request.get('action') == 'organize':
+                        self.start_organize(request, job)
+                        return
+                self.status.setText('没有可继续的归类任务。')
+                return
+            self.load_task(job)
+            if self.plan_job == job:
+                self.execute_plan()
+        except (OSError, ValueError) as exc:
+            self.status.setText(str(exc))
 
     def choose_task(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -1068,9 +1196,10 @@ class OrganizationWindow(QDialog):
             return
         self.plan = plan
         self.plan_job = job
+        self.job = job
         self.allow_partial.setChecked(bool(plan.get("allow_partial")))
         self.model.set_rows(self.plan["rows"])
-        self.status.setText("已恢复原计划。点击执行后核对文件身份，跳过已完成项。")
+        self.status.setText("已恢复原任务；继续归类会校验已完成文件并续传剩余文件。")
         self.render()
 
     def cancel(self):
@@ -1130,12 +1259,10 @@ class OrganizationWindow(QDialog):
             self.status.setText("目标目录尚未创建；只有已归档项代表文件实际写入。")
 
     def export_report(self):
-        if self.job and (self.job / "report.csv").is_file():
-            path, _ = QFileDialog.getSaveFileName(
-                self, "导出数据审查报告", "数据审查报告.csv", "CSV (*.csv)"
-            )
+        if self.job:
+            path = max((p for p in self.job.glob('report*.csv') if p.is_file()), key=lambda p: p.stat().st_mtime_ns, default=None)
             if path:
-                shutil.copy2(self.job / "report.csv", path)
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def toggle_options(self):
         visible = not self.tabs.isVisible()
@@ -1273,9 +1400,7 @@ class OrganizationWindow(QDialog):
             if r.get("status") in {"ready", "existing", "quarantine"}
         ]
         deletes = sum(r.get("operation") == "delete_nonvideo" for r in selected)
-        self.execute_top.setText(
-            f"一键执行归类（{len(selected)}项）" if selected else "一键执行归类"
-        )
+        self.execute_top.setText('继续归类' if self.plan and self.plan.get('streaming') else '一键归类')
         if busy:
             self.execution_hint.setText(
                 "仅预览进行中：未复制或移动文件。"
@@ -1299,7 +1424,7 @@ class OrganizationWindow(QDialog):
                 widget.setEnabled(False)
         self.pause_project.setEnabled(not busy and bool(getattr(self.owner, "catalog", None)))
         self.export_button.setEnabled(
-            not busy and bool(self.job and (self.job / "report.csv").is_file())
+            bool(self.job and (self.job / "report.csv").is_file())
         )
 
     def closeEvent(self, event):

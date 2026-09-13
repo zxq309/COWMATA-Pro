@@ -1,5 +1,5 @@
 {
-  "version": "3.5.3",
+  "version": "3.6.0",
   "files": [
     {
       "path": ".gitattributes",
@@ -37,6 +37,61 @@
       "sha256": "4a8cf0a59303ad05c31843133d52e00f5da7e59f8e5fda4cdfcd1c4b237ac711"
     },
     {
+      "path": "CHANGELOG.md",
+      "size": 33897,
+      "sha256": "22fbf939a90a00ae35b9210ff64ef49bf4da2084fbf1e7ab59a10f8641af6194"
+    },
+    {
+      "path": "CITATION.cff",
+      "size": 918,
+      "sha256": "82f038865f2dbf13d3278b320bc7159ede52337ccbacde0a29795574da43a34a"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "size": 2102,
+      "sha256": "c26665a2ff8fca39ce989a9343079f9741a7c15c42eb4e21f640606abd7ebdf0"
+    },
+    {
+      "path": "LICENSE",
+      "size": 1063,
+      "sha256": "ce99b3f9b0cc7a3c6af13eeaa275a38549477742f3a26ca29fc1a23f45a7c5f6"
+    },
+    {
+      "path": "NOTICE",
+      "size": 1475,
+      "sha256": "940baf1f0512cebf524dac9fa7a4fac0cf570ed7985785bfcae4714ba375e147"
+    },
+    {
+      "path": "README.md",
+      "size": 2350,
+      "sha256": "07da6324a5b1296ec3816e0ce1970ccee939a627f0a5f46c06d9cb6a2ac4245f"
+    },
+    {
+      "path": "README.zh-CN.md",
+      "size": 2183,
+      "sha256": "8daf2e0066837ff3fe6c64549d708632514ae96a0aa7a9214b9693d2a680e667"
+    },
+    {
+      "path": "SECURITY.md",
+      "size": 847,
+      "sha256": "692c85c76ed2eae739da9a0db8d4b3f11c920d929cdd0f41cae5cbc6278aa71b"
+    },
+    {
+      "path": "START_ANNOTATOR.bat",
+      "size": 596,
+      "sha256": "695412ba086856ec63331285e97a6d707eb154e9ea1ed514fce1a44193a10983"
+    },
+    {
+      "path": "assets/README.md",
+      "size": 1479,
+      "sha256": "0a4263d36133486e5bdef615d1fa5d5f72d7c6ce38cea79a292ca87587f1ec5f"
+    },
+    {
+      "path": "assets/app-icon/LICENSE.txt",
+      "size": 1071,
+      "sha256": "b5b1f1da112d18ea2147decfd48ddc1bf2b5aeb6c265381579340e95b15a2bb2"
+    },
+    {
       "path": "assets/app-icon/cow-duotone.svg",
       "size": 1208,
       "sha256": "6ebaa8c42fb6a5c888c3634e257a672664eab835e206fe658541bb8798a63df0"
@@ -60,11 +115,6 @@
       "path": "assets/app-icon/installer.bmp",
       "size": 154542,
       "sha256": "2a2459470a8a060202b8cfc8baa29f7da1cc1dc8029db1ccc5a6b62e60d611c3"
-    },
-    {
-      "path": "assets/app-icon/LICENSE.txt",
-      "size": 1071,
-      "sha256": "b5b1f1da112d18ea2147decfd48ddc1bf2b5aeb6c265381579340e95b15a2bb2"
     },
     {
       "path": "assets/app-icon/provenance.json",
@@ -157,224 +207,229 @@
       "sha256": "16925255cc7f4d55ba44dfba9542c85580a927eba30528b135cd393e978e356e"
     },
     {
-      "path": "assets/event_models/20260906/\u5367\u5012/core.py",
+      "path": "assets/event_models/20260906/卧倒/core.py",
       "size": 832,
       "sha256": "8147ec59b09f78b6d40a1e19095fbd0f10e06a34163f901ecc041257b0592223"
     },
     {
-      "path": "assets/event_models/20260906/\u5367\u5012/learner.py",
+      "path": "assets/event_models/20260906/卧倒/learner.py",
       "size": 2425,
       "sha256": "b12a7f1f779d6fcd5fff9b8fafd02d0ab0c3af3d52cc3f8e80958eff9a76434d"
     },
     {
-      "path": "assets/event_models/20260906/\u5367\u5012/point_features.py",
+      "path": "assets/event_models/20260906/卧倒/point_features.py",
       "size": 1017,
       "sha256": "074d00d6bc1c02016163b7c810b0e249691985f295e2a538feb83d0148ae8a04"
     },
     {
-      "path": "assets/event_models/20260906/\u5367\u5012/predict.py",
+      "path": "assets/event_models/20260906/卧倒/predict.py",
       "size": 5541,
       "sha256": "e1c5055fa7a07ac89a6a2c4da8877bc6ec229df6cb78cf1677d7460018150e8d"
     },
     {
-      "path": "assets/event_models/20260906/\u5367\u5012/predict_events.py",
+      "path": "assets/event_models/20260906/卧倒/predict_events.py",
       "size": 2326,
       "sha256": "a63b5b83ce5a3bbd79a108df1dc22329aa1169e2189dfced744dea4cb4c8cf8c"
     },
     {
-      "path": "assets/event_models/20260906/\u5367\u5012/signal_features.py",
+      "path": "assets/event_models/20260906/卧倒/signal_features.py",
       "size": 6075,
       "sha256": "b40129f72af169d07189d72f8040b6799eea09cd80bc61b83af5efd82d62eb46"
     },
     {
-      "path": "assets/event_models/20260906/\u5367\u5012/source_v2_io.py",
+      "path": "assets/event_models/20260906/卧倒/source_v2_io.py",
       "size": 8911,
       "sha256": "7ce053f3b4d9b88fcc333de5bb22a45956b7737b00f9574490b0361d2b7821dc"
     },
     {
-      "path": "assets/event_models/20260906/\u5367\u5012/train.py",
+      "path": "assets/event_models/20260906/卧倒/train.py",
       "size": 2927,
       "sha256": "4b2e4399f89f1933f41488d8d134e8cd453f2cce7c735f1ea7d5373d6f745fa2"
     },
     {
-      "path": "assets/event_models/20260906/\u5367\u5012/training_config.json",
+      "path": "assets/event_models/20260906/卧倒/training_config.json",
       "size": 6082,
       "sha256": "320b44b4c78973e633eefdea5d60a6a588557f52d15cc173de82188bf8d266bc"
     },
     {
-      "path": "assets/event_models/20260906/\u62ac\u5c3e/predict.py",
+      "path": "assets/event_models/20260906/抬尾/predict.py",
       "size": 3284,
       "sha256": "6be525d404cdc3f89460f431bd04e0f07defe44a79172828be395850a69d0047"
     },
     {
-      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/__init__.py",
+      "path": "assets/event_models/20260906/抬尾/tailspot/__init__.py",
       "size": 93,
       "sha256": "0565105ff662b6899e388901e55ea28d6cb5a3d97e9785be9c145ce93ec10b2b"
     },
     {
-      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/decoder.py",
+      "path": "assets/event_models/20260906/抬尾/tailspot/decoder.py",
       "size": 8676,
       "sha256": "316ba9204daebfb84d6150615bc95be72769853a342a7f7d6d517f1fe03634e2"
     },
     {
-      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/model.py",
+      "path": "assets/event_models/20260906/抬尾/tailspot/model.py",
       "size": 2225,
       "sha256": "8f9dae3a5b17f84f7201dad80c29bd50fb05f68b8a7694c9b5c8620589d70ef6"
     },
     {
-      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/signal.py",
+      "path": "assets/event_models/20260906/抬尾/tailspot/signal.py",
       "size": 9069,
       "sha256": "6a1efeab6253dc9e479f75fc59c005dc96f0fef4dc890e87250da1db7d6a152f"
     },
     {
-      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/training.py",
+      "path": "assets/event_models/20260906/抬尾/tailspot/training.py",
       "size": 4075,
       "sha256": "5945189ad1b40c8e9823e7a3b4495c1eff746fa7123a2476da37211047fecf9b"
     },
     {
-      "path": "assets/event_models/20260906/\u62ac\u5c3e/train.py",
+      "path": "assets/event_models/20260906/抬尾/train.py",
       "size": 1199,
       "sha256": "61c80d4f62841bb396742a5d583aa3febba75aca820f4dd046b5f9a9262d258d"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/alerts.py",
+      "path": "assets/event_models/20260906/排尿/alerts.py",
       "size": 1523,
       "sha256": "4dad8ac08fe354d9a64caddd009dcd43f0c4aba3f9ee5c616036c044c182fc09"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/decoder.py",
+      "path": "assets/event_models/20260906/排尿/decoder.py",
       "size": 8676,
       "sha256": "316ba9204daebfb84d6150615bc95be72769853a342a7f7d6d517f1fe03634e2"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/detector.py",
+      "path": "assets/event_models/20260906/排尿/detector.py",
       "size": 4204,
       "sha256": "adf9f8ff0ed68577f8ec4bd419c9cf14a90f2409fbb418dc16ea2310dd31f2e0"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/feature_columns.json",
+      "path": "assets/event_models/20260906/排尿/feature_columns.json",
       "size": 5782,
       "sha256": "62c7af66790ed49a2198b2a2668d118aba704c030926034099baaa842ca86ea7"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/features.py",
+      "path": "assets/event_models/20260906/排尿/features.py",
       "size": 5774,
       "sha256": "acfd8de4c8522ce897fa0b1bf82a7b7fe856edde336dfdd88feec39fb73d7761"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/predict.py",
+      "path": "assets/event_models/20260906/排尿/predict.py",
       "size": 1204,
       "sha256": "811fd4a2e96f6123ce3297f96822651089ae8d6a57ce149b80e9c6a469aac745"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/quality.py",
+      "path": "assets/event_models/20260906/排尿/quality.py",
       "size": 1191,
       "sha256": "f855934424d1ff76159ccf78c3adf79c04ce1de082fb42c8de88204d9ce07ff6"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/train.py",
+      "path": "assets/event_models/20260906/排尿/train.py",
       "size": 2189,
       "sha256": "2c1426182930b07692bd301a7ab25f47b44c62cf8a6fd35eb70baa66552e6c15"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/training_config.json",
+      "path": "assets/event_models/20260906/排尿/training_config.json",
       "size": 1776,
       "sha256": "7d1616e21debe024ab2d392491015d38845457c709fa71b830d7e2c3b15bbe50"
     },
     {
-      "path": "assets/event_models/20260906/\u6392\u5c3f/windows.py",
+      "path": "assets/event_models/20260906/排尿/windows.py",
       "size": 1978,
       "sha256": "b2200c340e4453128a856311c56ba72d9a90c62d7125e45a8615cb725a073463"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/__init__.py",
+      "path": "assets/event_models/20260906/甩尾/algorithm/__init__.py",
       "size": 66,
       "sha256": "5a68f9372fb505af47e6760aaaedab657ff26dadd1355b61227f5015656e5d09"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/decoder.py",
+      "path": "assets/event_models/20260906/甩尾/algorithm/decoder.py",
       "size": 8676,
       "sha256": "316ba9204daebfb84d6150615bc95be72769853a342a7f7d6d517f1fe03634e2"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/feature_columns.json",
+      "path": "assets/event_models/20260906/甩尾/algorithm/feature_columns.json",
       "size": 4255,
       "sha256": "4710e61ffa7bdfd411c7294fc9df2afcafff8d9ae19513b18d64f9ba27f9f269"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/features.py",
+      "path": "assets/event_models/20260906/甩尾/algorithm/features.py",
       "size": 3575,
       "sha256": "7cc013c32b7200c1e9dde0b8e89bdc3680f23f1cd0b176474437499ca3b5d703"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/predict.py",
+      "path": "assets/event_models/20260906/甩尾/algorithm/predict.py",
       "size": 4249,
       "sha256": "15c20a13189f1cadc1a0ceb336822e4d7ef9eb9f25a2467a8f6b81bb3dedfb23"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/quality.py",
+      "path": "assets/event_models/20260906/甩尾/algorithm/quality.py",
       "size": 3325,
       "sha256": "e203bf60aa9cdb955da06703fd2b0a19c21453ce575171b0a36233225fd93a23"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/signal_math.py",
+      "path": "assets/event_models/20260906/甩尾/algorithm/signal_math.py",
       "size": 7092,
       "sha256": "262d47b3beefbc0d2fc6bd35e49802bd609804844bc48a6ec7be9b56545829cf"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/train.py",
+      "path": "assets/event_models/20260906/甩尾/algorithm/train.py",
       "size": 2466,
       "sha256": "ffbb34220a527ebb987dc36bc5dfd98e5cd078d2d05530c1a3b437f786504dc1"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/predict.py",
+      "path": "assets/event_models/20260906/甩尾/predict.py",
       "size": 78,
       "sha256": "302d9da599e352476688176160484a78bb300bb84c44661d90b68de3583f1908"
     },
     {
-      "path": "assets/event_models/20260906/\u7529\u5c3e/train.py",
+      "path": "assets/event_models/20260906/甩尾/train.py",
       "size": 1236,
       "sha256": "3a18174c408e7100ebc324b1171bdaf4a83db6ff5172044ddee7830b51e8905e"
     },
     {
-      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/__init__.py",
+      "path": "assets/event_models/20260906/起立/algorithm/__init__.py",
       "size": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/detector.py",
+      "path": "assets/event_models/20260906/起立/algorithm/detector.py",
       "size": 8266,
       "sha256": "dcec36b482f042f8b0f0f5ff617a321167f02f037ce96c6a6ebe4d3d0a3ccaa8"
     },
     {
-      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/features.py",
+      "path": "assets/event_models/20260906/起立/algorithm/features.py",
       "size": 5085,
       "sha256": "4374785e0e1680ea7b474a212b30cfcf4fe8a6556f4400fd79938a17ae639fd3"
     },
     {
-      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/raw_io.py",
+      "path": "assets/event_models/20260906/起立/algorithm/raw_io.py",
       "size": 8911,
       "sha256": "7ce053f3b4d9b88fcc333de5bb22a45956b7737b00f9574490b0361d2b7821dc"
     },
     {
-      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/train.py",
+      "path": "assets/event_models/20260906/起立/algorithm/train.py",
       "size": 2015,
       "sha256": "a6becff60455922bb5f110db9793833d17bab539b6040bd59e66d554b39fec3b"
     },
     {
-      "path": "assets/event_models/20260906/\u8d77\u7acb/predict.py",
+      "path": "assets/event_models/20260906/起立/predict.py",
       "size": 343,
       "sha256": "0f353b259c0f31046023a97f7862e5f4254e463641ac1f32ca2c4024233b9958"
     },
     {
-      "path": "assets/event_models/20260906/\u8d77\u7acb/train.py",
+      "path": "assets/event_models/20260906/起立/train.py",
       "size": 1023,
       "sha256": "c331bef88c1ffa10a029842c3cb20a698d32f4b73cec4593aef73c7b8e2aca71"
     },
     {
-      "path": "assets/event_models/20260906/\u8d77\u7acb/training_config.json",
+      "path": "assets/event_models/20260906/起立/training_config.json",
       "size": 939,
       "sha256": "b049e98a84b0db9fb9895d52e2c9459dd3c3af46e698f8ae5225f0ab4af0aebd"
+    },
+    {
+      "path": "assets/fluent/LICENSE.txt",
+      "size": 1078,
+      "sha256": "69bc45dc42b9acb96a69823adbc6ae538374e3c0bde169b855b32c48eaaef52f"
     },
     {
       "path": "assets/fluent/check_visible.svg",
@@ -390,11 +445,6 @@
       "path": "assets/fluent/folder_open.svg",
       "size": 1222,
       "sha256": "c5f8b2db9af20a454c1f05ce6eda4b21c99f1b8677b14b6d7d07d5817140a487"
-    },
-    {
-      "path": "assets/fluent/LICENSE.txt",
-      "size": 1078,
-      "sha256": "69bc45dc42b9acb96a69823adbc6ae538374e3c0bde169b855b32c48eaaef52f"
     },
     {
       "path": "assets/fluent/panel_left.svg",
@@ -425,11 +475,6 @@
       "path": "assets/ocr/ppocrv6_medium/models.json",
       "size": 1033,
       "sha256": "93e50db1a06894193d7025294d06f71cca561a457077a16b91090a5696d3128f"
-    },
-    {
-      "path": "assets/README.md",
-      "size": 1479,
-      "sha256": "0a4263d36133486e5bdef615d1fa5d5f72d7c6ce38cea79a292ca87587f1ec5f"
     },
     {
       "path": "assets/screenshots/algorithm-320-live.png",
@@ -1247,24 +1292,9 @@
       "sha256": "ef4da191b56d67efcaedcf98940e204f6bfe1aa89fec4484989a0142cfd85053"
     },
     {
-      "path": "CHANGELOG.md",
-      "size": 33543,
-      "sha256": "a5990f11cd6b72955cb3b57401c19bb759487f69098d026a9ff63d9ea087a550"
-    },
-    {
-      "path": "CITATION.cff",
-      "size": 890,
-      "sha256": "4f14dc274aad40cfdd026e206b9bd15d486d807185eebf35951a66d8e97b853e"
-    },
-    {
-      "path": "CONTRIBUTING.md",
-      "size": 2102,
-      "sha256": "c26665a2ff8fca39ce989a9343079f9741a7c15c42eb4e21f640606abd7ebdf0"
-    },
-    {
       "path": "cowmata_tailring/__init__.py",
-      "size": 200,
-      "sha256": "5bc2ee21366f09cc161c298dbe2ded85925ee6ca768949b8a76d231189eedae1"
+      "size": 214,
+      "sha256": "dfa5c05734ab7e3e86cc0ad6b68a14ae204fa4c6c4c5f989977743b260981d34"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -1430,6 +1460,36 @@
       "path": "cowmata_tailring/app/windows_identity.py",
       "size": 556,
       "sha256": "9bdab4843b98b449b1157c32b53ae4f538fe824f4a235608e4301a956b131024"
+    },
+    {
+      "path": "cowmata_tailring/edge_download/__init__.py",
+      "size": 278,
+      "sha256": "a369300bd5e769c81da6af615690dcabffe6fc721436f38cf9258fe4ec364eca"
+    },
+    {
+      "path": "cowmata_tailring/edge_download/__main__.py",
+      "size": 451,
+      "sha256": "5cd053aaf90aa70438a67a5327ffcfbbf153c8d517d58659d8a2ca776dd5fb61"
+    },
+    {
+      "path": "cowmata_tailring/edge_download/core.py",
+      "size": 21500,
+      "sha256": "3b34f67b0ccdfd055c42b693e22e1178fa336a68f760e215cc6081c14438c16d"
+    },
+    {
+      "path": "cowmata_tailring/edge_download/dialog.py",
+      "size": 20457,
+      "sha256": "4b378182837f5ccbc492b1cabc305282bc2ec20ae8ff8ef6dc6ab43c13eb2cda"
+    },
+    {
+      "path": "cowmata_tailring/edge_download/integration.py",
+      "size": 1965,
+      "sha256": "f03b012c7f6cfd35f7571130aa2ece99dd10bca7fc1485ef6ddcc1c72c611af0"
+    },
+    {
+      "path": "cowmata_tailring/edge_download/tunnel.py",
+      "size": 2938,
+      "sha256": "52c66b06f41a1fc97fbeddcf2ff60fe588131e0b87327a5359b65814c1b8b753"
     },
     {
       "path": "cowmata_tailring/media/__init__.py",
@@ -1758,8 +1818,8 @@
     },
     {
       "path": "cowmata_tailring/ui/translations.py",
-      "size": 253964,
-      "sha256": "9c82cb00f43258ec348e4595fa14ad11ac7478b189da38fa8cbba840b04d54a3"
+      "size": 272838,
+      "sha256": "1d175c2bda1ff6b02daf64592a659c363bd284ba9316e432c1a2c2997128205f"
     },
     {
       "path": "cowmata_tailring/ui/video_timeline.py",
@@ -1818,8 +1878,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/catalog.py",
-      "size": 32639,
-      "sha256": "c8922a5de3b9aaa6e445aea979788b023e246f7e109b246edf80d73b59112eb9"
+      "size": 33287,
+      "sha256": "94e6e174d58a77af653a0604dc988744ad4a742325b2a74a8651ccd3803b64d0"
     },
     {
       "path": "cowmata_tailring/workspace/clocks.py",
@@ -1908,8 +1968,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/fast_transfer.py",
-      "size": 7036,
-      "sha256": "51891285aaa9233d0e2f6472016a181dd003d131d27f2058f9cc4aaa4691c3d0"
+      "size": 7286,
+      "sha256": "94434f29d0fb416cda6f1f008e57daf4abd215956854f20b42d6edb2b7988021"
     },
     {
       "path": "cowmata_tailring/workspace/frame_cache.py",
@@ -1958,8 +2018,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/modern_window.py",
-      "size": 40885,
-      "sha256": "06a4af5c6dbcc0cbb23fcada95beaf9214dadcaf93668441f7e12e9ec1bd59e9"
+      "size": 41551,
+      "sha256": "4ba7bf1c84e68e3d8310d7d39b05c4101974be68b03e1b4724a2d0ddd8c7fbee"
     },
     {
       "path": "cowmata_tailring/workspace/mother_dataset.py",
@@ -1968,8 +2028,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/ocr.py",
-      "size": 19210,
-      "sha256": "16785ca5717800fb75319bedc181b3a5406701c4bc0d6c90bd11485244f029b2"
+      "size": 19555,
+      "sha256": "27c7d98a20caba929537b6abd16c7401aa086310f6be1a6e56837c0f0c368277"
     },
     {
       "path": "cowmata_tailring/workspace/organization.py",
@@ -1977,19 +2037,29 @@
       "sha256": "3d25027b5bc9789ef5c21fd0bcfd85a2914ac70d7ab854247a2c8ebd359ca9b2"
     },
     {
+      "path": "cowmata_tailring/workspace/organization_live.py",
+      "size": 6440,
+      "sha256": "e756b58de15e48ec57de40f5f86d58d19226b1be3908058390c46d1968794032"
+    },
+    {
       "path": "cowmata_tailring/workspace/organization_ui.py",
-      "size": 59601,
-      "sha256": "ec6b7d26d01a0921bb5b1f4bd970cfff1c9811a2241993ba8ce49e595b6d595d"
+      "size": 67909,
+      "sha256": "203eaa083e8662444ff633253f88306fd9a9b678b0e6d0feeeaea345de78f400"
     },
     {
       "path": "cowmata_tailring/workspace/organization_worker.py",
-      "size": 4916,
-      "sha256": "20f40d6d33dfead6ea114378145a892560a3c59575824df190afbdb40c4c36eb"
+      "size": 4863,
+      "sha256": "57ae9a31ea73e1567ad6a8064ed23fdf32c51cf1971c17e74e266ca790b4e4fa"
     },
     {
       "path": "cowmata_tailring/workspace/playback.py",
       "size": 54234,
       "sha256": "1c12b7dff71ec528cc62e3b900cdcc46b1f751a2d71154c98fa5793a679b1bb4"
+    },
+    {
+      "path": "cowmata_tailring/workspace/ppg_intake.py",
+      "size": 2715,
+      "sha256": "e84f5f2c5447750b63eebf74ea26607d4f92a7a571342df1ffd4b79724014839"
     },
     {
       "path": "cowmata_tailring/workspace/presentation.py",
@@ -2013,8 +2083,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/resource_import.py",
-      "size": 43180,
-      "sha256": "877168d644ffff50f5394fe60f44d1b56662e37299a80cc4a24038e958033bd3"
+      "size": 44053,
+      "sha256": "f2b9ecc33407c14f5baa7dba92e5af88fab9d8eaeacc44496d68cdf0597f184a"
     },
     {
       "path": "cowmata_tailring/workspace/resource_layout.py",
@@ -2053,8 +2123,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/video_intake.py",
-      "size": 28171,
-      "sha256": "19ec7b6f7aea88b21802b6083904f8bd0da6211a3c95a2ce1934f9fb6139b16b"
+      "size": 36449,
+      "sha256": "bd60ffe522e36f7d029b9ea839b8ccf526c82ff31f1b9a2f089bb1b167dd6a97"
     },
     {
       "path": "cowmata_tailring/workspace/window.py",
@@ -2180,6 +2250,16 @@
       "path": "docs/data-organization.md",
       "size": 6668,
       "sha256": "cc016569b3d32957ad3996c60cc103c8226a16b1bdefaaa1542d63f1b133d166"
+    },
+    {
+      "path": "docs/edge-download-integration.md",
+      "size": 6524,
+      "sha256": "4346b915c64419d3075df7747adc682d1534f791532647f64335b1f282e15e21"
+    },
+    {
+      "path": "docs/edge-download.md",
+      "size": 6606,
+      "sha256": "c4de8d0a1a847a07981ce92d03505d687e92fbb89e97239bebd800430e56c7a0"
     },
     {
       "path": "docs/event-models-acceptance.md",
@@ -2412,6 +2492,11 @@
       "sha256": "56901cdec84278ca946d8fa714f77c5a708fe5f52c081673e67a096d3a7a20c8"
     },
     {
+      "path": "docs/release-360.md",
+      "size": 1795,
+      "sha256": "43ab03ea3076219392588a3b23319e1dc81712ddae9e742d6fc4245acb24fb14"
+    },
+    {
       "path": "docs/release-notes-v2.2.0.md",
       "size": 6037,
       "sha256": "1913cfee1998c9de2723bff3831624ee708889b454f0165c3e1b423c3512aa9b"
@@ -2467,14 +2552,9 @@
       "sha256": "4a2459fd7c0c4c1e06844f3ada6ca1d366dfb489ef1cf1e85cc2acf17de840ed"
     },
     {
-      "path": "LICENSE",
-      "size": 1063,
-      "sha256": "ce99b3f9b0cc7a3c6af13eeaa275a38549477742f3a26ca29fc1a23f45a7c5f6"
-    },
-    {
-      "path": "NOTICE",
-      "size": 1475,
-      "sha256": "940baf1f0512cebf524dac9fa7a4fac0cf570ed7985785bfcae4714ba375e147"
+      "path": "packaging/Launcher.cs",
+      "size": 12726,
+      "sha256": "e3c588504e73ba48a52e17f73b4bf31f17476933af65b747a7c330f10ce2291f"
     },
     {
       "path": "packaging/app.manifest",
@@ -2487,11 +2567,6 @@
       "sha256": "b66cb07e663484b021fa0df5e3f0ab1f2488e439a721e34a963f830cd2cebdea"
     },
     {
-      "path": "packaging/Launcher.cs",
-      "size": 12488,
-      "sha256": "f903406636a43e08dd51533aa22b803f480e0a62995382dac7a411e6071119e7"
-    },
-    {
       "path": "portable_start.py",
       "size": 1783,
       "sha256": "ef43b258990b8868b1f3484104b4a4b9c900209aed2c25aa4ceae2fb260b0c43"
@@ -2500,16 +2575,6 @@
       "path": "pyproject.toml",
       "size": 2348,
       "sha256": "bf1c3da202b3e7901b35a74f0934173adf266b108ce569640957249e7b8565c1"
-    },
-    {
-      "path": "README.md",
-      "size": 2403,
-      "sha256": "801a9a4b09abfa3556ee697377fed0f60ef972e7a4895e0a6db54a73693c50da"
-    },
-    {
-      "path": "README.zh-CN.md",
-      "size": 2340,
-      "sha256": "3c7d8bb19fe2c48020d75a827cf1b5f3e9019c2d6e3500e775c486e98fd23ae3"
     },
     {
       "path": "requirements-events-20260906.txt",
@@ -2553,8 +2618,8 @@
     },
     {
       "path": "scripts/build_portable.py",
-      "size": 7405,
-      "sha256": "5f48f566260c414e6f5055560f653303a21cf24313ee68168d0fe82647dac6cd"
+      "size": 7443,
+      "sha256": "b4529901eff9402ae3dc2a58ea49bc43dd17a13d7fc0cca4628bcf5ee9e3be85"
     },
     {
       "path": "scripts/build_quick_start_pdf.py",
@@ -2692,16 +2757,6 @@
       "sha256": "b96a5399cd9da0a11610a54fb1bf52248d71de05ba71953a72907c4199c097e6"
     },
     {
-      "path": "SECURITY.md",
-      "size": 847,
-      "sha256": "692c85c76ed2eae739da9a0db8d4b3f11c920d929cdd0f41cae5cbc6278aa71b"
-    },
-    {
-      "path": "START_ANNOTATOR.bat",
-      "size": 596,
-      "sha256": "695412ba086856ec63331285e97a6d707eb154e9ea1ed514fce1a44193a10983"
-    },
-    {
       "path": "tests/conftest.py",
       "size": 4089,
       "sha256": "227bbfd5234c93efc5eeeb4afd8a26f03900a8e2ec064247d1f4a129f0f689b0"
@@ -2728,8 +2783,8 @@
     },
     {
       "path": "tests/test_algorithm_inspection.py",
-      "size": 9440,
-      "sha256": "16b7f96e65c17821372f7757f130097925037c10930a0bed997deeecdeb94577"
+      "size": 9629,
+      "sha256": "116170d2fcde0a977b7d899e8b4058a9e3341fe03330f6059f10ff8cba35db01"
     },
     {
       "path": "tests/test_annotation_controls_v341.py",
@@ -2750,6 +2805,11 @@
       "path": "tests/test_capture_timing.py",
       "size": 7977,
       "sha256": "cb5a94877eddc7d72b04bbcb1fe8528e3ad5f76130671729d396931481a47d9d"
+    },
+    {
+      "path": "tests/test_classifier_hotfix.py",
+      "size": 11232,
+      "sha256": "0675bc71945167af43efddd545b0faaedef53f985a2f7381d5c3045800f27c55"
     },
     {
       "path": "tests/test_clean_filename_policy.py",
@@ -2802,6 +2862,11 @@
       "sha256": "d337ef07c397af21236f85f0897c2fdda6e730a76657cae7e18f3296c921f26f"
     },
     {
+      "path": "tests/test_edge_download.py",
+      "size": 15298,
+      "sha256": "def67453bbad5eb009d38e112c2fbfa21228d9dbfc9e000bda45db8bbac99b6d"
+    },
+    {
       "path": "tests/test_event_models.py",
       "size": 8597,
       "sha256": "81f74500f01b1dd2d2ca1d698cb24e4f2f9cd5e155d8c670daa2af29164a21c5"
@@ -2818,8 +2883,8 @@
     },
     {
       "path": "tests/test_fast_organization_v352.py",
-      "size": 14752,
-      "sha256": "2a203752c8c736b3a863f78b4bc6e62be663cc0dc059f2c3e901b0249a8ba5b5"
+      "size": 15221,
+      "sha256": "28caf67658068628d260e56dbe0ad9c807c032790078eb9089e19787ac7e9bd2"
     },
     {
       "path": "tests/test_fast_transfer.py",
@@ -2828,8 +2893,8 @@
     },
     {
       "path": "tests/test_final_dataset_menu.py",
-      "size": 1114,
-      "sha256": "3720a0281de7cfa4015fe1e888a51c28a1f1c21805470854ab028177845dce85"
+      "size": 1179,
+      "sha256": "0763f9aa439cd57733a186cd3e5cc76b5a891d25fdfb10f83c1ad50d0c746bf1"
     },
     {
       "path": "tests/test_final_legacy_reading.py",
@@ -2838,8 +2903,8 @@
     },
     {
       "path": "tests/test_fixes_v351.py",
-      "size": 4706,
-      "sha256": "949faa79aa8e433871f3544e992c2b94f6db07bb85bf5c54bbf9ec3d72aa93ea"
+      "size": 4679,
+      "sha256": "6fd7fabebcf967aae54be36f9669155e5f7d34db2e78c4c56f27b76e9e6bcafd"
     },
     {
       "path": "tests/test_frame_cache.py",
@@ -2968,8 +3033,8 @@
     },
     {
       "path": "tests/test_resources_v34.py",
-      "size": 17607,
-      "sha256": "63dc2dc8f63a20fd44e62453998c4179ed3bcb748f10e5bb76f0bf3d5c811a80"
+      "size": 17983,
+      "sha256": "427dbf6d53537ae4ef33a37dcb0f4c98c60ef6ac0c073cbf4290bd7072cc009a"
     },
     {
       "path": "tests/test_shutdown_update_v353.py",
@@ -3068,8 +3133,8 @@
     },
     {
       "path": "tests/test_workspace_demand.py",
-      "size": 25189,
-      "sha256": "c2182a3ca827a517ffb69bccc54498b9a443b639b86d30cefc16fb65b39bdf9c"
+      "size": 25738,
+      "sha256": "48693fd54bddfa9c8d1b6554c5744b2bc2f7ae0b77df5389fcdbe4b338b5bda3"
     },
     {
       "path": "tests/test_workspace_presentation.py",
@@ -3097,9 +3162,9 @@
       "sha256": "f427ca3edd2abc8d5fa20c81792150ea11f5393491ff64b40e2d0362ff66147c"
     },
     {
-      "path": "\u4f7f\u7528\u8bf4\u660e.txt",
-      "size": 816,
-      "sha256": "a0f0661885e3addc11386d3e901c334168f51babbdd152e0b0e35e6db729f723"
+      "path": "使用说明.txt",
+      "size": 750,
+      "sha256": "02884b4df1ff3b0d7a3f3667566dcbbb6036bc95c6a73e0bbfae4d0d296d92b9"
     }
   ]
 }
