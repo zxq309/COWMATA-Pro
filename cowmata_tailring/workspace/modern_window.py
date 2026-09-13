@@ -754,17 +754,22 @@ class MainWindow(ControllerWindow):
         super().save_current(background=background)
 
     def closeEvent(self, event):
-        organize = getattr(self, "_organization_window", None)
-        if organize is not None and (organize.running or organize.pause_pending):
-            organize.cancel()
-            event.ignore()
-            QTimer.singleShot(150, self.close)
+        if self._closed:
+            event.accept()
             return
+        organize = getattr(self, "_organization_window", None)
+        if organize is not None and not organize.request_shutdown():
+            self._closing_due_to_organization = True
+            self.tell('正在停止数据整理并准备保存退出；已完成文件保留。')
+            event.ignore()
+            self._retry_close(150)
+            return
+        self._closing_due_to_organization = False
         panel = getattr(self, "algorithm_panel", None)
         if panel is not None and panel.running:
             panel.cancel()
             event.ignore()
-            QTimer.singleShot(300, self.close)
+            self._retry_close(300)
             return
         super().closeEvent(event)
         if event.isAccepted() and panel is not None:

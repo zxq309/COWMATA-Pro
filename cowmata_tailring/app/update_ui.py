@@ -56,6 +56,7 @@ def prepare_job(root, setup, update, cache):
     (runtime / (zips[0].stem + "._pth")).write_text(zips[0].name + "\n.\n..\n", encoding="utf-8")
     for name in ("update_core.py", "update_worker.py"):
         shutil.copy2(root / "cowmata_tailring/app" / name, job_dir / name)
+    shutil.copy2(root/'COWMATA.exe', job_dir/'COWMATA-Progress.exe')
     job = {"root": str(root), "setup": str(setup), "update": update, "job_dir": str(job_dir),
            "desktop": worker.desktop_enabled(root, old_version)}
     worker.write_json(job_dir / "job.json", job)
@@ -100,6 +101,9 @@ class UpdateController(QObject):
         self.timer = QTimer(self)
         self.timer.setInterval(30 * 60 * 1000)
         self.timer.timeout.connect(self.auto_check)
+        self.close_timer = QTimer(self)
+        self.close_timer.setSingleShot(True)
+        self.close_timer.timeout.connect(self._close_for_update)
         if automatic:
             self.timer.start()
             QTimer.singleShot(15000, self.auto_check)
@@ -298,7 +302,12 @@ class UpdateController(QObject):
 
     def _close_for_update(self):
         QApplication.closeAllWindows()
-        if any(window.isVisible() for window in QApplication.topLevelWidgets()):
+        visible = [w for w in QApplication.topLevelWidgets() if w.isVisible()]
+        if any(getattr(w,'_closing_requested',False) or getattr(w,'_closing_due_to_organization',False)
+               or getattr(w,'_export_running',False) for w in visible):
+            self.close_timer.start(200)
+            return
+        if visible:
             # A cancelled save/close must not leave an old install queued for
             # an unrelated exit hours later. The next attempt rechecks latest.
             self.pending_job = None
@@ -309,6 +318,7 @@ class UpdateController(QObject):
     def on_exit(self):
         self.stop.set()
         self.timer.stop()
+        self.close_timer.stop()
         if not self.pending_job:
             return
         job_dir = self.pending_job.parent
@@ -492,6 +502,8 @@ class StartupUpdateDialog(QDialog):
 
 
 def verify_startup_update():
+    if os.environ.pop('COWMATA_POST_UPDATE_VERSION', '') == __version__:
+        return True
     dialog = StartupUpdateDialog()
     accepted = dialog.exec() == QDialog.DialogCode.Accepted
     # This gate runs before app.exec() and before constructing/opening any

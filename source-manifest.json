@@ -1,5 +1,5 @@
 {
-  "version": "3.5.0",
+  "version": "3.5.3",
   "files": [
     {
       "path": ".gitattributes",
@@ -28,68 +28,13 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "size": 2254,
-      "sha256": "ec91ec558ec52c5ef36e7a39ecb9f3fdfa1bf01ca26ddf1448857a0c78fac834"
+      "size": 2606,
+      "sha256": "833ccda590602360a8c5ccceade0fa9da7b705b05ec45a1e8443b9cbc3ab7066"
     },
     {
       "path": ".gitignore",
       "size": 884,
       "sha256": "4a8cf0a59303ad05c31843133d52e00f5da7e59f8e5fda4cdfcd1c4b237ac711"
-    },
-    {
-      "path": "CHANGELOG.md",
-      "size": 32007,
-      "sha256": "7625f46dc0ebad49a55ea9acc2e616e7f63bfa076f68b598f6f51c3221b69e35"
-    },
-    {
-      "path": "CITATION.cff",
-      "size": 890,
-      "sha256": "4f14dc274aad40cfdd026e206b9bd15d486d807185eebf35951a66d8e97b853e"
-    },
-    {
-      "path": "CONTRIBUTING.md",
-      "size": 2102,
-      "sha256": "c26665a2ff8fca39ce989a9343079f9741a7c15c42eb4e21f640606abd7ebdf0"
-    },
-    {
-      "path": "LICENSE",
-      "size": 1063,
-      "sha256": "ce99b3f9b0cc7a3c6af13eeaa275a38549477742f3a26ca29fc1a23f45a7c5f6"
-    },
-    {
-      "path": "NOTICE",
-      "size": 1475,
-      "sha256": "940baf1f0512cebf524dac9fa7a4fac0cf570ed7985785bfcae4714ba375e147"
-    },
-    {
-      "path": "README.md",
-      "size": 1771,
-      "sha256": "70f22de886dddace2be1e744e930ed86cd23537ad7fa62645ebeea7599a3ad29"
-    },
-    {
-      "path": "README.zh-CN.md",
-      "size": 1519,
-      "sha256": "84b6ee8d9105d303071c72caf940ff3a06a2f5a2ab6b19f34646ecc5afc5e0fe"
-    },
-    {
-      "path": "SECURITY.md",
-      "size": 847,
-      "sha256": "692c85c76ed2eae739da9a0db8d4b3f11c920d929cdd0f41cae5cbc6278aa71b"
-    },
-    {
-      "path": "START_ANNOTATOR.bat",
-      "size": 596,
-      "sha256": "695412ba086856ec63331285e97a6d707eb154e9ea1ed514fce1a44193a10983"
-    },
-    {
-      "path": "assets/README.md",
-      "size": 1479,
-      "sha256": "0a4263d36133486e5bdef615d1fa5d5f72d7c6ce38cea79a292ca87587f1ec5f"
-    },
-    {
-      "path": "assets/app-icon/LICENSE.txt",
-      "size": 1071,
-      "sha256": "b5b1f1da112d18ea2147decfd48ddc1bf2b5aeb6c265381579340e95b15a2bb2"
     },
     {
       "path": "assets/app-icon/cow-duotone.svg",
@@ -115,6 +60,11 @@
       "path": "assets/app-icon/installer.bmp",
       "size": 154542,
       "sha256": "2a2459470a8a060202b8cfc8baa29f7da1cc1dc8029db1ccc5a6b62e60d611c3"
+    },
+    {
+      "path": "assets/app-icon/LICENSE.txt",
+      "size": 1071,
+      "sha256": "b5b1f1da112d18ea2147decfd48ddc1bf2b5aeb6c265381579340e95b15a2bb2"
     },
     {
       "path": "assets/app-icon/provenance.json",
@@ -207,229 +157,224 @@
       "sha256": "16925255cc7f4d55ba44dfba9542c85580a927eba30528b135cd393e978e356e"
     },
     {
-      "path": "assets/event_models/20260906/卧倒/core.py",
+      "path": "assets/event_models/20260906/\u5367\u5012/core.py",
       "size": 832,
       "sha256": "8147ec59b09f78b6d40a1e19095fbd0f10e06a34163f901ecc041257b0592223"
     },
     {
-      "path": "assets/event_models/20260906/卧倒/learner.py",
+      "path": "assets/event_models/20260906/\u5367\u5012/learner.py",
       "size": 2425,
       "sha256": "b12a7f1f779d6fcd5fff9b8fafd02d0ab0c3af3d52cc3f8e80958eff9a76434d"
     },
     {
-      "path": "assets/event_models/20260906/卧倒/point_features.py",
+      "path": "assets/event_models/20260906/\u5367\u5012/point_features.py",
       "size": 1017,
       "sha256": "074d00d6bc1c02016163b7c810b0e249691985f295e2a538feb83d0148ae8a04"
     },
     {
-      "path": "assets/event_models/20260906/卧倒/predict.py",
+      "path": "assets/event_models/20260906/\u5367\u5012/predict.py",
       "size": 5541,
       "sha256": "e1c5055fa7a07ac89a6a2c4da8877bc6ec229df6cb78cf1677d7460018150e8d"
     },
     {
-      "path": "assets/event_models/20260906/卧倒/predict_events.py",
+      "path": "assets/event_models/20260906/\u5367\u5012/predict_events.py",
       "size": 2326,
       "sha256": "a63b5b83ce5a3bbd79a108df1dc22329aa1169e2189dfced744dea4cb4c8cf8c"
     },
     {
-      "path": "assets/event_models/20260906/卧倒/signal_features.py",
+      "path": "assets/event_models/20260906/\u5367\u5012/signal_features.py",
       "size": 6075,
       "sha256": "b40129f72af169d07189d72f8040b6799eea09cd80bc61b83af5efd82d62eb46"
     },
     {
-      "path": "assets/event_models/20260906/卧倒/source_v2_io.py",
+      "path": "assets/event_models/20260906/\u5367\u5012/source_v2_io.py",
       "size": 8911,
       "sha256": "7ce053f3b4d9b88fcc333de5bb22a45956b7737b00f9574490b0361d2b7821dc"
     },
     {
-      "path": "assets/event_models/20260906/卧倒/train.py",
+      "path": "assets/event_models/20260906/\u5367\u5012/train.py",
       "size": 2927,
       "sha256": "4b2e4399f89f1933f41488d8d134e8cd453f2cce7c735f1ea7d5373d6f745fa2"
     },
     {
-      "path": "assets/event_models/20260906/卧倒/training_config.json",
+      "path": "assets/event_models/20260906/\u5367\u5012/training_config.json",
       "size": 6082,
       "sha256": "320b44b4c78973e633eefdea5d60a6a588557f52d15cc173de82188bf8d266bc"
     },
     {
-      "path": "assets/event_models/20260906/抬尾/predict.py",
+      "path": "assets/event_models/20260906/\u62ac\u5c3e/predict.py",
       "size": 3284,
       "sha256": "6be525d404cdc3f89460f431bd04e0f07defe44a79172828be395850a69d0047"
     },
     {
-      "path": "assets/event_models/20260906/抬尾/tailspot/__init__.py",
+      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/__init__.py",
       "size": 93,
       "sha256": "0565105ff662b6899e388901e55ea28d6cb5a3d97e9785be9c145ce93ec10b2b"
     },
     {
-      "path": "assets/event_models/20260906/抬尾/tailspot/decoder.py",
+      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/decoder.py",
       "size": 8676,
       "sha256": "316ba9204daebfb84d6150615bc95be72769853a342a7f7d6d517f1fe03634e2"
     },
     {
-      "path": "assets/event_models/20260906/抬尾/tailspot/model.py",
+      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/model.py",
       "size": 2225,
       "sha256": "8f9dae3a5b17f84f7201dad80c29bd50fb05f68b8a7694c9b5c8620589d70ef6"
     },
     {
-      "path": "assets/event_models/20260906/抬尾/tailspot/signal.py",
+      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/signal.py",
       "size": 9069,
       "sha256": "6a1efeab6253dc9e479f75fc59c005dc96f0fef4dc890e87250da1db7d6a152f"
     },
     {
-      "path": "assets/event_models/20260906/抬尾/tailspot/training.py",
+      "path": "assets/event_models/20260906/\u62ac\u5c3e/tailspot/training.py",
       "size": 4075,
       "sha256": "5945189ad1b40c8e9823e7a3b4495c1eff746fa7123a2476da37211047fecf9b"
     },
     {
-      "path": "assets/event_models/20260906/抬尾/train.py",
+      "path": "assets/event_models/20260906/\u62ac\u5c3e/train.py",
       "size": 1199,
       "sha256": "61c80d4f62841bb396742a5d583aa3febba75aca820f4dd046b5f9a9262d258d"
     },
     {
-      "path": "assets/event_models/20260906/排尿/alerts.py",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/alerts.py",
       "size": 1523,
       "sha256": "4dad8ac08fe354d9a64caddd009dcd43f0c4aba3f9ee5c616036c044c182fc09"
     },
     {
-      "path": "assets/event_models/20260906/排尿/decoder.py",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/decoder.py",
       "size": 8676,
       "sha256": "316ba9204daebfb84d6150615bc95be72769853a342a7f7d6d517f1fe03634e2"
     },
     {
-      "path": "assets/event_models/20260906/排尿/detector.py",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/detector.py",
       "size": 4204,
       "sha256": "adf9f8ff0ed68577f8ec4bd419c9cf14a90f2409fbb418dc16ea2310dd31f2e0"
     },
     {
-      "path": "assets/event_models/20260906/排尿/feature_columns.json",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/feature_columns.json",
       "size": 5782,
       "sha256": "62c7af66790ed49a2198b2a2668d118aba704c030926034099baaa842ca86ea7"
     },
     {
-      "path": "assets/event_models/20260906/排尿/features.py",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/features.py",
       "size": 5774,
       "sha256": "acfd8de4c8522ce897fa0b1bf82a7b7fe856edde336dfdd88feec39fb73d7761"
     },
     {
-      "path": "assets/event_models/20260906/排尿/predict.py",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/predict.py",
       "size": 1204,
       "sha256": "811fd4a2e96f6123ce3297f96822651089ae8d6a57ce149b80e9c6a469aac745"
     },
     {
-      "path": "assets/event_models/20260906/排尿/quality.py",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/quality.py",
       "size": 1191,
       "sha256": "f855934424d1ff76159ccf78c3adf79c04ce1de082fb42c8de88204d9ce07ff6"
     },
     {
-      "path": "assets/event_models/20260906/排尿/train.py",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/train.py",
       "size": 2189,
       "sha256": "2c1426182930b07692bd301a7ab25f47b44c62cf8a6fd35eb70baa66552e6c15"
     },
     {
-      "path": "assets/event_models/20260906/排尿/training_config.json",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/training_config.json",
       "size": 1776,
       "sha256": "7d1616e21debe024ab2d392491015d38845457c709fa71b830d7e2c3b15bbe50"
     },
     {
-      "path": "assets/event_models/20260906/排尿/windows.py",
+      "path": "assets/event_models/20260906/\u6392\u5c3f/windows.py",
       "size": 1978,
       "sha256": "b2200c340e4453128a856311c56ba72d9a90c62d7125e45a8615cb725a073463"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/algorithm/__init__.py",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/__init__.py",
       "size": 66,
       "sha256": "5a68f9372fb505af47e6760aaaedab657ff26dadd1355b61227f5015656e5d09"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/algorithm/decoder.py",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/decoder.py",
       "size": 8676,
       "sha256": "316ba9204daebfb84d6150615bc95be72769853a342a7f7d6d517f1fe03634e2"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/algorithm/feature_columns.json",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/feature_columns.json",
       "size": 4255,
       "sha256": "4710e61ffa7bdfd411c7294fc9df2afcafff8d9ae19513b18d64f9ba27f9f269"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/algorithm/features.py",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/features.py",
       "size": 3575,
       "sha256": "7cc013c32b7200c1e9dde0b8e89bdc3680f23f1cd0b176474437499ca3b5d703"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/algorithm/predict.py",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/predict.py",
       "size": 4249,
       "sha256": "15c20a13189f1cadc1a0ceb336822e4d7ef9eb9f25a2467a8f6b81bb3dedfb23"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/algorithm/quality.py",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/quality.py",
       "size": 3325,
       "sha256": "e203bf60aa9cdb955da06703fd2b0a19c21453ce575171b0a36233225fd93a23"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/algorithm/signal_math.py",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/signal_math.py",
       "size": 7092,
       "sha256": "262d47b3beefbc0d2fc6bd35e49802bd609804844bc48a6ec7be9b56545829cf"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/algorithm/train.py",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/algorithm/train.py",
       "size": 2466,
       "sha256": "ffbb34220a527ebb987dc36bc5dfd98e5cd078d2d05530c1a3b437f786504dc1"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/predict.py",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/predict.py",
       "size": 78,
       "sha256": "302d9da599e352476688176160484a78bb300bb84c44661d90b68de3583f1908"
     },
     {
-      "path": "assets/event_models/20260906/甩尾/train.py",
+      "path": "assets/event_models/20260906/\u7529\u5c3e/train.py",
       "size": 1236,
       "sha256": "3a18174c408e7100ebc324b1171bdaf4a83db6ff5172044ddee7830b51e8905e"
     },
     {
-      "path": "assets/event_models/20260906/起立/algorithm/__init__.py",
+      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/__init__.py",
       "size": 0,
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
-      "path": "assets/event_models/20260906/起立/algorithm/detector.py",
+      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/detector.py",
       "size": 8266,
       "sha256": "dcec36b482f042f8b0f0f5ff617a321167f02f037ce96c6a6ebe4d3d0a3ccaa8"
     },
     {
-      "path": "assets/event_models/20260906/起立/algorithm/features.py",
+      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/features.py",
       "size": 5085,
       "sha256": "4374785e0e1680ea7b474a212b30cfcf4fe8a6556f4400fd79938a17ae639fd3"
     },
     {
-      "path": "assets/event_models/20260906/起立/algorithm/raw_io.py",
+      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/raw_io.py",
       "size": 8911,
       "sha256": "7ce053f3b4d9b88fcc333de5bb22a45956b7737b00f9574490b0361d2b7821dc"
     },
     {
-      "path": "assets/event_models/20260906/起立/algorithm/train.py",
+      "path": "assets/event_models/20260906/\u8d77\u7acb/algorithm/train.py",
       "size": 2015,
       "sha256": "a6becff60455922bb5f110db9793833d17bab539b6040bd59e66d554b39fec3b"
     },
     {
-      "path": "assets/event_models/20260906/起立/predict.py",
+      "path": "assets/event_models/20260906/\u8d77\u7acb/predict.py",
       "size": 343,
       "sha256": "0f353b259c0f31046023a97f7862e5f4254e463641ac1f32ca2c4024233b9958"
     },
     {
-      "path": "assets/event_models/20260906/起立/train.py",
+      "path": "assets/event_models/20260906/\u8d77\u7acb/train.py",
       "size": 1023,
       "sha256": "c331bef88c1ffa10a029842c3cb20a698d32f4b73cec4593aef73c7b8e2aca71"
     },
     {
-      "path": "assets/event_models/20260906/起立/training_config.json",
+      "path": "assets/event_models/20260906/\u8d77\u7acb/training_config.json",
       "size": 939,
       "sha256": "b049e98a84b0db9fb9895d52e2c9459dd3c3af46e698f8ae5225f0ab4af0aebd"
-    },
-    {
-      "path": "assets/fluent/LICENSE.txt",
-      "size": 1078,
-      "sha256": "69bc45dc42b9acb96a69823adbc6ae538374e3c0bde169b855b32c48eaaef52f"
     },
     {
       "path": "assets/fluent/check_visible.svg",
@@ -445,6 +390,11 @@
       "path": "assets/fluent/folder_open.svg",
       "size": 1222,
       "sha256": "c5f8b2db9af20a454c1f05ce6eda4b21c99f1b8677b14b6d7d07d5817140a487"
+    },
+    {
+      "path": "assets/fluent/LICENSE.txt",
+      "size": 1078,
+      "sha256": "69bc45dc42b9acb96a69823adbc6ae538374e3c0bde169b855b32c48eaaef52f"
     },
     {
       "path": "assets/fluent/panel_left.svg",
@@ -475,6 +425,11 @@
       "path": "assets/ocr/ppocrv6_medium/models.json",
       "size": 1033,
       "sha256": "93e50db1a06894193d7025294d06f71cca561a457077a16b91090a5696d3128f"
+    },
+    {
+      "path": "assets/README.md",
+      "size": 1479,
+      "sha256": "0a4263d36133486e5bdef615d1fa5d5f72d7c6ce38cea79a292ca87587f1ec5f"
     },
     {
       "path": "assets/screenshots/algorithm-320-live.png",
@@ -1202,6 +1157,81 @@
       "sha256": "c570f4d0caaa016c2adea64b64503fd6b787396f68ba891b8bf536fe53a6f538"
     },
     {
+      "path": "assets/screenshots/manual-351/01-video-intake.png",
+      "size": 231840,
+      "sha256": "9981636925b02357f7469adf7599c4b08dc82cbf636ded77917d246db029bebf"
+    },
+    {
+      "path": "assets/screenshots/manual-351/02-calendar.png",
+      "size": 31400,
+      "sha256": "08f7ea3cb1a7cf09fc14f772b8f55380267d95f76524fc2c8b9eb4a3433d9249"
+    },
+    {
+      "path": "assets/screenshots/manual-351/03-audit.png",
+      "size": 156624,
+      "sha256": "0d704f67f0ba96b2763f7f14012cd1bc4f2aeae5d1f41c25cfe635b50d0845eb"
+    },
+    {
+      "path": "assets/screenshots/manual-351/04-report.png",
+      "size": 163924,
+      "sha256": "0b110f77313b1486a7c897a65af0a540bc10f2d65085db01c58845feee2f8c9f"
+    },
+    {
+      "path": "assets/screenshots/manual-351/05-offline-start.png",
+      "size": 58245,
+      "sha256": "f92f151abd204586c7be052a6b8681fc5bbf817b0a57e086f09d4edc4c233e4f"
+    },
+    {
+      "path": "assets/screenshots/manual-351/06-date-fields.png",
+      "size": 221817,
+      "sha256": "54f0894a0ebe53a89142c22e1a3ae3458cf191b162f0491a3f115e2a0cc45c9c"
+    },
+    {
+      "path": "assets/screenshots/manual-352/01-list.png",
+      "size": 156921,
+      "sha256": "b72a5e7a477c6ec8e601ab82db2a0afe87ab8ff781006aaea8adecefec27d316"
+    },
+    {
+      "path": "assets/screenshots/manual-352/02-options.png",
+      "size": 218363,
+      "sha256": "a777f1cc2d9264d69c5cada4de7643554605c8ba56a3a82323632a87f33957d7"
+    },
+    {
+      "path": "assets/screenshots/manual-352/03-review.png",
+      "size": 1116329,
+      "sha256": "d6a1e228fb954d7d7a05c56567de1a2151235b015208fa9d4f7ba4adcb7c291a"
+    },
+    {
+      "path": "assets/screenshots/manual-353/01-paths.png",
+      "size": 82219,
+      "sha256": "f13c245f4c7f106d38f4be378c7bcab5cb776cefb9303701ccc458567730014c"
+    },
+    {
+      "path": "assets/screenshots/manual-353/02-complete.png",
+      "size": 142377,
+      "sha256": "0f16472e186ec8fdfeda6ca90cbd0dd0257e7604f5234b30dc4ff93c70d199fb"
+    },
+    {
+      "path": "assets/screenshots/manual-353/03-first-written.png",
+      "size": 129915,
+      "sha256": "b46e9953f5213565f3fe76185910b061e7d1d23f6acbfc414cf58812f35b2b74"
+    },
+    {
+      "path": "assets/screenshots/manual-353/recovered-frame.png",
+      "size": 1348550,
+      "sha256": "fa3b0c04a94f1d1199ea62b58382c4dbad7efc4b27eb5ff60712c5ed4de4bd95"
+    },
+    {
+      "path": "assets/screenshots/manual-353/startup-ready.png",
+      "size": 183946,
+      "sha256": "d09d7c8ddb986358465ad630341c903c89568a2dd60e24898fcc6665d838534f"
+    },
+    {
+      "path": "assets/screenshots/manual-353/update-progress.png",
+      "size": 7818,
+      "sha256": "cdb2188f31a5b6c0520ed89dcd0fc6102a2eaec8152c8a1b8571b2ff75eaf4e9"
+    },
+    {
       "path": "assets/screenshots/multiview-live.jpg",
       "size": 338858,
       "sha256": "6eaeec0932c9bceacd954892101813d4db5f29d210a028dbed13e904ad655483"
@@ -1217,9 +1247,24 @@
       "sha256": "ef4da191b56d67efcaedcf98940e204f6bfe1aa89fec4484989a0142cfd85053"
     },
     {
+      "path": "CHANGELOG.md",
+      "size": 33543,
+      "sha256": "a5990f11cd6b72955cb3b57401c19bb759487f69098d026a9ff63d9ea087a550"
+    },
+    {
+      "path": "CITATION.cff",
+      "size": 890,
+      "sha256": "4f14dc274aad40cfdd026e206b9bd15d486d807185eebf35951a66d8e97b853e"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "size": 2102,
+      "sha256": "c26665a2ff8fca39ce989a9343079f9741a7c15c42eb4e21f640606abd7ebdf0"
+    },
+    {
       "path": "cowmata_tailring/__init__.py",
       "size": 200,
-      "sha256": "96af1b552c86394cbb8d33128b1c8b9e56c95daec1c6229abc932f8745d8cf5a"
+      "sha256": "5bc2ee21366f09cc161c298dbe2ded85925ee6ca768949b8a76d231189eedae1"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -1323,8 +1368,8 @@
     },
     {
       "path": "cowmata_tailring/app/main.py",
-      "size": 4418,
-      "sha256": "766dad18057f9e8591f4055e5693cbee1ebd8ad5eaaafef57ea9c804d77dc0de"
+      "size": 5052,
+      "sha256": "daf1a37ddfd05e30bbe874b8df22c63b264cf8a81e68d63232b651c5ada610f9"
     },
     {
       "path": "cowmata_tailring/app/mixins/__init__.py",
@@ -1373,13 +1418,13 @@
     },
     {
       "path": "cowmata_tailring/app/update_ui.py",
-      "size": 23249,
-      "sha256": "7813b186a09c43c030d6cdb138ea94643538d4807c4087d46da9aeeec1b5966e"
+      "size": 24306,
+      "sha256": "06479f1a9adece2f2011dfd8217320d860b8dfe995b1a44c479e2a0323cbb63c"
     },
     {
       "path": "cowmata_tailring/app/update_worker.py",
-      "size": 16448,
-      "sha256": "a077037b8b995bfc0019b69b8b4666ff2923a46c62abbf01911743ce18af72f3"
+      "size": 17763,
+      "sha256": "afddd110f0a38784e67552f400c3b27dead58547936ce72d2ba29e4fd640dfa4"
     },
     {
       "path": "cowmata_tailring/app/windows_identity.py",
@@ -1713,8 +1758,8 @@
     },
     {
       "path": "cowmata_tailring/ui/translations.py",
-      "size": 238566,
-      "sha256": "1e3d43b51e0710a5dfd8fe204bd6d0a695a94dfb89649cf779a6a8021ca297f2"
+      "size": 253964,
+      "sha256": "9c82cb00f43258ec348e4595fa14ad11ac7478b189da38fa8cbba840b04d54a3"
     },
     {
       "path": "cowmata_tailring/ui/video_timeline.py",
@@ -1773,8 +1818,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/catalog.py",
-      "size": 32539,
-      "sha256": "19a8efa3d35ed26b896634a10ed1357d07cfbe182e5de61d068f8ba00e840a2d"
+      "size": 32639,
+      "sha256": "c8922a5de3b9aaa6e445aea979788b023e246f7e109b246edf80d73b59112eb9"
     },
     {
       "path": "cowmata_tailring/workspace/clocks.py",
@@ -1862,6 +1907,11 @@
       "sha256": "88d1f10c4b8b5896471452f8ddf5c126e31642987a6dfa2b3e3bebaa11142b56"
     },
     {
+      "path": "cowmata_tailring/workspace/fast_transfer.py",
+      "size": 7036,
+      "sha256": "51891285aaa9233d0e2f6472016a181dd003d131d27f2058f9cc4aaa4691c3d0"
+    },
+    {
       "path": "cowmata_tailring/workspace/frame_cache.py",
       "size": 2284,
       "sha256": "4fdaaa88dd11c8e1f3e8f88a51a08ecd22462fa4395686c70adc83ba29bc4f36"
@@ -1908,8 +1958,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/modern_window.py",
-      "size": 40680,
-      "sha256": "4b4ac839e6772ca1066c168b1275948de8e2c4dffc6b4678cb9563d95f506da9"
+      "size": 40885,
+      "sha256": "06a4af5c6dbcc0cbb23fcada95beaf9214dadcaf93668441f7e12e9ec1bd59e9"
     },
     {
       "path": "cowmata_tailring/workspace/mother_dataset.py",
@@ -1918,8 +1968,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/ocr.py",
-      "size": 19174,
-      "sha256": "f1a357243a40a5f1c4deab04dac8256267f44abf10943ec724dd2aa5d4035e64"
+      "size": 19210,
+      "sha256": "16785ca5717800fb75319bedc181b3a5406701c4bc0d6c90bd11485244f029b2"
     },
     {
       "path": "cowmata_tailring/workspace/organization.py",
@@ -1928,13 +1978,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/organization_ui.py",
-      "size": 33954,
-      "sha256": "d6d4d90c99c36053d2481ff1814898c8658c858a88b19b7572ae73392acc14ca"
+      "size": 59601,
+      "sha256": "ec6b7d26d01a0921bb5b1f4bd970cfff1c9811a2241993ba8ce49e595b6d595d"
     },
     {
       "path": "cowmata_tailring/workspace/organization_worker.py",
-      "size": 3636,
-      "sha256": "1ed9566e5b3fd8a9ba830f8fab9d2fea89a4422291f0441aeddd3fc243c400da"
+      "size": 4916,
+      "sha256": "20f40d6d33dfead6ea114378145a892560a3c59575824df190afbdb40c4c36eb"
     },
     {
       "path": "cowmata_tailring/workspace/playback.py",
@@ -1948,8 +1998,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/probe.py",
-      "size": 35469,
-      "sha256": "a8e8bfdce7b2793f903dade08e5d56ef242e27fe1a09ed799e0e40fbc6af7df7"
+      "size": 35530,
+      "sha256": "81e359997d1c3363e688fd99e3dee1d63eb7ad128caef4af5eae7c256431bb78"
     },
     {
       "path": "cowmata_tailring/workspace/project_picker.py",
@@ -1963,8 +2013,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/resource_import.py",
-      "size": 35561,
-      "sha256": "859ad8b0f2c68e4a88e94f4c5e938623ca921b5f02c9b44fa0278d3567b5cbbe"
+      "size": 43180,
+      "sha256": "877168d644ffff50f5394fe60f44d1b56662e37299a80cc4a24038e958033bd3"
     },
     {
       "path": "cowmata_tailring/workspace/resource_layout.py",
@@ -2002,14 +2052,19 @@
       "sha256": "4ba6ec855f9fcfa4e3b1f615dd01293ebafb10bbd7a4c48390845012bd938dc5"
     },
     {
+      "path": "cowmata_tailring/workspace/video_intake.py",
+      "size": 28171,
+      "sha256": "19ec7b6f7aea88b21802b6083904f8bd0da6211a3c95a2ce1934f9fb6139b16b"
+    },
+    {
       "path": "cowmata_tailring/workspace/window.py",
-      "size": 157121,
-      "sha256": "9f3ee6bd135127ebab631daa8bdf4428ff0793d7b0d21c4bc0bd3d1013be3710"
+      "size": 158843,
+      "sha256": "12b47433bd46deeda7f7b158e46cd4d2161289b11cca30e9002706b6f8bd50d7"
     },
     {
       "path": "cowmata_tailring/workspace/work.py",
-      "size": 18750,
-      "sha256": "06fbe1672e0e561f9b4b62ef055949743cc8e7428769363f7f794d253441ba40"
+      "size": 18845,
+      "sha256": "3c112b7133e0a1832b17d521a84da926cdafabf29853f849270cb1d62e746802"
     },
     {
       "path": "cowmata_tailring/workspace/worker.py",
@@ -2098,8 +2153,8 @@
     },
     {
       "path": "docs/client-updates.md",
-      "size": 4508,
-      "sha256": "db31ba0908835c6e28bc95cb02be49ce897536aa9443a122c954d23f0f0c70cc"
+      "size": 699,
+      "sha256": "dea2549b21a7d9c3c8db0632a55b968b716e7703315b0eb5ecbc7ece5540c3a8"
     },
     {
       "path": "docs/code-audit-330.md",
@@ -2107,9 +2162,19 @@
       "sha256": "41de95bf1dd12286d792e602203dab34f5e9874ae70a82ecc211b6165bdc39d4"
     },
     {
+      "path": "docs/daily-project-guide-351.html",
+      "size": 37315,
+      "sha256": "6aa85e6a45a70dfe546415981375f46c91bf60370a24de8614570caaa42611a8"
+    },
+    {
+      "path": "docs/daily-project-guide-352.html",
+      "size": 3138,
+      "sha256": "609d747baf70e8aaaaad48d3da4c67263924c15bc41b7167085ea3df690ecfbc"
+    },
+    {
       "path": "docs/daily-project-guide.html",
-      "size": 2409,
-      "sha256": "4e1e31c9da963ea8c3d44222a8dde590b6480311e37fea097f651123b92bed63"
+      "size": 42256,
+      "sha256": "649df3d3a52ccd310adec58e6747e7052828e556768701871b5be4cc2246f40e"
     },
     {
       "path": "docs/data-organization.md",
@@ -2218,23 +2283,23 @@
     },
     {
       "path": "docs/quick-start-illustrated.manifest.json",
-      "size": 5486,
-      "sha256": "df1c268b8c7b355dcbb9eb7b3bf9d3700879e3657e7e5bb9abd294b4df6005c0"
+      "size": 5671,
+      "sha256": "b5a5dbded37dadcf512b26acd4410705c2743057c39cf83ea001337044ec6f3c"
     },
     {
       "path": "docs/quick-start-illustrated.md",
-      "size": 23932,
-      "sha256": "6f2fa281ce10da89d08bc2da5f4e4df8c9ec30298996edce206b540140efb7ae"
+      "size": 34128,
+      "sha256": "de2a5fbff65e365dcc642b429172342f6488eeab4b55137a55941ff22a07c1b0"
     },
     {
       "path": "docs/quick-start-illustrated.pdf",
-      "size": 16075153,
-      "sha256": "ef893fdcadc5bb7451a7f4f154a4da38a25b5e50cf3e4722fe3efbffd47b95fc"
+      "size": 18923270,
+      "sha256": "774e7d3c3073b3a0e5440872e7267c74abdcf917459ed506e861739b7ea5295e"
     },
     {
       "path": "docs/quick-start-illustrated.source.json",
-      "size": 29021,
-      "sha256": "539d5e6b7ad53b7eaaf4db3b2ac46b9ec7b62bb9cb42b28d2395ecb366898a01"
+      "size": 37356,
+      "sha256": "a1783173b0bf2735a28a2b5d06d86044130fd751bd0b1c0edc1dcf625d674f03"
     },
     {
       "path": "docs/release-3.1.0-acceptance.md",
@@ -2332,6 +2397,21 @@
       "sha256": "02a1778b0e1ad87c5f4f5a4f2e13f4e0e41b7cf650104a448f7e5e98eea02cec"
     },
     {
+      "path": "docs/release-351.md",
+      "size": 1577,
+      "sha256": "a4db4281209ed7bc06d67df0893b0260aa2db5597c283dd595f3d1483e2dd089"
+    },
+    {
+      "path": "docs/release-352.md",
+      "size": 4068,
+      "sha256": "7ea5a4e12357798e889341ea30f0dcb7968a1c48f157c515f5ba0eefbdc28fca"
+    },
+    {
+      "path": "docs/release-353.md",
+      "size": 4133,
+      "sha256": "56901cdec84278ca946d8fa714f77c5a708fe5f52c081673e67a096d3a7a20c8"
+    },
+    {
       "path": "docs/release-notes-v2.2.0.md",
       "size": 6037,
       "sha256": "1913cfee1998c9de2723bff3831624ee708889b454f0165c3e1b423c3512aa9b"
@@ -2387,9 +2467,14 @@
       "sha256": "4a2459fd7c0c4c1e06844f3ada6ca1d366dfb489ef1cf1e85cc2acf17de840ed"
     },
     {
-      "path": "packaging/Launcher.cs",
-      "size": 8192,
-      "sha256": "992e0762380333a89252528052c09c8250ea74cf2a230da97d0c9befe561127b"
+      "path": "LICENSE",
+      "size": 1063,
+      "sha256": "ce99b3f9b0cc7a3c6af13eeaa275a38549477742f3a26ca29fc1a23f45a7c5f6"
+    },
+    {
+      "path": "NOTICE",
+      "size": 1475,
+      "sha256": "940baf1f0512cebf524dac9fa7a4fac0cf570ed7985785bfcae4714ba375e147"
     },
     {
       "path": "packaging/app.manifest",
@@ -2398,8 +2483,13 @@
     },
     {
       "path": "packaging/installer.nsi",
-      "size": 17979,
-      "sha256": "754bf619dd317c1840f23eb0f5cf16fde1d834af2382e0e8139234e159e32fbe"
+      "size": 18034,
+      "sha256": "b66cb07e663484b021fa0df5e3f0ab1f2488e439a721e34a963f830cd2cebdea"
+    },
+    {
+      "path": "packaging/Launcher.cs",
+      "size": 12488,
+      "sha256": "f903406636a43e08dd51533aa22b803f480e0a62995382dac7a411e6071119e7"
     },
     {
       "path": "portable_start.py",
@@ -2410,6 +2500,16 @@
       "path": "pyproject.toml",
       "size": 2348,
       "sha256": "bf1c3da202b3e7901b35a74f0934173adf266b108ce569640957249e7b8565c1"
+    },
+    {
+      "path": "README.md",
+      "size": 2403,
+      "sha256": "801a9a4b09abfa3556ee697377fed0f60ef972e7a4895e0a6db54a73693c50da"
+    },
+    {
+      "path": "README.zh-CN.md",
+      "size": 2340,
+      "sha256": "3c7d8bb19fe2c48020d75a827cf1b5f3e9019c2d6e3500e775c486e98fd23ae3"
     },
     {
       "path": "requirements-events-20260906.txt",
@@ -2448,13 +2548,13 @@
     },
     {
       "path": "scripts/build_launcher.ps1",
-      "size": 828,
-      "sha256": "d4b91641b238aa7f9c25c0b12a9af9e493d6022742af8f7f34996e5ab14a85e0"
+      "size": 931,
+      "sha256": "e9e7f392d8467e555ff3d880c9c0c82c4ba5049817ac71eef80f04242ed84e0d"
     },
     {
       "path": "scripts/build_portable.py",
-      "size": 7084,
-      "sha256": "d13aeb90736cdee36276226ca3242be1cbfa9486d8aa48c871f533673891b1c0"
+      "size": 7405,
+      "sha256": "5f48f566260c414e6f5055560f653303a21cf24313ee68168d0fe82647dac6cd"
     },
     {
       "path": "scripts/build_quick_start_pdf.py",
@@ -2592,9 +2692,19 @@
       "sha256": "b96a5399cd9da0a11610a54fb1bf52248d71de05ba71953a72907c4199c097e6"
     },
     {
+      "path": "SECURITY.md",
+      "size": 847,
+      "sha256": "692c85c76ed2eae739da9a0db8d4b3f11c920d929cdd0f41cae5cbc6278aa71b"
+    },
+    {
+      "path": "START_ANNOTATOR.bat",
+      "size": 596,
+      "sha256": "695412ba086856ec63331285e97a6d707eb154e9ea1ed514fce1a44193a10983"
+    },
+    {
       "path": "tests/conftest.py",
-      "size": 3805,
-      "sha256": "4ec23e950a9fbede95bb70f751938f1ff198ce77690d5a4f5cded6d3e4ae792f"
+      "size": 4089,
+      "sha256": "227bbfd5234c93efc5eeeb4afd8a26f03900a8e2ec064247d1f4a129f0f689b0"
     },
     {
       "path": "tests/legacy_organization.py",
@@ -2707,6 +2817,16 @@
       "sha256": "b90f972c797074afd54fff976b7df9698b258fefde47e4c6bb4eb731dfc3259d"
     },
     {
+      "path": "tests/test_fast_organization_v352.py",
+      "size": 14752,
+      "sha256": "2a203752c8c736b3a863f78b4bc6e62be663cc0dc059f2c3e901b0249a8ba5b5"
+    },
+    {
+      "path": "tests/test_fast_transfer.py",
+      "size": 2326,
+      "sha256": "a31686e430c18ef49516828853d923eef32c4d236b5d3d88f7733222628921fa"
+    },
+    {
       "path": "tests/test_final_dataset_menu.py",
       "size": 1114,
       "sha256": "3720a0281de7cfa4015fe1e888a51c28a1f1c21805470854ab028177845dce85"
@@ -2715,6 +2835,11 @@
       "path": "tests/test_final_legacy_reading.py",
       "size": 501,
       "sha256": "9c0d0934ccc99d8038baa28655479dcba446d6a71d497c51b1589448a31418c4"
+    },
+    {
+      "path": "tests/test_fixes_v351.py",
+      "size": 4706,
+      "sha256": "949faa79aa8e433871f3544e992c2b94f6db07bb85bf5c54bbf9ec3d72aa93ea"
     },
     {
       "path": "tests/test_frame_cache.py",
@@ -2768,8 +2893,8 @@
     },
     {
       "path": "tests/test_legacy_model_entry.py",
-      "size": 3307,
-      "sha256": "e85434c73c966a18898f05aba3e39e5abb0fa2dbe8d868cec63c9d40aa3cb4da"
+      "size": 3368,
+      "sha256": "7700b57a6bcced16ac0266d8e269b5a016d1983d8f5327c52045fb560100c21a"
     },
     {
       "path": "tests/test_mother_dataset.py",
@@ -2838,13 +2963,18 @@
     },
     {
       "path": "tests/test_resource_scenarios.py",
-      "size": 8772,
-      "sha256": "05e912f51cb324fe12c5ee93b24b7061c7d7f5bf2010d03ddcad3cc1279729ca"
+      "size": 11580,
+      "sha256": "05ed6559010b7d4eff1ef9e219ff07fb38c5109bfdd10adab4e0d63880bd98a1"
     },
     {
       "path": "tests/test_resources_v34.py",
-      "size": 17539,
-      "sha256": "811e9e53c78a73b2b0e09ef68a808294bbf636796aefaa254ca605621932f765"
+      "size": 17607,
+      "sha256": "63dc2dc8f63a20fd44e62453998c4179ed3bcb748f10e5bb76f0bf3d5c811a80"
+    },
+    {
+      "path": "tests/test_shutdown_update_v353.py",
+      "size": 5050,
+      "sha256": "8891a167e17c58275780dced372dfb36a712948fb5d0f1ffd941d3bfb1959bcb"
     },
     {
       "path": "tests/test_signal_axis_spacing.py",
@@ -2870,6 +3000,11 @@
       "path": "tests/test_storage_recovery.py",
       "size": 2781,
       "sha256": "3fd583c8c160339ffcb185b8066ed413b5bd86e2f436299dab239f4a7af47f7d"
+    },
+    {
+      "path": "tests/test_stream_organization_v353.py",
+      "size": 11716,
+      "sha256": "88a826724ee04b068582ca96615b7b6679fa1d7cb1e4fb734da5ff22fb798a37"
     },
     {
       "path": "tests/test_structure.py",
@@ -2928,8 +3063,8 @@
     },
     {
       "path": "tests/test_workspace_continuation.py",
-      "size": 10497,
-      "sha256": "e217ab2b856d3c650c31781413c3bb94cc52bbae57c59165953e50fee78f9efc"
+      "size": 10839,
+      "sha256": "a4167544d45183c1683449dc9219078e22594cddd65aae3ff9da4beda690dfb8"
     },
     {
       "path": "tests/test_workspace_demand.py",
@@ -2962,9 +3097,9 @@
       "sha256": "f427ca3edd2abc8d5fa20c81792150ea11f5393491ff64b40e2d0362ff66147c"
     },
     {
-      "path": "使用说明.txt",
-      "size": 1765,
-      "sha256": "b504a8abac915f6186d77e2b39e2a47a7ed8fd2e6a01486982bd9955fc757f13"
+      "path": "\u4f7f\u7528\u8bf4\u660e.txt",
+      "size": 816,
+      "sha256": "a0f0661885e3addc11386d3e901c334168f51babbdd152e0b0e35e6db729f723"
     }
   ]
 }

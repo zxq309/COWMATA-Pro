@@ -130,6 +130,9 @@ class MainWindow(QMainWindow):
         self._close_save_started = False
         self._closing_requested = False
         self._close_choice = None
+        self._close_retry_timer = QTimer(self)
+        self._close_retry_timer.setSingleShot(True)
+        self._close_retry_timer.timeout.connect(self.close)
         self._build_ui()
         self.motionReady.connect(self._motion_loaded)
         self.continuationReady.connect(self._continuation_ready)
@@ -2805,7 +2808,20 @@ class MainWindow(QMainWindow):
         dialog.exec()
         return "save" if dialog.clickedButton() is save else "discard" if dialog.clickedButton() is discard else "cancel"
 
+    def _retry_close(self, milliseconds=100):
+        if not self._closed and not self._close_retry_timer.isActive():
+            self._close_retry_timer.start(milliseconds)
+
     def closeEvent(self, event):
+        if self._closed:
+            event.accept()
+            return
+        organize = getattr(self, '_organization_window', None)
+        if organize is not None and not organize.request_shutdown():
+            event.ignore()
+            self.tell('正在停止数据整理并准备保存退出；已完成文件保留。')
+            self._retry_close()
+            return
         for dialog in (self._capture_dialog, self._archive_dialog):
             if dialog is not None and dialog.future is not None and not dialog.future.done():
                 event.ignore()
@@ -2815,7 +2831,7 @@ class MainWindow(QMainWindow):
             self._candidate_window.cancel()
             self.tell("正在取消后台预测，结束后自动关闭；人工成果将正常保存。")
             event.ignore()
-            QTimer.singleShot(300, self.close)
+            self._retry_close(300)
             return
         if self._export_running:
             event.ignore()
@@ -2853,7 +2869,7 @@ class MainWindow(QMainWindow):
         if any(w.thread.is_alive() for w in workers) or pending is not None and not pending.done():
             event.ignore()
             self.tell("正在取消后台读取并保存退出，界面仍可响应…")
-            QTimer.singleShot(100, self.close)
+            self._retry_close(100)
             return
         if self._close_choice == "discard":
             # A snapshot already submitted before the prompt may finish. It is
@@ -2869,7 +2885,7 @@ class MainWindow(QMainWindow):
             self._close_save_started = not self.dirty
             if self.snapshot_writer.pending is not None:
                 event.ignore()
-                QTimer.singleShot(100, self.close)
+                self._retry_close(100)
                 return
         else:
             try:
@@ -2891,6 +2907,7 @@ class MainWindow(QMainWindow):
             self.tell("人工成果尚未成功保存，请先处理保存错误再关闭。")
             return
         self._closed = True
+        self._close_retry_timer.stop()
         if self._candidate_window is not None:
             self._candidate_window.cancel()
             self._candidate_window.timer.stop()

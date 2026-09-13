@@ -38,24 +38,42 @@ def main():
             emit({"event": "progress", "current": current, "total": total, "path": path})
             last = when
 
+    def on_row(row):
+        emit({'event': 'row', 'row': row})
+
     try:
         action = request["action"]
         if action == "audit":
             result = core.audit(request["roots"], cancelled, progress)
+        elif action == 'organize':
+            from cowmata_tailring.workspace.video_intake import organize
+            result = organize(request['target'], request['sources'], request.get('start',''), request.get('end'),
+                request.get('note',''), cancelled, progress, job=job, on_row=on_row,
+                category=request.get('category'), farm=request.get('farm',''), cache=request.get('cache'),
+                transfer=request.get('transfer','copy'), scenario=request.get('scenario','mixed'), workers=request.get('workers',4))
         elif action == "import":
             from cowmata_tailring.workspace.resource_import import plan_import
             result = plan_import(request["target"], request["sources"], request["start"], request.get("end"),
-                                      request.get("note", ""), cancelled, progress, category=request.get("category"), farm=request.get("farm", "扬大_高邮牧场"), cache=request.get("cache"), transfer=request.get("transfer", "copy"),scenario=request.get('scenario','mixed'))
+                                      request.get("note", ""), cancelled, progress, category=request.get("category"), farm=request.get("farm", "扬大_高邮牧场"), cache=request.get("cache"), transfer=request.get("transfer", "copy"),scenario=request.get('scenario','mixed'),
+                                      fast_video=request.get('fast_video', False), workers=request.get('workers', 4), on_row=on_row,
+                                      video_suffix_only=request.get('fast_video', False))
         elif action == "normalize":
             result = core.plan_normalize(request["target"], cancelled, progress)
         elif action == "quarantine":
             result = core.plan_quarantine(request["report"], request["target"])
         elif action == "execute":
             plan = json.loads((job / "plan.json").read_text(encoding="utf-8"))
-            result = core.execute(plan, job, cancelled, progress)
+            if plan.get('fast_video'):
+                from cowmata_tailring.workspace.resource_import import execute
+                result = execute(plan, job, cancelled, progress, on_row=on_row)
+                for row in result['rows']:
+                    if row['status'] in {'ready', 'existing'}:
+                        row['status'] = 'deleted' if row.get('operation') == 'delete_nonvideo' else 'done'
+            else:
+                result = core.execute(plan, job, cancelled, progress)
         else:
             raise ValueError("Unknown organization operation")
-        if action not in {"audit", "execute"}:
+        if action not in {"audit", "execute", "organize"}:
             (job / "plan.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
         (job / "result.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
         with (job / "report.csv").open("w", encoding="utf-8-sig", newline="") as stream:

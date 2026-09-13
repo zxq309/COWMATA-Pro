@@ -324,7 +324,13 @@ def source_video_metadata(path, sha, cached, inspector):
 
 
 def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: False,
-                progress=lambda *_: None, *, category=None, farm="扬大_高邮牧场", cache=None, transfer="copy",scenario='mixed'):
+                progress=lambda *_: None, *, category=None, farm="扬大_高邮牧场", cache=None, transfer="copy",scenario='mixed',
+                fast_video=False, workers=4, on_row=lambda *_: None, video_suffix_only=False):
+    if fast_video:
+        from .video_intake import plan_import as fast_plan
+        return fast_plan(target, sources, start, end, note, cancelled, progress, category=category,
+                         farm=farm, cache=cache, transfer=transfer, scenario=scenario, workers=workers, on_row=on_row,
+                         video_suffix_only=video_suffix_only)
     from cowmata_tailring.annotation.data import parse_motion_object
 
     from .device_identity import resolve_device_identity
@@ -486,18 +492,18 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
             "end": max((r["covered_dates"][-1] for r in dated), default=end or start), "rows": rows}
 
 
-def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
+def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_row=lambda *_: None, row_stream=None):
     started = time.monotonic()
     root, job = core.safe_path(plan["target"]), core.safe_path(job)
     selected = [r for r in plan["rows"] if r["status"] in {"ready", "existing"}]
     unresolved = [r for r in plan["rows"] if r["status"] in {"blocked", "invalid"}]
-    if not selected or unresolved and not plan.get("allow_partial"):
+    if (not selected and row_stream is None) or unresolved and not plan.get("allow_partial"):
         raise ValueError("无有效素材或存在待核实项，请先核对报告")
     sources = [core.safe_path(s["path"]) for s in plan["sources"]]
     if any(core.overlaps(job, p) for p in [root, *sources]):
         raise ValueError("任务记录需位于素材目录之外")
     job.mkdir(parents=True, exist_ok=True)
-    copied, moved = 0, 0
+    copied, moved, deleted = 0, 0, 0
     with DatasetLease([root, *sources], "organize", owner=plan["id"]) as lease, ExitStack() as locks:
         for reference in plan.get('reference_records',[]):
             if core.identity(Path(reference['reference_path']))!=reference['identity']:
@@ -517,57 +523,114 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
         for reference in plan.get('reference_records',[]):
             indexed[reference['path']]={**indexed.get(reference['path'],{}),
                 **{k:v for k,v in reference.items() if k not in {'identity','reference_path'}}}
-        for row in selected:
+        for row in (selected if row_stream is None else row_stream):
             core.check_cancel(cancelled)
-            source, destination = core.safe_path(row["source"]), core.safe_path(row["target"])
-            if not destination.is_relative_to(root) or not any(source == s or source.is_relative_to(s) for s in sources):
-                raise ValueError("计划路径越界")
-            if not source.exists() and row.get("transfer") == "move" and destination.exists():
-                if core.identity(destination) != row["identity"] or digest_file(destination, cancelled=cancelled) != row["sha256"]:
-                    raise ValueError("Moved target identity does not match the saved plan")
-                source_present = False
-            else:
-                source_present = True
-            if source == destination or source_present and core.identity(source) != row["identity"]:
-                raise ValueError("来源已变化，请重新预览")
-            if source_present:
-                assert_not_being_written(source)
-            lease.mark_pending(plan["id"], job)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            temporary = destination.with_name(destination.name + "." + plan["id"] + ".partial")
-            with core.prevent_writes(source if source_present else destination):
-                if destination.exists():
-                    if digest_file(destination, cancelled=cancelled) != row["sha256"]:
-                        raise ValueError("已存在目标校验失败：" + str(destination))
-                elif row.get("transfer") == "move":
-                    core.append_journal(job / "journal.jsonl", {"phase": "move_intent", **row})
-                    core.move_no_replace(source, destination)
-                    if core.identity(destination) != row["identity"]:
-                        raise ValueError("Moved file identity changed")
-                    moved += 1
+            if row_stream is not None:
+                atomic_json(job / 'plan.json', plan)
+                if row['status'] not in {'ready', 'existing'}:
+                    if row['status'] in {'blocked', 'invalid'}:
+                        unresolved.append(row)
+                    on_row(dict(row))
+                    continue
+                selected.append(row)
+                on_row({**row, 'status': 'processing', 'message': '正在写入目标，完成校验后显示已归档'})
+            try:
+                source, destination = core.safe_path(row["source"]), core.safe_path(row["target"])
+                if row_stream is not None:
+                    for parent in (source, *source.parents):
+                        if parent not in parents and (parent / '标注工程').is_dir():
+                            lock = core.ProjectLock(parent / '标注工程/writer.lock')
+                            locks.callback(lock.close)
+                            if not lock.acquired:
+                                raise OSError('Source annotation project is still open')
+                        parents.add(parent)
+                if row.get('operation') == 'delete_nonvideo':
+                    from .video_intake import inspect, protected_file
+                    cleanup = core.safe_path(row['cleanup_root'])
+                    if (not plan.get('fast_video') or protected_file(source) or source.is_relative_to(root)
+                            or not any(s.get('kind') == 'video' and core.safe_path(s['path']) == cleanup for s in plan['sources'])
+                            or not (source == cleanup or source.is_relative_to(cleanup))):
+                        raise ValueError('非视频删除范围不合法')
+                    if source.exists():
+                        with core.prevent_writes(source):
+                            if core.identity(source) != row['identity'] or digest_file(source, cancelled=cancelled) != row['sha256']:
+                                raise ValueError('待删除文件已变化，保留原处')
+                            if inspect(source, job/'cleanup-check', cancelled).get('kind') != 'nonvideo':
+                                raise ValueError('无法再次确认非视频，保留原处')
+                            lease.mark_pending(plan['id'], job)
+                            core.append_journal(job/'journal.jsonl', {'phase': 'delete_intent', **row})
+                            source.unlink()
+                            core.append_journal(job/'journal.jsonl', {'phase': 'deleted', **row})
+                    else:
+                        journal = job/'journal.jsonl'
+                        entries = [json.loads(line) for line in journal.read_text(encoding='utf-8').splitlines()] if journal.exists() else []
+                        if not any(r.get('phase') in {'delete_intent', 'deleted'} and r.get('source') == str(source)
+                                   and r.get('identity') == row['identity'] and r.get('sha256') == row['sha256'] for r in entries):
+                            raise ValueError('源文件已不在原处，无法确认本任务删除，需核对')
+                    deleted += 1
+                    on_row({**row, 'status': 'deleted', 'message': '已删除确认的非视频文件'})
+                    continue
+                if not destination.is_relative_to(root) or not any(source == s or source.is_relative_to(s) for s in sources):
+                    raise ValueError("计划路径越界")
+                if not source.exists() and row.get("transfer") == "move" and destination.exists():
+                    if core.identity(destination) != row["identity"] or digest_file(destination, cancelled=cancelled) != row["sha256"]:
+                        raise ValueError("Moved target identity does not match the saved plan")
+                    source_present = False
                 else:
-                    from .fast_transfer import copy_verified
-                    transfer_stats = copy_verified(source, temporary, row['sha256'], cancelled=cancelled,
-                        progress=lambda current, total, phase: progress(current, total,
-                            ('快速复制' if phase == 'copy' else '校验目标') + ' · ' + str(source.name)))
-                    core.append_journal(job / 'journal.jsonl', {'phase': 'copy_verified',
-                        'source': str(source), 'target': str(destination), **transfer_stats})
-                    if core.identity(source) != row["identity"]:
-                        raise ValueError("复制期间来源变化")
-                    shutil.copystat(source, temporary)
-                    core.move_no_replace(temporary, destination)
-                    copied += 1
-            relative = destination.relative_to(root).as_posix()
-            if row.get('transfer')=='move' and source.is_relative_to(root):
-                indexed.pop(source.relative_to(root).as_posix(),None)
-            indexed[relative] = {"path": relative, **{k: row[k] for k in
-                ("kind", "sha256", "size", "owner", "record_start_ms", "record_end_ms", "covered_dates", "metadata")},
-                "time_basis": "unix_epoch_ms", "timezone_offset_minutes": row.get("timezone_offset_minutes", 480),
-                "source": row["source"], "verified_stamp":file_stamp(destination),"device_id": row.get("device_id", ""),
-                "cow_id": row.get("cow_id", ""), "field_mark": row.get("field_mark", "")}
-            core.append_journal(job / "journal.jsonl", {"phase": "verified", "source": str(source),
-                                  "target": str(destination), "sha256": row["sha256"]})
-            progress(len(indexed), len(selected), str(destination))
+                    source_present = True
+                if source == destination or source_present and core.identity(source) != row["identity"]:
+                    raise ValueError("来源已变化，请重新预览")
+                if source_present:
+                    assert_not_being_written(source)
+                lease.mark_pending(plan["id"], job)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                temporary = destination.with_name(destination.name + "." + plan["id"] + ".partial")
+                with core.prevent_writes(source if source_present else destination):
+                    if destination.exists():
+                        if digest_file(destination, cancelled=cancelled) != row["sha256"]:
+                            raise ValueError("已存在目标校验失败：" + str(destination))
+                    elif row.get("transfer") == "move":
+                        core.append_journal(job / "journal.jsonl", {"phase": "move_intent", **row})
+                        core.move_no_replace(source, destination)
+                        if core.identity(destination) != row["identity"]:
+                            raise ValueError("Moved file identity changed")
+                        moved += 1
+                    else:
+                        from .fast_transfer import copy_verified
+                        transfer_stats = copy_verified(source, temporary, row['sha256'], cancelled=cancelled,
+                            progress=lambda current, total, phase: progress(current, total,
+                                ('快速复制' if phase == 'copy' else '校验目标') + ' · ' + str(source.name)))
+                        core.append_journal(job / 'journal.jsonl', {'phase': 'copy_verified',
+                            'source': str(source), 'target': str(destination), **transfer_stats})
+                        if core.identity(source) != row["identity"]:
+                            raise ValueError("复制期间来源变化")
+                        shutil.copystat(source, temporary)
+                        core.move_no_replace(temporary, destination)
+                        copied += 1
+                relative = destination.relative_to(root).as_posix()
+                if row.get('transfer')=='move' and source.is_relative_to(root):
+                    indexed.pop(source.relative_to(root).as_posix(),None)
+                indexed[relative] = {"path": relative, **{k: row[k] for k in
+                    ("kind", "sha256", "size", "owner", "record_start_ms", "record_end_ms", "covered_dates", "metadata")},
+                    "time_basis": "unix_epoch_ms", "timezone_offset_minutes": row.get("timezone_offset_minutes", 480),
+                    "source": row["source"], "verified_stamp":file_stamp(destination),"device_id": row.get("device_id", ""),
+                    "cow_id": row.get("cow_id", ""), "field_mark": row.get("field_mark", "")}
+                core.append_journal(job / "journal.jsonl", {"phase": "verified", "source": str(source),
+                                      "target": str(destination), "sha256": row["sha256"]})
+                if not destination.is_file() or destination.stat().st_size != row['size']:
+                    raise OSError('Destination missing or size changed after transfer')
+                if row_stream is not None:
+                    atomic_json(index_path, {**index, 'records': list(indexed.values())})
+                    update_context(root, {**plan, 'rows': [{**row, 'status': 'ready'}]})
+                    preserve_annotation_work(root, [row], job)
+                progress(len(selected), plan.get('total_files', len(selected)), str(destination))
+                on_row({**row, 'status': 'done', 'message': '已归档：' + str(destination)})
+            except (ValueError, OSError, RuntimeError) as exc:
+                if not plan.get('fast_video') or isinstance(exc, InterruptedError):
+                    raise
+                row.update(status='blocked', message=str(exc))
+                unresolved.append(row)
+                on_row(dict(row))
         all_days = sorted({day for r in indexed.values() for day in r["covered_dates"]})
         for day in all_days:
             for modality in (('Video','PPG') if plan.get('scenario')=='attach_video' else MODALITIES):
@@ -579,9 +642,10 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
                      **category_fields(plan["category"]), updated_at=core.now(),
                      ppg={"status": "reserved", "available": False})
         atomic_json(index_path, index)
-        context_plan = {**plan, "rows": [{**r, "status": "ready"} for r in selected]}
+        selected_materials = [r for r in selected if r.get('operation') != 'delete_nonvideo' and r['status'] in {'ready', 'existing'}]
+        context_plan = {**plan, "rows": [{**r, "status": "ready"} for r in selected_materials]}
         update_context(root, context_plan)
-        history = preserve_annotation_work(root, selected, job)
+        history = preserve_annotation_work(root, selected_materials, job)
         for parent in parents:
             if plan.get('scenario')!='attach_video' and parent != root and (parent / "标注工程").is_dir() and any(
                     r.get("transfer") == "move" and Path(r["source"]).is_relative_to(parent) for r in selected):
@@ -609,7 +673,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None):
             writer.writerows(r for r in indexed.values() if r["kind"] == "video" and r["metadata"].get("needs_review"))
         lease.complete(plan["id"])
     return {**plan, "completed": True, "moved": moved+copied, "same_volume_moved": moved, "copied": copied,
-            "existing": len(selected)-copied-moved, "unresolved": len(unresolved),
+            "existing": len(selected_materials)-copied-moved, "deleted": deleted, "unresolved": len(unresolved),
             "history": history,
             "seconds": round(time.monotonic()-started, 3), "identity_method": "sha256",
             "finished_at": core.now()}

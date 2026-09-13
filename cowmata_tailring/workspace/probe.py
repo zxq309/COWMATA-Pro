@@ -202,7 +202,7 @@ class SourceInspector:
         if resource:
             offset = resource.get("timezone_offset_minutes", 480) * 60000
             return {"start_ms": resource["record_start_ms"] + offset,
-                    "end_ms": resource["record_end_ms"] + offset, "hint_only": True}
+                    "end_ms": None if resource.get('metadata', {}).get('naming_only') else resource["record_end_ms"] + offset, "hint_only": True}
         hint = native_hint(path, timezone_minutes=self.timezone_minutes, cancelled=self.stop.is_set)
         if hint:
             return hint

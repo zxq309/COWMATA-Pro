@@ -100,7 +100,7 @@ class TimestampOCR:
                         "metadata": {"layout": name}}
         return {"success": False, "wall_ms": None, "roi": None, "routing_only": True}
 
-    def native_check(self, img, *, filename="frame", hint=None, family=None):
+    def native_check(self, img, *, filename="frame", hint=None, family=None, opening_only=False):
         """Small independent image check, not a replacement for fallback OCR."""
         if family == "hikvision-hk1":
             from .hik_osd import PROFILES, recognize, recognize_date
@@ -130,7 +130,7 @@ class TimestampOCR:
                             'metadata':{'layout':profile['name']},'date_passes':dates,'clock_passes':passes}
                 # A readable date already identifies this calibrated corner;
                 # do not replace a failed clock vote with weaker single-pass OCR.
-                result = ({'success':False,'wall_ms':None} if day else
+                result = ({'success':False,'wall_ms':None} if day or opening_only else
                           self.routing_read(img, filename=filename, hint=hint, max_passes=15, minimum_votes=2))
                 result.update(date_passes=dates, clock_passes=passes)
                 return result

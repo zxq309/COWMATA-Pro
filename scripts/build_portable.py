@@ -88,7 +88,7 @@ def main():
     for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ("daily-project-guide.html", "quick-start-illustrated.pdf", "quick-start-illustrated.md", "quick-start-illustrated.source.json", "legacy-dataset-workflow.md", "release-351.md",
+    for name in ("daily-project-guide.html", "daily-project-guide-351.html", "release-352.md", "release-353.md", "daily-project-guide-352.html", "quick-start-illustrated.pdf", "quick-start-illustrated.md", "quick-start-illustrated.source.json", "legacy-dataset-workflow.md", "release-351.md",
                  "capture-timing.md", "client-updates.md", "evidence-archive.md", "team-returns.md",
                  "native-video-timing.md", "algorithm-inspection.md", "portable-components.md"):
         shutil.copy2(source / "docs" / name, destination / "docs" / name)
@@ -104,7 +104,7 @@ def main():
             with path.open("rb") as stream:
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
             inventory.append({"path": path.relative_to(destination).as_posix(), "size": path.stat().st_size, "sha256": digest})
-    (destination / "package-manifest.json").write_text(json.dumps({"version": "3.5.1", "files": inventory}, indent=2), encoding="utf-8")
+    (destination / "package-manifest.json").write_text(json.dumps({"version": "3.5.3", "files": inventory}, indent=2), encoding="utf-8")
     print(json.dumps({"directory": str(destination), "files": len(inventory), "bytes": sum(x["size"] for x in inventory)}), flush=True)
     if not args.no_zip:
         with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=3) as bundle:

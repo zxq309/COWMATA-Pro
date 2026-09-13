@@ -51,6 +51,7 @@ Page custom LocationCreate LocationLeave
 !define MUI_FINISHPAGE_TITLE "$(FinishTitle)"
 !define MUI_FINISHPAGE_TEXT "$(FinishBody)"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\COWMATA.exe"
+!define MUI_FINISHPAGE_RUN_PARAMETERS "--post-install"
 !define MUI_FINISHPAGE_RUN_TEXT "$(LaunchText)"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM

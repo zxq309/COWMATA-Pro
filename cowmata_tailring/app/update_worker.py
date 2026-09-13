@@ -120,7 +120,7 @@ def member(root, relative, *, checked_dirs=None):
     return result
 
 
-def inventory(root, *, verify=False, manifest_sha=None):
+def inventory(root, *, verify=False, manifest_sha=None, progress=lambda *_: None):
     checked_dirs = set()
     root = safe_path(root, checked_dirs=checked_dirs)
     manifest_path = root / "package-manifest.json"
@@ -129,7 +129,7 @@ def inventory(root, *, verify=False, manifest_sha=None):
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     owned = {"package-manifest.json", "COWMATA.install-id", "Uninstall.exe", LOCK, "logs/annotator.log"}
     py_sources = set()
-    for row in data["files"]:
+    for number, row in enumerate(data["files"], 1):
         p = member(root, row["path"], checked_dirs=checked_dirs)
         if row["path"] in owned:
             raise ValueError("Duplicate/reserved package member")
@@ -138,6 +138,8 @@ def inventory(root, *, verify=False, manifest_sha=None):
             py_sources.add((p.parent.relative_to(root).as_posix(), p.stem))
         if verify and (not p.is_file() or p.stat().st_size != row["size"] or digest(p) != row["sha256"]):
             raise ValueError("Extracted file checksum mismatch: " + row["path"])
+        if verify:
+            progress(number, len(data['files']), row['path'])
     actual = []
     for folder, dirs, files in os.walk(root, followlinks=False):
         for name in dirs + files:
@@ -219,6 +221,12 @@ def remove_owned(root):
         directory.rmdir()  # Concurrent/unrecognized content is preserved.
 
 
+def start_updated_app(root, version):
+    environment = {**os.environ, 'COWMATA_POST_UPDATE_VERSION': version}
+    return subprocess.Popen([str(root/'COWMATA.exe')], cwd=root, env=environment,
+                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+
+
 def install(job, *, runner=run, registration=registered, unregister=remove_registration, restart=True):
     with installation_lock(safe_path(job["root"])):
         return _install_locked(job, runner=runner, registration=registration,
@@ -262,6 +270,7 @@ def _install_locked(job, *, runner, registration, unregister, restart):
 
     # The client requests closure through its normal save/close handlers. Do
     # not kill it, another annotation window, or another user's application.
+    phase('waiting')
     deadline = time.monotonic() + 180
     while runner([root / "COWMATA.exe", "--check-running"], timeout=15).returncode != 0:
         if time.monotonic() > deadline:
@@ -275,7 +284,14 @@ def _install_locked(job, *, runner, registration, unregister, restart):
         if result.returncode:
             raise RuntimeError(f"解包失败 ({result.returncode})，旧版未修改")
         phase("verifying")
-        inventory(stage, verify=True, manifest_sha=update["package_sha256"])
+        last_progress = [0.0]
+        def progress(current, total, path):
+            now = time.monotonic()
+            if now-last_progress[0] >= .4 or current == total:
+                state.update(verified_files=current, total_files=total, current_file=path)
+                write_json(journal, state)
+                last_progress[0] = now
+        inventory(stage, verify=True, manifest_sha=update["package_sha256"], progress=progress)
         if (stage / "COWMATA.install-id").read_text(encoding="utf-8") != "COWMATA-" + version:
             raise ValueError("Staged installer version does not match")
         phase("import_testing")
@@ -324,6 +340,14 @@ def _install_locked(job, *, runner, registration, unregister, restart):
         phase("rolled_back" if swapped else "failed_before_swap")
         # Keep failed staging as diagnostic evidence, never erase unknown files.
         raise
+    (root / LOCK).unlink(missing_ok=True)
+    if restart:
+        phase('restarting')
+        try:
+            start_updated_app(root, version)
+            state['application_launched'] = True
+        except OSError as exc:
+            state['restart_warning'] = str(exc)
     try:
         phase("cleaning_backup")
         unregister(root, old_version)
@@ -332,9 +356,6 @@ def _install_locked(job, *, runner, registration, unregister, restart):
         state["cleanup_warning"] = str(exc)
     (root / LOCK).unlink(missing_ok=True)
     phase("complete")
-    if restart:
-        subprocess.Popen([str(root / "COWMATA.exe")], cwd=root,
-                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return state
 
 
@@ -343,6 +364,11 @@ def main():
     ap.add_argument("job")
     args = ap.parse_args()
     job = json.loads(Path(args.job).read_text(encoding="utf-8"))
+    write_json(Path(job['job_dir'])/'result.json', {'phase':'preparing'})
+    progress_exe = Path(job['job_dir'])/'COWMATA-Progress.exe'
+    if os.name == 'nt' and progress_exe.is_file():
+        subprocess.Popen([str(progress_exe),'--update-progress',str(Path(job['job_dir'])/'result.json'),str(os.getpid())],
+                         cwd=job['job_dir'],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     try:
         install(job)
         return 0
