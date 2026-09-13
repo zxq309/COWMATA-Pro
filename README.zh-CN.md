@@ -1,17 +1,17 @@
-# COWMATA Annotator 3.5.3
+# COWMATA Annotator 3.6.0
 
-奶牛多视角录像与连续九轴数据的整理、同步标注和复核工具。Windows安装包与便携包包含Python、Qt、VLC、FFmpeg及离线OCR模型，无须额外配置运行环境。
+奶牛多视角录像与连续九轴数据的归类、下载、同步标注和复核工具。Windows 安装包与便携包包含 Python、Qt、VLC、FFmpeg 和离线 OCR 模型。
 
-[下载安装包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.5.3/COWMATA-Annotator-3.5.3-Setup.exe) · [下载便携包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.5.3/COWMATA-Annotator-3.5.3-Portable.zip) · [在线完整图文教程](docs/quick-start-illustrated.md) · [56页PDF手册](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.5.3/COWMATA-3.5.3-Manual.pdf) · [English](README.md)
+[安装包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Setup.exe) · [便携包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Portable.zip) · [源码包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Source.zip) · [发布说明](docs/release-360.md) · [English](README.md)
 
-3.5.3修复了“列表有目标路径、实际文件尚未归类”的流程问题。选好来源后直接点击“一键执行归类”：多个录像同时识别，完成一条就真实复制或移动一条，核对后显示“已归档”。
+- **工具 → 数据归类**：单窗口支持 JSON 与视频一起归类，或已有 JSON 补充视频。已归类且文件身份未变化的材料直接复用，不重复识别、哈希或复制；目标缺失时补齐。
+- **暂停与继续**：保留原任务和已验证的复制断点。实时 CSV 记录每份文件的状态、耗时与复用情况，可随时打开。
+- **日期与目录**：优先读取录像流内时钟，补充画面 OCR 标点容错。视频不因没有对应九轴日期而漏归；无法确定的时间明确保留待处理，不伪造日期。
+- **工具 → 端侧数据下载**：手动、自动或定时下载 Motion/PPG JSON，支持失败重试、迟上传补下、多牧场配置和可选 SSH 隧道。[下载说明](docs/edge-download.md)
+- **纯净发行**：不携带本机密钥、个人设置、下载记录、日志、缓存或现场试验数据。标注、历史复核、证据导出及数据集构建能力保留。
 
-- 批量输入视角01～08的多个目录，每个来源递归搜索子目录。“仅补视频”和“九轴与视频一起整理”共用流程。
-- 视频先按后缀筛选；支持的流内绝对时间优先，没有时读取首帧，必要时自动尝试开头邻近帧并回推开始秒。无法确定的文件保留、跳过，不阻断其他文件。
-- 目录按 `Video/日期/视角/开始时间` 保存，视频不绑定单头牛。九轴维持设备、耳标和现场记号规范；既有标签引用随九轴改名更新，标注内容保持一致。
-- 关闭整理窗口会停止后台任务，主界面能继续保存退出。更新显示独立进度，先启动通过校验的新版，再后台清理旧版；更新后这一次启动不重复联网检查。
-- 保留单日工程、单文件跨盘配对、母标签、历史复核、证据导出与按牛划分的数据集构建。PPG波形解析仍为预留能力。
+完整解压便携 ZIP 后运行 `COWMATA.exe`，或运行安装包选择一个新的软件目录。采集数据请放在软件目录之外。
 
-**开始使用：** 关闭旧版后运行安装包，或完整解压便携ZIP后打开 `COWMATA.exe`。从旧更新器迁移到本版，建议本次直接运行3.5.3安装包。点击“仅预览”时不会复制或移动文件。
+自动、定时下载需要程序保持运行；3090 原始库只提供 Motion，PPG 需要提供脉搏数据的服务端。真实远端服务未连接验收，协议与控制流程使用本地 HTTP 模拟服务验证。
 
-首帧命名与后续帧回推不代表整段同步已经核验；自动候选与演示标签不作为现场效果或研究真值。速度实测、校验范围见[本版说明](docs/release-353.md)。
+归类日期不等于整段同步已经核验；自动候选与演示标签不能作为现场效果或研究真值。[既有标注操作指南](docs/quick-start-illustrated.md)

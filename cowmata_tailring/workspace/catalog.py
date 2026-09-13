@@ -16,7 +16,7 @@ from .storage import ProjectLock, atomic_json, read_json
 META_DIR = "标注工程"
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".avi", ".dav", ".h264", ".h265", ".ts", ".mov",
                   ".mpg", ".mpeg", ".m4v", ".webm", ".wmv", ".asf", ".flv", ".mts", ".m2ts", ".ps"}
-EXCLUDE_DIRS = {META_DIR, ".git", ".venv", "__pycache__", "node_modules", "runtime", "dist"}
+EXCLUDE_DIRS = {"归类附属文件", ".归类缓存", META_DIR, ".git", ".venv", "__pycache__", "node_modules", "runtime", "dist"}
 
 
 def previous_video_files(video,day):

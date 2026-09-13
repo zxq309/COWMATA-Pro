@@ -517,6 +517,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                 if not lock.acquired:
                     raise OSError("相关工程仍在标注，请保存并暂停后再整理")
         root.mkdir(parents=True, exist_ok=True)
+        lease.mark_pending(plan['id'], job)
         index_path = root / "资源索引.json"
         index = json.loads(index_path.read_text(encoding="utf-8")) if index_path.is_file() else {"schema": "cowmata-resources-3.4", "records": []}
         indexed = {r["path"]: r for r in index["records"]}
@@ -524,9 +525,10 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
             indexed[reference['path']]={**indexed.get(reference['path'],{}),
                 **{k:v for k,v in reference.items() if k not in {'identity','reference_path'}}}
         for row in (selected if row_stream is None else row_stream):
+            file_started = time.monotonic()
             core.check_cancel(cancelled)
             if row_stream is not None:
-                atomic_json(job / 'plan.json', plan)
+                atomic_json(job / 'plan.json', plan, backup=False)
                 if row['status'] not in {'ready', 'existing'}:
                     if row['status'] in {'blocked', 'invalid'}:
                         unresolved.append(row)
@@ -584,7 +586,12 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                     assert_not_being_written(source)
                 lease.mark_pending(plan["id"], job)
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                temporary = destination.with_name(destination.name + "." + plan["id"] + ".partial")
+                legacy_partial = destination.with_name(destination.name + "." + plan["id"] + ".partial")
+                partial_dir = root / '.归类缓存' / plan['id']
+                partial_dir.mkdir(parents=True, exist_ok=True)
+                temporary = partial_dir / (hashlib.sha256(str(destination).encode()).hexdigest() + '.partial')
+                if legacy_partial.exists() and not temporary.exists():
+                    core.move_no_replace(legacy_partial, temporary)
                 with core.prevent_writes(source if source_present else destination):
                     if destination.exists():
                         if digest_file(destination, cancelled=cancelled) != row["sha256"]:
@@ -597,9 +604,11 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                         moved += 1
                     else:
                         from .fast_transfer import copy_verified
-                        transfer_stats = copy_verified(source, temporary, row['sha256'], cancelled=cancelled,
+                        transfer_stats = copy_verified(source, temporary, row.get('sha256'), cancelled=cancelled,
                             progress=lambda current, total, phase: progress(current, total,
                                 ('快速复制' if phase == 'copy' else '校验目标') + ' · ' + str(source.name)))
+                        row['sha256'] = transfer_stats['sha256']
+                        atomic_json(job / 'plan.json', plan, backup=False)
                         core.append_journal(job / 'journal.jsonl', {'phase': 'copy_verified',
                             'source': str(source), 'target': str(destination), **transfer_stats})
                         if core.identity(source) != row["identity"]:
@@ -613,7 +622,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                 indexed[relative] = {"path": relative, **{k: row[k] for k in
                     ("kind", "sha256", "size", "owner", "record_start_ms", "record_end_ms", "covered_dates", "metadata")},
                     "time_basis": "unix_epoch_ms", "timezone_offset_minutes": row.get("timezone_offset_minutes", 480),
-                    "source": row["source"], "verified_stamp":file_stamp(destination),"device_id": row.get("device_id", ""),
+                    "source": row["source"], "source_identity": row.get("identity"), "verified_stamp":file_stamp(destination),"device_id": row.get("device_id", ""),
                     "cow_id": row.get("cow_id", ""), "field_mark": row.get("field_mark", "")}
                 core.append_journal(job / "journal.jsonl", {"phase": "verified", "source": str(source),
                                       "target": str(destination), "sha256": row["sha256"]})
@@ -624,6 +633,8 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                     update_context(root, {**plan, 'rows': [{**row, 'status': 'ready'}]})
                     preserve_annotation_work(root, [row], job)
                 progress(len(selected), plan.get('total_files', len(selected)), str(destination))
+                row['transfer_seconds'] = round(time.monotonic() - file_started, 3)
+                row['file_seconds'] = round(row.get('recognition_seconds', 0) + row['transfer_seconds'], 3)
                 on_row({**row, 'status': 'done', 'message': '已归档：' + str(destination)})
             except (ValueError, OSError, RuntimeError) as exc:
                 if not plan.get('fast_video') or isinstance(exc, InterruptedError):
@@ -637,10 +648,10 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                 (root / modality / day).mkdir(parents=True, exist_ok=True)
             for view in core.VIEWS:
                 (root / "Video" / day / view).mkdir(exist_ok=True)
-            (root / "PPG" / day / "占位说明.txt").write_text("PPG 预留：后续接入原始采集时间、通道和标注；当前无有效 PPG 数据。\n", encoding="utf-8")
+
         index.update(records=list(indexed.values()), dates=all_days, farm=plan["farm"],
                      **category_fields(plan["category"]), updated_at=core.now(),
-                     ppg={"status": "reserved", "available": False})
+                     ppg={"status": "archived" if any(r.get("kind") == "ppg" for r in indexed.values()) else "reserved", "available": False})
         atomic_json(index_path, index)
         selected_materials = [r for r in selected if r.get('operation') != 'delete_nonvideo' and r['status'] in {'ready', 'existing'}]
         context_plan = {**plan, "rows": [{**r, "status": "ready"} for r in selected_materials]}
@@ -671,6 +682,8 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
             writer = csv.DictWriter(stream, fieldnames=["path", "source", "sha256", "record_start_ms"], extrasaction="ignore")
             writer.writeheader()
             writer.writerows(r for r in indexed.values() if r["kind"] == "video" and r["metadata"].get("needs_review"))
+        from .organization_live import clean_modalities
+        clean_modalities(root, job, cancelled)
         lease.complete(plan["id"])
     return {**plan, "completed": True, "moved": moved+copied, "same_volume_moved": moved, "copied": copied,
             "existing": len(selected_materials)-copied-moved, "deleted": deleted, "unresolved": len(unresolved),

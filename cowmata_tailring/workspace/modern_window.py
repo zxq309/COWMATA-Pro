@@ -123,11 +123,10 @@ class MainWindow(ControllerWindow):
         self._organize_menus(files, materials, sync, edit, view, tools)
         tools.addMenu(materials)
         tools.addMenu(sync)
-        organize = self.menuBar().addMenu("数据整理(&D)")
-        self._action(organize, "数据审查…", lambda: self.open_organization(0))
-        self._action(organize, "数据归类…", lambda: self.open_organization(1))
-        self._action(organize, "数据异常报告…", lambda: self.open_organization(2))
-        self._action(organize, "导出标准 MP4 副本…", self.export_standard_video)
+        self._action(tools, "数据归类…", lambda: self.open_organization(1))
+        self._action(tools, "导出标准 MP4 副本…", self.export_standard_video)
+        from cowmata_tailring.edge_download import install_menu as install_edge_download
+        install_edge_download(self, tools)
         datasets = self.menuBar().addMenu('数据集构建(&G)')
         for index,title in enumerate(('标签与来源检查…','按行为与耳标构建…','综合决策数据集…','按牛划分与构建说明…')):
             self._action(datasets,title,lambda _checked=False,tab=index:self.open_dataset_workflow(tab))

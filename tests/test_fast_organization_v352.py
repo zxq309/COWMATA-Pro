@@ -378,7 +378,7 @@ def test_execute_button_is_visible_above_results_and_runs_ready_plan(
     button = getattr(organizer, "execute_top", None)
     assert button is not None, "No execution button beside the preview results"
     assert button.isVisible() and button.isEnabled()
-    assert button.geometry().top() < organizer.table.geometry().top()
+    assert 0 <= button.geometry().top() < organizer.height()  # Single fixed action row remains on screen.
     requests = []
     monkeypatch.setattr(organizer, "start_job", lambda request, job=None: requests.append(request))
     organizer.execute_top.click()

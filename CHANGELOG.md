@@ -61,6 +61,14 @@
 
 # Changelog
 
+## 3.6.0 — 2026-09-14
+
+- Integrate edge Motion/PPG downloads with manual, automatic and scheduled modes.
+- Reuse unchanged classified files without repeating OCR, hashing or copying.
+- Repair pause/resume, camera/date routing, OCR punctuation, live CSV and partial-copy recovery.
+- Ship clean offline source, portable and installer packages.
+
+
 ## [3.3.2] - 2026-09-10
 
 - Explain pending video time and available next actions on hover, distinguishing time inspection from cow identity.
