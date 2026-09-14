@@ -1,8 +1,8 @@
-# COWMATA Annotator 3.6.0
+# COWMATA Annotator 3.6.2
 
 A Windows workstation for classifying and downloading cattle sensor records, synchronizing multiview video with continuous IMU, annotating behavior, and reviewing evidence. Python, Qt, VLC, FFmpeg and offline OCR models are bundled.
 
-[Setup](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Setup.exe) · [Portable](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Portable.zip) · [Source](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Source.zip) · [Release notes](docs/release-360.md) · [中文](README.zh-CN.md)
+[Setup](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.2/COWMATA-Annotator-3.6.2-Setup.exe) · [Portable](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.2/COWMATA-Annotator-3.6.2-Portable.zip) · [Source](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.2/COWMATA-Annotator-3.6.2-Source.zip) · [Release notes](docs/release-362.md) · [中文](README.zh-CN.md)
 
 - **Tools / Data classification** offers one window for mixed JSON/video intake or adding videos to existing JSON records. Unchanged archived files are reused without repeating OCR, full hashing or copying. Missing destinations are repaired.
 - **Pause and resume** retain the original task and verified partial copies. Live CSV records include file status, elapsed time and reuse.

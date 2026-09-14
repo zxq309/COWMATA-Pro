@@ -303,6 +303,12 @@ def inspect(path, cache, cancelled=lambda: False):
             }
         with core.prevent_writes(path):
             core.check_cancel(cancelled)
+            from .intake_health import blank_recording
+            blank = blank_recording(path, cache, cancelled)
+            if blank:
+                return {**row, 'status': 'empty_video', 'classification': 'all_zero',
+                        'health': blank, 'file_seconds': round(time.monotonic()-started, 3),
+                        'message': '完整核验为全零文件，没有可解码录像；原件保留，无需手动归类'}
             with path.open("rb") as stream:
                 reason = nonvideo_signature(stream.read(128 * 1024), row["size"])
             if reason:
@@ -513,6 +519,8 @@ def plan_import(
         / "COWMATA Annotator/resource-probes"
     )
     cache.mkdir(parents=True, exist_ok=True)
+    from .classification_report import source_key
+    skipped_keys = {source_key(p) for p in skip_sources}
     reference_days = {d for r in reference for d in r["covered_dates"]}
     index_path = root / '资源索引.json'
     existing_index = json.loads(index_path.read_text(encoding='utf-8')) if index_path.is_file() else {}
@@ -530,7 +538,7 @@ def plan_import(
         if scenario == "attach_video" and declared == "imu":
             continue
         for path in core.walk_files(source, cancelled):
-            if str(path) in skip_sources:
+            if source_key(path) in skipped_keys:
                 continue
             # Existing organized targets are never cleanup input, even when nested in source.
             if path.is_relative_to(root):
@@ -568,14 +576,14 @@ def plan_import(
                 delete_allowed=declared == "video" and not streaming,
                 source_root=source,
             )
-            previous = jobs.get(str(path))
+            previous = jobs.get(source_key(path))
             if previous:
                 if previous["explicit"] and explicit and previous["camera"] != camera:
                     raise ValueError("同一录像被指定为不同视角：" + str(path))
                 if previous["explicit"] and not explicit:
                     entry["camera"], entry["explicit"] = previous["camera"], True
                 entry["delete_allowed"] = entry["delete_allowed"] or previous["delete_allowed"]
-            jobs[str(path)] = entry
+            jobs[source_key(path)] = entry
 
     def prepare(entry):
         path = entry["path"]
@@ -669,6 +677,9 @@ def plan_import(
         total_files=len(jobs),
         streaming=streaming,
         workers=workers,
+        inventory=[dict(source=str(e['path']), kind=e['kind'], status='pending',
+                        owner=e['camera'] if e['camera'] in core.VIEWS else '', message='等待处理')
+                   for e in jobs.values()],
     )
 
     def generate():
@@ -676,7 +687,8 @@ def plan_import(
             jobs.values(), prepare, workers=workers, cancelled=cancelled
         ):
             if row is None:
-                continue
+                row = dict(source=str(entry['path']), kind=entry['kind'], status='excluded_aux',
+                           message='非采集记录，原件保留', size=entry['path'].stat().st_size)
             path = entry["path"]
             if row["kind"] == "nonvideo" and row["status"] == "nonvideo":
                 if entry["delete_allowed"]:
@@ -756,7 +768,7 @@ def plan_import(
     return plan
 
 
-def organize(
+def _organize(
     target,
     sources,
     start="",
@@ -767,6 +779,7 @@ def organize(
     *,
     job,
     on_row=lambda *_: None,
+    _report,
     **options,
 ):
     """One lease, bounded parallel recognition, immediate verified transfers."""
@@ -782,13 +795,13 @@ def organize(
     final_rows = {}
 
     started = time.monotonic()
-    from .organization_live import LiveReport
-    live = LiveReport(job)
+    from .classification_report import source_key
+    live = _report
 
     def completed(row):
         row = dict(row)
         row['task_seconds'] = round(time.monotonic() - started, 3)
-        final_rows[row['source']] = row
+        final_rows[source_key(row['source'])] = row
         live.row(row)
         on_row(row)
 
@@ -813,8 +826,8 @@ def organize(
                 source_ok = (core.identity(source) == row['identity'] if source.exists() else row.get('transfer') == 'move')
                 if (source_ok and destination.is_file() and archived.get('verified_stamp') == file_stamp(destination)
                         and archived.get('sha256') == row.get('sha256') and row.get('sha256')):
-                    done = {**row, 'status': 'done', 'resumed_complete': True, 'message': '已归类，来源与目标身份未变化，无需重复复制'}
-                    recovered.add(row['source'])
+                    done = {**row, 'status': 'done', 'resumed_complete': True, 'file_seconds': 0, 'recognition_seconds': 0, 'transfer_seconds': 0, 'message': '已归类，来源与目标身份未变化，无需重复复制'}
+                    recovered.add(str(source))
                     recovered_rows.append(done)
                     completed(done)
                     continue
@@ -825,9 +838,9 @@ def organize(
             # Complete only interrupted transfers. Never rehash hundreds of GB
             # whose full verification and file identity are already recorded.
             legacy.execute({**previous, 'rows': remaining}, job, stopped, progress, on_row=completed)
-            for key, row in final_rows.items():
-                if row['status'] in {'done', 'deleted'} and key not in recovered:
-                    recovered.add(key)
+            for row in final_rows.values():
+                if row['status'] in {'done', 'deleted'} and row['source'] not in recovered:
+                    recovered.add(row['source'])
                     recovered_rows.append(row)
     from .fast_transfer import transfer_policy
     requested_workers = max(1, int(options.get('workers', 4)))
@@ -850,6 +863,7 @@ def organize(
         plan["id"] = previous["id"]
     plan['rows'].extend(recovered_rows)
     plan['total_files'] += len(recovered_rows)
+    live.seed(plan.get('inventory', []) + recovered_rows)
     atomic_json(saved, plan, backup=False)
     try:
         result = legacy.execute(plan, job, stopped, progress, on_row=completed, row_stream=rows)
@@ -866,3 +880,19 @@ def organize(
         local_stop.set()
         rows.close()
         atomic_json(saved, plan, backup=False)
+
+
+def organize(target, sources, start='', end=None, note='', cancelled=lambda: False,
+             progress=lambda *_: None, *, job, on_row=lambda *_: None,
+             on_report=lambda *_: None, **options):
+    from .classification_report import LiveReport, counts
+    with LiveReport(job, on_publish=on_report) as report:
+        result = _organize(target, sources, start, end, note, cancelled, progress,
+                           job=job, on_row=on_row, _report=report, **options)
+        report.flush(force=True)
+        result['rows'] = list(report.rows.values())
+        result['counts'] = counts(result['rows'])
+        result['total_files'] = result['counts']['total']
+        result['report_path'] = str(report.path)
+        atomic_json(Path(job) / 'result.json', result)
+        return result

@@ -181,12 +181,14 @@ class PlanModel(QAbstractTableModel):
 
     def set_rows(self, rows):
         self.beginResetModel()
-        self.rows = rows
+        from .classification_report import latest_rows
+        self.rows = latest_rows(rows)
         self.endResetModel()
 
     def update_row(self, row):
+        from .classification_report import source_key
         for index, old in enumerate(self.rows):
-            if old.get("source") == row.get("source"):
+            if source_key(old.get("source", '')) == source_key(row.get("source", '')):
                 self.rows[index] = row
                 self.dataChanged.emit(
                     self.index(index, 0), self.index(index, len(self.COLUMNS) - 1)
@@ -231,6 +233,7 @@ class PlanModel(QAbstractTableModel):
                     "quarantine": "#9a6800",
                     "invalid": "#a33d28",
                     "blocked": "#b52c25",
+                    "empty_video": "#6b746f",
                 }.get(row["status"], "#20332a")
             )
         if role in {Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole}:
@@ -247,9 +250,8 @@ class PlanModel(QAbstractTableModel):
             if key == "size":
                 return f"{row.get(key, 0) / 1024**2:,.2f} MiB"
             if key == "status":
-                if row.get('existing_verified'):
-                    return '已复用'
-                return self.STATES.get(row.get(key), row.get(key, ""))
+                from .classification_report import status_label
+                return status_label(row)
             if key == "device":
                 return row.get("device_id") or row.get("owner") or row.get("device", "")
             if key == "source_folder":
@@ -660,16 +662,36 @@ class OrganizationWindow(QDialog):
         self._live_timer.start()
         self.summary.setText('等待开始 · 原件保留 · 记录实时保存')
 
+    def apply_report_snapshot(self):
+        from .classification_report import read_snapshot, source_key, summary_text
+        if not self.job:
+            return
+        try:
+            snapshot = read_snapshot(self.job)
+        except (OSError, ValueError):
+            return
+        revision = (str(self.job), snapshot['revision'])
+        if getattr(self, '_report_revision', None) == revision:
+            return
+        current = self.table.currentIndex().row()
+        selected = source_key(self.model.rows[current]['source']) if 0 <= current < len(self.model.rows) else None
+        scroll = self.table.verticalScrollBar().value()
+        self._report_revision = revision
+        self.model.set_rows(snapshot['rows'])
+        self._report_counts = snapshot['counts']
+        self.summary.setText(summary_text(snapshot['counts']))
+        for i, row in enumerate(self.model.rows):
+            if source_key(row['source']) == selected:
+                self.table.selectRow(i)
+                break
+        self.table.verticalScrollBar().setValue(scroll)
+        if getattr(self, '_report_window', None) and self._report_window.isVisible():
+            self._report_window.refresh()
+
     def refresh_live(self):
-        self.export_button.setEnabled(bool(self.job and any(self.job.glob('report*.csv'))))
-        if self.running and self._elapsed_start:
-            seconds = time.monotonic() - self._elapsed_start
-            done = sum(r.get('status') == 'done' for r in self.model.rows)
-            problems = sum(r.get('status') in {'blocked', 'invalid'} for r in self.model.rows)
-            finished_now = [r for r in self.model.rows if r.get('status') == 'done' and r.get('transfer_seconds') is not None and not r.get('resumed_complete')]
-            remaining = max(0, getattr(self, '_total_files', 0) - done - problems)
-            estimate = f' · 预计剩余 {seconds / len(finished_now) * remaining / 60:.1f} 分钟' if finished_now and remaining else ''
-            self.summary.setText(f'已归类 {done} 项 · 需处理 {problems} 项 · 本次运行 {seconds:.0f} 秒' + estimate)
+        if self.job:
+            self.apply_report_snapshot()
+        self.export_button.setEnabled(bool(self.job and (self.job / 'report-state.json').exists()))
 
     @property
     def running(self):
@@ -984,7 +1006,9 @@ class OrganizationWindow(QDialog):
                 message = json.loads(line)
             except (ValueError, UnicodeError):
                 continue
-            if message["event"] == "progress":
+            if message['event'] == 'snapshot':
+                self.apply_report_snapshot()
+            elif message["event"] == "progress":
                 total, current = message["total"], message["current"]
                 if total:
                     self.bar.setRange(0, 1000)
@@ -1080,6 +1104,8 @@ class OrganizationWindow(QDialog):
                 or self.stderr.decode("utf-8", errors="replace")
                 or "任务未完成，请查看任务记录并重试；原文件不会被覆盖。"
             )
+        self._report_revision = None
+        self.apply_report_snapshot()
         self.render()
 
     def execute_plan(self):
@@ -1259,10 +1285,12 @@ class OrganizationWindow(QDialog):
             self.status.setText("目标目录尚未创建；只有已归档项代表文件实际写入。")
 
     def export_report(self):
-        if self.job:
-            path = max((p for p in self.job.glob('report*.csv') if p.is_file()), key=lambda p: p.stat().st_mtime_ns, default=None)
-            if path:
-                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        from .classification_viewer import ClassificationReportWindow
+        if not getattr(self, '_report_window', None):
+            self._report_window = ClassificationReportWindow(self, lambda: self.job)
+        self._report_window.refresh()
+        self._report_window.show()
+        self._report_window.raise_()
 
     def toggle_options(self):
         visible = not self.tabs.isVisible()
@@ -1424,7 +1452,7 @@ class OrganizationWindow(QDialog):
                 widget.setEnabled(False)
         self.pause_project.setEnabled(not busy and bool(getattr(self.owner, "catalog", None)))
         self.export_button.setEnabled(
-            bool(self.job and (self.job / "report.csv").is_file())
+            bool(self.job and (self.job / "report-state.json").is_file())
         )
 
     def closeEvent(self, event):

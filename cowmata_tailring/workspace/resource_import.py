@@ -596,6 +596,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                     if destination.exists():
                         if digest_file(destination, cancelled=cancelled) != row["sha256"]:
                             raise ValueError("已存在目标校验失败：" + str(destination))
+                        row['existing_verified'] = True
                     elif row.get("transfer") == "move":
                         core.append_journal(job / "journal.jsonl", {"phase": "move_intent", **row})
                         core.move_no_replace(source, destination)

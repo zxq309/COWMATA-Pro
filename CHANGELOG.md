@@ -61,6 +61,14 @@
 
 # Changelog
 
+## 3.6.2 — 2026-09-14
+
+- Publish one current CSV row per source and share counters with the live UI.
+- Add an automatically refreshing, eight-column classification record viewer.
+- Confirm and cache all-zero camera storage slots without treating them as recoverable media errors.
+- Include pending inventory and preserve the latest snapshot on pause.
+
+
 ## 3.6.0 — 2026-09-14
 
 - Integrate edge Motion/PPG downloads with manual, automatic and scheduled modes.
