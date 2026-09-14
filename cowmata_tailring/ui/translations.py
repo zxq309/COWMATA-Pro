@@ -2848,5 +2848,46 @@ ZH_TO_EN.update({
     '；该日没有九轴记录，仍按视频实际日期归类': '; no IMU record exists on this date, but the video is classified by its actual date',
 })
 
+
+# Live classification snapshots, version 3.6.2.
+ZH_TO_EN.update({
+    ' · 处理中 ': ' · Processing ',
+    ' · 已归类 ': ' · Classified ',
+    ' · 待处理 ': ' · Pending ',
+    'Excel 直接打开的是静态快照；实时进度请在本窗口查看。': 'Excel opens a static snapshot; use this window for live progress.',
+    '另存当前 CSV…': 'Save current CSV...',
+    '另存当前归类记录': 'Save current classification records',
+    '处理中': 'Processing',
+    '完整核验为全零文件，没有可解码录像；原件保留，无需手动归类': 'Full-file verification found only zero bytes, with no decodable recording; original retained, no manual classification needed',
+    '实时 CSV 被占用，请关闭已打开的 CSV 文件后继续': 'Live CSV files are locked; close opened CSV files and resume',
+    '实时归类记录': 'Live classification records',
+    '已保留': 'Retained',
+    '已归类': 'Classified',
+    '已暂停，继续任务后处理': 'Paused; resume the task to continue',
+    '已清理': 'Cleaned',
+    '已隔离': 'Quarantined',
+    '序号': 'No.',
+    '归类位置': 'Destination',
+    '归类记录-实时-': 'Classification-live-',
+    '归类记录.csv': 'Classification.csv',
+    '待处理': 'Pending',
+    '待归类': 'Ready to classify',
+    '待校验': 'Awaiting verification',
+    '总计 ': 'Total ',
+    '无录像内容': 'No recording content',
+    '无法保存 CSV': 'Cannot save CSV',
+    '核验期间文件变化，稍后自动重试': 'File changed during verification; retry later',
+    '每秒自动刷新 · 更新时间：': 'Auto-refresh every second · Updated: ',
+    '每秒自动刷新；每个文件一行，显示最新状态': 'Auto-refresh every second; one latest row per file',
+    '等待处理': 'Waiting for processing',
+    '等待归类记录': 'Waiting for classification records',
+    '耗时(秒)': 'Elapsed (s)',
+    '视角/设备': 'View/device',
+    '非采集文件': 'Not acquisition data',
+    '非采集记录，原件保留': 'Not an acquisition record; original retained',
+    '（复用 ': ' (reused ',
+    '） · 无录像/非采集 ': ') · No recording/non-acquisition ',
+})
+
 if __name__ == "__main__":
     _coverage()

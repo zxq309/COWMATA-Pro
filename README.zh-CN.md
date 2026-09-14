@@ -1,8 +1,8 @@
-# COWMATA Annotator 3.6.0
+# COWMATA Annotator 3.6.2
 
 奶牛多视角录像与连续九轴数据的归类、下载、同步标注和复核工具。Windows 安装包与便携包包含 Python、Qt、VLC、FFmpeg 和离线 OCR 模型。
 
-[安装包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Setup.exe) · [便携包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Portable.zip) · [源码包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.0/COWMATA-Annotator-3.6.0-Source.zip) · [发布说明](docs/release-360.md) · [English](README.md)
+[安装包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.2/COWMATA-Annotator-3.6.2-Setup.exe) · [便携包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.2/COWMATA-Annotator-3.6.2-Portable.zip) · [源码包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.2/COWMATA-Annotator-3.6.2-Source.zip) · [发布说明](docs/release-362.md) · [English](README.md)
 
 - **工具 → 数据归类**：单窗口支持 JSON 与视频一起归类，或已有 JSON 补充视频。已归类且文件身份未变化的材料直接复用，不重复识别、哈希或复制；目标缺失时补齐。
 - **暂停与继续**：保留原任务和已验证的复制断点。实时 CSV 记录每份文件的状态、耗时与复用情况，可随时打开。

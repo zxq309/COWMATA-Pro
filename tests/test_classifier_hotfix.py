@@ -32,11 +32,14 @@ def test_live_csv_is_readable_before_completion_and_contains_elapsed(tmp_path):
 
     live = LiveReport(tmp_path)
     live.row(dict(source="一.mp4", status="processing", file_seconds=1.25))
+    live.flush(force=True)
     with live.path.open(encoding="utf-8-sig", newline="") as reader:
         rows = list(csv.DictReader(reader))
-        assert rows[-1]["status"] == "processing"
+        assert rows[-1]["状态"] == "处理中"
         live.row(dict(source="一.mp4", status="done", file_seconds=3.5))
-    assert list(csv.DictReader(live.path.open(encoding="utf-8-sig")))[-1]["file_seconds"] == "3.5"
+    live.flush(force=True)
+    result = list(csv.DictReader(live.path.open(encoding="utf-8-sig")))
+    assert len(result) == 1 and result[-1]["耗时(秒)"] == "3.5"
 
 
 def test_new_copy_hashes_during_transfer(tmp_path):
@@ -216,21 +219,18 @@ def test_resume_during_initial_scan_uses_saved_request(organizer, tmp_path, monk
 
 
 def test_multiple_open_excel_snapshots_do_not_interrupt_live_log(tmp_path, monkeypatch):
-    from cowmata_tailring.workspace import organization_live as live_module
-
-    live = live_module.LiveReport(tmp_path)
-    (tmp_path / "report-live.csv").write_text("locked")
-    append = live_module.append_shared
-
-    def locked(path, text):
-        if path.name in {"report.csv", "report-live.csv"}:
-            raise PermissionError("Excel snapshot locked")
-        append(path, text)
-
-    monkeypatch.setattr(live_module, "append_shared", locked)
-    live.row(dict(source="video.mp4", status="done"))
-    assert live.path.name == "report-live-001.csv"
-    assert list(csv.DictReader(live.path.open(encoding="utf-8-sig")))[-1]["status"] == "done"
+    from cowmata_tailring.workspace import classification_report as reports
+    live = reports.LiveReport(tmp_path)
+    write = reports.atomic_bytes
+    def locked(path, data):
+        if path.name in {'归类记录.csv', '归类记录-实时-001.csv'}:
+            raise PermissionError('Excel holds a snapshot')
+        write(path, data)
+    monkeypatch.setattr(reports, 'atomic_bytes', locked)
+    live.row(dict(source='video.mp4', status='done'))
+    live.flush(force=True)
+    assert live.path.name == '归类记录-实时-002.csv'
+    assert list(csv.DictReader(live.path.open(encoding='utf-8-sig')))[0]['状态'] == '已归类'
 
 
 def test_new_task_reuses_archived_files_without_inspection_hashing_or_copy(tmp_path, monkeypatch):
@@ -279,12 +279,11 @@ def test_missing_archived_target_is_repaired(tmp_path, monkeypatch):
 
 
 def test_legacy_live_csv_headers_are_never_mixed_with_new_columns(tmp_path):
-    from cowmata_tailring.workspace.organization_live import LiveReport
+    from cowmata_tailring.workspace.classification_report import LiveReport
     old = 'source,status\nold.mp4,done\n'
-    for name in ('report.csv', 'report-live.csv'):
-        (tmp_path / name).write_text(old, encoding='utf-8')
-    live = LiveReport(tmp_path)
-    live.row(dict(source='new.mp4', status='done', source_folder='folder'))
-    assert live.path.name == 'report-live-001.csv'
+    (tmp_path / 'report-live.csv').write_text(old, encoding='utf-8')
+    with LiveReport(tmp_path) as live:
+        live.row(dict(source='new.mp4', status='done', source_folder='folder'))
     assert (tmp_path / 'report-live.csv').read_text(encoding='utf-8') == old
-    assert list(csv.DictReader(live.path.open(encoding='utf-8-sig')))[-1]['source_folder'] == 'folder'
+    report = list(csv.DictReader(live.path.open(encoding='utf-8-sig')))
+    assert len(report) == 1 and report[0]['来源文件'] == 'new.mp4'

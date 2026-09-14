@@ -29,8 +29,10 @@ def main():
     def cancelled():
         return (job / "cancel").exists()
     last = 0.0
-    from cowmata_tailring.workspace.organization_live import LiveReport
-    live = LiveReport(job)
+    from cowmata_tailring.workspace.classification_report import LiveReport
+    def on_report(path, revision):
+        emit({'event': 'snapshot', 'path': path, 'revision': revision})
+    live = LiveReport(job, on_publish=on_report) if request['action'] != 'organize' else None
 
     def progress(current, total, path):
         nonlocal last
@@ -42,7 +44,8 @@ def main():
     def on_row(row):
         if request.get('action') != 'organize':
             live.row(row)
-        emit({'event': 'row', 'row': row})
+        if request.get('action') != 'organize':
+            emit({'event': 'row', 'row': row})
 
     try:
         action = request["action"]
@@ -51,7 +54,7 @@ def main():
         elif action == 'organize':
             from cowmata_tailring.workspace.video_intake import organize
             result = organize(request['target'], request['sources'], request.get('start',''), request.get('end'),
-                request.get('note',''), cancelled, progress, job=job, on_row=on_row,
+                request.get('note',''), cancelled, progress, job=job, on_row=on_row, on_report=on_report,
                 category=request.get('category'), farm=request.get('farm',''), cache=request.get('cache'),
                 transfer=request.get('transfer','copy'), scenario=request.get('scenario','mixed'), workers=request.get('workers',4))
         elif action == "import":
@@ -89,6 +92,9 @@ def main():
                                                     ensure_ascii=False), encoding="utf-8")
         emit({"event": "error", "message": str(exc), "paused": isinstance(exc, InterruptedError)})
         return 2
+    finally:
+        if live:
+            live.finish('paused' if cancelled() else 'completed')
 
 
 if __name__ == "__main__":

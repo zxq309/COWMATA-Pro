@@ -174,8 +174,7 @@ def test_gui_lists_naming_advice_and_blocks_move_before_annotation(tmp_path, mon
         assert not dialog.execute_button.isEnabled() and not dialog.open_button.isEnabled()
         assert dialog.model.data(dialog.model.index(0, 0)) == "07D5-21014-R"
         assert dialog.model.data(dialog.model.index(0, 2)) == "546C50CA07D5-21014-R"
-        with (dialog.job / "report.csv").open(encoding="utf-8-sig", newline="") as stream:
-            report = list(csv.DictReader(stream))
+        report = json.loads((dialog.job / 'report-state.json').read_text(encoding='utf-8'))['rows']
         assert report[0]["source_folder"] == "07D5-21014-R"
         assert report[0]["suggested_folder"] == "546C50CA07D5-21014-R"
         assert source.exists() and not (tmp_path / "target").exists()
