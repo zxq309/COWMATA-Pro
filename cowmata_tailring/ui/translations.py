@@ -3050,5 +3050,34 @@ ZH_TO_EN.update({
   "：验证未参与本次拟合的记录": ": Validating records held out of this fit"
 })
 
+ZH_TO_EN.update({
+  " 本次将改用固定时间差，旧校准可通过撤销恢复。": " This will use a fixed time offset; Undo restores the previous calibration.",
+  "一次对齐": "Align once",
+  "一次对齐已完成，已恢复同步跟随。当前记录按固定时间差同步，可继续标注；无需第二次对齐。": "Alignment complete; synchronized following is restored. This recording uses a fixed time offset. No second alignment is needed.",
+  "一次对齐需要本份记录内的一个对应点和有效时间范围": "One-point alignment requires one match inside this recording and valid time bounds.",
+  "一次对齐（推荐）": "Align once (recommended)",
+  "一般标注使用主界面的“一次对齐”即可。只有越播时间偏差越大时，才需要增加对应点校正漂移。本表相邻点之间校正时间速度，首尾之外为外推。保存修订后，已有真值需复核。": "Use Align once for normal annotation. Add points only when the time difference grows during playback. This table corrects clock drift between points and extrapolates beyond them. Saved revisions require annotation review.",
+  "主视角画面尚未到位。请等待画面加载完成，再点“完成对齐”。": "The main-camera frame is not ready. Wait for it to load, then complete alignment.",
+  "保存精细校准点": "Save drift calibration point",
+  "分别拖动录像和九轴，找到同一时刻后点击“完成对齐”。": "Drag video and IMU to the same moment, then click Complete alignment.",
+  "只找一个对应时刻即可完成对齐；点击后可分别拖动录像和九轴。": "Only one matching moment is needed. Click to move video and IMU independently.",
+  "可选：仅在越播偏差越大时使用。在离原对应点较远的位置找同一动作，再保存这个点校正时间漂移。": "Optional: use only when the time difference grows during playback. Find a matching moment far from the original point, then save it to correct clock drift.",
+  "完成对齐": "Complete alignment",
+  "尚未对齐。点击“一次对齐”，分别拖动九轴与视频到同一时刻，然后完成对齐。": "No alignment yet. Click Align once, move video and IMU to the same moment, then complete alignment.",
+  "已一次对齐 · 固定时间差": "Aligned once · Fixed time offset",
+  "已一次对齐 · 固定时间差 · 当前记录有效；发现越播偏差越大时可选精细校准。": "Aligned once · Fixed time offset · Valid for this recording; drift calibration is optional if the difference grows.",
+  "已保存第一个精细校准点；再增加一个相隔较远的点即可校正漂移。普通标注可直接使用一次对齐。": "First drift-calibration point saved. Add a distant second point to correct drift. For normal annotation, use Align once.",
+  "已暂停同步跟随。分别拖动录像和九轴，把同一动作的同一时刻放在播放线上，再点“完成对齐”。只需对应一次。": "Synchronized following is paused. Move video and IMU to the same moment of the same action, then click Complete alignment. Only one match is needed.",
+  "当前记录或校准已变化，请重新点击“一次对齐”。": "The recording or calibration changed. Click Align once again.",
+  "每行一对相机时间与参考时间。相邻点之间校正时间速度，首尾之外为外推。": "One pair of camera and reference times per row. Clock speed is corrected between points and extrapolated beyond them.",
+  "精细校准 · 时间漂移与未确认区间": "Fine calibration · Clock drift and unconfirmed intervals",
+  "精细校准对应点 ": "Drift calibration points ",
+  "精细校准已更新，已恢复同步跟随。": "Drift calibration updated; synchronized following is restored.",
+  "精细校准（可选）…": "Fine calibration (optional)...",
+  "精细校准：增加对应点": "Fine calibration: add a match",
+  "该范围尚未完成对齐，或位于未确认区间；点击“一次对齐”后再确认，视频草稿已保留": "This range is not aligned or lies in an unconfirmed interval. Click Align once before confirming; the video draft is retained.",
+  "重新对齐": "Realign"
+})
+
 if __name__ == "__main__":
     _coverage()

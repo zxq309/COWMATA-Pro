@@ -78,7 +78,7 @@ def capture_frames(root, rows, settings, clock, context, imu_ms, cameras, *, can
         raise ValueError("请先确认目标牛号")
     if not context["start_ms"] <= imu_ms <= (context["end_ms"] if context["end_ms"] is not None else context["start_ms"]):
         raise ValueError("截图时刻必须在所选标签范围内")
-    if clock.quality(imu_ms) != "interpolated":
+    if not clock.is_calibrated(imu_ms):
         raise ValueError("截图时刻需在人工校准范围内；设备时间仅用于候选定位")
     maps = {k: ClockMap.from_dict(v) for k, v in settings.get("camera_maps", {}).items()}
     timeline = VideoTimeline(intervals_from_rows(rows, settings.get("camera_overrides")), maps)

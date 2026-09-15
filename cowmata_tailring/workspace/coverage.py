@@ -62,10 +62,10 @@ def continuation_target(rows, current_asset, device, cow_id, reference_ms, load_
             continue
         try:
             clock = ClockMap.from_dict(work.get("clock", {}))
-            if len(clock.anchors) < 2:
+            if not clock.anchors:
                 continue
             source_ms = clock.map(reference_ms, inverse=True)
-            if 0 <= source_ms <= row["metadata"].get("duration_ms", 0) and clock.quality(source_ms) == "interpolated":
+            if 0 <= source_ms <= row["metadata"].get("duration_ms", 0) and clock.is_calibrated(source_ms):
                 matches.append(row)
         except (ValueError, TypeError, KeyError):
             continue

@@ -327,7 +327,7 @@ class HistoryWindow(QMainWindow):
         if not self.slider.isSliderDown():
             self.slider.setValue(round(10000 * (when - lo) / max(1, hi - lo)))
         quality = self.data.work.clock.quality(when)
-        label = {"interpolated": "已校准范围", "estimated": "未校准", "single_anchor": "单点粗对齐",
+        label = {"interpolated": "已校准范围", "estimated": "未校准", "single_anchor": "单点粗对齐", "offset": "已一次对齐 · 固定时间差",
                  "unconfirmed": "未确认区间", "extrapolated": "超出校准范围",
                  "device_clock": "设备时钟候选定位", "legacy_estimate": "旧协议估计时间"}.get(quality, "未校准")
         clock = self.data.work.clock
