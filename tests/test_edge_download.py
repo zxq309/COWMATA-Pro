@@ -229,6 +229,13 @@ def qt_app():
     app.processEvents()
 
 
+def dispose_worker(worker):
+    from PySide6.QtCore import QCoreApplication, QEvent
+    assert worker.wait(5000)
+    worker.deleteLater()
+    QCoreApplication.sendPostedEvents(worker, QEvent.Type.DeferredDelete)
+
+
 def spin(app, predicate, timeout=5):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -260,6 +267,7 @@ def test_manual_automatic_scheduled_workers(qt_app, tmp_path, server):
             spin(qt_app, lambda: not worker.isRunning())
         qt_app.processEvents()
         assert cycles and all(c.failed == 0 for c in cycles)
+        dispose_worker(worker)
 
 
 def test_scheduled_cancel_before_network(qt_app, tmp_path, server):
@@ -269,6 +277,7 @@ def test_scheduled_cancel_before_network(qt_app, tmp_path, server):
     worker.cancel.set()
     assert worker.wait(2000)
     assert not server[1]['requests']
+    dispose_worker(worker)
 
 
 def test_dialog_profiles_and_idempotent_menu(qt_app, tmp_path):
@@ -343,6 +352,7 @@ def test_auto_recovers_after_cycle_failure(qt_app, tmp_path, monkeypatch):
     worker.start()
     spin(qt_app, lambda: not worker.isRunning())
     assert len(calls) == 2
+    dispose_worker(worker)
 
 
 def test_dialog_starts_real_http_download(qt_app, tmp_path, server):
