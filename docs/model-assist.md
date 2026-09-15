@@ -4,8 +4,8 @@ The tool reads source nine-axis JSON, video and model artefacts. It never modifi
 training results. **Every model output must be confirmed by a human before it enters the annotation
 table.**
 
-Training, evaluation, and the current algorithm engineering baseline are maintained in the
-[COWMATA Tail-Sensor Intelligence repository](https://github.com/zxq309/cowmata-tailring).
+Historical training and evaluation sources are preserved in the unified
+[COWMATA Pro™ project](project/repository-consolidation.md). This page describes the legacy model-package interface; use the 3.8 operator guide for the current event-candidate workflow.
 
 ## Model package contract
 

@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security report
-    url: https://github.com/zxq309/cattle-tail-ring-annotator/security/advisories/new
+    url: https://github.com/zxq309/COWMATA-Pro/security/advisories/new
     about: Report vulnerabilities privately instead of opening a public issue.
-  - name: Algorithm repository
-    url: https://github.com/zxq309/cowmata-tailring/issues
-    about: Report model-training or algorithm-pipeline issues in the companion repository.
+  - name: Algorithm and model questions
+    url: https://github.com/zxq309/COWMATA-Pro/issues
+    about: Report annotation, training and model questions in this unified repository.

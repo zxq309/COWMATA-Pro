@@ -8,4 +8,4 @@
 
 下载 **Setup.exe** 安装；或完整解压 **Portable.zip** 后运行 COWMATA.exe。**Source.zip** 为纯净源码，**Manual.pdf** 为图文说明书。已有安装版直接检查最新版，无须逐版更新。
 
-验证范围、客户原片限制及结果见[验证记录](https://github.com/zxq309/cattle-tail-ring-annotator/blob/v3.3.2/docs/release-332-validation.md)；最终安装和升级证据随发布附件 Delivery-Checks.json 提供。
+验证范围、客户原片限制及结果见[验证记录](https://github.com/zxq309/COWMATA-Pro/blob/v3.3.2/docs/release-332-validation.md)；最终安装和升级证据随发布附件 Delivery-Checks.json 提供。

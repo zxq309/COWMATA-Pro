@@ -29,7 +29,7 @@
 
 366 份九轴、842 段录像的本机样本中，首次自动出画面约 10.8 秒，已有索引重开约 1.5 秒。三台相机各选一段原录像分别测试：暂停远跳约 0.2–0.5 秒，播放中远跳约 0.12–0.14 秒；1×/2×/4×画面持续更新，主路没有自行纠偏跳转。
 
-以上是 RTX 2080 Ti 本机样本结果，并非三路同时 4×，也不是所有录像/硬盘的时延保证。未索引时段仍可能需要检索；未核准的同步和模型候选仍需人工复核。详见[发布前验证记录](https://github.com/zxq309/cattle-tail-ring-annotator/blob/v3.2.1/docs/release-321-validation.md)。
+以上是 RTX 2080 Ti 本机样本结果，并非三路同时 4×，也不是所有录像/硬盘的时延保证。未索引时段仍可能需要检索；未核准的同步和模型候选仍需人工复核。详见[发布前验证记录](https://github.com/zxq309/COWMATA-Pro/blob/v3.2.1/docs/release-321-validation.md)。
 
 ## 升级
 
@@ -39,4 +39,4 @@
 
 本次继续使用 3.2.1，早前 3.2.1 用户手动下载安装；之后发布更高版本即可按上述规则自动升级。手动安装选择新的软件目录，旧 3.2.0 发布保留。
 
-附件 SHA-256 与 cowmata-update.json 供完整性和自动更新校验。基础操作仍可参考 [3.2.0 图文教程 PDF](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.2.0/COWMATA-3.2.0-Quick-Start.pdf)，本次新增操作以上文为准。
+附件 SHA-256 与 cowmata-update.json 供完整性和自动更新校验。基础操作仍可参考 [3.2.0 图文教程 PDF](https://github.com/zxq309/COWMATA-Pro/releases/download/v3.2.0/COWMATA-3.2.0-Quick-Start.pdf)，本次新增操作以上文为准。
