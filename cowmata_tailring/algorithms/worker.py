@@ -1,0 +1,74 @@
+"""Offline numerical worker, limited to two CPUs and one numerical library thread."""
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def main():
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMBA_NUM_THREADS"):
+        os.environ[name] = "1"
+    if os.name == "nt":
+        import ctypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.GetCurrentProcess.restype = ctypes.c_void_p
+        handle = kernel.GetCurrentProcess()
+        kernel.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        kernel.SetPriorityClass(handle, 0x4000)
+        kernel.GetProcessAffinityMask.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_size_t)]
+        kernel.SetProcessAffinityMask.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+        allowed, system = ctypes.c_size_t(), ctypes.c_size_t()
+        if not kernel.GetProcessAffinityMask(handle, ctypes.byref(allowed), ctypes.byref(system)):
+            raise OSError("Could not inspect algorithm worker CPU affinity")
+        bits = [1 << i for i in range(64) if allowed.value & (1 << i)]
+        if not kernel.SetProcessAffinityMask(handle, sum(bits[-2:])):
+            raise OSError("Could not limit algorithm worker CPU affinity")
+    elif hasattr(os, "sched_getaffinity"):
+        os.sched_setaffinity(0, sorted(os.sched_getaffinity(0))[:2])
+    from cowmata_tailring.algorithms.analysis import analyze_patterns, load_features
+    from cowmata_tailring.algorithms.dataset import scan_dataset
+    from cowmata_tailring.algorithms.evidence import build_evidence, infer_features
+    from cowmata_tailring.algorithms.registry import read_suite
+    from cowmata_tailring.workspace.storage import atomic_json
+    request = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+
+    def progress(done, total, message):
+        atomic_json(Path(request["progress"]), dict(done=done, total=total, message=message))
+
+    action = request["action"]
+    if action == "predict":
+        suite = read_suite(request["suite"])
+        feature = load_features(request["record"], request["cache"])
+        events = infer_features(suite, feature, [request["code"]])
+        result = dict(candidates=events, audit=dict(
+            feature_version=feature["feature_version"], observed_seconds=feature["observed_seconds"],
+            duration_ms=feature["duration_ms"], gap_count=feature["gap_count"],
+            warnings=feature["warnings"], model_version=suite["version"],
+            interpretation="模型分数不是概率；候选区间需要人工确认"))
+    else:
+        if request.get("record"):
+            index = dict(records=[request["record"]], fingerprint=request["record"]["asset_id"], issues=[])
+        else:
+            index = scan_dataset(request["dataset"], pool_general_events=action != "evidence", progress=progress)
+        output = Path(request["output"])
+        output.mkdir(parents=True, exist_ok=True)
+        atomic_json(output / "dataset-index.json", index)
+        if action == "patterns":
+            result = analyze_patterns(index, request["cache"], output, progress=progress)
+        elif action == "train":
+            from cowmata_tailring.algorithms.training import train_suite
+            result = train_suite(index, request["cache"], output, progress=progress)
+        elif action == "evidence":
+            result = build_evidence(index, request["cache"], request["suite"], output, progress=progress)
+        else:
+            raise ValueError("Unknown algorithm action")
+    atomic_json(Path(request["result"]), result)
+
+
+if __name__ == "__main__":
+    main()

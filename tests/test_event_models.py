@@ -17,12 +17,14 @@ from cowmata_tailring.workspace.event_models import (
 )
 from cowmata_tailring.workspace.label_file import build_label_file, load_history, save_label_file
 
+LEGACY_PACK = next(p for p in available_packs() if p.get("adapter") == "csv-points-v1")
 
-@pytest.mark.parametrize("model", available_packs()[0]["models"], ids=lambda m: m["id"])
-@pytest.mark.skipif(not (available_packs()[0]["app_root"] / "model_runtime_20260906/python.exe").is_file(),
+
+@pytest.mark.parametrize("model", LEGACY_PACK["models"], ids=lambda m: m["id"])
+@pytest.mark.skipif(not (LEGACY_PACK["app_root"] / "model_runtime_20260906/python.exe").is_file(),
                     reason="Binary event runtime is a Release asset; exercised in portable acceptance")
 def test_reviewed_pack_files_present_and_verified(model):
-    assert verify_model(available_packs()[0], model).name == "python.exe"
+    assert verify_model(LEGACY_PACK, model).name == "python.exe"
 
 
 def test_pack_path_cannot_escape(tmp_path):

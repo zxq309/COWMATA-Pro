@@ -1,4 +1,4 @@
-"""Native GUI + real five-model run in a NEW isolated TEST-ONLY project.
+"""Native GUI + real selected-model run in a NEW isolated TEST-ONLY project.
 
 Copies a small existing video fixture; never writes the provided real source.
 Synthetic clock anchors are solely for interface testing, not cow truth.
@@ -120,7 +120,7 @@ def main():
                 state = "predict"
             elif state == "predict" and not window._candidate_window.running:
                 runs = window.work.project.extras.get("event_model_runs", {})
-                assert len(runs) == 5, window._candidate_window.audit.toPlainText()
+                assert len(runs) == len(window._candidate_window.packs[0]["models"]), window._candidate_window.audit.toPlainText()
                 assert not window.work.project.events and not window.work.drafts
                 assert window.board.playback_policy == "balanced" and window.playback_policy.currentIndex() == 1
                 result["automatic_load_protection"] = True
@@ -150,10 +150,10 @@ def main():
             elif state == "export" and not window._export_running:
                 doc = read_label_file(exported)
                 assert base64.b64decode(doc["embedded_imu"]["original_json_base64"]) == args.raw.read_bytes()
-                assert len(doc["work"]["project"]["event_model_runs"]) == 5
+                assert len(doc["work"]["project"]["event_model_runs"]) == len(window._candidate_window.packs[0]["models"])
                 restored = load_history(exported)
                 assert restored.motion.sample_count == motion.sample_count
-                result["export_contains_exact_record_and_five_runs"] = True
+                result["export_contains_exact_record_and_model_runs"] = True
                 result["pool_size"] = len(window.board.pool)
                 assert result["pool_size"] <= 9
                 finish()

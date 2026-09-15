@@ -39,7 +39,10 @@ class CandidateWindow(TaskWindow):
         self.setWindowTitle("事件候选 · 模型预测后需人工看录像")
         self.resize(700, 520)
         layout = QVBoxLayout(self)
-        self.packs = available_packs()
+        try:
+            self.packs = available_packs()
+        except (OSError, ValueError, KeyError):
+            self.packs = []
         controls = QHBoxLayout()
         self.versions = QComboBox()
         for pack in self.packs:
@@ -95,7 +98,7 @@ class CandidateWindow(TaskWindow):
 
     def refresh_models(self, *_):
         self.models.clear()
-        self.models.addItem("全部五类（逐个运行）", None)
+        self.models.addItem("当前版本全部事件（逐个运行）", None)
         if self.packs:
             for model in self.packs[self.versions.currentIndex()]["models"]:
                 self.models.addItem(model["title"], model["id"])
@@ -109,7 +112,37 @@ class CandidateWindow(TaskWindow):
         if self.view_token != self.token() or self.clock_revision != revision:
             self.refresh_results()
 
+    def showEvent(self, event):
+        if not self.running:
+            try:
+                self.packs = available_packs()
+                self.versions.blockSignals(True)
+                self.versions.clear()
+                for pack in self.packs:
+                    self.versions.addItem(pack["version"])
+                self.versions.blockSignals(False)
+                self.refresh_models()
+            except (OSError, ValueError, KeyError) as exc:
+                self.status.setText(str(exc))
+        super().showEvent(event)
+
     def start(self):
+        if not self.running and self.versions.currentIndex() == 0:
+            try:
+                latest = available_packs()
+                if latest and self.packs and latest[0]["hash"] != self.packs[0]["hash"]:
+                    code = self.models.currentData()
+                    self.packs = latest
+                    self.versions.blockSignals(True)
+                    self.versions.clear()
+                    for pack in latest:
+                        self.versions.addItem(pack["version"])
+                    self.versions.blockSignals(False)
+                    self.refresh_models()
+                    self.models.setCurrentIndex(max(0, self.models.findData(code)))
+            except (OSError, ValueError, KeyError) as exc:
+                self.status.setText(str(exc))
+                return
         w = self.owner
         if getattr(w, "algorithm_panel", None) is not None and w.algorithm_panel.running:
             self.status.setText("独立算法正在运行，请结束或取消后再扫描候选。")
@@ -120,7 +153,7 @@ class CandidateWindow(TaskWindow):
             self.status.setText("请先核对当前记录的牛号；不能按设备名猜牛。")
             return
         if w.motion.version != 2:
-            self.status.setText("此版五类模型只接受完整 V2 原始九轴记录；其他格式仍可人工标注。")
+            self.status.setText("此版事件模型只接受完整 V2 原始九轴记录；其他格式仍可人工标注。")
             return
         self.running = True
         self.cancelled = threading.Event()
@@ -203,6 +236,8 @@ class CandidateWindow(TaskWindow):
             for candidate in run["candidates"]:
                 status = {"pending": "待复核", "unknown": "暂未知", "rejected": "已排除", "drafted": "已建草稿"}.get(candidate["review_status"], candidate["review_status"])
                 when = reference_text(w.work.clock, candidate["point_ms"], True) if w.work.clock.anchors else f"相对 {candidate['point_ms'] / 1000:.3f} 秒"
+                if candidate.get("end_ms") is not None:
+                    when += f" · 区间 {candidate['start_ms']/1000:.1f}–{candidate['end_ms']/1000:.1f}s"
                 text = f"{when} · {run['model_title']} · {candidate['score']:.3f} · {status} · {run['version']}"
                 item = QListWidgetItem(text)
                 item.setToolTip(text)

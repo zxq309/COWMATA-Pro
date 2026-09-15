@@ -28,7 +28,7 @@ def main():
     if len(args.cow) != len(args.raw):
         parser.error("One --cow per --raw is required")
     args.out.mkdir(parents=True, exist_ok=False)
-    pack = available_packs()[0]
+    pack = next(p for p in available_packs() if p.get("adapter") == "csv-points-v1")
     original = args.original_models or pack["root"]
     source_hashes = {str(p): digest_file(p) for p in args.raw}
     model_hashes = {str(original / name): digest_file(original / name) for m in pack["models"] for name in m["files"]}

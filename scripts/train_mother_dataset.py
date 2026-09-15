@@ -20,7 +20,7 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     read_dataset(args.dataset)
-    pack = available_packs(root)[0]
+    pack = next(p for p in available_packs(root) if p.get("adapter") == "csv-points-v1")
     model = next(m for m in pack['models'] if m['title']==args.head)
     runtime = verify_model(pack,model)
     with tempfile.TemporaryDirectory(prefix='cowmata-train-') as temp:
