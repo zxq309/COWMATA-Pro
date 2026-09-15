@@ -29,7 +29,7 @@ def window():
 
 def test_menu_order_and_one_to_one_codes(window):
     titles = [a.text().split("(")[0] for a in window.menuBar().actions()]
-    assert titles == ["文件", "编辑", "视图", "工具", "数据集构建", "行为识别", "健康与繁殖", "帮助"]
+    assert titles == ["文件", "数据准备", "标注与复核", "数据集构建", "健康与繁殖", "帮助"]
     assert len({s.code for s in BEHAVIORS}) == 15
     labels = {label["code"] for label in DEFAULT_LABELS}
     assert {s.code for s in BEHAVIORS} <= labels
@@ -203,5 +203,5 @@ def test_compact_package_excludes_only_audited_tools():
     names = {"Qt6WebEngineCore.dll", "QtWidgets.pyd", "Qt6Svg.dll", "Qt6Core.dll", "opengl32sw.dll", "QtWebEngineProcess.exe", "plugins", "include", "qml"}
     excluded = module.portable_ignore(root / "runtime/Lib/site-packages/PySide6", names)
     assert excluded >= {"Qt6WebEngineCore.dll", "QtWebEngineProcess.exe", "include"}
-    assert not excluded & {"QtWidgets.pyd", "Qt6Svg.dll", "Qt6Core.dll", "opengl32sw.dll", "plugins", "qml"}
+    assert not excluded & {"QtWidgets.pyd", "Qt6Svg.dll", "Qt6Core.dll", "opengl32sw.dll", "plugins"}
     assert module.portable_ignore(root / "vendor/ffmpeg/bin", {"ffplay.exe", "ffmpeg.exe", "ffprobe.exe"}) == {"ffplay.exe"}

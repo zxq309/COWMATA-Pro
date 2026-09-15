@@ -1,8 +1,8 @@
-# COWMATA Annotator 3.7.0
+# COWMATA Annotator 3.8.0
 
 奶牛多视角录像与连续九轴数据的归类、下载、同步标注和复核工具。Windows 便携文件夹包含 Python、Qt、VLC、FFmpeg 和离线 OCR 模型。
 
-本版提供源码 ZIP、已解压便携文件夹与安装包。[3.7 使用说明](docs/release-370.md) · [操作指南](docs/operator-guide-370.html)。
+本版提供源码 ZIP、已解压便携文件夹与安装包。[3.8 使用说明](docs/release-380.md) · [操作指南](docs/operator-guide-380.html)。
 
 新增五类数据集构建、按时间戳保留版本、Motion/PPG 原始数据与标签配对，以及既有标签原位复核修改。后台归类限制解码/OCR 资源并合并界面刷新，减少 CPU、内存和界面卡顿。
 

@@ -1,3 +1,7 @@
+# 3.8.0 — 2026-09-15
+
+Workflow menus, independent task windows, selection-preserving live records, dependency pruning and a screenshot-based operator guide. See [release notes](docs/release-380.md).
+
 # 3.7.0 — 2026-09-15
 
 Versioned paired datasets, in-place Motion/PPG/video annotation review, fifteen-label taxonomy, bulk edits, clearer multiview/gyroscope display and bounded classification resources. Offline startup and integrated edge download preserved. See [release notes](docs/release-370.md).

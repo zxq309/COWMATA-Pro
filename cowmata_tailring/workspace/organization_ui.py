@@ -41,6 +41,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from cowmata_tailring.ui.task_window import TaskWindow
+
 from .data_category import CATEGORIES, PREGNANCY_STAGES
 from .dataset_access import ensure_available, overlaps
 from .organization import VIEWS
@@ -260,7 +262,7 @@ class PlanModel(QAbstractTableModel):
         return None
 
 
-class OrganizationWindow(QDialog):
+class OrganizationWindow(TaskWindow):
     def __init__(self, window):
         super().__init__(window, Qt.WindowType.Window)
         self.owner = window

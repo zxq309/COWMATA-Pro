@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QFrame,
     QHBoxLayout,
@@ -34,6 +33,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from cowmata_tailring.ui.task_window import TaskWindow
 
 from .materials import GLASS_STYLE, FrostedCanvas, apply_mica
 from .presentation import PresentationVideoBoard, WorkspaceStage
@@ -110,7 +111,7 @@ class MainWindow(ControllerWindow):
         menus = [action.menu() for action in self.menuBar().actions()]
         files, materials, sync, edit, view = menus
         self.menuBar().clear()
-        for menu, title in ((files, "文件(&F)"), (edit, "编辑(&E)"), (view, "视图(&V)")):
+        for menu, title in ((files, "文件(&F)"),):
             menu.setTitle(title)
             self.menuBar().addMenu(menu)
         files.addSeparator()
@@ -119,18 +120,39 @@ class MainWindow(ControllerWindow):
         self._action(view, "固定 / 收起素材列表", self.toggle_sources, "Ctrl+L")
         self._action(view, "显示 / 隐藏标注列表", self.toggle_events)
         self._action(view, "界面与播放设置…", self.presentation_settings)
-        tools = self.menuBar().addMenu("工具(&T)")
+        tools = self.menuBar().addMenu("数据准备(&T)")
         self._organize_menus(files, materials, sync, edit, view, tools)
         tools.addMenu(materials)
-        tools.addMenu(sync)
         self._action(tools, "数据归类…", lambda: self.open_organization(1))
         self._action(tools, "导出标准 MP4 副本…", self.export_standard_video)
         from cowmata_tailring.edge_download import install_menu as install_edge_download
-        install_edge_download(self, tools)
+        downloader = install_edge_download(self, tools)
+        classify = next(a for a in tools.actions() if a.text() == '数据归类…')
+        secondary = [a for a in tools.actions() if a not in {downloader.action, classify} and not a.isSeparator()]
+        for action in list(tools.actions()):
+            tools.removeAction(action)
+        tools.addAction(downloader.action)
+        tools.addAction(classify)
+        extra_preparation = tools.addMenu('更多数据准备工具')
+        for action in secondary:
+            extra_preparation.addAction(action)
+        edit.setTitle('标注与复核(&E)')
+        self.menuBar().addMenu(edit)
+        candidate = next(a for a in edit.actions() if a.text() == '自动生成候选…')
+        edit.removeAction(candidate)
+        edit.insertAction(edit.actions()[0], candidate)
+        self._action(edit, '修改所选标签…', self.edit_selected)
+        self._action(edit, '批量修改标签…', self.bulk_relabel)
+        self._action(edit, '用所选九轴区间建立候选', self.mark_selection)
+        edit.addMenu(sync)
+        view.setTitle('显示与播放')
+        edit.addMenu(view)
         datasets = self.menuBar().addMenu('数据集构建(&G)')
         for index,title in enumerate(('行为识别数据集','产犊预测数据集','发情预测数据集','怀孕监测数据集','疫病监测数据集')):
             self._action(datasets,title,lambda _checked=False,tab=index:self.open_dataset_workflow(tab))
-        self._build_algorithm_menus()
+        datasets.addSeparator()
+        datasets.addMenu(self._annotation_exports)
+        self._build_algorithm_menus(edit)
         help_menu = self.menuBar().addMenu("帮助(&H)")
         from cowmata_tailring.ui.about import show_about
         self._action(help_menu, "快速开始", self.quick_help, "F1")
@@ -236,6 +258,7 @@ class MainWindow(ControllerWindow):
         self.mark_button.setText("动作起止")
         self.mark_button.setToolTip("开始 / 结束当前视频动作；也可使用标签对应的快捷键")
         annotation.addWidget(self.mark_button)
+        self._icon_button("Wand", "自动候选", self.open_candidates, annotation)
         self.event_toggle = self._icon_button("Text Bullet List", "标注列表", self.toggle_events, annotation)
         self.event_toggle.setCheckable(True)
         self._icon_button("Save", "保存", self.save_user_annotations, annotation)
@@ -291,7 +314,7 @@ class MainWindow(ControllerWindow):
         self.body.setCollapsible(1, False)
         outer.addWidget(self.body, 1)
         # Infrequent options retain the exact controller widgets/connections.
-        self.options = QDialog(self)
+        self.options = TaskWindow(self)
         self.options.setWindowTitle("界面与播放设置")
         options = QVBoxLayout(self.options)
         options.addWidget(self._heading("播放与索引"))
@@ -344,13 +367,17 @@ class MainWindow(ControllerWindow):
         label.setObjectName("sectionTitle")
         return label
 
-    def _build_algorithm_menus(self):
+    def _build_algorithm_menus(self, annotation_menu):
         from .algorithm_catalog import BEHAVIORS, HEALTH
         self.algorithm_actions = {}
         self.algorithm_group = QActionGroup(self)
         self.algorithm_group.setExclusive(True)
         for title, specs in (("行为识别(&B)", BEHAVIORS), ("健康与繁殖(&R)", HEALTH)):
-            menu = self.menuBar().addMenu(title)
+            if specs is BEHAVIORS:
+                advanced = annotation_menu.addMenu('更多标注工具')
+                menu = advanced.addMenu('逐项算法检查')
+            else:
+                menu = self.menuBar().addMenu(title)
             menu.setToolTipsVisible(True)
             for spec in specs:
                 if spec.domain=='health' and spec.code.startswith('PREGNANCY_'):
@@ -429,7 +456,7 @@ class MainWindow(ControllerWindow):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         path = Path(__file__).resolve().parents[2] / "docs/quick-start-illustrated.pdf"
-        current = Path(__file__).resolve().parents[2] / 'docs/daily-project-guide.html'
+        current = Path(__file__).resolve().parents[2] / 'docs/operator-guide-380.html'
         if current.is_file():
             path = current
         if path.is_file():
@@ -461,7 +488,7 @@ class MainWindow(ControllerWindow):
                 elif "多人" in original:
                     target = collaboration
                 elif "候选预测" in original:
-                    target = tools
+                    target = edit
                 elif menu is edit and any(word in original for word in ("真值", "证据")):
                     target = evidence
                 if target:
@@ -478,14 +505,14 @@ class MainWindow(ControllerWindow):
                     "新增唯一拷贝批次…": "新建拷贝批次…", "全文件内容核验（耗时）": "内容核验…",
                     "录像归档副本核验（不删除原片）…": "归档核验…",
                     "九轴同步锚点与未确认区间…": "九轴校准…", "当前主视角相机时钟校准…": "相机校准…",
-                    "新版事件候选预测…": "事件候选预测…", "将本份重新标为进行中": "重新标注本份",
+                    "新版事件候选预测…": "自动生成候选…", "将本份重新标为进行中": "重新标注本份",
                     "固定 / 收起素材列表": "素材列表", "显示 / 隐藏标注列表": "标注列表",
                     "性能与索引诊断…": "性能诊断…"}.get(original)
                 if short:
                     action.setText(short)
             menu.setToolTipsVisible(True)
         files.addMenu(legacy)
-        tools.addMenu(collaboration)
+        edit.addMenu(collaboration)
         edit.addMenu(evidence)
         materials.setTitle("录像索引")
         sync.setTitle("时间同步")
@@ -609,7 +636,7 @@ class MainWindow(ControllerWindow):
 
     def show_status_details(self):
         if not hasattr(self, "status_dialog"):
-            self.status_dialog = QDialog(self)
+            self.status_dialog = TaskWindow(self)
             self.status_dialog.setWindowTitle("完整加载记录")
             self.status_dialog.resize(900, 480)
             layout = QVBoxLayout(self.status_dialog)
@@ -635,7 +662,7 @@ class MainWindow(ControllerWindow):
         self.coverage_label.setToolTip(text)
         self.coverage_label.setVisible(bool(self.motion) and not text.startswith("当前参考时刻有录像覆盖"))
         if text.startswith("录像仍在索引"):
-            self.coverage_label.setText("当前时刻暂未匹配录像 · 仍有未检索素材，可在「工具 → 录像索引」继续检索")
+            self.coverage_label.setText("当前时刻暂未匹配录像 · 仍有未检索素材，可在「数据准备 → 更多数据准备工具 → 录像索引」继续检索")
 
     def refresh_action_state(self, *_):
         super().refresh_action_state()
@@ -645,14 +672,14 @@ class MainWindow(ControllerWindow):
     def quick_help(self):
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.information(self, "逐份标注 · 快速开始",
-            "1. 新数据先进入「数据整理」：选择采集类别，检查命名、审查并按日期归类。\n"
+            "1. 新数据先进入「数据准备」：选择采集类别，检查命名、审查并按日期归类。\n"
             "   九轴目录：完整设备编号-牛耳标号-现场记号；同设备跨日期复用分别保留。\n"
             "2. 打开工程：先确认牧场，再选择类别、Motion 和一个日期；同步检索当天录像。\n"
             "3. 核对设备、牛耳标、现场记号及时间同步，再观察录像并标注。\n"
             "4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n"
             "5. 标注自动按日期保存；在「数据集构建」生成行为数据集或分享标注片段。\n\n"
             "未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n"
-            "未检索不等于无录像。未找到时可用「工具 → 录像索引 → 扩大当前检索」。\n"
+            "未检索不等于无录像。未找到时可用「数据准备 → 更多数据准备工具 → 录像索引 → 扩大当前检索」。\n"
             "更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。")
 
     def toggle_events(self):
@@ -671,7 +698,8 @@ class MainWindow(ControllerWindow):
             self.dirty = True
 
     def presentation_settings(self):
-        self.options.exec()
+        self.options.show()
+        self.options.raise_()
 
     def focus_video(self, camera):
         self.set_presentation("A")

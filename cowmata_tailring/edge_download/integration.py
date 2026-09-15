@@ -35,6 +35,8 @@ class DownloadIntegration(QObject):
                 self.dialog.worker.finished.connect(self.resume_close)
             self.dialog.stop_task()
             return True
+        if watched is window and event.type() == QEvent.Type.Hide and not window.isVisible() and dialog and not dialog.running:
+            dialog.hide()
         return False
 
     def resume_close(self):

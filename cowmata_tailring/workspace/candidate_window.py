@@ -8,7 +8,6 @@ import threading
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
-    QDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -19,11 +18,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from cowmata_tailring.ui.task_window import TaskWindow
+
 from .event_models import available_packs, predict_one
 from .signal_panel import reference_text
 
 
-class CandidateWindow(QDialog):
+class CandidateWindow(TaskWindow):
     resultReady = Signal(object)
     jobFinished = Signal(object)
 

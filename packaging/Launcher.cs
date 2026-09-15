@@ -13,8 +13,8 @@ using Drawing = System.Drawing;
 [assembly: AssemblyTitle("COWMATA Annotator")]
 [assembly: AssemblyDescription("Offline cattle video and IMU annotation workstation")]
 [assembly: AssemblyCompany("Yangling Yuanshangyuan Intelligent Technology Co., Ltd.")]
-[assembly: AssemblyVersion("3.7.0.0")]
-[assembly: AssemblyFileVersion("3.7.0.0")]
+[assembly: AssemblyVersion("3.8.0.0")]
+[assembly: AssemblyFileVersion("3.8.0.0")]
 
 internal static class Launcher
 {

@@ -1,13 +1,7 @@
-COWMATA Annotator 3.7.0
+COWMATA Annotator 3.8
 
-便携版：双击 COWMATA.exe。
-安装版：运行 Setup.exe。
-启动直接进入软件，后台联网检查失败不会阻止使用。
-
-数据集构建：选择五类任务之一 → 选择牧场/类别目录 → 选择数据集总目录 → 开始新版本。
-暂停后可继续；完整记录和 CSV 随构建更新。
-复核：打开原始数据或对应标签 → 选已有记录 → 修改所选标签 → 保存修改到原文件。
-
-详细步骤：docs\operator-guide-370.html
-更新说明：docs\release-370.md
-请把采集数据保存在软件目录外。
+双击 COWMATA.exe。
+任务顺序：文件 → 数据准备 → 标注与复核 → 数据集构建 / 健康与繁殖。
+子窗口可独立最小化和恢复；再次点击菜单也可唤回。
+实测图文教程：docs\operator-guide-380.html，也可在帮助菜单打开。
+Release 只提供源码 ZIP、便携 ZIP、安装 EXE。

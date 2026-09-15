@@ -477,3 +477,11 @@ def test_directory_check_cache_does_not_hide_a_redirect_on_next_pass(transaction
     finally:
         runtime.rmdir()  # Remove only this fixture's junction, never its target.
         outside.rename(runtime)
+
+def test_release_metadata_can_live_in_body_with_only_three_downloads():
+    row, descriptor, _ = release('3.8.0', False)
+    row['assets'] = row['assets'][:1]
+    row['body'] = 'Release notes\n<!-- cowmata-update\n'+descriptor.decode()+'\n-->'
+    value = core.check_update('3.7.0', 'stable', opener=transport([row], b''))
+    assert value['version']=='3.8.0' and value['package_sha256']=='a'*64
+    assert value['name']=='COWMATA-Annotator-3.8.0-Setup.exe'
