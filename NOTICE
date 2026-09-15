@@ -1,4 +1,4 @@
-COWMATA Tail-Ring Annotator
+COWMATA Pro™
 Copyright (c) 2026 COWMATA contributors
 
 The source code is licensed under the MIT License in LICENSE.
@@ -20,8 +20,13 @@ License. The original license and per-file provenance/hashes are included in
 assets/fluent/LICENSE.txt and assets/fluent/provenance.json. Icons are local;
 the annotation application never downloads them at runtime.
 
-The cow glyph in assets/app-icon/ is from Phosphor Icons, revision
-2b75f3ad12b420c9504ef05df8d2564a28f8500e, MIT licensed. LICENSE.txt and
-provenance.json in that folder retain the upstream license and hashes.
-The Windows tile recolors this glyph on a teal-blue background; existing
-proprietary corporate brand artwork is unchanged. No runtime downloads.
+COWMATA Pro™ is the product trademark designation used by Yangling
+Yuanshangyuan Intelligent Technology Co., Ltd. The ™ symbol states a trademark
+claim; it is not a claim of registered trademark status. The product wordmark,
+Windows icon and installer graphics derive from the official COWMATA vector
+glyph, with Pro and TM identification. See assets/app-icon/provenance.json.
+
+Historical research materials retained from cowmata, cowmata-tailring and
+cowmata-risk keep their original notices and proprietary terms. They are not
+relicensed under the annotation application's MIT License. See
+docs/project/repository-consolidation.md for provenance and component locations.

@@ -18,14 +18,15 @@ from cowmata_tailring.ui.i18n import t
 
 COMPANY = "杨凌园上园智能科技有限公司"
 WEBSITE = "https://www.cowmata.com/"
-RELEASES = "https://github.com/zxq309/cattle-tail-ring-annotator/releases"
+RELEASES = "https://github.com/zxq309/COWMATA-Pro/releases"
 ABOUT_HTML = (
     "<p>软件版本：<b>{version}</b><br>构建标识：{build}</p>"
     "<p>奶牛行为真值标注工作台：九轴与多视角录像同步、候选事件审核、"
     "可追溯标签导出与历史回看。模型候选不等于人工确认的真值。</p>"
     "<p>所属公司：{company}<br><a href='{website}'>公司官网</a> · "
     "<a href='mailto:service@cowmata.com'>service@cowmata.com</a></p>"
-    "<p>公司名称、COWMATA 品牌与原有公司标识的权利说明见 NOTICE。"
+    "<p>COWMATA Pro™ 为本软件的商标标识，™ 表示商标声明。"
+    "公司名称、品牌与公司标识的权利说明见 NOTICE。"
     "源代码保留 MIT 许可证及原署名；第三方组件遵循各自许可证。</p>"
     "<p><a href='{releases}'>查看 GitHub 发布版本与更新说明</a><br>"
     "启动直接进入软件，更新在后台检查；断网、代理异常或服务限流均不影响离线标注。</p>"
@@ -37,7 +38,7 @@ def create_about(parent=None):
     dialog.setWindowTitle(t("关于"))
     dialog.resize(640, 530)
     layout = QVBoxLayout(dialog)
-    title = QLabel("COWMATA Annotator")
+    title = QLabel("COWMATA Pro™")
     title.setStyleSheet("font-size:24px; font-weight:600; color:#436d25; padding:8px")
     layout.addWidget(title)
     body = QTextBrowser()

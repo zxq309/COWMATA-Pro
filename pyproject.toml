@@ -48,11 +48,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/zxq309/cattle-tail-ring-annotator"
-Documentation = "https://github.com/zxq309/cattle-tail-ring-annotator#readme"
-Repository = "https://github.com/zxq309/cattle-tail-ring-annotator"
-Issues = "https://github.com/zxq309/cattle-tail-ring-annotator/issues"
-Algorithm = "https://github.com/zxq309/cowmata-tailring"
+Homepage = "https://github.com/zxq309/COWMATA-Pro"
+Documentation = "https://github.com/zxq309/COWMATA-Pro#readme"
+Repository = "https://github.com/zxq309/COWMATA-Pro"
+Issues = "https://github.com/zxq309/COWMATA-Pro/issues"
+Algorithm = "https://github.com/zxq309/COWMATA-Pro/blob/main/docs/project/repository-consolidation.md"
 
 [project.scripts]
 cowmata-annotator = "cowmata_tailring.app.main:main"

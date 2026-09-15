@@ -1,4 +1,4 @@
-COWMATA Annotator 3.8
+COWMATA Pro™ 3.8
 
 双击 COWMATA.exe。
 任务顺序：文件 → 数据准备 → 标注与复核 → 数据集构建 / 健康与繁殖。

@@ -119,7 +119,7 @@ class DatasetRecordsWindow(TaskWindow):
                 if window.future is not None or not window.confirm_pending():
                     return
                 window.path=Path(path)
-                window.setWindowTitle('COWMATA · 复核与修改 · '+window.path.name)
+                window.setWindowTitle('COWMATA Pro™ · 复核与修改 · '+window.path.name)
                 window.begin_load(None)
             window.show()
             window.raise_()
@@ -226,7 +226,7 @@ class DatasetBuildWindow(TaskWindow):
         self.task_changed()
     def task_changed(self,*_):
         spec=TASKS[self.task.currentData()]
-        self.setWindowTitle('COWMATA · '+spec[0])
+        self.setWindowTitle('COWMATA Pro™ · '+spec[0])
         self.layout_hint.setText(spec[1]+' / 导出时间戳 / 行为 / Motion 或 PPG / Raw、Label\n文件名：设备-耳标-现场标记_采集日期_采集时间_raw.json / label.json')
         if not self.running:
             self.model.replace([])

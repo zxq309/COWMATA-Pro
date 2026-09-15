@@ -287,7 +287,7 @@ class OrganizationWindow(TaskWindow):
         self._shutdown_timer = QTimer(self)
         self._shutdown_timer.setInterval(100)
         self._shutdown_timer.timeout.connect(self._poll_shutdown)
-        self.setWindowTitle("COWMATA · 数据归类")
+        self.setWindowTitle("COWMATA Pro™ · 数据归类")
         self.resize(1240, 790)
         self.setMinimumSize(950, 650)
         self.setStyleSheet(

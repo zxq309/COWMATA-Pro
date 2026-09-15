@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("COWMATA · 九轴与多视角标注工作台")
+        self.setWindowTitle("COWMATA Pro™ · 九轴与多视角标注工作台")
         self.resize(1600, 1000)
         self.catalog = None
         self.worker = None
@@ -2698,7 +2698,7 @@ class MainWindow(QMainWindow):
             if not window.confirm_pending():
                 return
             window.path = Path(path)
-            window.setWindowTitle("COWMATA · 复核与修改 · " + window.path.name)
+            window.setWindowTitle("COWMATA Pro™ · 复核与修改 · " + window.path.name)
             window.begin_load(self.catalog.root if self.catalog else None)
         else:
             window = HistoryWindow(path, self.catalog.root if self.catalog else None, reusable=True)

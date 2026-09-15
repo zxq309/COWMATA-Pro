@@ -185,17 +185,19 @@ def remove_registration(root, version):
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as key:
         desktop = Path(os.path.expandvars(winreg.QueryValueEx(key, "Desktop")[0]))
         programs = Path(os.path.expandvars(winreg.QueryValueEx(key, "Programs")[0]))
-    links = [desktop / f"COWMATA Annotator {version}.lnk",
-             programs / f"COWMATA Annotator {version}" / "COWMATA Annotator.lnk",
-             programs / f"COWMATA Annotator {version}" / "Uninstall.lnk"]
+    links = [path for brand in ("COWMATA Annotator", "COWMATA Pro™")
+             for path in (desktop / f"{brand} {version}.lnk",
+                          programs / f"{brand} {version}" / f"{brand}.lnk",
+                          programs / f"{brand} {version}" / "Uninstall.lnk")]
     for link in links:
         # Names are reserved installer-owned links, but never follow symlinks.
         if link.exists() and not link.is_symlink():
             link.unlink()
-    try:
-        links[-1].parent.rmdir()
-    except OSError:
-        pass
+    for directory in {link.parent for link in links if link.parent != desktop}:
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
     winreg.DeleteKey(winreg.HKEY_CURRENT_USER, REG_BASE + "COWMATA-" + version)
 
 
@@ -376,14 +378,14 @@ def main():
         write_json(Path(job["job_dir"]) / "result.json", {"phase": "already_updating", "message": str(exc)})
         if os.name == "nt":
             import ctypes
-            ctypes.windll.user32.MessageBoxW(None, str(exc), "COWMATA Annotator 更新", 0x40)
+            ctypes.windll.user32.MessageBoxW(None, str(exc), "COWMATA Pro™ 更新", 0x40)
         return 0
     except Exception as exc:
         write_json(Path(job["job_dir"]) / "error.json", {"error": str(exc)})
         if os.name == "nt":
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, "升级未完成，未强行覆盖。请查看：\n" +
-                str(Path(job["job_dir"]) / "error.json") + "\n\n" + str(exc), "COWMATA Annotator 更新", 0x10)
+                str(Path(job["job_dir"]) / "error.json") + "\n\n" + str(exc), "COWMATA Pro™ 更新", 0x10)
         return 1
 
 

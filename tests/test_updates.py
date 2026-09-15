@@ -37,6 +37,24 @@ def transport(releases, descriptor):
     return lambda url: Response(json.dumps(releases).encode() if "api.github.com" in url else descriptor)
 
 
+def test_pro_release_uses_new_repository_and_three_asset_protocol():
+    assert core.REPO == "zxq309/COWMATA-Pro"
+    row, descriptor, _ = release("3.8.0", False)
+    doc = json.loads(descriptor)
+    old_name = doc["installer"]
+    doc["installer"] = old_name.replace("COWMATA-Annotator", "COWMATA-Pro")
+    row["assets"] = row["assets"][:1]
+    row["assets"][0]["name"] = doc["installer"]
+    row["assets"][0]["browser_download_url"] = row["assets"][0]["browser_download_url"].replace(old_name, doc["installer"])
+    row["body"] = "Release notes\n<!-- cowmata-update\n" + json.dumps(doc) + "\n-->"
+    update = core.check_update("3.7.0", "stable", opener=transport([row], b""))
+    assert update["name"] == "COWMATA-Pro-3.8.0-Setup.exe"
+    assert "/COWMATA-Pro/" in update["release_url"]
+    row["assets"][0]["browser_download_url"] = row["assets"][0]["browser_download_url"].replace("zxq309/", "someone-else/")
+    with pytest.raises(ValueError, match="configured repository"):
+        core.check_update("3.7.0", "stable", opener=transport([row], b""))
+
+
 @pytest.mark.parametrize("older,newer", [
     ("3.1.0rc2", "3.1.0-rc.3"), ("3.1.0-rc.99", "3.1.0"),
     ("3.1.0-rc.1-r3", "3.1.0rc2"),

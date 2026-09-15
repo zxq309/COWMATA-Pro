@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-REPO = "zxq309/cattle-tail-ring-annotator"
+REPO = "zxq309/COWMATA-Pro"
 API = "https://api.github.com/repos/" + REPO
 PAGE = "https://github.com/" + REPO + "/releases"
 MAX_INSTALLER = 2 * 1024**3 - 1
@@ -122,7 +122,7 @@ def check_update(current, channel="preview", opener=open_url):
     if version_key(document["version"]) != version_key(release["tag_name"]):
         raise ValueError("Release and installer versions disagree")
     installer = asset_info(assets[document["installer"]])
-    if not re.fullmatch(r"COWMATA-Annotator-[A-Za-z0-9.-]+-Setup.exe", installer["name"]):
+    if not re.fullmatch(r"COWMATA-(?:Pro|Annotator)-[A-Za-z0-9.-]+-Setup.exe", installer["name"]):
         raise ValueError("Unexpected installer name")
     if installer["size"] != document["size"] or installer["sha256"] != document["sha256"]:
         raise ValueError("Installer digest differs from GitHub metadata")

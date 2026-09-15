@@ -27,7 +27,7 @@ def test_installer_encoding_shortcuts_and_non_overwrite():
     assert "/codepage:65001" in launcher and "/win32icon:" in launcher
     assert 'Page custom LocationCreate LocationLeave' in script
     assert 'StrCpy $DesktopEnabled ${BST_CHECKED}' in script
-    assert 'CreateShortcut "$DESKTOP\\COWMATA Annotator ${VERSION}.lnk"' in script
+    assert 'CreateShortcut "$DESKTOP\\COWMATA Pro™ ${VERSION}.lnk"' in script
     assert '"DisplayIcon" "$INSTDIR\\COWMATA.exe,0"' in script
     assert 'Call ValidateLocation' in script and '$(OccupiedLocation)' in script
     # NSIS GetFullPathName may return empty for nonexistent paths; use Win32.
@@ -35,8 +35,8 @@ def test_installer_encoding_shortcuts_and_non_overwrite():
     assert '${If} $0 <> -1' in script and '${If} $1 <> 16' in script
     assert 'RMDir /r' not in script and 'SetCompressor zlib' in script
     assert 'CRCCheck force' in script
-    assert 'LangString LaunchText ${LANG_SIMPCHINESE} "启动 COWMATA Annotator"' in script
-    assert 'InstallDir "$LOCALAPPDATA\\Programs\\COWMATA Annotator"' in script
+    assert 'LangString LaunchText ${LANG_SIMPCHINESE} "启动 COWMATA Pro™"' in script
+    assert 'InstallDir "$LOCALAPPDATA\\Programs\\COWMATA Pro™"' in script
     assert 'Call un.CheckNotInUse' in script
     assert '--check-running' in script
     assert '$(UninstallRetained)' in script

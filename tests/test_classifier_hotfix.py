@@ -175,7 +175,7 @@ def test_resume_button_finds_actual_pending_job_not_empty_last_attempt(
 
 
 def test_compact_ui_exposes_only_classification_workflow(organizer):
-    assert organizer.windowTitle() == "COWMATA · 数据归类"
+    assert organizer.windowTitle() == "COWMATA Pro™ · 数据归类"
     assert not organizer.tabs.isVisible()
     assert organizer.execute_top.isVisible()
     assert organizer.cancel_button.isVisible()
