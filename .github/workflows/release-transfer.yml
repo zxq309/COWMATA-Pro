@@ -1,0 +1,37 @@
+name: Transfer verified release files
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Draft release ID
+        required: true
+        type: string
+      patch_asset_id:
+        description: Patch asset ID in the draft
+        required: true
+        type: string
+      patch_sha256:
+        description: Locally verified patch SHA-256
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: release-transfer-${{ inputs.release_id }}
+  cancel-in-progress: false
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reconstruct and transfer exact verified assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          PATCH_ASSET_ID: ${{ inputs.patch_asset_id }}
+          PATCH_SHA256: ${{ inputs.patch_sha256 }}
+        run: python .github/scripts/transfer_verified_release.py "$RELEASE_ID" "$PATCH_ASSET_ID" "$PATCH_SHA256"
