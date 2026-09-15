@@ -18,3 +18,5 @@ urllib3==2.7.0
 onnxruntime==1.29.0
 Pillow==12.3.0
 opencv-python==5.0.0.93
+
+xgboost==3.4.1

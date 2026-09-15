@@ -41,7 +41,7 @@ model_packages/
 *.mov
 *.jsonl
 
-# Model weights are distributed via GitHub Releases, not tracked in git
+# Trained models are external; do not include them in source or program releases
 *.pt
 !tests/**/*.pt
 
@@ -70,3 +70,7 @@ model_packages/
 
 # Windows shell caches from hosts with incomplete environment variables
 /%SystemDrive%/
+
+# 3.9 external numeric model library
+/assets/algorithms/
+/assets/dataset_recipes/cowmata_temperature_aux/model.json

@@ -310,7 +310,7 @@ class DownloadDialog(TaskWindow):
         self.remote_port.setValue(int(p.get('remote_port', 8031)))
         self.targets.setRowCount(0)
         for row in p.get('targets', []):
-            if isinstance(row, (list, tuple)) and len(row) == 3:
+            if isinstance(row, list | tuple) and len(row) == 3:
                 self.add_row(values=tuple(str(v) for v in row))
         if not self.targets.rowCount():
             self.add_row()

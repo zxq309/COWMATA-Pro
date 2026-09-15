@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-RULE = "完整设备编号-牛耳标号-现场记号（设备 12 位十六进制、耳标纯数字、记号 ASCII 字母数字）"
+RULE = "完整设备编号-牛耳标号-现场记号（设备 12 位十六进制、耳标纯数字、现场记号可为空，支持中文、字母和数字）"
 DEVICE = re.compile(r"[0-9A-Fa-f]{12}")
 FOLDER = re.compile(r"([0-9A-Fa-f]{12})-([0-9]+)-([A-Za-z0-9]+)")
 DATE_FOLDER = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}(?:至[0-9]{4}-[0-9]{2}-[0-9]{2})?(?:_[0-9]+)?")
@@ -22,12 +22,12 @@ class DeviceIdentity:
 
     @property
     def folder_name(self):
-        return f"{self.device_id}-{self.cow_id}-{self.field_mark}"
+        return f"{self.device_id}-{self.cow_id}" + (f"-{self.field_mark}" if self.field_mark else "")
 
 
 def parse_device_folder(name):
     prefix, separator, rest = str(name).partition("-")
-    if not separator or not DEVICE.fullmatch(prefix):
+    if not separator or not DEVICE.fullmatch(prefix) or not rest or rest.endswith("-"):
         raise ValueError("设备目录需规范为：" + RULE)
     if re.match(r"^[0-9]{5}", rest):
         ear, mark = rest[:5], rest[5:].replace("-", "")
@@ -38,8 +38,8 @@ def parse_device_folder(name):
         found = candidates[0]
         ear = found.group()
         mark = (rest[:found.start()] + rest[found.end():]).replace("-", "")
-    if not re.fullmatch(r"[A-Za-z0-9]+", mark):
-        raise ValueError("现场标记应为非空 ASCII 字母数字")
+    if mark and not re.fullmatch(r"[A-Za-z0-9\u4e00-\u9fff]+", mark):
+        raise ValueError("现场标记仅支持中文、字母和数字")
     return DeviceIdentity(prefix.upper(), ear, mark)
 
 

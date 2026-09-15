@@ -22,7 +22,7 @@ def test_bad_complete_download_can_recover_using_retry(tmp_path):
     assert path.read_bytes() == data
 
 
-def test_registration_cleanup_error_still_restores_old_application(transaction):
+def test_registration_cleanup_error_still_restores_old_application(transaction):  # noqa: F811 - imported pytest fixture
     _, target, _, job, runner = transaction
     before = (target / "code.py").read_bytes()
 
@@ -43,7 +43,7 @@ def test_registration_cleanup_error_still_restores_old_application(transaction):
     assert result["phase"] == "rolled_back"
     assert "shortcut is temporarily locked" in result["rollback_warning"]
 
-def test_two_real_updaters_cannot_replace_the_same_installation_concurrently(transaction):
+def test_two_real_updaters_cannot_replace_the_same_installation_concurrently(transaction):  # noqa: F811 - imported pytest fixture
     import sys
     import time
 
@@ -103,7 +103,7 @@ def test_two_real_updaters_cannot_replace_the_same_installation_concurrently(tra
     assert (target / "code.py").read_text().endswith("'3.1.0-rc.3'")
 
 
-def test_duplicate_update_main_reports_existing_upgrade_without_error_dialog(transaction, monkeypatch):
+def test_duplicate_update_main_reports_existing_upgrade_without_error_dialog(transaction, monkeypatch):  # noqa: F811 - imported pytest fixture
     import ctypes
     import sys
 
@@ -125,7 +125,7 @@ def test_duplicate_update_main_reports_existing_upgrade_without_error_dialog(tra
         assert messages[0][-1] == 0x40
 
 
-def test_dead_updater_process_does_not_leave_transaction_permanently_locked(transaction):
+def test_dead_updater_process_does_not_leave_transaction_permanently_locked(transaction):  # noqa: F811 - imported pytest fixture
     import sys
     import time
 

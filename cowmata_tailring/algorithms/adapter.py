@@ -14,8 +14,8 @@ from .runner import run_job
 ADAPTER = "numeric-event-intervals-1"
 
 
-def available_pack():
-    suite = active_suite()
+def available_pack(suite=None):
+    suite = suite or active_suite()
     if suite is None:
         return None
     return {**suite, "adapter": ADAPTER, "app_root": APP_ROOT, "runtime": "runtime",
@@ -53,7 +53,7 @@ def predict_one(pack, model, source, asset_id, cow_id, duration_ms, cache_dir, *
             pass
     started = time.monotonic()
     output = run_job(dict(action="predict", suite=str(pack["root"]), code=model["code"],
-                          record=dict(raw=str(source), asset_id=asset_id), cache=str(cache_dir/"features")),
+                          record=dict(raw=str(source), asset_id=asset_id, modality=suite.get("modality", "motion")), cache=str(cache_dir/"features")),
                      cancelled=cancelled)
     if before != file_stamp(source) or digest_file(source) != asset_id or cancelled():
         raise ValueError("Source changed or inference cancelled; results discarded")

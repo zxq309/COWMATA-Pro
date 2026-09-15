@@ -29,7 +29,7 @@ def test_small_suite_saves_three_numeric_models_and_honest_metrics(tmp_path, mon
         x = rng.normal(0, .01, size=(100, 3)).astype(np.float32)
         for j in range(3):
             x[j*30+10:j*30+16, j] += 1
-        return dict(X=x, names=['x','y','z'], seconds=np.arange(100)+.5,
+        return dict(feature_version='event-shape-1', X=x, names=['x','y','z'], seconds=np.arange(100)+.5,
                     valid_context=np.ones(100,dtype=bool), duration_ms=100000, observed_seconds=100)
     monkeypatch.setattr(training, 'load_features', features)
     result = training.train_suite(dict(records=records, fingerprint='synthetic-test'), tmp_path/'cache', tmp_path/'suite')

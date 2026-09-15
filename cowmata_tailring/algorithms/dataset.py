@@ -45,14 +45,14 @@ def scan_dataset(root, *, pool_general_events=False, progress=lambda *_: None, c
                 raise ValueError('Missing original content identity')
             # The documented filename is a fallback only; conflicts are retained.
             parts = raw.name.split('_', 1)[0].split('-', 2)
-            filename_cow = parts[1] if len(parts) == 3 else ''
+            filename_cow = parts[1] if len(parts) >= 2 else ''
             cow = str(project.get('cow_id') or identity.get('cow_id') or filename_cow).strip()
-            device = str(identity.get('device_id') or project.get('source', {}).get('device') or (parts[0] if len(parts) == 3 else '')).strip()
+            device = str(identity.get('device_id') or project.get('source', {}).get('device') or (parts[0] if len(parts) >= 2 else '')).strip()
             mark = str(identity.get('field_mark') or (parts[2] if len(parts) == 3 else ''))
             if not cow or not device:
                 raise ValueError('Missing cow or device identity')
             row = records.setdefault(asset, dict(asset_id=asset, cow_id=cow, device_id=device,
-                field_mark=mark, raw=str(raw), aliases=[], labels=[], events={}, review_coverage=[],
+                field_mark=mark, modality='ppg' if 'PPG' in raw.parts else 'motion', raw=str(raw), aliases=[], labels=[], events={}, review_coverage=[],
                 category=doc.get('dataset_category', ''), conflicts=[], raw_stamp=stamp(raw),
                 identity_eligible=True, split_group=asset, label_stamps={}))
             if row['cow_id'] != cow or identity.get('cow_id') and str(identity['cow_id']) != cow:
@@ -65,10 +65,10 @@ def scan_dataset(root, *, pool_general_events=False, progress=lambda *_: None, c
             for e in project.get('events', []):
                 code = e.get('label_code')
                 start, end = e.get('t0'), e.get('t1')
-                if not code or not isinstance(start, (int, float)) or not math.isfinite(start) or start < 0:
+                if not code or not isinstance(start, int | float) or not math.isfinite(start) or start < 0:
                     issues.append(dict(path=str(label), reason='invalid_event', event_id=e.get('id')))
                     continue
-                if end is not None and (not isinstance(end, (int, float)) or not math.isfinite(end) or end < start):
+                if end is not None and (not isinstance(end, int | float) or not math.isfinite(end) or end < start):
                     issues.append(dict(path=str(label), reason='invalid_event_range', event_id=e.get('id')))
                     continue
                 key = (code, float(start), float(end) if end is not None else None)

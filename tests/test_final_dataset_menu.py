@@ -10,7 +10,8 @@ def test_dataset_menu_separate_and_pregnancy_has_three_stages():
         names = list(menus)
         assert "数据整理" not in names
         assert any(a.text() == "数据归类…" for a in menus["数据准备"].actions())
-        assert names.index("数据集构建") + 1 == names.index("健康与繁殖")
+        assert names.index("数据集构建") + 1 == names.index("行为识别")
+        assert names.index("行为识别") + 1 == names.index("健康与繁殖")
         assert not any(
             "旧标签" in a.text() or "算法数据集" in a.text() for a in menus["数据准备"].actions()
         )

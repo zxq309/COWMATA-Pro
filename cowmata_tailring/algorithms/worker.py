@@ -41,7 +41,23 @@ def main():
         atomic_json(Path(request["progress"]), dict(done=done, total=total, message=message))
 
     action = request["action"]
-    if action == "predict":
+    if action == 'inspect390':
+        from cowmata_tailring.algorithms.inputs import scan_inputs
+        result = scan_inputs(request['dataset'], training=request.get('training',False), progress=progress)
+    elif action == 'fusion390':
+        from cowmata_tailring.algorithms.decision import build_fusion
+        result = build_fusion(request['root'],request['suites'],request['output'],request['cache'],codes=request.get('codes'),selections=request.get('selections'),progress=progress)
+    elif action in ('decision_train390','decision_predict390'):
+        from cowmata_tailring.algorithms.decision import predict_decision, train_decision
+        evidence = json.loads(Path(request['evidence']).read_text(encoding='utf-8'))
+        if action == 'decision_train390':
+            result = train_decision(evidence,request['ledger'],request['output'],request['algorithm'],request['horizon'],progress=progress)
+        else:
+            result = predict_decision(evidence,request['model'],request['output'])
+    elif action == 'recognize390':
+        from cowmata_tailring.algorithms.recognition import recognize
+        result = recognize(request['root'],request['suite'],request['code'],request['output'],request['cache'],progress=progress)
+    elif action == "predict":
         suite = read_suite(request["suite"])
         feature = load_features(request["record"], request["cache"])
         events = infer_features(suite, feature, [request["code"]])
@@ -62,7 +78,7 @@ def main():
             result = analyze_patterns(index, request["cache"], output, progress=progress)
         elif action == "train":
             from cowmata_tailring.algorithms.training import train_suite
-            result = train_suite(index, request["cache"], output, progress=progress)
+            result = train_suite(index, request["cache"], output, progress=progress, codes=request.get("codes"), modality=request.get("modality", "motion"))
         elif action == "evidence":
             result = build_evidence(index, request["cache"], request["suite"], output, progress=progress)
         else:

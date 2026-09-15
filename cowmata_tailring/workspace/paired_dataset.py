@@ -203,6 +203,13 @@ def _file_prefix(raw, metadata, document):
     if raw.stem.endswith('_raw') and raw.parent.name == 'Raw':
         return raw.stem[:-4]
     folder = raw.parent.name
+    from .device_identity import parse_device_folder
+    try:
+        canonical = parse_device_folder(folder)
+    except ValueError:
+        canonical = None
+    if canonical is not None and metadata.get('device') and canonical.device_id != str(metadata['device']).upper():
+        raise ValueError('来源目录设备与原始数据不一致')
     identity = (document or {}).get('device_identity', {})
     parts = folder.split('-', 2)
     if len(parts) != 3:
@@ -210,7 +217,7 @@ def _file_prefix(raw, metadata, document):
                  str(identity.get('cow_id') or metadata.get('cow_id') or 'NA'), str(identity.get('field_mark') or 'NA')]
     if parts[0].upper() == 'NA' and metadata.get('device'):
         parts[0] = str(metadata['device'])
-    folder = '-'.join(parts)
+    folder = canonical.folder_name if canonical is not None else '-'.join(parts)
     if re.search(r'[<>:"/\\|?*\x00-\x1f_]', folder):
         raise ValueError('设备、耳标或现场标记含文件名保留字符：'+folder)
     stamp = raw.stem.replace(' ', '_').replace(':', '-')
@@ -219,7 +226,7 @@ def _file_prefix(raw, metadata, document):
         stamp = f'{match[1]}_{match[2]}-{match[3]}-{match[4]}'
     else:
         value = int(metadata['create_time'])
-        stamp = datetime.fromtimestamp(value/1000, TZ).strftime('%Y-%m-%d_%H-%M-%S')
+        stamp = datetime.fromtimestamp(value/1000, TZ).strftime('%Y-%m-%d_%H-%M-%S-%f')[:-3]
     return folder+'_'+stamp
 
 
@@ -236,6 +243,18 @@ def _label_document(item, focus, raw_sha, raw_target, root, metadata):
                 protocol='v5', label_schema=SCHEMA, labels=copy.deepcopy(DEFAULT_LABELS), events=[], source={}),
                 clock={}, drafts=[], progress={}),
             view=dict(start_ms=0, end_ms=0, auto_full_record=True), source={}, video={}, embedded_imu=None)
+    from .device_identity import parse_device_folder
+    try:
+        identity = parse_device_folder(raw_target.name.split('_',1)[0])
+    except ValueError:
+        identity = None
+    if identity is not None:
+        project = result['work']['project']
+        if project.get('cow_id') and str(project['cow_id']) != identity.cow_id:
+            raise ValueError('标签牛耳标与原始目录身份不一致，请先复核')
+        project.setdefault('cow_id',identity.cow_id)
+        project.setdefault('device_identity',dict(device_id=identity.device_id,cow_id=identity.cow_id,
+                                                 field_mark=identity.field_mark,status='ready'))
     expected = result.get('source', {}).get('asset_id') or result['work'].get('asset_id')
     if expected and expected != raw_sha:
         raise ValueError('标签与原始数据的内容身份不一致，原文件保留')

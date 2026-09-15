@@ -8,13 +8,14 @@ from pathlib import Path
 from .mother_dataset import _write_table
 
 
-def export_decision(root, *, progress=lambda *_:None, cancelled=lambda:False):
+def export_decision(root, *, temperature_model=None, progress=lambda *_:None, cancelled=lambda:False):
     root = Path(root)
     sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'assets/dataset_recipes'))
     from cowmata_activity_aux.engine import ActivityModule
     from cowmata_activity_aux.protocol import Context as ActivityContext
     from cowmata_temperature_aux.engine import TemperatureModule
     from cowmata_temperature_aux.protocol import Context, ProtocolConfig, decode_packet
+    model = json.loads(Path(temperature_model).read_text(encoding="utf-8")) if temperature_model else None
     sources = [json.loads(line) for line in (root/'sources.jsonl').read_text(encoding='utf-8').splitlines()]
     events = [json.loads(line) for line in (root/'events.jsonl').read_text(encoding='utf-8').splitlines()]
     output = root/'综合决策'
@@ -45,15 +46,18 @@ def export_decision(root, *, progress=lambda *_:None, cancelled=lambda:False):
                             if (s.get('cow_id'),s.get('device_id'),s.get('field_mark',''))==key)
                 binding = '-'.join(str(k) for k in key)
                 context = Context(cow,device,binding,start)
-                engines[key] = (ActivityModule(ActivityContext(cow,device,binding,start)),TemperatureModule(context),context)
+                engines[key] = (ActivityModule(ActivityContext(cow,device,binding,start)),(TemperatureModule(context, model=model) if model is not None else None),context)
             activity,temperature,context = engines[key]
             for j,engine in enumerate((activity,temperature)):
+                if engine is None:
+                    review.append(dict(asset_id=source["asset_id"],module="temperature",reason="未导入历史温度评分模型；原始温度仍保留"))
                 try:
-                    result = engine.process_packet(doc,received_at_ms=received,evaluated_at_ms=received,
-                                                   receive_time_source='json_update_proxy')
-                    result.update(source_asset_id=source['asset_id'],truth_used_as_input=False)
-                    streams[j].write(json.dumps(result,ensure_ascii=False)+'\n')
-                    counts[j] += 1
+                    if engine is not None:
+                        result = engine.process_packet(doc,received_at_ms=received,evaluated_at_ms=received,
+                                                       receive_time_source='json_update_proxy')
+                        result.update(source_asset_id=source['asset_id'],truth_used_as_input=False)
+                        streams[j].write(json.dumps(result,ensure_ascii=False)+'\n')
+                        counts[j] += 1
                     if j == 1:
                         decoded = decode_packet(doc,context,ProtocolConfig(),received)
                         for stamp,raw,value in zip(decoded['times'],decoded['raw'],decoded['values']):
@@ -75,6 +79,6 @@ def export_decision(root, *, progress=lambda *_:None, cancelled=lambda:False):
     result = dict(activity_packets=counts[0],temperature_packets=counts[1],temperature_samples=len(temperatures),
                   review_records=len(review),calving_events=len(calving),truth_used_as_input=False,
                   receipt_time_basis='json_update_proxy',phase_policy='default_prepartum_no_truth_transition',
-                  probability_calibrated=False)
+                  probability_calibrated=False,temperature_model_imported=model is not None)
     (output/'readiness.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     return result

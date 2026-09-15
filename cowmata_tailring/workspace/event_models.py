@@ -53,16 +53,22 @@ def safe_child(root, relative):
 
 def available_packs(app_root=APP_ROOT):
     result = []
-    for path in sorted((Path(app_root) / "assets/event_models").glob("*/pack.json"), reverse=True):
+    for path in sorted((Path(app_root) / "assets/event_models").glob("*/pack.json"), reverse=True) if Path(app_root).resolve() != APP_ROOT.resolve() else ():
         data = json.loads(path.read_text(encoding="utf-8"))
         if data.get("schema") != 1 or data.get("adapter") != ADAPTER or data.get("runtime") != "model_runtime_20260906":
             continue  # newer runtime contracts need a separately tested adapter
         result.append({**data, "root": path.parent, "hash": digest_file(path), "app_root": Path(app_root)})
     if Path(app_root).resolve() == APP_ROOT.resolve():
         from cowmata_tailring.algorithms.adapter import available_pack
-        current = available_pack()
-        if current is not None:
-            result.insert(0, current)
+        from cowmata_tailring.algorithms.registry import default_home, list_suites
+        pointer = default_home() / 'selected.json'
+        selected = json.loads(pointer.read_text(encoding='utf-8')) if pointer.is_file() else {}
+        for suite in list_suites():
+            models = [m for m in suite['models'] if selected.get(m['code']+':'+suite.get('modality','motion')) == suite['version']]
+            if models:
+                pack = available_pack(suite)
+                pack['models'] = [m for m in pack['models'] if m['code'] in {x['code'] for x in models}]
+                result.append(pack)
     return result
 
 

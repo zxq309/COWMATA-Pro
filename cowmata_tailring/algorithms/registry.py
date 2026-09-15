@@ -21,8 +21,7 @@ def default_home():
     override = os.environ.get("COWMATA_ALGORITHM_HOME")
     if override:
         return Path(override).resolve()
-    return (Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local/share")) /
-            "COWMATA" / "algorithms").resolve()
+    return Path(r'F:\科牧特\_模型\行为识别').resolve()
 
 
 def child(root, name):
@@ -39,12 +38,12 @@ def read_suite(folder, *, verify=True):
     folder = Path(folder).resolve()
     doc = json.loads((folder / "suite.json").read_text(encoding="utf-8"))
     if (doc.get("schema") != "cowmata-event-suite-1" or doc.get("complete") is not True
-            or doc.get("feature_version") != FEATURE_VERSION
+            or doc.get("feature_version") not in (FEATURE_VERSION, "ppg-second-features-1")
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", str(doc.get("version", "")))):
         raise ValueError("Incomplete or incompatible event suite")
     models = doc.get("models", [])
-    if len(models) != len(EVENT_CODES) or {m["code"] for m in models} != set(EVENT_CODES):
-        raise ValueError("All three event models are required")
+    if not models or len({m["code"] for m in models}) != len(models) or any(m["code"] not in EVENT_CODES for m in models):
+        raise ValueError("A suite needs one or more distinct supported event models")
     child(folder, doc["report"])
     for model in models:
         filename = child(folder, model["file"])
@@ -56,7 +55,7 @@ def read_suite(folder, *, verify=True):
                 raise ValueError("Model checksum mismatch: " + model["file"])
             payload = json.loads(content)
             if (payload.get("code") != model["code"]
-                    or payload.get("feature_version") != FEATURE_VERSION
+                    or payload.get("feature_version") != doc["feature_version"]
                     or payload.get("threshold") != model["threshold"]):
                 raise ValueError("Model metadata mismatch")
             import numpy as np
@@ -70,7 +69,6 @@ def read_suite(folder, *, verify=True):
 def list_suites(home=None):
     home = Path(home) if home is not None else default_home()
     candidates = list((home / "versions").glob("*/suite.json"))
-    candidates += list((APP_ROOT / "assets/algorithms").glob("*/suite.json"))
     result = {}
     for manifest in sorted(candidates):
         try:
@@ -90,12 +88,6 @@ def active_suite(home=None):
         if suite is None:
             raise ValueError("Selected model version is missing; choose a version in algorithm management")
         return suite
-    # Installing a version for comparison must not activate it implicitly.
-    for manifest in sorted((APP_ROOT / "assets/algorithms").glob("*/suite.json"), reverse=True):
-        try:
-            return read_suite(manifest.parent, verify=False)
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
     return None
 
 
@@ -105,6 +97,11 @@ def activate(home, version):
     if suite is None:
         raise ValueError("Unknown algorithm version")
     read_suite(suite["root"])
+    pointer = home / 'selected.json'
+    selected = json.loads(pointer.read_text(encoding='utf-8')) if pointer.is_file() else {}
+    for model in suite['models']:
+        selected[model['code'] + ':' + suite.get('modality','motion')] = version
+    atomic_json(pointer, selected)
     atomic_json(home / "active.json", {"version": version})
     return suite
 

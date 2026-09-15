@@ -196,9 +196,9 @@ class MainWindow(ControllerWindow):
         sources.addWidget(self.cow)
         sources.addWidget(self.identity_label)
         sources.addWidget(self.data_category)
-        self.ppg_placeholder = QLabel("PPG · 已预留，当前无波形 / 标签")
+        self.ppg_placeholder = QLabel("PPG · 支持波形、标注与专用模型识别")
         self.ppg_placeholder.setWordWrap(True)
-        self.ppg_placeholder.setToolTip("PPG 以采集时间独立索引，支持跨日；数据接入后沿用同步与导出接口。")
+        self.ppg_placeholder.setToolTip("PPG 按设备采样配置建立时间轴，支持原始记录与标签配对导出。")
         sources.addWidget(self.ppg_placeholder)
         sources.addWidget(self._heading("视角 · 勾选并拖动排序"))
         sources.addWidget(self.cameras, 2)
@@ -361,7 +361,7 @@ class MainWindow(ControllerWindow):
         # filter also intercepts native decoder/widget teardown and is unsafe
         # when several old/new windows coexist.
         for control in self.findChildren(QWidget):
-            if isinstance(control, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
+            if isinstance(control, QLineEdit | QTextEdit | QPlainTextEdit | QAbstractSpinBox | QComboBox):
                 control.installEventFilter(self)
 
     def _heading(self, text):
@@ -371,6 +371,9 @@ class MainWindow(ControllerWindow):
 
     def _build_algorithm_menus(self, annotation_menu):
         from .algorithm_catalog import BEHAVIORS, HEALTH
+        behavior_menu = self.menuBar().addMenu('行为识别(&B)')
+        self._action(behavior_menu, '训练与识别…', self.open_behavior_390)
+        self._action(behavior_menu, '打开模型库', self.open_model_library)
         self._action(annotation_menu, "算法管理", self.open_algorithm_workbench)
         self.algorithm_actions = {}
         self.algorithm_group = QActionGroup(self)
@@ -398,15 +401,27 @@ class MainWindow(ControllerWindow):
             menu.addSeparator()
             self._action(menu, "返回标注布局", self.exit_algorithm)
 
+    def open_behavior_390(self):
+        from cowmata_tailring.algorithms.behavior_ui import BehaviorWindow
+        if getattr(self, '_behavior_390', None) is None:
+            self._behavior_390 = BehaviorWindow(self)
+        self._behavior_390.show()
+        self._behavior_390.raise_()
+
+    def open_model_library(self):
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        from cowmata_tailring.algorithms.registry import default_home
+        folder = default_home().parent
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
     def open_algorithm_workbench(self):
-        from cowmata_tailring.algorithms.workbench_ui import AlgorithmWorkbench
-        if getattr(self, "_algorithm_workbench", None) is None:
-            self._algorithm_workbench = AlgorithmWorkbench(self)
-        self._algorithm_workbench.show()
-        self._algorithm_workbench.raise_()
+        self.open_behavior_390()
 
     def open_calving_evidence(self):
-        from cowmata_tailring.algorithms.workbench_ui import CalvingEvidenceWindow
+        from cowmata_tailring.algorithms.decision_ui import DecisionWindow as CalvingEvidenceWindow
         if getattr(self, "_calving_evidence", None) is None:
             self._calving_evidence = CalvingEvidenceWindow(self)
         self._calving_evidence.show()
@@ -477,7 +492,7 @@ class MainWindow(ControllerWindow):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         path = Path(__file__).resolve().parents[2] / "docs/quick-start-illustrated.pdf"
-        current = Path(__file__).resolve().parents[2] / 'docs/operator-guide-380.html'
+        current = Path(__file__).resolve().parents[2] / 'docs/operator-guide-390.html'
         if current.is_file():
             path = current
         if path.is_file():
@@ -585,7 +600,7 @@ class MainWindow(ControllerWindow):
                 self.source_hide_timer.start()
         if event.type() == QEvent.Type.ShortcutOverride:
             focus = QApplication.focusWidget()
-            if focus and focus.window() == self and isinstance(focus, (QLineEdit, QTextEdit, QPlainTextEdit, QAbstractSpinBox, QComboBox)):
+            if focus and focus.window() == self and isinstance(focus, QLineEdit | QTextEdit | QPlainTextEdit | QAbstractSpinBox | QComboBox):
                 modifiers = event.modifiers()
                 if not modifiers & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier):
                     # Choosing a behavior must not swallow its annotation key.
@@ -771,14 +786,14 @@ class MainWindow(ControllerWindow):
         self.set_presentation(mode if isinstance(mode, str) and mode in {"A", "B", "C"} else "A", persist=False)
         self.pip_size.setCurrentIndex(index("pip_size", 1, 2))
         self.wave_size.setCurrentIndex(index("wave_size", 1, 2))
-        self.plot.group.setCurrentIndex(index("signal_group", 0, 4))
+        self.plot.group.setCurrentIndex(index("signal_group", 0, 5))
         self.playback_policy.setCurrentIndex(index("playback_policy", 2, 2))
         self.glass.setChecked(prefs.get("glass", True) is not False)
         ratio = prefs.get("observation_ratio", 75)
         self.board.observation_ratio = ratio if isinstance(ratio, int) and 50 <= ratio <= 85 else 75
         self.stage.pip_position = (1.0, 0.0)
         pos = prefs.get("pip_position", [1.0, 0.0])
-        if isinstance(pos, (list, tuple)) and len(pos) == 2 and all(isinstance(v, (int, float)) for v in pos):
+        if isinstance(pos, list | tuple) and len(pos) == 2 and all(isinstance(v, int | float) for v in pos):
             self.stage.pip_position = tuple(max(0, min(1, v)) for v in pos)
         self.source_panel.setVisible(prefs.get("sources_open") is True)
         self.source_toggle.setChecked(self.source_panel.isVisible())
@@ -805,6 +820,13 @@ class MainWindow(ControllerWindow):
         if self._closed:
             event.accept()
             return
+        for name in ('_behavior_390','_calving_evidence','_algorithm_workbench'):
+            window = getattr(self,name,None)
+            if window is not None and window.running:
+                window.cancelled_request()
+                event.ignore()
+                self._retry_close(300)
+                return
         organize = getattr(self, "_organization_window", None)
         if organize is not None and not organize.request_shutdown():
             self._closing_due_to_organization = True

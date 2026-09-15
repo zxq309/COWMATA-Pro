@@ -49,7 +49,7 @@ class PrimingPlaybackMixin:
         super().open_video(path)
         requested = (
             os.path.abspath(os.fspath(path))
-            if isinstance(path, (str, os.PathLike))
+            if isinstance(path, str | os.PathLike)
             else None
         )
         current = (

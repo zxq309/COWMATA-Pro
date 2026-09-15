@@ -10,21 +10,34 @@ from test_label_file import source as source
 
 from cowmata_tailring.workspace.candidate_window import CandidateWindow
 from cowmata_tailring.workspace.event_models import (
-    available_packs,
     normalize_output,
     safe_child,
     verify_model,
 )
 from cowmata_tailring.workspace.label_file import build_label_file, load_history, save_label_file
 
-LEGACY_PACK = next(p for p in available_packs() if p.get("adapter") == "csv-points-v1")
 
+@pytest.mark.parametrize("changed", [False, True])
+def test_explicit_legacy_pack_files_are_verified(tmp_path, changed):
+    import hashlib
 
-@pytest.mark.parametrize("model", LEGACY_PACK["models"], ids=lambda m: m["id"])
-@pytest.mark.skipif(not (LEGACY_PACK["app_root"] / "model_runtime_20260906/python.exe").is_file(),
-                    reason="Binary event runtime is a Release asset; exercised in portable acceptance")
-def test_reviewed_pack_files_present_and_verified(model):
-    assert verify_model(LEGACY_PACK, model).name == "python.exe"
+    root = tmp_path / "pack"
+    root.mkdir()
+    entry = root / "predict.py"
+    entry.write_bytes(b"# test entry")
+    runtime = tmp_path / "model_runtime_20260906"
+    runtime.mkdir()
+    (runtime / "python.exe").write_bytes(b"test runtime")
+    model = dict(
+        entry="predict.py", files={"predict.py": hashlib.sha256(entry.read_bytes()).hexdigest()}
+    )
+    pack = dict(root=root, app_root=tmp_path, runtime=runtime.name, models=[model])
+    if changed:
+        entry.write_bytes(b"# modified")
+        with pytest.raises(ValueError, match="changed"):
+            verify_model(pack, model)
+    else:
+        assert verify_model(pack, model) == runtime / "python.exe"
 
 
 def test_pack_path_cannot_escape(tmp_path):
@@ -34,7 +47,9 @@ def test_pack_path_cannot_escape(tmp_path):
 
 @pytest.mark.parametrize("column", ["spot_s", "around_s", "event_time_s", "center_s"])
 def test_normalization_uses_relative_point_not_wall_clock_or_window_end(tmp_path, column):
-    (tmp_path / "result.csv").write_text(f"{column},score,end_s,approx_time_bj\n12.5,0.81,99,2099-01-01 01:00:00\n", encoding="utf-8")
+    (tmp_path / "result.csv").write_text(
+        f"{column},score,end_s,approx_time_bj\n12.5,0.81,99,2099-01-01 01:00:00\n", encoding="utf-8"
+    )
     spec = dict(output="result.csv", time_column=column, score_column="score", code="TEST")
     points, audit = normalize_output(tmp_path, spec, 20000)
     assert points[0]["point_ms"] == 12500
@@ -47,29 +62,63 @@ def test_normalization_uses_relative_point_not_wall_clock_or_window_end(tmp_path
 def test_invalid_predictions_never_enter_timeline(tmp_path, point, score):
     (tmp_path / "result.csv").write_text(f"time,score\n{point},{score}\n")
     with pytest.raises(ValueError):
-        normalize_output(tmp_path, dict(output="result.csv", time_column="time", score_column="score", code="TEST"), 100000)
+        normalize_output(
+            tmp_path,
+            dict(output="result.csv", time_column="time", score_column="score", code="TEST"),
+            100000,
+        )
 
 
 def test_empty_model_summary_preserves_nonfinite_as_unavailable(tmp_path):
     (tmp_path / "result.csv").write_text("time,score\n")
     (tmp_path / "summary.json").write_text('{"metric":NaN,"nested":[Infinity,1e999,0.25]}')
-    candidates, audit = normalize_output(tmp_path, dict(output="result.csv", time_column="time", score_column="score", code="TEST"), 1000)
+    candidates, audit = normalize_output(
+        tmp_path,
+        dict(output="result.csv", time_column="time", score_column="score", code="TEST"),
+        1000,
+    )
     assert candidates == []
     assert audit["summary.json"]["metric"] == {"unavailable_nonfinite": "nan"}
-    assert audit["summary.json"]["nested"] == [{"unavailable_nonfinite": "inf"}, {"unavailable_nonfinite": "inf"}, .25]
+    assert audit["summary.json"]["nested"] == [
+        {"unavailable_nonfinite": "inf"},
+        {"unavailable_nonfinite": "inf"},
+        0.25,
+    ]
     json.dumps(audit, allow_nan=False)
 
 
 def result_for(work):
-    return dict(id="test-run", identity=dict(asset_id=work.asset_id, cow_id=work.project.cow_id),
-                version="TEST-ONLY", model_title="Test event", audit={"quality": "unknown"},
-                candidates=[dict(id="candidate-1", point_ms=100, score=.9, code="STANDING_UP", review_status="pending")])
+    return dict(
+        id="test-run",
+        identity=dict(asset_id=work.asset_id, cow_id=work.project.cow_id),
+        version="TEST-ONLY",
+        model_title="Test event",
+        audit={"quality": "unknown"},
+        candidates=[
+            dict(
+                id="candidate-1",
+                point_ms=100,
+                score=0.9,
+                code="STANDING_UP",
+                review_status="pending",
+            )
+        ],
+    )
 
 
 @pytest.fixture
-def gui(source):
+def gui(source, monkeypatch):  # noqa: F811 - imported pytest fixture
+    fake_pack = dict(
+        version="TEST-ONLY",
+        hash="test",
+        models=[dict(id="test", title="Test event", code="STANDING_UP")],
+    )
+    monkeypatch.setattr(
+        "cowmata_tailring.workspace.candidate_window.available_packs", lambda: [fake_pack]
+    )
     from cowmata_tailring.workspace.catalog import Catalog
     from cowmata_tailring.workspace.modern_window import MainWindow
+
     app = QApplication.instance() or QApplication([])
     root, motion, work, rows = source
     window = MainWindow()
@@ -89,7 +138,7 @@ def gui(source):
     window.catalog.close()
 
 
-def test_candidate_queue_roundtrip_is_separate_from_truth(gui, source, tmp_path):
+def test_candidate_queue_roundtrip_is_separate_from_truth(gui, source, tmp_path):  # noqa: F811 - imported pytest fixture
     window, dialog, _ = gui
     before = copy.deepcopy(window.work.project.events)
     dialog.receive((dialog.token(), result_for(window.work)))
@@ -121,6 +170,7 @@ def test_stale_or_cancelled_candidate_result_is_discarded(gui, change):
 
 def test_unknown_alignment_keeps_video_and_invalidates_old_selection(gui):
     from cowmata_tailring.workspace.clocks import ClockMap
+
     window, dialog, _ = gui
     window.work.clock = ClockMap()
     window.board.reference_ms = 12345
@@ -153,12 +203,14 @@ def test_background_cancellation_and_source_switch(gui, monkeypatch):
     window, dialog, app = gui
     entered = threading.Event()
     stopped = threading.Event()
+
     def slow(*args, cancelled, **kwargs):
         entered.set()
         while not cancelled():
-            time.sleep(.01)
+            time.sleep(0.01)
         stopped.set()
         raise InterruptedError("cancelled")
+
     monkeypatch.setattr("cowmata_tailring.workspace.candidate_window.predict_one", slow)
     dialog.start()
     assert entered.wait(1)
@@ -174,6 +226,7 @@ def test_background_cancellation_and_source_switch(gui, monkeypatch):
 
 def test_inference_load_guard_releases_after_errors():
     from cowmata_tailring.workspace.event_models import inference_active, inference_load
+
     assert not inference_active()
     with pytest.raises(RuntimeError):
         with inference_load():
@@ -186,6 +239,7 @@ def test_inference_load_guard_releases_after_errors():
 
 def test_multiview_guard_updates_control_and_does_not_oscillate(gui):
     from cowmata_tailring.workspace.event_models import inference_load
+
     window, _, _ = gui
     board = window.board
     board.select(["A", "B", "C", "D"])
@@ -205,6 +259,7 @@ def test_multiview_guard_updates_control_and_does_not_oscillate(gui):
 
 def test_two_views_are_not_forced_into_preview(gui):
     from cowmata_tailring.workspace.event_models import inference_load
+
     window, _, _ = gui
     board = window.board
     board.select(["A", "B"])

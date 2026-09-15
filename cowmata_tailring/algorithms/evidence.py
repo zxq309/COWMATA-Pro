@@ -41,7 +41,7 @@ def infer_features(suite, feature, codes=None):
     return events
 
 
-def evidence_rows(record, feature, events, *, window_ms=600000):
+def evidence_rows(record, feature, events, *, window_ms=600000, causal=False):
     if window_ms <= 0:
         raise ValueError("Evidence window must be positive")
     result = []
@@ -55,8 +55,9 @@ def evidence_rows(record, feature, events, *, window_ms=600000):
         temp_times = np.asarray(feature.get("temperature_ms", []))
         temp = np.asarray(feature.get("temperature_c", []))
         temp = temp[(temp_times >= start) & (temp_times < end) & np.isfinite(temp)]
-        posture = occupancy(events, start, end, observed_intervals=feature["segments"])
-        bouts = [e for e in events if e["code"] == "STRAINING_BOUT"
+        visible = [e for e in events if e.get('available_ms',e.get('end_ms',0)+20000) <= end+20000] if causal else events
+        posture = occupancy(visible, start, end, observed_intervals=feature["segments"])
+        bouts = [e for e in visible if e["code"] == "STRAINING_BOUT"
                  and e["start_ms"] < end and e["end_ms"] > start]
         bout_seconds = sum((b-a)/1000 for a, b in merged(
             [(max(start, e["start_ms"]), min(end, e["end_ms"])) for e in bouts]))

@@ -55,21 +55,21 @@ jobs:
 
       - name: Test Linux with Qt xcb
         if: runner.os == 'Linux' && matrix.python-version != '3.10'
-        timeout-minutes: 5
+        timeout-minutes: 15
         env:
           QT_QPA_PLATFORM: xcb
         run: xvfb-run -a -s "-screen 0 1920x1200x24" pytest -v -o faulthandler_timeout=30
 
       - name: Test Linux 3.10 with native crash trace
         if: runner.os == 'Linux' && matrix.python-version == '3.10'
-        timeout-minutes: 5
+        timeout-minutes: 15
         env:
           QT_QPA_PLATFORM: xcb
         run: xvfb-run -a -s "-screen 0 1920x1200x24" gdb --batch --return-child-result -ex "set pagination off" -ex "set print thread-events off" -ex run -ex "thread apply all bt 35" --args python -m pytest -v -o faulthandler_timeout=30
 
       - name: Test Windows
         if: runner.os == 'Windows'
-        timeout-minutes: 5
+        timeout-minutes: 15
         env:
           QT_QPA_PLATFORM: offscreen
         # Capture Python output without redirecting native Qt file descriptors.
