@@ -24,8 +24,10 @@ def test_prepare_save_and_update_for_registered_drive_root_install(tmp_path, mon
         (runtime / "python313.zip").write_bytes(b"stdlib fixture")
         code = root / "cowmata_tailring/app"
         code.mkdir(parents=True)
-        for name in ("update_core.py", "update_worker.py"):
+        for name in ("update_core.py", "update_worker.py", "portable_update.py"):
             (code / name).write_text("# updater fixture", encoding="utf-8")
+        # The source checkout intentionally does not carry compiled binaries.
+        monkeypatch.setattr(update_ui, "__file__", str(code / "update_ui.py"))
         rows = [{"path": p.relative_to(root).as_posix(), "size": p.stat().st_size, "sha256": update_worker.digest(p)}
                 for p in root.rglob("*") if p.is_file() and p.name != "COWMATA.install-id"]
         (root / "package-manifest.json").write_text(json.dumps({"version": "3.8.0", "files": rows}), encoding="utf-8")
@@ -39,6 +41,8 @@ def test_prepare_save_and_update_for_registered_drive_root_install(tmp_path, mon
         monkeypatch.setattr(update_worker, "run", runner)
         job_file = update_ui.prepare_job(root, tmp_path / "Setup.exe", {"version": "3.8.3"}, tmp_path)
         job = json.loads(job_file.read_text(encoding="utf-8"))
+        assert (Path(job["job_dir"]) / "COWMATA-Progress.exe").read_bytes() == b"launcher fixture"
+        assert (Path(job["job_dir"]) / "portable_update.py").is_file()
         assert Path(job["root"]) == root
         assert registrations == [(root, "3.8.0")]
         assert len(commands) == 1 and commands[0][-1] == "--help"
