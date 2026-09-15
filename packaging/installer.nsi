@@ -5,6 +5,7 @@ Unicode true
 !include "x64.nsh"
 !include "FileFunc.nsh"
 !include "nsDialogs.nsh"
+!include "WordFunc.nsh"
 
 !ifndef COMPRESSION
   !define COMPRESSION lzma
@@ -110,6 +111,7 @@ Var DesktopEnabled
 Var PathError
 Var StageOnly
 Var RegisterOnly
+Var UpgradeExisting
 
 Function .onInit
   SetShellVarContext current
@@ -120,6 +122,35 @@ Function .onInit
   ${GetOptions} $R0 "/DESKTOP=" $R1
   ${If} $R1 == "0"
     StrCpy $DesktopEnabled ${BST_UNCHECKED}
+  ${EndIf}
+  ClearErrors
+  ; /D=, staging and registration are exact destinations chosen by the updater.
+  ${GetOptions} $CMDLINE "/D=" $R2
+  ${If} ${Errors}
+  ${AndIf} $StageOnly != "1"
+  ${AndIf} $RegisterOnly != "1"
+    StrCpy $R3 0
+    StrCpy $R4 "0.0.0"
+    ${Do}
+      EnumRegKey $R5 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall" $R3
+      ${If} $R5 == ""
+        ${ExitDo}
+      ${EndIf}
+      IntOp $R3 $R3 + 1
+      StrCpy $R6 $R5 8
+      ${If} $R6 == "COWMATA-"
+        ReadRegStr $R6 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\$R5" "DisplayVersion"
+        ReadRegStr $R7 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\$R5" "InstallLocation"
+        ${VersionCompare} $R6 $R4 $R8
+        ${If} $R8 == 1
+          IfFileExists "$R7\COWMATA.install-id" 0 next_registered
+          IfFileExists "$R7\COWMATA.exe" 0 next_registered
+          StrCpy $R4 $R6
+          StrCpy $INSTDIR $R7
+        ${EndIf}
+      ${EndIf}
+      next_registered:
+    ${Loop}
   ${EndIf}
   ClearErrors
   ${GetParent} "$INSTDIR" $ParentPath
@@ -189,6 +220,7 @@ FunctionEnd
 
 ; Validate without changing the target. Silent installs use this too.
 Function ValidateLocation
+  StrCpy $UpgradeExisting "0"
   StrCpy $PathError "$(InvalidLocation)"
   StrLen $0 $INSTDIR
   ${If} $0 < 4
@@ -230,6 +262,17 @@ Function ValidateLocation
     register_invalid:
     Return
   ${EndIf}
+  ${If} $StageOnly != "1"
+    ; Full identity/registration/inventory validation is done by the embedded
+    ; Python bridge before any change; unknown directories stay forbidden.
+    IfFileExists "$INSTDIR\COWMATA.install-id" 0 not_existing_install
+    IfFileExists "$INSTDIR\package-manifest.json" 0 not_existing_install
+    IfFileExists "$INSTDIR\COWMATA.exe" 0 not_existing_install
+    StrCpy $UpgradeExisting "1"
+    StrCpy $PathError ""
+    Return
+  ${EndIf}
+  not_existing_install:
   FindFirst $0 $1 "$INSTDIR\*"
   ${DoUntil} ${Errors}
     ${If} $1 != "."
@@ -300,6 +343,29 @@ Section "COWMATA Pro™" Main
   ${EndIf}
   ${If} $RegisterOnly == "1"
     Goto register_installation
+  ${EndIf}
+  ${If} $UpgradeExisting == "1"
+    IfSilent upgrade_ready
+    MessageBox MB_OKCANCEL|MB_ICONINFORMATION "将升级此目录中的 COWMATA。请先保存标注并关闭软件，然后点击确定。$\r$\n$INSTDIR" IDOK upgrade_ready
+    SetErrorLevel 1
+    Abort
+    upgrade_ready:
+    InitPluginsDir
+    !include "${UPGRADE_LIST}"
+    StrCpy $R0 "1"
+    ${If} $DesktopEnabled != ${BST_CHECKED}
+      StrCpy $R0 "0"
+    ${EndIf}
+    nsExec::ExecToStack /TIMEOUT=1800000 '"$PLUGINSDIR\upgrade\runtime\python.exe" -I -B "$PLUGINSDIR\upgrade\offline_upgrade.py" --root "$INSTDIR" --setup "$EXEPATH" --desktop $R0'
+    Pop $0
+    Pop $1
+    ${If} $0 != 0
+      IfSilent +2
+        MessageBox MB_ICONSTOP "$(InstallFailure)$\r$\n$1"
+      SetErrorLevel 6
+      Abort
+    ${EndIf}
+    Goto install_done
   ${EndIf}
   ClearErrors
   SetDetailsPrint none

@@ -98,6 +98,8 @@ def test_work_windows_minimize_independently(kind, tmp_path):
 
 
 def test_playback_settings_allow_main_window_work_to_continue():
+    import time
+
     from PySide6.QtCore import QTimer
     from PySide6.QtTest import QTest
 
@@ -111,7 +113,10 @@ def test_playback_settings_allow_main_window_work_to_continue():
 
     QTimer.singleShot(20, inspect)
     w.presentation_settings()
-    QTest.qWait(40)
+    # Slow CI/active disk transfers can delay delivery beyond a fixed 40 ms.
+    deadline = time.monotonic() + 2
+    while not seen and time.monotonic() < deadline:
+        QTest.qWait(10)
     try:
         assert seen == [False], "Settings block the annotation workspace when minimized"
     finally:

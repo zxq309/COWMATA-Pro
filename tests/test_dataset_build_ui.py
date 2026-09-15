@@ -32,6 +32,7 @@ def test_five_dataset_tasks_send_independent_requests(monkeypatch, tmp_path):
         dialog.set_task(task)
         dialog.submit()
         assert jobs[-1]["task"] == task and jobs[-1]["action"] == "paired_build"
+        assert jobs[-1]['layout'] == 'current'
     assert dialog.task.count() == 5 and not hasattr(dialog, "tabs")
     dialog.close()
     owner.close()

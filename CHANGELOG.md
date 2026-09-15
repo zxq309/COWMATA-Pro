@@ -1,3 +1,7 @@
+# 3.8.1
+
+修复旧客户端更新地址与安装路径兼容；安装包支持原位置升级。数据集改为持续更新完整目录，归类记录按视角分标签页。
+
 # 3.8.0 — 2026-09-15
 
 Workflow menus, independent task windows, selection-preserving live records, dependency pruning and a screenshot-based operator guide. See [release notes](docs/release-380.md).

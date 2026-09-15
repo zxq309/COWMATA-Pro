@@ -675,11 +675,9 @@ class OrganizationWindow(TaskWindow):
         add(row, self.execute_top)
         self.cancel_button.setText('暂停')
         add(row, self.cancel_button)
-        self.export_button.setText('打开实时 CSV')
+        self.export_button.setText('查看归类记录')
         add(row, self.export_button)
-        self.records_button = QPushButton('打开完整记录')
-        self.records_button.clicked.connect(self.open_full_records)
-        row.addWidget(self.records_button)
+        self.records_button = self.export_button  # Existing callers share the single entry.
         self.open_directory_button.setText('打开归类目录')
         add(row, self.open_directory_button)
         outer.addLayout(row)
@@ -827,14 +825,7 @@ class OrganizationWindow(TaskWindow):
         self.invalidate_plan()
 
     def open_full_records(self):
-        if not self.job:
-            return
-        from .classification_viewer import ClassificationReportWindow
-        job = self.job
-        window = ClassificationReportWindow(self, lambda: job, detailed=True)
-        window.setWindowTitle('完整归类记录 · ' + job.name)
-        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        window.show()
+        self.export_report()
 
     def reset_source_session(self):
         self.job = self.plan = self.plan_job = self.result_pending = None
@@ -1238,7 +1229,7 @@ class OrganizationWindow(TaskWindow):
                 if result.get("unresolved"):
                     self.status.setText(
                         self.status.text()
-                        + f" 仍有 {result['unresolved']} 项未完成；可打开实时 CSV 查看原因并继续归类。"
+                        + f" 仍有 {result['unresolved']} 项未完成；可查看归类记录了解原因并继续归类。"
                     )
                 self.bar.setValue(1000)
                 self.owner.tell(self.status.text())

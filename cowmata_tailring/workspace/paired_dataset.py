@@ -36,7 +36,7 @@ TASKS = {
                   ('pregnancy', 'pregnancy_early', 'pregnancy_mid', 'pregnancy_late'), tuple(FOLDERS)),
     'disease': ('疫病监测数据集', 'COWMATA_DiseaseMonitor_Dataset', ('disease', 'illness'), tuple(FOLDERS)),
 }
-SKIP_DIRS = {'Video', '.git', '.归类缓存', '归类附属文件', '.label-history', '.build', '__pycache__'}
+SKIP_DIRS = {'Video', '.git', '.归类缓存', '归类附属文件', '.label-history', '.dataset-history', '.build', '__pycache__'}
 
 
 def category_for(path, document=None):
@@ -248,24 +248,46 @@ def _label_document(item, focus, raw_sha, raw_target, root, metadata):
     result.update(dataset_category=item['category'], dataset=dict(schema='paired-dataset-370', focus_code=focus,
                   original_source=item['source'], original_label=item['label_source'], original_label_sha256=item.get('label_source_sha256',''), additional_labels=item.get('additional_labels', []), raw_sha256=raw_sha,
                   pending_annotation=focus in {'Unlabeled', 'Context'}, historical_only=focus=='HistoricalLabels'))
+    if document and document.get('dataset', {}).get('review_revision'):
+        result['dataset']['review_revision'] = document['dataset']['review_revision']
     if focus == 'HistoricalLabels' and document:
         result['work']['project']['events'] = [e for e in document['work']['project'].get('events', []) if e.get('label_code') not in FOLDERS and e.get('label_code') not in REMOVED]
     return result
 
 
-def build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: False, on_report=lambda *_: None):
+def build_dataset(sources, target, task='behavior', *, job, layout='current', cancelled=lambda: False, on_report=lambda *_: None):
     job = Path(job).resolve()
     job.mkdir(parents=True, exist_ok=True)
     lock = ProjectLock(job/'build.lock')
+    target_lock = None
     try:
         if not lock.acquired:
             raise ValueError('Dataset job is already running in another window')
-        return _build_dataset(sources, target, task, job=job, cancelled=cancelled, on_report=on_report)
+        if layout == 'current':
+            from .dataset_incremental import dataset_root
+            root = dataset_root(target, TASKS[task][1])
+            root.mkdir(parents=True, exist_ok=True)
+            target_lock = ProjectLock(root/'.dataset-update.lock')
+            if not target_lock.acquired:
+                raise ValueError('Another task is updating this dataset')
+        return _build_dataset(sources, target, task, job=job, layout=layout, cancelled=cancelled, on_report=on_report)
     finally:
         lock.close()
+        if target_lock:
+            target_lock.close()
 
 
-def _build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: False, on_report=lambda *_: None):
+def _build_dataset(sources, target, task='behavior', *, job, layout='versioned', cancelled=lambda: False, on_report=lambda *_: None):
+    from .dataset_incremental import (
+        backup_label,
+        dataset_root,
+        existing_pairs,
+        inherit_reviews,
+        pair_index,
+        retire_stale_pairs,
+    )
+    if layout not in {'current', 'versioned'}:
+        raise ValueError('Unknown dataset layout')
     if task not in TASKS:
         raise ValueError('未知数据集任务')
     target, job = Path(target).resolve(), Path(job).resolve()
@@ -283,6 +305,8 @@ def _build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: F
         if saved['task'] != task or saved['sources'] != [str(p) for p in sources] or saved['target'] != str(target):
             raise ValueError('继续任务的来源或目标发生变化，请开始新的版本')
         root = Path(saved['root'])
+    elif layout == 'current':
+        root = dataset_root(target, TASKS[task][1])
     else:
         base = target/TASKS[task][1]
         base.mkdir(parents=True, exist_ok=True)
@@ -294,12 +318,33 @@ def _build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: F
             except FileExistsError:
                 continue
     root.mkdir(parents=True, exist_ok=True)
+    existing_manifest = {}
+    history = root/'.dataset-history'/job.name
+    if layout == 'current' and (root/'dataset-manifest.json').is_file():
+        existing_manifest = json.loads((root/'dataset-manifest.json').read_text(encoding='utf-8'))
+        if existing_manifest.get('task') != task:
+            raise ValueError('Existing dataset task differs from requested task')
+        if not saved:
+            backup_label(root/'dataset-manifest.json', history)
     for code in TASKS[task][3]:
         for kind in ('Motion', 'PPG'):
             for part in ('Raw', 'Label'):
                 (root/FOLDERS[code]/kind/part).mkdir(parents=True, exist_ok=True)
     rows = []
+    prior_pairs = {}
+    indexed_pairs = pair_index(root) if layout == 'current' else {}
     for item in items:
+        _check(cancelled)
+        if layout == 'current':
+            raw = Path(item['source'])
+            try:
+                prefix = _file_prefix(raw, {}, item['document'])
+            except KeyError:
+                metadata = json.loads(raw.read_text(encoding='utf-8-sig'))
+                prefix = _file_prefix(raw, metadata, item['document'])
+            pairs = existing_pairs(root, prefix, item['kind'], indexed_pairs)
+            prior_pairs[item['source']] = pairs
+            inherit_reviews(item, pairs, root)
         events = (item['document'] or {}).get('work', {}).get('project', {}).get('events', [])
         found = {e.get('label_code') for e in events}
         focuses = [c for c in TASKS[task][3] if c in found]
@@ -311,7 +356,17 @@ def _build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: F
             key = hashlib.sha256((item['source']+'|'+focus).encode()).hexdigest()
             rows.append(dict(id=key, source=item['source'], kind=item['kind'], focus=focus,
                              behavior=FOLDERS.get(focus, focus), status='pending', _item=item))
-    previous = {r['id']: r for r in (saved or {}).get('rows', [])}
+    previous = {r['id']: dict(r) for r in existing_manifest.get('rows', [])}
+    # Old manifests can retain absolute paths from a relocated timestamp folder.
+    for old in previous.values():
+        for part in ('raw', 'label'):
+            relative = old.get(part+'_relative')
+            if relative:
+                value = (root/relative).resolve()
+                if not value.is_relative_to(root):
+                    raise ValueError('Dataset manifest member escapes its root')
+                old[part+'_target'] = str(value)
+    previous.update({r['id']:r for r in (saved or {}).get('rows', [])})
     journal = job/'paired-journal.jsonl'
     if journal.is_file():
         for line in journal.read_text(encoding='utf-8').splitlines():
@@ -320,18 +375,23 @@ def _build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: F
                 previous[value['id']] = value
             except (ValueError, KeyError):
                 continue
-    manifest = dict(schema='paired-dataset-370', task=task, root=str(root), target=str(target),
+    manifest = dict(schema='paired-dataset-370', task=task, layout=layout, root=str(root), target=str(target),
                     sources=[str(p) for p in sources], source_count=len(items), input_identities=identities, status='building', rows=[])
     report = BuildReport(root, rows, on_report)
     donors = {}
     metadata_cache = {}
     checkpoint_at = 0.0
+    retired = set()
     def checkpoint(status, force=False):
         nonlocal checkpoint_at
         if status == 'building' and not force and time.monotonic()-checkpoint_at < 15:
             return
         checkpoint_at = time.monotonic()
-        manifest.update(status=status, counts=_counts(rows), rows=[{k:v for k,v in r.items() if not k.startswith('_')} for r in rows])
+        public = [{k:v for k,v in r.items() if not k.startswith('_')} for r in rows]
+        current_keys = {r.get('label_relative') for r in public if r.get('label_relative')}
+        retained = [r for r in previous.values() if r['id'] not in {x['id'] for x in rows}
+                    and r.get('label_relative') not in current_keys | retired]
+        manifest.update(status=status, counts=_counts(rows), dataset_pairs=len(retained)+len(public), rows=retained+public)
         atomic_json(plan_file, manifest, backup=False)
         atomic_json(root/'dataset-manifest.json', manifest, backup=False)
     checkpoint('building', force=True)
@@ -342,7 +402,8 @@ def _build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: F
         raw = Path(item['source'])
         before = file_stamp(raw)
         old = previous.get(row['id'])
-        if old and old.get('source_stamp') == before and all(Path(old.get(k, '')).is_file() for k in ('raw_target', 'label_target')):
+        signature = hashlib.sha256(json.dumps([identities[item['source']], item['document']], sort_keys=True).encode()).hexdigest()
+        if old and old.get('source_stamp') == before and (layout != 'current' or old.get('input_signature') == signature) and all(Path(old.get(k, '')).is_file() for k in ('raw_target', 'label_target')):
             if ((old.get('raw_stamp') == file_stamp(Path(old['raw_target'])) and old.get('label_stamp') == file_stamp(Path(old['label_target'])))
                     or digest_file(Path(old['raw_target'])) == old.get('raw_sha256') and digest_file(Path(old['label_target'])) == old.get('label_sha256')):
                 row.update({**old, 'status':'reused', 'seconds':0, 'message':'已完成配对，直接复用'})
@@ -365,6 +426,7 @@ def _build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: F
                     raise ValueError('数据集目标路径越界')
                 p.parent.mkdir(parents=True, exist_ok=True)
             row.update(raw_target=str(raw_target), label_target=str(label_target), source_stamp=before,
+                       input_signature=signature,
                        raw_relative=raw_target.relative_to(root).as_posix(), label_relative=label_target.relative_to(root).as_posix(),
                        label_source_sha256=item.get('label_source_sha256',''))
             donor = donors.get(str(raw))
@@ -393,8 +455,14 @@ def _build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: F
             doc = _label_document(item, row['focus'], sha, raw_target, root, metadata)
             if label_target.exists():
                 prior = json.loads(label_target.read_text(encoding='utf-8'))
-                if prior.get('dataset', {}).get('review_revision'):
+                if prior.get('dataset', {}).get('review_revision') and layout != 'current':
                     raise ValueError('该标签已有人工修订，保留原文件；请导出新的版本')
+                if prior == doc:
+                    row.update(status='reused', raw_sha256=sha, label_sha256=digest_file(label_target),
+                        seconds=round(time.monotonic()-started, 3), raw_stamp=file_stamp(raw_target), label_stamp=file_stamp(label_target), message='已完成配对，直接复用')
+                    return
+                if layout == 'current':
+                    backup_label(label_target, history)
             atomic_json(label_target, doc, backup=False)
             row.update(status='done', raw_sha256=sha, label_sha256=digest_file(label_target),
                        seconds=round(time.monotonic()-started, 3), raw_stamp=file_stamp(raw_target), label_stamp=file_stamp(label_target), message='原始数据与标签已配对')
@@ -436,10 +504,17 @@ def _build_dataset(sources, target, task='behavior', *, job, cancelled=lambda: F
                         os.fsync(stream.fileno())
                 checkpoint('building')
                 report.publish()
+        if layout == 'current':
+            for source, group in groups.items():
+                retired.update(retire_stale_pairs(prior_pairs.get(source, []), group, root, history))
         checkpoint('completed' if not _counts(rows)['errors'] else 'needs_attention')
         report.publish(force=True, phase=manifest['status'])
         return manifest
     except InterruptedError:
         checkpoint('paused')
         report.publish(force=True, phase='paused')
+        raise
+    except Exception:
+        checkpoint('needs_attention')
+        report.publish(force=True, phase='needs_attention')
         raise

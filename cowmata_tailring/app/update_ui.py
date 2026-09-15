@@ -80,7 +80,7 @@ class UpdateController(QObject):
         self.window = window
         self.settings = QSettings()
         self.root = Path(__file__).resolve().parents[2]
-        self.cache = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "COWMATA Annotator" / "updates"
+        self.cache = (Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "COWMATA Annotator" / "updates").resolve()
         self.update = None
         self.setup = None
         self.pending_job = None
