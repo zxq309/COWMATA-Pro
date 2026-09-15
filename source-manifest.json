@@ -3,8 +3,8 @@
   "files": [
     {
       "path": ".gitattributes",
-      "size": 218,
-      "sha256": "29edac637896af2064734ec8d52bdf4406dd4a32a67aae23a4b3a6de501f7072"
+      "size": 257,
+      "sha256": "dc27bba795f12c02a459b0bd27fc83e784eb3de5d8a8a2886c75c808b1956de0"
     },
     {
       "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
