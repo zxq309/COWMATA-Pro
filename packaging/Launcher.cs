@@ -10,7 +10,7 @@ using System.Web.Script.Serialization;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;
 
-[assembly: AssemblyTitle("COWMATA Annotator")]
+[assembly: AssemblyTitle("COWMATA Pro™")]
 [assembly: AssemblyDescription("Offline cattle video and IMU annotation workstation")]
 [assembly: AssemblyCompany("Yangling Yuanshangyuan Intelligent Technology Co., Ltd.")]
 [assembly: AssemblyVersion("3.8.0.0")]
@@ -140,7 +140,7 @@ internal static class Launcher
                             if (!updater.HasExited && updater.MainModule.FileName.StartsWith(cache, StringComparison.OrdinalIgnoreCase))
                             {
                                 MessageBox(IntPtr.Zero, "正在完成更新，完成后会自动重新打开。请稍候。",
-                                    "COWMATA Annotator", 0x40);
+                                    "COWMATA Pro™", 0x40);
                                 return 9;
                             }
                         }
@@ -177,7 +177,7 @@ internal static class Launcher
         }
         catch (Exception error)
         {
-            MessageBox(IntPtr.Zero, error.Message, "COWMATA 启动失败", 0x10);
+            MessageBox(IntPtr.Zero, error.Message, "COWMATA Pro™ 启动失败", 0x10);
             return 1;
         }
     }
@@ -187,7 +187,7 @@ internal static class Launcher
         if (!Path.IsPathRooted(path)) throw new ArgumentException("Expected an absolute update status path");
         int owner; Int32.TryParse(ownerText, out owner);
         Forms.Application.EnableVisualStyles();
-        var form = new Forms.Form { Text = "COWMATA 更新进度", Width = 600, Height = 205,
+        var form = new Forms.Form { Text = "COWMATA Pro™ 更新进度", Width = 600, Height = 205,
             StartPosition = Forms.FormStartPosition.CenterScreen, FormBorderStyle = Forms.FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = true, ControlBox = false, Font = new Drawing.Font("Microsoft YaHei UI", 10) };
         var title = new Forms.Label { Left = 20, Top = 18, Width = 545, Height = 54, Text = "正在准备更新…" };
@@ -211,7 +211,7 @@ internal static class Launcher
                     var state = new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(File.ReadAllText(path, Encoding.UTF8));
                     if (state.ContainsKey("phase")) phase = Convert.ToString(state["phase"]);
                     title.Text = messages.ContainsKey(phase) ? messages[phase] : "更新已停止，请查看更新日志。";
-                    form.Text = "COWMATA 更新 · " + title.Text;
+                    form.Text = "COWMATA Pro™ 更新 · " + title.Text;
                     if (phase == "verifying" && state.ContainsKey("total_files")) {
                         int total = Convert.ToInt32(state["total_files"]), current = Convert.ToInt32(state["verified_files"]);
                         bar.Style = Forms.ProgressBarStyle.Continuous;

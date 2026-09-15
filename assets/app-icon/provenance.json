@@ -1,13 +1,13 @@
 {
-  "source": "https://www.cowmata.com/en/favicon.ico",
-  "retrieved": "2026-09-09",
-  "source_sha256": "a7f57c5b4a5253194dc338934354be5cd5c75e606e96e4f80ac1de3ecff4a7e8",
+  "source": "assets/brand/pro-icon.svg",
+  "created": "2026-09-15",
+  "source_sha256": "e7e366c478ba90c7864af0d671b6a8a1c641f6c026ab206c48598069ed2c6a58",
   "license": "Corporate trademark, rights retained by COWMATA; see NOTICE",
-  "adaptation": "Original official favicon, format/size conversion only. Not the former Phosphor cow.",
+  "adaptation": "Official COWMATA vector glyph with Pro and TM product identification; rendered locally.",
   "sha256": {
-    "cowmata.png": "d4ea819e8365838ed7d51c0485bfccaa9d85dd0ad80165772b7eaf1c1b071664",
-    "cowmata.ico": "6cb0a6eb72755a06772ff4e9e3604148c0617b7d6b583ac58cbf0b9e500c5499",
-    "installer.bmp": "2a2459470a8a060202b8cfc8baa29f7da1cc1dc8029db1ccc5a6b62e60d611c3",
-    "installer-header.bmp": "56b17921bd290061fb77d696d4c51c372c0f40349442ebb54b57eb351c45b808"
+    "cowmata.png": "4ae894f3afce706733711e2f6ada4d0c50c55bec9dafd3af647eb3cf5584ee44",
+    "cowmata.ico": "933f5604afcd78b0a81b80c04521472aa2ef887cff5a4cf7d3fe0e2772b654e8",
+    "installer.bmp": "6592704657cbec7b5d5a96d0b677b0830db603ba772fa31b5f3722344cc2e991",
+    "installer-header.bmp": "377a2abcbbfdceb24b732a6479baacf18ffafb60ddaac9794f686f2bafbebe47"
   }
 }

@@ -62,7 +62,7 @@ class HistoryWindow(QMainWindow):
         self.future = None
         self.source_leases = []
         self.cache = tempfile.TemporaryDirectory(prefix="cowmata-history-")
-        self.setWindowTitle("COWMATA · 复核与修改 · " + self.path.name)
+        self.setWindowTitle("COWMATA Pro™ · 复核与修改 · " + self.path.name)
         self.resize(1400, 900)
         self.setStyleSheet(STYLE + GLASS_STYLE)
         canvas = FrostedCanvas()

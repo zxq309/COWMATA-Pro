@@ -99,6 +99,7 @@ def main():
     for name in ('operator-guide-380.html', 'release-380.md'):
         shutil.copy2(source/'docs'/name, destination/'docs'/name)
     shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
+    shutil.copytree(source/'docs/project', destination/'docs/project')
     (destination/'scripts').mkdir()
     for name in ('portable_startup_self_test.py','portable_self_test.py','verify_label_history.py','verify_event_models.py','verify_candidate_ui.py','register_event_pack.py','verify_evidence_archive.py','train_mother_dataset.py'):
         shutil.copy2(source/'scripts'/name, destination/'scripts'/name)
