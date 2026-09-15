@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-DEFAULT_PROTOCOL = "v4"
+DEFAULT_PROTOCOL = "v5"
 
 
 def _label(
@@ -37,7 +37,7 @@ def _label(
 
 
 # v4 标签代码兼容；新增爬跨，不改旧标签索引。SYNC_ANCHOR 仅用于同步。
-DEFAULT_LABELS: list[dict[str, Any]] = [
+LEGACY_DEFAULT_LABELS: list[dict[str, Any]] = [
     _label(
         "站立", "standing", "STANDING", "1", "#5f86b3", "body_state",
         "四肢支撑并保持原地，未发生行走。", overlap=False,
@@ -132,3 +132,28 @@ DEFAULT_LABELS: list[dict[str, Any]] = [
 
 # 旧工程字段仍可读取，但 v4 不使用“情境推断”。
 CONTEXT_OPTIONS: dict[str, list[str]] = {}
+
+
+# Operator protocol 3.7. Stable codes preserve event meaning across renamed labels.
+_CURRENT = [
+    ('STANDING_UP', '起立过程', 'standing up', '1', None),
+    ('LYING_DOWN', '卧倒过程', 'lying down', '2', None),
+    ('STANDING_TAIL_RAISED', '站立抬尾', 'tail raised while standing', '3', 'TAIL_RAISED'),
+    ('STANDING_TAIL_WAGGING', '站立甩尾', 'tail wagging while standing', '4', 'TAIL_WAGGING'),
+    ('LYING_TAIL_RAISED', '躺卧抬尾', 'tail raised while lying', '5', 'TAIL_RAISED'),
+    ('LYING_TAIL_WAGGING', '躺卧甩尾', 'tail wagging while lying', '6', 'TAIL_WAGGING'),
+    ('STRAINING_BOUT', '努责', 'straining', '7', None),
+    ('AMNIOTIC_SAC_FIRST_VISIBLE', '胎膜囊（水囊）首次可见', 'amniotic sac first visible', '8', None),
+    ('FETAL_PART_FIRST_VISIBLE', '胎儿首个部位首次可见', 'first fetal part visible', '9', None),
+    ('CALF_FULLY_EXPELLED', '犊牛完全娩出', 'calf fully expelled', 'A', None),
+    ('FETAL_MEMBRANES_FULLY_EXPELLED', '胎膜完全排出', 'fetal membranes fully expelled', 'B', None),
+    ('URINATION', '排尿', 'urination', 'C', None),
+    ('DEFECATION', '排便', 'defecation', 'D', None),
+    ('MOUNTING', '爬跨', 'mounting', 'E', None),
+    ('MANUAL_CALVING_ASSISTANCE', '助产', 'calving assistance', 'F', None),
+]
+_previous = {label['code']: label for label in LEGACY_DEFAULT_LABELS}
+DEFAULT_LABELS: list[dict[str, Any]] = [
+    {**_previous[base or code], 'code': code, 'name': name, 'en': en, 'key': key}
+    for code, name, en, key, base in _CURRENT
+]

@@ -1,3 +1,15 @@
+# 3.7.0 — 2026-09-15
+
+Versioned paired datasets, in-place Motion/PPG/video annotation review, fifteen-label taxonomy, bulk edits, clearer multiview/gyroscope display and bounded classification resources. Offline startup and integrated edge download preserved. See [release notes](docs/release-370.md).
+
+# 3.6.4 — 2026-09-14
+
+直接离线启动，后台检查更新；每视角临时复制与核验并行、实时计时和独立完整记录；切换总目录清空旧视图；同步设备下载接口、30 秒无进展超时、三次重试、严格证书链和温度原始数据。[本版说明](docs/release-364.md)。
+
+# 3.6.3 — 2026-09-14
+
+牧场→视频总目录→视角勾选；实际复制和移动按视角并行，确认全程黑屏/全零/损坏后删除；保持已归类复用、任务续跑和实时 CSV 数量一致。[使用说明](docs/release-363.md)。
+
 # 3.5.3 — 2026-09-13
 
 - 关闭整理子窗口时停止其工作进程，主窗口关闭重试使用随窗口销毁的定时器，避免隐藏任务长期阻塞退出。

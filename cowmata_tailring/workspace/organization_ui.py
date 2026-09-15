@@ -592,11 +592,19 @@ class OrganizationWindow(QDialog):
         heading = QLabel('数据归类')
         heading.setStyleSheet('font-size:20px; font-weight:700;')
         outer.addWidget(heading)
-        outer.addWidget(QLabel('选择来源和牧场，一键按采集日期归类；暂停后可继续。'))
+        outer.addWidget(QLabel('先选牧场，再选视频总目录；只处理勾选视角，暂停后可继续。'))
         def add(layout, widget, stretch=0):
             widget.setParent(self)
             widget.show()
             layout.addWidget(widget, stretch)
+        row = QHBoxLayout()
+        row.addWidget(QLabel('① 牧场目录'))
+        add(row, self.target, 1)
+        add(row, self.target_browse)
+        row.addWidget(QLabel('类别'))
+        add(row, self.category)
+        add(row, self.pregnancy_stage)
+        outer.addLayout(row)
         row = QHBoxLayout()
         row.addWidget(QLabel('归类方式'))
         self.scenario.setItemText(0, 'Motion、PPG JSON 与视频一起归类')
@@ -604,30 +612,47 @@ class OrganizationWindow(QDialog):
         add(row, self.scenario, 1)
         add(row, self.transfer_mode)
         outer.addLayout(row)
-        row = QHBoxLayout()
-        row.addWidget(QLabel('牧场目录'))
-        add(row, self.target, 1)
-        add(row, self.target_browse)
-        row.addWidget(QLabel('类别'))
-        add(row, self.category)
-        add(row, self.pregnancy_stage)
-        outer.addLayout(row)
         self.target.textEdited.connect(lambda value: self.farm.setText(value))
         self.pregnancy_stage.setVisible(self.category.currentData() == 'pregnancy')
         self.category.currentIndexChanged.connect(lambda: self.pregnancy_stage.setVisible(self.category.currentData() == 'pregnancy'))
-        add(outer, self.sources)
-        self.sources.setFixedHeight(125)
         row = QHBoxLayout()
-        self.add_mixed_button.setText('添加来源目录…')
-        add(row, self.add_mixed_button)
-        self.bulk_video_button.setText('指定多路视频…')
-        add(row, self.bulk_video_button)
-        self.add_buttons[-1].setText('移除所选')
-        add(row, self.add_buttons[-1])
+        row.addWidget(QLabel('② 视频总目录'))
+        self.video_root = QLineEdit()
+        self.video_root.setReadOnly(True)
+        self.video_root.setPlaceholderText('选择包含多个视角的大目录')
+        row.addWidget(self.video_root, 1)
+        self.video_root_browse = QPushButton('选择总目录…')
+        self.video_root_browse.clicked.connect(self.choose_video_root)
+        row.addWidget(self.video_root_browse)
+        outer.addLayout(row)
+        self.sources.setColumnCount(4)
+        self.sources.setHorizontalHeaderLabels(['③ 勾选视角', '总目录内位置', '归档视角', '该视角进度'])
+        self.sources.setColumnWidth(0, 130)
+        self.sources.setColumnWidth(2, 100)
+        self.sources.setColumnWidth(3, 210)
+        self.sources.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        add(outer, self.sources)
+        self.sources.setFixedHeight(232)
+        self.sources.verticalHeader().setDefaultSectionSize(26)
+        row = QHBoxLayout()
+        self.select_views = QPushButton('全选视角')
+        self.clear_views = QPushButton('取消全选')
+        self.select_views.clicked.connect(lambda: self.check_views(True))
+        self.clear_views.clicked.connect(lambda: self.check_views(False))
+        row.addWidget(self.select_views)
+        row.addWidget(self.clear_views)
+        self.json_sources = QPushButton('添加 Motion / PPG JSON…')
+        self.json_sources.clicked.connect(lambda: self.add_directory('imu'))
+        row.addWidget(self.json_sources)
         row.addStretch()
         self.resume_button.setText('继续上次归类')
         add(row, self.resume_button)
         outer.addLayout(row)
+        notice = QLabel('确认全程黑屏、空录像或损坏后立即删除原文件；正常视频按所选方式归类。')
+        notice.setStyleSheet('color:#a13c17;')
+        outer.addWidget(notice)
+        self.transfer_mode.setItemText(0, '复制正常视频')
+        self.transfer_mode.setItemText(1, '同盘移动正常视频，跨盘复制')
         add(outer, self.summary)
         add(outer, self.table, 1)
         self.table.setMinimumHeight(140)
@@ -641,7 +666,7 @@ class OrganizationWindow(QDialog):
         header.setSectionResizeMode(next(i for i,c in enumerate(self.model.COLUMNS) if c[0] == 'message'), QHeaderView.ResizeMode.Stretch)
         self.record_details.setMinimumHeight(48)
         self.record_details.setMaximumHeight(65)
-        add(outer, self.record_details)
+        self.record_details.hide()
         add(outer, self.status)
         add(outer, self.bar)
         row = QHBoxLayout()
@@ -650,24 +675,32 @@ class OrganizationWindow(QDialog):
         add(row, self.cancel_button)
         self.export_button.setText('打开实时 CSV')
         add(row, self.export_button)
+        self.records_button = QPushButton('打开完整记录')
+        self.records_button.clicked.connect(self.open_full_records)
+        row.addWidget(self.records_button)
         self.open_directory_button.setText('打开归类目录')
         add(row, self.open_directory_button)
         outer.addLayout(row)
-        self.resize(1120, 760)
-        self.setMinimumSize(900, 650)
+        self.resize(1180, 830)
+        self.setMinimumSize(950, 740)
         self._elapsed_start = None
         self._live_timer = QTimer(self)
         self._live_timer.setInterval(1000)
         self._live_timer.timeout.connect(self.refresh_live)
         self._live_timer.start()
-        self.summary.setText('等待开始 · 原件保留 · 记录实时保存')
+        self.summary.setText('等待选择视角 · 记录实时保存')
 
     def apply_report_snapshot(self):
         from .classification_report import read_snapshot, source_key, summary_text
         if not self.job:
             return
         try:
+            stat = (self.job / 'report-state.json').stat()
+            stamp = (str(self.job), stat.st_size, stat.st_mtime_ns)
+            if getattr(self, '_report_revision', None) and getattr(self, '_report_stamp', None) == stamp:
+                return
             snapshot = read_snapshot(self.job)
+            self._report_stamp = stamp
         except (OSError, ValueError):
             return
         revision = (str(self.job), snapshot['revision'])
@@ -679,6 +712,10 @@ class OrganizationWindow(QDialog):
         self._report_revision = revision
         self.model.set_rows(snapshot['rows'])
         self._report_counts = snapshot['counts']
+        self.refresh_view_progress(snapshot['rows'])
+        self._view_progress_dirty = False
+        c = snapshot['counts']
+        self.bar.setValue(round(1000 * (c['archived'] + c['unavailable'] + c['errors']) / max(1, c['total'])))
         self.summary.setText(summary_text(snapshot['counts']))
         for i, row in enumerate(self.model.rows):
             if source_key(row['source']) == selected:
@@ -689,6 +726,14 @@ class OrganizationWindow(QDialog):
             self._report_window.refresh()
 
     def refresh_live(self):
+        if getattr(self, '_view_progress_dirty', False):
+            self.refresh_view_progress(self.model.rows)
+            self._view_progress_dirty = False
+        if self.running and getattr(self, '_progress_pending_text', None):
+            self.status.setText(self._progress_pending_text)
+            self._progress_pending_text = None
+        if hasattr(self, "records_button"):
+            self.records_button.setEnabled(bool(self.job and (self.job / "report-state.json").exists()))
         if self.job:
             self.apply_report_snapshot()
         self.export_button.setEnabled(bool(self.job and (self.job / 'report-state.json').exists()))
@@ -705,6 +750,8 @@ class OrganizationWindow(QDialog):
         self.plan = self.plan_job = None
         self.report = None
         self.open_button.setEnabled(False)
+        if hasattr(self, "_live_timer"):
+            self.refresh_view_progress([])
         self.render()
 
     def partial_changed(self, checked):
@@ -748,14 +795,21 @@ class OrganizationWindow(QDialog):
             self.target.setText(value)
             self.invalidate_plan()
 
-    def add_source(self, kind, path, camera="视角01"):
+    def add_source(self, kind, path, camera="视角01", *, checked=True, exclude=()):
         row = self.sources.rowCount()
         self.sources.insertRow(row)
         item = QTableWidgetItem("九轴" if kind == "imu" else "混合" if kind == "auto" else "录像")
         item.setData(Qt.ItemDataRole.UserRole, kind)
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.sources.setItem(row, 0, item)
-        self.sources.setItem(row, 1, QTableWidgetItem(str(path)))
+        location = QTableWidgetItem(str(path))
+        location.setData(Qt.ItemDataRole.UserRole, str(path))
+        location.setData(Qt.ItemDataRole.UserRole + 1, list(exclude))
+        location.setFlags(location.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        location.setToolTip(str(path))
+        self.sources.setItem(row, 1, location)
         combo = QComboBox()
         combo.addItem("按目录识别", "auto")
         combo.addItems(VIEWS)
@@ -764,7 +818,111 @@ class OrganizationWindow(QDialog):
         combo.setEnabled(kind in {"video", "auto"})
         combo.currentTextChanged.connect(self.invalidate_plan)
         self.sources.setCellWidget(row, 2, combo)
+        if self.sources.columnCount() > 3:
+            state = QTableWidgetItem('等待开始' if checked else '未勾选')
+            state.setFlags(state.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.sources.setItem(row, 3, state)
         self.invalidate_plan()
+
+    def open_full_records(self):
+        if not self.job:
+            return
+        from .classification_viewer import ClassificationReportWindow
+        job = self.job
+        window = ClassificationReportWindow(self, lambda: job, detailed=True)
+        window.setWindowTitle('完整归类记录 · ' + job.name)
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        window.show()
+
+    def reset_source_session(self):
+        self.job = self.plan = self.plan_job = self.result_pending = None
+        self.completed_target = ''
+        self._report_revision = None
+        self._report_counts = {}
+        self._view_transfers = {}
+        self._elapsed_start = None
+        self.model.set_rows([])
+        self.record_details.clear()
+        self.bar.setRange(0, 1000)
+        self.bar.setValue(0)
+        self.summary.setText('等待选择视角 · 记录实时保存')
+        self.export_button.setEnabled(False)
+        self.records_button.setEnabled(False)
+        self.open_button.setEnabled(False)
+        if getattr(self, '_report_window', None):
+            self._report_window.refresh()
+
+    def choose_video_root(self):
+        path = QFileDialog.getExistingDirectory(self, '选择包含所有视角的视频总目录', self.video_root.text())
+        if path:
+            self.set_video_root(path)
+
+    def set_video_root(self, root):
+        if self.running:
+            return
+        self.reset_source_session()
+        from . import organization as core
+        from .video_intake import protected_file
+        root = core.safe_path(root)
+        aliases = {'乐橙': '视角01', '右1': '视角02', '右2': '视角03', '右3': '视角04',
+                   '左1': '视角05', '左2': '视角06', '左3': '视角07'}
+        aliases.update({v: v for v in VIEWS})
+        found = {}
+        for path in core.walk_files(root):
+            if path.suffix.lower() not in core.VIDEO_SUFFIXES or protected_file(path):
+                continue
+            parents = [p for p in path.parents if p == root or p.is_relative_to(root)]
+            folder = next((p for p in parents if p.name in aliases), None)
+            if folder is None:
+                parts = path.relative_to(root).parts
+                folder = root / parts[0] if len(parts) > 1 else root
+            found[folder] = found.get(folder, 0) + 1
+        for row in range(self.sources.rowCount()-1, -1, -1):
+            if self.sources.item(row, 0).data(Qt.ItemDataRole.UserRole) != 'imu':
+                self.sources.removeRow(row)
+        self.video_root.setText(str(root))
+        for folder, count in sorted(found.items(), key=lambda pair: str(pair[0])):
+            self.add_source('video', folder, aliases.get(folder.name, 'auto'), checked=False)
+            row = self.sources.rowCount()-1
+            self.sources.item(row, 0).setText(folder.name + f'（{count}）')
+            self.sources.item(row, 1).setText(str(folder.relative_to(root)) if folder != root else '本目录')
+        self.status.setText(f'已找到 {len(found)} 路视角、{sum(found.values())} 个视频。勾选需要归类的视角。')
+        self.invalidate_plan()
+
+    def check_views(self, checked):
+        for row in range(self.sources.rowCount()):
+            item = self.sources.item(row, 0)
+            if item.data(Qt.ItemDataRole.UserRole) == 'video':
+                item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        self.invalidate_plan()
+
+    def refresh_view_progress(self, rows):
+        indexed = [(os.path.normcase(os.path.normpath(r['source'])), r) for r in rows]
+        self.sources.blockSignals(True)
+        try:
+            for i in range(self.sources.rowCount()):
+                location = self.sources.item(i, 1)
+                if location is None or self.sources.item(i, 0) is None or self.sources.item(i, 3) is None:
+                    continue
+                base = os.path.normcase(os.path.normpath(location.data(Qt.ItemDataRole.UserRole) or location.text()))
+                prefix = base.rstrip('\\/') + os.sep
+                relevant = [r for path, r in indexed if path == base or path.startswith(prefix)]
+                finished = sum(r.get('status') == 'done' for r in relevant)
+                deleted = sum(r.get('status') == 'deleted' for r in relevant)
+                active = sum(r.get('status') == 'processing' for r in relevant)
+                errors = sum(r.get('status') in {'blocked', 'invalid'} for r in relevant)
+                stage = ''
+                if active:
+                    camera = self.sources.cellWidget(i, 2).currentText()
+                    phase, percent = getattr(self, '_view_transfers', {}).get(camera, ('', 100))
+                    stage = f' · {phase} {percent}%' if percent < 100 else ' · 处理中'
+                value = (f'已归类 {finished} / {len(relevant)} · 删除 {deleted}'
+                         + stage + (f' · 异常 {errors}' if errors else ''))
+                if not relevant:
+                    value = '等待开始' if self.sources.item(i, 0).checkState() == Qt.CheckState.Checked else '未勾选'
+                self.sources.item(i, 3).setText(value)
+        finally:
+            self.sources.blockSignals(False)
 
     def add_imu_files(self):
         paths, _ = QFileDialog.getOpenFileNames(self, "选择单份或多份原始九轴", "", "JSON (*.json)")
@@ -846,13 +1004,18 @@ class OrganizationWindow(QDialog):
             else "留空自动读取真实日期；右侧日历可选择"
         )
         self.end_date.setPlaceholderText("可选结束日期（包含当日）")
+        if hasattr(self, 'json_sources'):
+            self.json_sources.setVisible(not attach)
         self.invalidate_plan()
 
     def source_specs(self):
+        locations = [Path(self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole) or self.sources.item(i, 1).text())
+                     if self.sources.item(i, 1) else None for i in range(self.sources.rowCount())]
         return [
             {
                 "kind": self.sources.item(i, 0).data(Qt.ItemDataRole.UserRole),
-                "path": self.sources.item(i, 1).text().strip(),
+                "path": self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole) or self.sources.item(i, 1).text().strip(),
+                "exclude": list(dict.fromkeys((self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole + 1) or []) + [str(p) for p in locations if p and p != locations[i] and p.is_relative_to(locations[i])])),
                 "camera": self.sources.cellWidget(i, 2).currentData()
                 or self.sources.cellWidget(i, 2).currentText(),
             }
@@ -860,6 +1023,7 @@ class OrganizationWindow(QDialog):
             if self.sources.item(i, 0) is not None
             and self.sources.item(i, 1) is not None
             and self.sources.cellWidget(i, 2) is not None
+            and self.sources.item(i, 0).checkState() == Qt.CheckState.Checked
         ]
 
     def start_audit(self):
@@ -885,6 +1049,7 @@ class OrganizationWindow(QDialog):
             "transfer": self.transfer_mode.currentData(),
             "scenario": self.scenario.currentData(),
             "fast_video": True,
+            "delete_unusable": True,
             "workers": self.video_workers.value(),
         }
 
@@ -899,11 +1064,7 @@ class OrganizationWindow(QDialog):
         try:
             pending = pending_job(paths)
             if pending and (job is None or Path(job) != pending):
-                self.load_task(pending)
-                if self.plan_job != pending:
-                    return
-                request = self.import_request('organize')
-                job = pending
+                job = pending  # Preserve the current checked sources; worker filters old rows.
         except (OSError, ValueError) as exc:
             self.status.setText(str(exc))
             return
@@ -929,6 +1090,7 @@ class OrganizationWindow(QDialog):
     def start_job(self, request, job=None):
         if self.running or self.pause_pending:
             return
+        self._progress_pending_text = None
         self._elapsed_start = time.monotonic()
         self._total_files = 0
         self._job_action = request["action"]
@@ -1007,17 +1169,25 @@ class OrganizationWindow(QDialog):
             except (ValueError, UnicodeError):
                 continue
             if message['event'] == 'snapshot':
-                self.apply_report_snapshot()
+                self._report_dirty = True
+            elif message['event'] == 'resources':
+                self._resource_budget = message['budget']
             elif message["event"] == "progress":
                 total, current = message["total"], message["current"]
-                if total:
+                if total and self._job_action != 'organize':
                     self.bar.setRange(0, 1000)
                     self.bar.setValue(round(current / total * 1000))
                 if message.get('unit') == 'bytes':
-                    self.status.setText(f"{message['path']} · {current / 1024**2:.1f} / {total / 1024**2:.1f} MiB")
+                    parts = message['path'].split(' · ', 2)
+                    if len(parts) == 3:
+                        if not hasattr(self, '_view_transfers'):
+                            self._view_transfers = {}
+                        self._view_transfers[parts[1]] = (parts[0], round(100*current/max(1,total)))
+                        self._view_progress_dirty = True
+                    self._progress_pending_text = f"{message['path']} · {current / 1024**2:.1f} / {total / 1024**2:.1f} MiB"
                 else:
                     self._total_files = total or getattr(self, '_total_files', 0)
-                    self.status.setText(f"已处理 {current}" + (f" / {total}" if total else "") + " · " + message["path"])
+                    self._progress_pending_text = message["path"] if self._job_action == "organize" else f"已处理 {current}" + (f" / {total}" if total else "") + " · " + message["path"]
             elif message["event"] == "result":
                 self.result_pending = self.job / "result.json"
             elif message["event"] == "row":
@@ -1215,7 +1385,7 @@ class OrganizationWindow(QDialog):
             self.sources.setRowCount(0)
             for spec in plan["sources"]:
                 if spec.get("kind") in {"imu", "video", "auto"}:
-                    self.add_source(spec["kind"], spec["path"], spec.get("camera", VIEWS[0]))
+                    self.add_source(spec["kind"], spec["path"], spec.get("camera", VIEWS[0]), exclude=spec.get("exclude", []))
         except (OSError, ValueError, KeyError, TypeError) as exc:
             self.status.setText(str(exc))
             self.invalidate_plan()
@@ -1375,6 +1545,11 @@ class OrganizationWindow(QDialog):
 
     def render(self):
         busy = self.running or self.pause_pending
+        for name in ('video_root_browse', 'select_views', 'clear_views', 'json_sources'):
+            if hasattr(self, name):
+                getattr(self, name).setEnabled(not busy)
+        if hasattr(self, 'json_sources'):
+            self.json_sources.setVisible(self.scenario.currentData() == 'mixed')
         for widget in (
             self.bulk_video_button,
             self.video_workers,

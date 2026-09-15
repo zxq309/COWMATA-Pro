@@ -26,7 +26,7 @@ def test_current_csv_and_summary_count_each_source_once(tmp_path):
     assert [r['序号'] for r in rows] == ['1', '2']
     assert [r['状态'] for r in rows] == ['已复用', '无录像内容']
     assert snapshot['counts'] == dict(total=2, archived=1, reused=1,
-                                     pending=0, processing=0, unavailable=1, errors=0)
+                                     pending=0, processing=0, unavailable=1, deleted=0, errors=0)
     assert len(snapshot['rows']) == len(rows)
 
 

@@ -112,7 +112,7 @@ class DownloadDialog(QDialog):
         form.addRow('牧场根目录', self.root_label)
         self.server = QComboBox()
         self.server.setEditable(True)
-        self.server.addItems(['http://127.0.0.1:18031', 'http://device.cowmata.com:8010'])
+        self.server.addItems(['http://device.cowmata.com:8010', 'http://127.0.0.1:18031'])
         form.addRow('下载服务器', self.server)
         self.category = QComboBox()
         self.category.addItems(CATEGORIES)
@@ -122,6 +122,8 @@ class DownloadDialog(QDialog):
         self.motion.setChecked(True)
         types.addWidget(self.motion)
         types.addWidget(self.ppg)
+        self.temp = QCheckBox('温度（原始数据）')
+        types.addWidget(self.temp)
         form.addRow('数据类型', types)
         self.mode = QComboBox()
         self.mode.addItems(['手动', '自动', '定时'])
@@ -153,7 +155,7 @@ class DownloadDialog(QDialog):
         self.hint.setWordWrap(True)
         form.addRow(self.hint)
         self.targets = QTableWidget(0, 3)
-        self.targets.setHorizontalHeaderLabels(['完整设备编号', '牛耳标（核对历史归属）', '现场记号（可留空）'])
+        self.targets.setHorizontalHeaderLabels(['完整设备编号', '牛耳标（可留空）', '现场记号（可留空）'])
         self.targets.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.targets.setFixedHeight(125)
         form.addRow('下载对象', self.targets)
@@ -199,7 +201,7 @@ class DownloadDialog(QDialog):
         input_scroll.setWidget(self.inputs)
         input_scroll.setMinimumHeight(300)
         outer.addWidget(input_scroll, 3)
-        self.path_hint = QLabel('保存：牧场 / 类别 / Motion 或 PPG / 日期 / 设备-牛耳标-现场记号 / JSON')
+        self.path_hint = QLabel('保存：牧场 / 类别 / Motion、PPG 或 Temp / 日期 / 设备-牛耳标-现场记号 / JSON')
         self.path_hint.setWordWrap(True)
         outer.addWidget(self.path_hint)
         controls = QHBoxLayout()
@@ -239,7 +241,7 @@ class DownloadDialog(QDialog):
         self.hint.setText({'手动': '执行一次；采集范围包含开始、不含结束。',
                            '自动': '立即下载，并按间隔补下数据；结束时间每轮推进到当前北京时间。',
                            '定时': '在指定北京时间执行一次，下载上面选定的采集范围。'}[mode]
-                          + ' 3090 原始库只提供 Motion；PPG 需使用提供脉搏数据的服务器。')
+                          + ' 3090 原始库只提供 Motion；PPG 和温度需选择支持相应数据的服务器。')
 
     def add_row(self, checked=False, values=('', '', '')):
         row = self.targets.rowCount()
@@ -261,7 +263,7 @@ class DownloadDialog(QDialog):
 
     def snapshot(self):
         return dict(server=self.server.currentText().strip(), category=self.category.currentText(),
-                    targets=self.target_values(), motion=self.motion.isChecked(), ppg=self.ppg.isChecked(),
+                    targets=self.target_values(), motion=self.motion.isChecked(), ppg=self.ppg.isChecked(), temp=self.temp.isChecked(),
                     interval=self.interval.value(), ssh_enabled=self.ssh.isChecked(),
                     ssh_host=self.ssh_host.text().strip(), ssh_port=self.ssh_port.value(),
                     ssh_key=self.ssh_key.text().strip(), remote_port=self.remote_port.value())
@@ -294,10 +296,11 @@ class DownloadDialog(QDialog):
         self.active_index = index
         p = self.profiles[index] if 0 <= index < len(self.profiles) else {}
         self.root_label.setText(p.get('root', '请选择牧场根目录'))
-        self.server.setCurrentText(p.get('server', 'http://127.0.0.1:18031'))
+        self.server.setCurrentText(p.get('server', 'http://device.cowmata.com:8010'))
         self.category.setCurrentText(p.get('category', CATEGORIES[0]))
         self.motion.setChecked(p.get('motion', True))
         self.ppg.setChecked(p.get('ppg', False))
+        self.temp.setChecked(p.get('temp', False))
         self.interval.setValue(int(p.get('interval', 60)))
         self.ssh.setChecked(p.get('ssh_enabled', False))
         self.ssh_host.setText(p.get('ssh_host', 'administrator@61.177.77.222'))
@@ -335,7 +338,7 @@ class DownloadDialog(QDialog):
         root = Path(self.profiles[self.active_index]['root']) / self.category.currentText()
         date = self.start_at.dateTime().toString('yyyy-MM-dd')
         rows = set()
-        for kind in ('Motion', 'PPG'):
+        for kind in ('Motion', 'PPG', 'Temp'):
             day = root / kind / date
             if day.is_dir():
                 for folder in day.iterdir():
@@ -365,7 +368,7 @@ class DownloadDialog(QDialog):
             end = datetime.now(CHINA).replace(microsecond=0) if mode == '自动' else self.china_time(self.end_at)
             job = Job(self.server.currentText().strip().rstrip('/'), Path(self.profiles[self.active_index]['root']),
                       self.category.currentText(), tuple(Target(*row) for row in self.target_values()),
-                      tuple(k for k, selected in [('motion', self.motion.isChecked()), ('pulse', self.ppg.isChecked())] if selected),
+                      tuple(k for k, selected in [('motion', self.motion.isChecked()), ('pulse', self.ppg.isChecked()), ('temp', self.temp.isChecked())] if selected),
                       self.china_time(self.start_at), end)
             job.validate()
             scheduled = self.china_time(self.scheduled)

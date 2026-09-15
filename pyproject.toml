@@ -77,3 +77,6 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+"cowmata_tailring.edge_download" = ["certificates/*.pem"]

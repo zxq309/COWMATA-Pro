@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -12,34 +12,33 @@ if __package__ in {None, ""}:
 
 from cowmata_tailring.workspace import organization as core
 
+_output_lock = threading.Lock()
 
 def emit(value):
-    print(json.dumps(value, ensure_ascii=True), flush=True)
+    with _output_lock:
+        print(json.dumps(value, ensure_ascii=True), flush=True)
 
 
 def main():
     job = core.safe_path(sys.argv[1])
     request = json.loads((job / "request.json").read_text(encoding="utf-8"))
-    if os.name == "nt":
-        import ctypes
-        kernel = ctypes.WinDLL("kernel32")
-        kernel.GetCurrentProcess.restype = ctypes.c_void_p
-        kernel.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint]
-        kernel.SetPriorityClass(kernel.GetCurrentProcess(), 0x4000)  # This child only: BELOW_NORMAL.
+    from cowmata_tailring.workspace.classification_resources import limit_worker
+    emit({'event': 'resources', 'budget': limit_worker()})
     def cancelled():
         return (job / "cancel").exists()
-    last = 0.0
+    last = {}
     from cowmata_tailring.workspace.classification_report import LiveReport
     def on_report(path, revision):
         emit({'event': 'snapshot', 'path': path, 'revision': revision})
     live = LiveReport(job, on_publish=on_report) if request['action'] != 'organize' else None
 
     def progress(current, total, path):
-        nonlocal last
         when = time.monotonic()
-        if when - last >= .2 or total and current == total:
+        parts = str(path).split(' · ', 2)
+        key = parts[1] if len(parts) == 3 else 'scan'
+        if when - last.get(key, 0) >= 1.0 or total and current == total:
             emit({"event": "progress", "current": current, "total": total, "path": path, "unit": "bytes" if str(path).startswith(("快速复制", "校验目标")) else "files"})
-            last = when
+            last[key] = when
 
     def on_row(row):
         if request.get('action') != 'organize':
@@ -56,7 +55,8 @@ def main():
             result = organize(request['target'], request['sources'], request.get('start',''), request.get('end'),
                 request.get('note',''), cancelled, progress, job=job, on_row=on_row, on_report=on_report,
                 category=request.get('category'), farm=request.get('farm',''), cache=request.get('cache'),
-                transfer=request.get('transfer','copy'), scenario=request.get('scenario','mixed'), workers=request.get('workers',4))
+                transfer=request.get('transfer','copy'), scenario=request.get('scenario','mixed'), workers=request.get('workers',4),
+                delete_unusable=request.get('delete_unusable', False))
         elif action == "import":
             from cowmata_tailring.workspace.resource_import import plan_import
             result = plan_import(request["target"], request["sources"], request["start"], request.get("end"),

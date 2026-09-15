@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from .algorithm_catalog import bindings
+from .algorithm_catalog import TAIL_MODELS, bindings
 from .event_models import available_packs, predict_one
 from .signal_panel import reference_text
 
@@ -121,6 +121,9 @@ class AlgorithmPanel(QFrame):
         self.status.setText("单视角算法检查；结果不自动写入候选标注或人工标签。" if self.bindings else
                             "算法待接入 · 暂无预测结果\n可切换单个视角观察，不生成占位预测或健康结论。")
 
+        if self.bindings and spec.code in TAIL_MODELS:
+            self.status.setText('当前模型识别抬尾或甩尾，不能区分站立与躺卧；请看录像确认姿势后人工标注。')
+
     def refresh_cameras(self):
         board = self.owner.board
         selected = list(board.selected)
@@ -204,7 +207,7 @@ class AlgorithmPanel(QFrame):
             return
         w.work.checkpoint()
         inspected = {**result, "inspection_code": self.spec.code, "kind": "algorithm_output_not_label"}
-        w.work.project.extras.setdefault("algorithm_inspections", {})[result["id"]] = inspected
+        w.work.project.extras.setdefault("algorithm_inspections", {})[result["id"] + ":" + self.spec.code] = inspected
         w.dirty = True
         w.save_current()
         self.refresh_results()

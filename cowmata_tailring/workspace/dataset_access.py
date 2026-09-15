@@ -49,10 +49,10 @@ def _active(root):
 def _check(root, paths, kind, owner=None):
     for path in (root / "pending").glob("*.json"):
         pending = json.loads(path.read_text(encoding="utf-8"))
-        if owner not in {pending["task_id"], pending["owner_id"]} and any(overlaps(a, b) for a in paths for b in pending["paths"]):
+        if kind != "review" and owner not in {pending["task_id"], pending["owner_id"]} and any(overlaps(a, b) for a in paths for b in pending["paths"]):
             raise OSError("此目录有未完成的整理任务，请在数据整理窗口继续原任务：" + pending["job"])
     for lease in _active(root):
-        if lease["id"] == owner or kind == lease["kind"] == "annotation":
+        if lease["id"] == owner or kind in {"annotation", "review"} and lease["kind"] in {"annotation", "review"}:
             continue
         if any(overlaps(a, b) for a in paths for b in lease["paths"]):
             raise OSError("目录正在标注或整理，请先保存并暂停相关工程；其他目录不受影响")

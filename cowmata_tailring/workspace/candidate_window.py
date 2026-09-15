@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -243,7 +244,17 @@ class CandidateWindow(QDialog):
         if not candidate or not w.writable_work() or not w.selection:
             self.status.setText("请先选择候选，再在九轴波形上拖选实际范围；预测点不是动作边界。")
             return
-        index = next((i for i, label in enumerate(w.work.project.labels) if label.code == candidate["code"]), None)
+        code = candidate['code']
+        if code in {'TAIL_RAISED', 'TAIL_WAGGING'}:
+            choices = [(i, label) for i, label in enumerate(w.work.project.labels) if label.code in {'STANDING_'+code, 'LYING_'+code}]
+            if not choices:
+                self.status.setText('当前标签配置中没有对应的姿势标签')
+                return
+            name, accepted = QInputDialog.getItem(self, '核对录像中的姿势', '模型不区分站立和躺卧；请按录像选择', [label.name for _, label in choices], 0, False)
+            if not accepted:
+                return
+            code = next(label.code for _, label in choices if label.name == name)
+        index = next((i for i, label in enumerate(w.work.project.labels) if label.code == code), None)
         if index is None:
             self.status.setText("当前标签配置中没有该事件类型，请先核对标签配置。")
             return

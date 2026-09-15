@@ -35,9 +35,9 @@ def test_start_action_exposes_label_and_timestamp_immediately(observed):
     window.mark_button.click()
     assert window.active_event is not None
     assert not window.event_status.isHidden()
-    assert "站立" in window.event_status.text()
+    assert "起立过程" in window.event_status.text()
     assert "2026-" in window.event_status.text()
-    assert "结束" in window.mark_button.text() and "站立" in window.mark_button.text()
+    assert "结束" in window.mark_button.text() and "起立过程" in window.mark_button.text()
 
 
 def test_selection_hint_uses_timestamps_and_keeps_active_action_visible(observed):
@@ -46,7 +46,7 @@ def test_selection_hint_uses_timestamps_and_keeps_active_action_visible(observed
     assert "2026-" in window.event_status.text()
     window.mark(0)
     window.select_range(250, 400)
-    assert "正在记录：站立" in window.event_status.text()
+    assert "正在记录：起立过程" in window.event_status.text()
     assert not window.event_status.isHidden()
 
 
@@ -65,9 +65,9 @@ def test_wrong_numeric_label_names_original_action_and_preserves_it(observed):
     window, _ = observed
     window.mark(0)
     original = copy.deepcopy(window.active_event)
-    window.mark_code("LYING")
+    window.mark_code("LYING_DOWN")
     assert window.active_event == original
-    assert "站立" in window.banner.text() and "1" in window.banner.text()
+    assert "起立过程" in window.banner.text() and "1" in window.banner.text()
     assert not window.event_status.isHidden()
 
 
@@ -96,8 +96,8 @@ def test_restored_active_action_is_visible_and_named(observed):
     window.active_event = saved
     window.refresh_events()
     assert not window.event_status.isHidden()
-    assert "站立" in window.event_status.text()
-    assert "结束" in window.mark_button.text() and "站立" in window.mark_button.text()
+    assert "起立过程" in window.event_status.text()
+    assert "结束" in window.mark_button.text() and "起立过程" in window.mark_button.text()
 
 
 @pytest.mark.parametrize("conflict", ["cow", "frame"])

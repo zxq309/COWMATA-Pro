@@ -446,7 +446,7 @@ class Project:
 
     @property
     def next_event_id(self) -> int:
-        return max((event.id for event in self.events), default=0) + 1
+        return max(max((event.id for event in self.events), default=0) + 1, int(self.extras.get("next_event_id_floor", 1)))
 
     @property
     def duration_ms(self) -> float | None:

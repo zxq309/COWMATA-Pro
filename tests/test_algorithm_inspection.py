@@ -30,12 +30,12 @@ def window():
 def test_menu_order_and_one_to_one_codes(window):
     titles = [a.text().split("(")[0] for a in window.menuBar().actions()]
     assert titles == ["文件", "编辑", "视图", "工具", "数据集构建", "行为识别", "健康与繁殖", "帮助"]
-    assert len({s.code for s in BEHAVIORS}) == 8
+    assert len({s.code for s in BEHAVIORS}) == 15
     labels = {label["code"] for label in DEFAULT_LABELS}
     assert {s.code for s in BEHAVIORS} <= labels
     assert len(HEALTH) == 6
     assert not any(bindings(s, available_packs()) for s in HEALTH)
-    assert sum(bool(bindings(s, available_packs())) for s in BEHAVIORS) == 5
+    assert sum(bool(bindings(s, available_packs())) for s in BEHAVIORS) == 7
 
 
 @pytest.mark.parametrize("spec", BEHAVIORS + HEALTH)
@@ -161,7 +161,7 @@ def test_algorithm_and_candidate_result_times_keep_original_review_position(wind
         assert video_positions == ([origin + 20, origin + 20] if with_clock else [])
         assert not window.work.project.events and not window.work.drafts
         for key in ("algorithm_inspections", "event_model_runs"):
-            assert window.work.project.extras[key]["r1"]["candidates"][0]["point_ms"] == 20
+            assert next(iter(window.work.project.extras[key].values()))["candidates"][0]["point_ms"] == 20
         window.work.clock = ClockMap([Anchor(0, origin + 1000)])
         for view in (panel, candidate):
             job_token = view.token()
@@ -180,7 +180,9 @@ def test_algorithm_and_candidate_result_times_keep_original_review_position(wind
 
 def test_old_label_order_and_missing_mounting_shortcut_are_safe(window, monkeypatch):
     window.work = SessionWork("old")
-    window.work.project.labels = window.work.project.labels[:17]
+    from cowmata_tailring.annotation.core import Label
+    from cowmata_tailring.annotation.defaults import LEGACY_DEFAULT_LABELS
+    window.work.project.labels = [Label.from_dict(r) for r in LEGACY_DEFAULT_LABELS[:17]]
     window.refresh_events()
     assert window.labels.count() == 17
     called = []

@@ -5,7 +5,10 @@ from cowmata_tailring.workspace.work import SessionWork
 
 
 def work():
+    from cowmata_tailring.annotation.core import Label
+    from cowmata_tailring.annotation.defaults import LEGACY_DEFAULT_LABELS
     value = SessionWork('a'*64)
+    value.project.labels = [Label.from_dict(r) for r in LEGACY_DEFAULT_LABELS]
     value.project.cow_id = '21100'
     value.clock = ClockMap([Anchor(0,10000),Anchor(1000,11000)])
     return value

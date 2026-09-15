@@ -453,19 +453,6 @@ def test_startup_errors_cannot_unlock_old_annotation(startup_gate, monkeypatch, 
     assert startup_gate.retry.isEnabled() and startup_gate.updater.pending_job is None
 
 
-def test_main_does_not_construct_workspace_or_load_project_when_startup_is_blocked(tmp_path):
-    import sys
-    source = Path(__file__).resolve().parents[1]
-    script = ("import sys;sys.path.insert(0,sys.argv[1]);"
-              "from cowmata_tailring.app import main,update_ui;"
-              "update_ui.verify_startup_update=lambda:False;"
-              "sys.modules['cowmata_tailring.workspace.modern_window']=None;"
-              "raise SystemExit(main.main(['--mode','workspace','--project',sys.argv[2]]))")
-    result = subprocess.run([sys.executable, "-B", "-c", script, str(source), str(tmp_path)],
-                            capture_output=True, timeout=30)
-    assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
-    assert not list(tmp_path.iterdir())
-
 
 def test_directory_check_cache_does_not_hide_a_redirect_on_next_pass(transaction):
     import os

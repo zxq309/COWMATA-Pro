@@ -1,8 +1,10 @@
-# COWMATA Annotator 3.6.2
+# COWMATA Annotator 3.7.0
 
-奶牛多视角录像与连续九轴数据的归类、下载、同步标注和复核工具。Windows 安装包与便携包包含 Python、Qt、VLC、FFmpeg 和离线 OCR 模型。
+奶牛多视角录像与连续九轴数据的归类、下载、同步标注和复核工具。Windows 便携文件夹包含 Python、Qt、VLC、FFmpeg 和离线 OCR 模型。
 
-[安装包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.2/COWMATA-Annotator-3.6.2-Setup.exe) · [便携包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.2/COWMATA-Annotator-3.6.2-Portable.zip) · [源码包](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.6.2/COWMATA-Annotator-3.6.2-Source.zip) · [发布说明](docs/release-362.md) · [English](README.md)
+本版提供源码 ZIP、已解压便携文件夹与安装包。[3.7 使用说明](docs/release-370.md) · [操作指南](docs/operator-guide-370.html)。
+
+新增五类数据集构建、按时间戳保留版本、Motion/PPG 原始数据与标签配对，以及既有标签原位复核修改。后台归类限制解码/OCR 资源并合并界面刷新，减少 CPU、内存和界面卡顿。
 
 - **工具 → 数据归类**：单窗口支持 JSON 与视频一起归类，或已有 JSON 补充视频。已归类且文件身份未变化的材料直接复用，不重复识别、哈希或复制；目标缺失时补齐。
 - **暂停与继续**：保留原任务和已验证的复制断点。实时 CSV 记录每份文件的状态、耗时与复用情况，可随时打开。
@@ -10,7 +12,7 @@
 - **工具 → 端侧数据下载**：手动、自动或定时下载 Motion/PPG JSON，支持失败重试、迟上传补下、多牧场配置和可选 SSH 隧道。[下载说明](docs/edge-download.md)
 - **纯净发行**：不携带本机密钥、个人设置、下载记录、日志、缓存或现场试验数据。标注、历史复核、证据导出及数据集构建能力保留。
 
-完整解压便携 ZIP 后运行 `COWMATA.exe`，或运行安装包选择一个新的软件目录。采集数据请放在软件目录之外。
+在已解压便携文件夹内运行 `COWMATA.exe`。采集数据请放在软件目录之外。
 
 自动、定时下载需要程序保持运行；3090 原始库只提供 Motion，PPG 需要提供脉搏数据的服务端。真实远端服务未连接验收，协议与控制流程使用本地 HTTP 模拟服务验证。
 

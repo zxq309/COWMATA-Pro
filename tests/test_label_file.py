@@ -71,6 +71,7 @@ def test_one_file_flat_roundtrip_and_no_source_writes(source, tmp_path):
     output = tmp_path / "anywhere" / "label.json"
     save_label_file(output, document(source))
     loaded = load_history(output)
+    work.upgrade_labels()
     assert loaded.work.to_dict() == work.to_dict()
     assert loaded.motion.sample_count == motion.sample_count
     assert loaded.timeline.locate("A", 10340)[1] == 340
@@ -92,6 +93,7 @@ def test_full_export_contains_exact_original_and_opens_without_project(source, t
     assert result.root is None
     np.testing.assert_array_equal(result.motion.times_ms, motion.times_ms)
     np.testing.assert_array_equal(result.motion.channels["ax"], motion.channels["ax"])
+    work.upgrade_labels()
     assert result.work.to_dict() == work.to_dict()
     assert not result.timeline.intervals  # video is never embedded
 

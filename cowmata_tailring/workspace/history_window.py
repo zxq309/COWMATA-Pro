@@ -1,4 +1,4 @@
-"""Independent read-only history viewer. Never imports over active human work."""
+"""Independent history review and in-place annotation editor. Never imports over active human work."""
 from __future__ import annotations
 
 import sqlite3
@@ -8,16 +8,21 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSlider,
     QSplitter,
@@ -36,14 +41,18 @@ from .evidence_ui import EvidenceGallery
 from .label_file import load_history, read_label_file
 from .materials import GLASS_STYLE, FrostedCanvas, apply_mica
 from .presentation import PresentationVideoBoard
-from .signal_panel import SignalPanel, reference_text
+from .signal_panel import SignalPanel, TimePositionSpinBox, reference_text
 from .theme import STYLE
 
 
 class HistoryWindow(QMainWindow):
+    saved = Signal(object)
     def __init__(self, path, root=None, *, board_factory=PresentationVideoBoard, reusable=False):
         super().__init__()
-        self.path = Path(path)
+        from .review_store import resolve_label_path
+        self.path = resolve_label_path(path)
+        self.review_dirty = False
+        self.before_save = lambda: None
         self.data = None
         self.closed = False
         self.disposed = False
@@ -53,13 +62,13 @@ class HistoryWindow(QMainWindow):
         self.future = None
         self.source_leases = []
         self.cache = tempfile.TemporaryDirectory(prefix="cowmata-history-")
-        self.setWindowTitle("COWMATA · 历史标注回看（只读） · " + self.path.name)
+        self.setWindowTitle("COWMATA · 复核与修改 · " + self.path.name)
         self.resize(1400, 900)
         self.setStyleSheet(STYLE + GLASS_STYLE)
         canvas = FrostedCanvas()
         outer = QVBoxLayout(canvas)
         bar = QHBoxLayout()
-        title = QLabel("历史回看 · 原始标注不会被改写")
+        title = QLabel("复核已有标签 · 修改写回原文件")
         title.setObjectName("sectionTitle")
         bar.addWidget(title, 1)
         self.relink = QPushButton("重新选择数据工程…")
@@ -81,6 +90,17 @@ class HistoryWindow(QMainWindow):
         self.policy.currentIndexChanged.connect(lambda i: self.board.set_policy("balanced" if i else "full"))
         bar.addWidget(self.policy)
         outer.addLayout(bar)
+        editing = QHBoxLayout()
+        self.edit_button = QPushButton('修改所选标签')
+        self.edit_button.clicked.connect(self.edit_existing)
+        self.save_button = QPushButton('保存修改到原文件')
+        self.save_button.clicked.connect(self.save_changes)
+        self.save_button.setEnabled(False)
+        editing.addWidget(self.edit_button)
+        editing.addWidget(self.save_button)
+        editing.addWidget(QLabel('复核只修改现有记录，不创建新标签；保存前保留修订备份。'), 1)
+        outer.addLayout(editing)
+        QShortcut(QKeySequence('Ctrl+S'), self, activated=self.save_changes)
         self.banner = QLabel("")
         self.banner.setWordWrap(True)
         outer.addWidget(self.banner)
@@ -112,7 +132,7 @@ class HistoryWindow(QMainWindow):
         panes.addWidget(self.media_pages)
         self.plot = SignalPanel()
         self.plot.wave.event_editable = False
-        self.plot.track.setToolTip("只读回看：单击标签定位，不能拖动修改历史边界")
+        self.plot.track.setToolTip("单击标签定位；点击修改所选标签调整类型和边界")
         self.plot.seekRequested.connect(self.seek)
         self.plot.eventSelected.connect(self.review_event)
         panes.addWidget(self.plot)
@@ -146,6 +166,8 @@ class HistoryWindow(QMainWindow):
         apply_mica(int(self.winId()))
 
     def begin_load(self, root):
+        if not self.confirm_pending():
+            return False
         self.closed = False
         self.cancellation = threading.Event()
         self.source_check.start()
@@ -165,14 +187,16 @@ class HistoryWindow(QMainWindow):
 
         def guarded_load():
             document=read_label_file(path)
+            from .review_store import local_source_root
+            local_root=local_source_root(path, document)
             hint = document["source"].get("project_root_hint", "")
-            selected = root or (hint if hint and Path(hint).is_dir() else None)
+            selected = local_root or root or (hint if hint and Path(hint).is_dir() else None)
             selected_roots=[selected] if selected else []
             archive=document.get('video',{}).get('archive',{}).get('archive_root_hint')
             if root is None and archive and Path(archive).is_dir():
                 selected_roots.append(archive)
             selected_roots.extend(r['external_source'] for r in document.get('video',{}).get('rows',[]) if r.get('external_source'))
-            lease = DatasetLease(selected_roots) if selected_roots else None
+            lease = DatasetLease(selected_roots, kind="review") if selected_roots else None
             if lease:
                 self.source_leases.append(lease)
             try:
@@ -182,6 +206,7 @@ class HistoryWindow(QMainWindow):
                     lease.close()
                 raise
         self.future = self.loader.submit(guarded_load)
+        return True
 
     def choose_root(self):
         root = QFileDialog.getExistingDirectory(self, "选择包含原始九轴与录像的数据工程")
@@ -216,8 +241,14 @@ class HistoryWindow(QMainWindow):
 
     def apply_data(self, data):
         self.data = data
+        self.loaded_sha = data.document.get('_review_sha256')
+        self.review_dirty = False
+        self.edit_button.setEnabled(bool(data.work.project.events or data.work.drafts))
+        self.save_button.setEnabled(False)
+        self.events.clear()
+        self.cameras.clear()
         self.plot.set_clock(data.work.clock)
-        self.banner.setText("；".join(data.warnings) or "只读回看：标签位置采用原始九轴时间，录像使用已保存的校准版本。")
+        self.banner.setText("；".join(data.warnings) or "标签位置采用原始信号时间；修改后可保存到原标签文件。")
         if data.motion:
             self.plot.set_data([PlotSeries(**s) for s in data.motion.plot_series()], data.motion.duration_ms)
             self.plot.set_view(*self.bounds())
@@ -368,7 +399,101 @@ class HistoryWindow(QMainWindow):
             self.board.play(False)
             self.board.seek(draft["reference_start"])
 
+    def edit_existing(self):
+        item = self.events.currentItem()
+        if self.data is None or item is None:
+            self.statusBar().showMessage('请先选择一条已有标签')
+            return
+        kind, identifier = item.data(Qt.ItemDataRole.UserRole)
+        work = self.data.work
+        record = next((e for e in work.project.events if e.id == identifier), None) if kind == 'event' else next((d for d in work.drafts if d['id'] == identifier), None)
+        if record is None:
+            return
+        if kind == 'draft' and not work.clock.anchors:
+            self.statusBar().showMessage('视频草稿缺少时间映射，请先连接原工程核对同步')
+            return
+        index = record.li if kind == 'event' else record['label_index']
+        start = record.t0 if kind == 'event' else record['reference_start']
+        end = record.t1 if kind == 'event' else record['reference_end']
+        if kind == 'draft':
+            start = work.clock.inverse(start)
+            end = work.clock.inverse(end) if end is not None else None
+        dialog = QDialog(self)
+        dialog.setWindowTitle('修改已有标签')
+        form = QFormLayout(dialog)
+        labels = QComboBox()
+        for label in work.project.labels:
+            labels.addItem(label.name)
+        labels.setCurrentIndex(index)
+        form.addRow('标签', labels)
+        fields = []
+        for title, value in [('开始（秒）', start), ('结束（秒）', end if end is not None else start)]:
+            field = TimePositionSpinBox()
+            field.set_clock(work.clock)
+            field.setDecimals(3)
+            field.setRange(0, max(self.bounds()[1]/1000, float(value)/1000, 1))
+            field.setValue(float(value)/1000)
+            form.addRow(title, field)
+            fields.append(field)
+        note = QLineEdit(record.note if kind == 'event' else record.get('note',''))
+        form.addRow('备注', note)
+        def label_changed():
+            fields[1].setEnabled(work.project.labels[labels.currentIndex()].type != 'point')
+        labels.currentIndexChanged.connect(label_changed)
+        label_changed()
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        form.addRow(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        new_start = fields[0].value()*1000
+        new_end = fields[1].value()*1000 if fields[1].isEnabled() else None
+        if new_end is not None and new_end < new_start:
+            QMessageBox.warning(self, '无法修改', '结束时间不能早于开始时间')
+            return
+        work.checkpoint()
+        if kind == 'event':
+            record.li, record.t0, record.t1, record.note = labels.currentIndex(), new_start, new_end, note.text()
+            record.extras['confirmation'] = 'needs_review'
+        else:
+            record.update(label_index=labels.currentIndex(), label_code=work.project.labels[labels.currentIndex()].code, reference_start=work.clock.map(new_start), reference_end=work.clock.map(new_end) if new_end is not None else None, note=note.text(), confirmation='needs_review')
+        self.plot.set_events([label.to_dict() for label in work.project.labels], [e.to_dict() for e in work.project.events])
+        item.setText(work.project.labels[labels.currentIndex()].name + f' · {new_start/1000:.3f} s' + (' · 点事件' if new_end is None else f' – {new_end/1000:.3f} s'))
+        self.review_dirty = True
+        self.save_button.setEnabled(True)
+        self.statusBar().showMessage('已修改当前记录；点击保存修改到原文件')
+
+    def save_changes(self):
+        if not self.review_dirty or self.data is None:
+            return True
+        from .review_store import save_review
+        try:
+            self.before_save()
+            self.loaded_sha = save_review(self.path, self.data.work, expected_sha=self.loaded_sha)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, '无法保存复核', str(exc))
+            return False
+        self.review_dirty = False
+        self.save_button.setEnabled(False)
+        self.saved.emit(self.path)
+        self.statusBar().showMessage('修改已写回原标签文件，原始信号未改动')
+        return True
+
+    def confirm_pending(self):
+        if not self.review_dirty:
+            return True
+        answer = QMessageBox.question(self, '保存复核修改', '是否把复核修改保存到原标签文件？',
+            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
+        if answer == QMessageBox.StandardButton.Cancel or answer == QMessageBox.StandardButton.Save and not self.save_changes():
+            return False
+        self.review_dirty = False
+        return True
+
     def closeEvent(self, event):
+        if not self.confirm_pending():
+            event.ignore()
+            return
         self.closed = True
         self.cancellation.set()
         if self.reusable:

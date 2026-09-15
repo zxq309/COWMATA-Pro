@@ -71,7 +71,7 @@ def test_label_code_is_language_independent() -> None:
     i18n.set_language("en")
     codes_en = [label["code"] for label in DEFAULT_LABELS]
     assert codes_zh == codes_en
-    assert "STANDING" in codes_zh
+    assert "STANDING_UP" in codes_zh
 
 
 def test_default_labels_all_carry_display_pair() -> None:
@@ -91,13 +91,14 @@ def test_manual_calving_assistance_label_contract() -> None:
     labels = {label["code"]: label for label in DEFAULT_LABELS}
     assistance = labels["MANUAL_CALVING_ASSISTANCE"]
 
-    assert assistance["name"] == "人工辅助产犊"
-    assert assistance["en"] == "manual calving assistance"
-    assert assistance["key"] == "D"
+    assert assistance["name"] == "助产"
+    assert assistance["en"] == "calving assistance"
+    assert assistance["key"] == "F"
     assert assistance["type"] == "interval"
     assert assistance["layer"] == "calving_process"
     assert assistance["overlap"] is True
     assert assistance["specialty"] is True
     assert assistance["trainable"] is True
-    assert DEFAULT_LABELS[16]["code"] == "SYNC_ANCHOR"
-    assert DEFAULT_LABELS[17]["code"] == "MOUNTING"
+    assert "SYNC_ANCHOR" not in labels
+    assert labels["MOUNTING"]["key"] == "E"
+    assert len(DEFAULT_LABELS) == 15
