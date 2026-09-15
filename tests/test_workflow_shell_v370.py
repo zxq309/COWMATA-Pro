@@ -22,7 +22,7 @@ def test_all_operator_workflows_remain_reachable():
     w = MainWindow()
     try:
         menus = {a.text().split("(")[0]: a.menu() for a in w.menuBar().actions()}
-        assert list(menus) == ["文件", "数据准备", "标注与复核", "数据集构建", "健康与繁殖", "帮助"]
+        assert list(menus) == ["文件", "数据准备", "标注与复核", "数据集构建", "行为识别", "健康与繁殖", "帮助"]
         texts = {a.text() for a in actions(w.menuBar())}
         assert {
             "完整成果…",

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +22,17 @@ class PPGData:
     acc_scale: int = 4096
     coordinate_offset_ms: float = 0.0
     first_frame_elapsed_ms: float = 0.0
+    update_time_ms: int | None = None
+    warnings: list = field(default_factory=list)
+    frame_bytes: int = 0
+
+    @property
+    def uid(self):
+        return self.create_time_ms
+
+    def quality_report(self):
+        return dict(kind='ppg', sample_count=self.sample_count, duration_ms=self.duration_ms,
+                    sample_rate_hz=self.sample_rate_hz, warnings=self.warnings, gap_count=0)
 
     @property
     def duration_ms(self):
@@ -75,8 +86,8 @@ def parse_ppg_object(data, source_path):
     acc_count=len(acc)//6
     channels={}
     counts=[]
-    for field,key,name in [('data','ppg_primary','PPG 主通道'),('ir_data','ppg_ir','PPG 红外'),('red_data','ppg_red','PPG 红光')]:
-        raw=decode(field)
+    for channel_field,key,name in [('data','ppg_primary','PPG 主通道'),('ir_data','ppg_ir','PPG 红外'),('red_data','ppg_red','PPG 红光')]:
+        raw=decode(channel_field)
         if not raw:
             continue
         width=0

@@ -82,7 +82,7 @@ def test_invalid_model_never_replaces_active_version(tmp_path, fault):
     assert active_suite(home)["version"] == "test-1"
 
 
-def test_import_for_comparison_keeps_bundled_version_active(tmp_path, monkeypatch):
+def test_import_for_comparison_requires_explicit_activation(tmp_path, monkeypatch):
     from cowmata_tailring.algorithms import registry
     app = tmp_path / "application"
     bundled = app / "assets/algorithms"
@@ -91,6 +91,6 @@ def test_import_for_comparison_keeps_bundled_version_active(tmp_path, monkeypatc
     monkeypatch.setattr(registry, "APP_ROOT", app)
     home = tmp_path / "home"
     registry.install_suite(suite(tmp_path / "new", "new-2"), home, make_active=False)
-    assert registry.active_suite(home)["version"] == "bundled-1"
+    assert registry.active_suite(home) is None
     registry.activate(home, "new-2")
     assert registry.active_suite(home)["version"] == "new-2"

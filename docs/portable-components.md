@@ -30,12 +30,4 @@ only the three fixed upstream assets and checks their official hashes; the user
 launcher never runs that script. CPU detection is capped at a 1280-pixel long side
 so a narrow timestamp crop is not inflated to a huge detection image.
 
-The a5 event pack additionally carries a separate official CPython 3.8.10 x64
-embeddable runtime for the user's scikit-learn 0.24.1 serialized models. Its
-archive is from https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip
-with SHA-256 `abbe314e9b41603dde0a823b76f5bbbe17b3de3e5ac4ef06b759da5466711271`.
-Pinned worker dependencies are in requirements-events-20260906.txt. It is an
-offline, CPU-limited local worker, not the GUI runtime or an arbitrary-code
-sandbox; Python 3.8 is end-of-life. No changes to the user's system environment
-are needed. User-supplied reviewed event sources/models retain exact content
-hashes in assets/event_models/20260906/pack.json; no training dataset is bundled.
+3.9 removes the historical Python 3.8 event runtime and all trained behavior, calving decision, and temperature scoring weights from the distribution. The private Python 3.13 runtime includes scikit-learn and XGBoost 3.4.1; users train or manually import external numeric models. Generic OCR resources remain runtime components. Historical event runtime details are archived in earlier releases.

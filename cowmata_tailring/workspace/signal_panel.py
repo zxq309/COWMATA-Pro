@@ -421,6 +421,12 @@ class SignalPanel(QWidget):
 
     def set_data(self, *args, **kwargs):
         self.wave.set_data(*args, **kwargs)
+        series = args[0] if args else kwargs.get("series", [])
+        ppg = any(s.key.startswith("ppg_") for s in series)
+        if ppg:
+            self.group.setCurrentIndex(5)
+        elif self.group.currentIndex() == 5:
+            self.group.setCurrentIndex(0)
         self.track.refresh()
 
     def set_clock(self, clock):

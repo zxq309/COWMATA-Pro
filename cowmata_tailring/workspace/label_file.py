@@ -211,7 +211,7 @@ def _history_index(root):
         metadata = row.get('metadata') or {}
         archive = metadata.get('archive_time') or {}
         start, duration = archive.get('start_ms'), metadata.get('duration_ms')
-        if row.get('kind') == 'video' and not metadata.get('intervals') and isinstance(start, (int, float)) and isinstance(duration, (int, float)) and duration > 0 and math.isfinite(start + duration):
+        if row.get('kind') == 'video' and not metadata.get('intervals') and isinstance(start, int | float) and isinstance(duration, int | float) and duration > 0 and math.isfinite(start + duration):
             metadata = copy.deepcopy(metadata)
             metadata['intervals'] = [dict(wall_start=start, wall_end=start+duration,
                 media_start=0, media_end=duration, verified=False,

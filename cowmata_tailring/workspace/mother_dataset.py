@@ -104,7 +104,7 @@ def export_dataset(source, target, *, split_map=None, views=True, progress=lambd
     target = Path(target).resolve()
     if target.exists():
         raise ValueError('数据集目标已存在；请使用新批次目录，避免覆盖旧训练集')
-    source_roots = _source_scopes(source if isinstance(source, (list,tuple)) else [source])
+    source_roots = _source_scopes(source if isinstance(source, list | tuple) else [source])
     if any(p == target or p in target.parents for p in source_roots):
         raise ValueError('数据集不能导出到标注来源内部')
     target.mkdir(parents=True)

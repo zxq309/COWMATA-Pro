@@ -48,7 +48,6 @@ from cowmata_tailring.annotation.core import (
     record_identity_fields,
     save_project,
 )
-from cowmata_tailring.annotation.data import load_motion_json
 from cowmata_tailring.ui.interactive_plot import InteractiveSignalPlotWidget
 from cowmata_tailring.ui.widgets import PlotSeries
 
@@ -66,6 +65,7 @@ from .demand import (
 )
 from .dialogs import MappingDialog, SourceTimeDialog
 from .playback import VideoBoard
+from .sensor_records import load_sensor_json as load_motion_json
 from .signal_panel import TimePositionSpinBox, reference_text
 from .storage import SnapshotWriter, atomic_json, read_json, unique_batch
 from .work import SessionWork
@@ -474,7 +474,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
         if dialog.exec()==QDialog.DialogCode.Accepted:
             selected=dialog.selection()
             settings.setValue('workspace/last_farm',selected['farm'])
-            self.open_project(selected['root'],day=selected['day'])
+            preferred = None
+            if selected.get('modality') == 'PPG':
+                preferred = next((Path(selected['root'])/'PPG'/selected['day']).rglob('*.json'), None)
+            self.open_project(selected['root'],day=selected['day'],preferred_json=preferred)
 
     def choose_record(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择任意原始九轴 JSON", str(self.catalog.root) if self.catalog else "", "JSON (*.json)")
@@ -1733,7 +1736,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             "covered": "当前参考时刻有录像覆盖；确认真值仍需核对牛号、同步和画面。",
             "other_views": "当前所选视角没有覆盖，但其他视角有录像：",
             "indexing": "录像仍在索引或目录核对中，暂不能判定后续没有录像。",
-            "no_videos": "当前工程没有可用录像；九轴仍可浏览，但不能确认录像真值。",
+            "no_videos": "当前工程没有可用录像；信号仍可浏览，但不能确认录像真值。",
             "unresolved_video": "仍有录像时间待核验或文件异常，暂不能判定后续没有录像。",
             "alignment_unknown": "当前未找到候选录像，但九轴同步尚未确认；请先核对对应点，不能据此跳过后续数据。",
             "gap": "当前时刻处于录像缺口，后面仍有录像；下一覆盖：",

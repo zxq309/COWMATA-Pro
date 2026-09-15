@@ -30,3 +30,13 @@ Historical research materials retained from cowmata, cowmata-tailring and
 cowmata-risk keep their original notices and proprietary terms. They are not
 relicensed under the annotation application's MIT License. See
 docs/project/repository-consolidation.md for provenance and component locations.
+
+Edge download 3.8.4 incorporates the user-supplied COWMATA standalone downloader
+and the physical-interface SSH bridge from COWMATA Ledger 1.1.0.
+Bundled Ledger SSH transport is copied unchanged; its component notices are in
+vendor/ledger-ssh/licenses. Public known_hosts data accompanies the client;
+private keys and user CSV data are not distributed.
+
+The clean 3.9 portable runtime includes XGBoost 3.4.1 under Apache-2.0.
+Its upstream license is retained in runtime/Lib/site-packages/xgboost-3.4.1.dist-info/licenses/.
+No trained behavior or calving decision models are bundled.

@@ -101,10 +101,14 @@ def is_product_installation(path):
     """A drive-root application folder is valid; a bare drive is never valid."""
     path = Path(path)
     try:
-        identity = (path/'COWMATA.install-id').read_text(encoding='utf-8').strip()
         data = json.loads((path/'package-manifest.json').read_text(encoding='utf-8'))
-        return (identity.startswith('COWMATA-') and version_key(identity.removeprefix('COWMATA-')) == version_key(data['version'])
-                and any(row.get('path') == 'COWMATA.exe' for row in data['files']))
+        version_key(data['version'])
+        identity_path = path/'COWMATA.install-id'
+        if identity_path.is_file():
+            identity = identity_path.read_text(encoding='utf-8').strip()
+            return identity.startswith('COWMATA-') and version_key(identity.removeprefix('COWMATA-')) == version_key(data['version']) and any(row.get('path') == 'COWMATA.exe' for row in data['files'])
+        required = {'COWMATA.exe','runtime/python.exe','runtime/pythonw.exe','cowmata_tailring/__init__.py'}
+        return required.issubset({row.get('path') for row in data['files']}) and all((path/p).is_file() for p in required)
     except (OSError, ValueError, KeyError, TypeError):
         return False
 
@@ -253,6 +257,12 @@ def start_updated_app(root, version):
 
 def install(job, *, runner=run, registration=registered, unregister=remove_registration, restart=True):
     with installation_lock(safe_path(job["root"])):
+        if job.get("update", {}).get("kind") == "portable_zip":
+            try:
+                from .portable_update import install_locked
+            except ImportError:
+                from portable_update import install_locked
+            return install_locked(job, runner=runner, restart=restart)
         return _install_locked(job, runner=runner, registration=registration,
                                unregister=unregister, restart=restart)
 
@@ -315,7 +325,7 @@ def _install_locked(job, *, runner, registration, unregister, restart):
                 state.update(verified_files=current, total_files=total, current_file=path)
                 write_json(journal, state)
                 last_progress[0] = now
-        inventory(stage, verify=True, manifest_sha=update["package_sha256"], progress=progress)
+        inventory(stage, verify=True, manifest_sha=update.get("package_sha256") if update.get("kind") == "installer_exe" else update["package_sha256"], progress=progress)
         if (stage / "COWMATA.install-id").read_text(encoding="utf-8") != "COWMATA-" + version:
             raise ValueError("Staged installer version does not match")
         phase("import_testing")

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -39,9 +40,21 @@ def tr(zh, en):
 
 def prepare_job(root, setup, update, cache):
     root = worker.safe_path(root)
-    old_version = (root / "COWMATA.install-id").read_text(encoding="utf-8").removeprefix("COWMATA-")
-    if not worker.registered(root, old_version):
-        raise ValueError("此副本不是注册安装版，请手动运行安装包；不会覆盖源码或便携目录。")
+    portable = update.get("kind") == "portable_zip"
+    if portable:
+        if not worker.is_product_installation(root):
+            raise ValueError("请选择带完整文件清单的 COWMATA 程序目录")
+        old_version = __import__("json").loads((root/"package-manifest.json").read_text(encoding="utf-8"))["version"]
+        from .portable_update import zip_plan
+        if core.version_key(update["version"]) <= core.version_key(old_version):
+            raise ValueError("所选版本必须高于当前软件版本")
+        if Path(setup).resolve().is_relative_to(root):
+            raise ValueError("请把更新 ZIP 放在目标软件目录之外，再选择更新")
+        zip_plan(setup, update["version"])
+    else:
+        old_version = (root / "COWMATA.install-id").read_text(encoding="utf-8").removeprefix("COWMATA-")
+        if not worker.registered(root, old_version):
+            raise ValueError("此副本请选择完整便携 ZIP 更新")
     worker.inventory(root)
     job_dir = worker.safe_path(cache / ("job-" + uuid.uuid4().hex))
     job_dir.mkdir()
@@ -49,18 +62,21 @@ def prepare_job(root, setup, update, cache):
     # system Python. It remains outside the tree that will be renamed.
     runtime = job_dir / "runtime"
     runtime.mkdir()
-    for path in (root / "runtime").iterdir():
+    runtime_source = Path(__file__).resolve().parents[2] / "runtime"
+    if not runtime_source.is_dir():
+        runtime_source = root / "runtime"
+    for path in runtime_source.iterdir():
         if path.is_file() and path.suffix in {".exe", ".dll", ".zip", ".pyd"}:
             shutil.copy2(path, runtime / path.name)
     zips = list(runtime.glob("python3*.zip"))
     if len(zips) != 1:
         raise ValueError("Private updater runtime is incomplete")
     (runtime / (zips[0].stem + "._pth")).write_text(zips[0].name + "\n.\n..\n", encoding="utf-8")
-    for name in ("update_core.py", "update_worker.py"):
-        shutil.copy2(root / "cowmata_tailring/app" / name, job_dir / name)
-    shutil.copy2(root/'COWMATA.exe', job_dir/'COWMATA-Progress.exe')
+    for name in ("update_core.py", "update_worker.py", "portable_update.py"):
+        shutil.copy2(Path(__file__).with_name(name), job_dir / name)
+    shutil.copy2(Path(__file__).resolve().parents[2]/'COWMATA.exe', job_dir/'COWMATA-Progress.exe')
     job = {"root": str(root), "setup": str(setup), "update": update, "job_dir": str(job_dir),
-           "desktop": worker.desktop_enabled(root, old_version)}
+           "desktop": False if portable else worker.desktop_enabled(root, old_version)}
     worker.write_json(job_dir / "job.json", job)
     result = worker.run([runtime / "python.exe", "-I", "-B", job_dir / "update_worker.py", "--help"], timeout=15)
     if result.returncode:
@@ -74,6 +90,7 @@ class UpdateController(QObject):
     downloaded = Signal(object)
     progress = Signal(int, int)
     prepared = Signal(object)
+    local_ready = Signal(object)
 
     def __init__(self, window, *, automatic=True):
         super().__init__(window)
@@ -100,6 +117,7 @@ class UpdateController(QObject):
         self.downloaded.connect(self._download_result)
         self.progress.connect(self._progress)
         self.prepared.connect(self._prepare_result)
+        self.local_ready.connect(self._local_ready)
         self.timer = QTimer(self)
         self.timer.setInterval(30 * 60 * 1000)
         self.timer.timeout.connect(self.auto_check)
@@ -155,11 +173,17 @@ class UpdateController(QObject):
             self.settings.setValue('updates/last_auto_check', time.time())
             self.check()
 
+    def check_release(self, channel=None):
+        channel = channel or self.channel()
+        if (self.root / "COWMATA.install-id").is_file():
+            return core.check_update(__version__, channel, package_kind="installer")
+        return core.check_update(__version__, channel)
+
     def check(self):
         if self.busy:
             return
         self.status = tr("正在检查 GitHub 发布版本…", "Checking GitHub releases…")
-        self._task(lambda: core.check_update(__version__, self.channel()), self.found)
+        self._task(lambda: self.check_release(), self.found)
 
     def _found(self, update):
         self.busy = False
@@ -197,8 +221,8 @@ class UpdateController(QObject):
         self.notification = QMessageBox(self.window)
         self.notification.setWindowTitle(tr("COWMATA Pro™ 有新版本", "COWMATA Pro™ update available"))
         self.notification.setText(tr("发现新版本：", "New version: ") + update["version"] + tr(
-            "\n在“帮助 → 关于 → 版本与更新”查看最新版安装包与进度，可直接升级，无须逐个安装旧版本。不会强制关闭正在标注的工程。",
-            "\nOpen Help > About > Version and updates for the latest installer and progress. Upgrade directly without installing intermediate releases. Your annotation session stays open."))
+            "\n在“帮助 → 关于 → 版本与更新”查看新版下载与进度，可直接升级，无须逐个安装旧版本。不会强制关闭正在标注的工程。",
+            "\nOpen Help > About > Version and updates for the latest download and progress. Upgrade directly without installing intermediate releases. Your annotation session stays open."))
         self.notification.setIcon(QMessageBox.Icon.Information)
         details = self.notification.addButton(tr("查看更新", "View update"), QMessageBox.ButtonRole.ActionRole)
         details.clicked.connect(self.open_dialog)
@@ -215,6 +239,9 @@ class UpdateController(QObject):
     def start_download(self):
         if not self.update or self.busy:
             return
+        if self.update.get("source") == "local":
+            self.select_local_package()
+            return
         update = dict(self.update)
         channel = self.channel()
         self.setup = None
@@ -223,13 +250,13 @@ class UpdateController(QObject):
         directory = self.cache / "downloads" / update["sha256"]
 
         def download_latest():
-            latest = core.check_update(__version__, channel)
+            latest = self.check_release(channel)
             if not self.same_package(update, latest):
                 return channel, latest, None
             path = core.download(latest, directory, self.progress.emit, self.stop.is_set)
             if self.stop.is_set():
                 raise InterruptedError("Paused")
-            latest = core.check_update(__version__, channel)
+            latest = self.check_release(channel)
             return channel, latest, path if self.same_package(update, latest) else None
 
         self._task(download_latest, self.downloaded)
@@ -278,7 +305,7 @@ class UpdateController(QObject):
         self.status = tr("正在确认最新版并准备独立更新程序…", "Checking the latest release and preparing the independent updater…")
 
         def prepare_latest():
-            latest = core.check_update(__version__, channel)
+            latest = update if update.get("source") == "local" else self.check_release(channel)
             job = prepare_job(self.root, setup, latest, self.cache) if self.same_package(update, latest) else None
             return channel, latest, job
 
@@ -299,7 +326,7 @@ class UpdateController(QObject):
     def _prepared(self, job):
         self.busy = False
         self.pending_job = Path(job)
-        self.status = tr("等待所有窗口成功保存并关闭；未成功保存时不会安装。", "Waiting for every window to save and close. Failed saves prevent installation.")
+        self.status = tr("等待所有窗口成功保存并关闭；未成功保存时不会更新。", "Waiting for every window to save and close. Failed saves prevent installation.")
         self.render()
         if self.dialog:
             self.dialog.close()
@@ -354,7 +381,7 @@ class UpdateController(QObject):
         if self.busy or not self.update or self.pending_job:
             return
         answer = QMessageBox.question(self.window, tr("清除下载缓存", "Clear download"),
-            tr("仅删除此版本的安装包与未完成下载，不删除标注数据。", "Remove only this version's installer/partial download, never annotations."))
+            tr("仅删除此版本的更新包与未完成下载，不删除标注数据。", "Remove only this version's installer/partial download, never annotations."))
         if answer != QMessageBox.StandardButton.Yes:
             return
         directory = worker.safe_path(self.cache / "downloads" / self.update["sha256"])
@@ -364,6 +391,26 @@ class UpdateController(QObject):
         self.setup = None
         self.status = tr("已清除本版本下载缓存，可重新下载。", "Download cache cleared. Ready to retry.")
         self.render()
+
+    def select_local_package(self):
+        if self.busy:
+            return
+        name, _ = QFileDialog.getOpenFileName(self.window, "选择完整便携更新包（放在程序目录外）", "", "COWMATA Portable (*.zip)")
+        if not name:
+            return
+        def inspect():
+            from .portable_update import local_update
+            update = local_update(name)
+            if core.version_key(update["version"]) <= core.version_key(__version__):
+                raise ValueError("所选版本必须高于当前软件版本")
+            return update, name
+        self.status = "正在校验本地便携包…"
+        self._task(inspect, self.local_ready)
+
+    def _local_ready(self, result):
+        self.update, name = result
+        self.pending_job = None
+        self._downloaded(name)
 
     def open_dialog(self):
         if not self.dialog:
@@ -406,6 +453,9 @@ class UpdateController(QObject):
                 buttons.addWidget(button)
                 self.actions.append(button)
             box.addLayout(buttons)
+            self.local_button = QPushButton("选择本地便携 ZIP 更新…")
+            self.local_button.clicked.connect(self.select_local_package)
+            box.addWidget(self.local_button)
             release = QPushButton(tr("查看 GitHub 更新日志", "Release notes on GitHub"))
             release.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(core.PAGE + "/latest")))
             box.addWidget(release)
@@ -422,11 +472,12 @@ class UpdateController(QObject):
         if not self.dialog:
             return
         self.info.setText(self.status)
+        self.local_button.setEnabled(not self.busy)
         self.notes.setPlainText(self.update.get("notes", "") if self.update else tr(
-            "启动时检查最新版。网络异常或暂不更新时，可选择“进入软件”继续使用；进入工程后也可离线标注。"
-            "\n原位置升级仅支持安装版，便携版/源码副本可下载安装包后手动安装。",
-            "Startup checks for updates. Choose Open application to work offline when the network is unavailable or to update later."
-            "\nIn-place updates require an installed copy; source/portable copies support download for manual installation."))
+            "自动检查官方发布；API 限流时使用官方发布订阅和附件页。完整便携 ZIP 可直接原位置更新，也可选择本地 ZIP。"
+            "\n已有安装版通过 ZIP 更新后转为便携版，原位置及已有快捷方式保留。",
+            "Updates use official release pages if the API is limited. Complete portable ZIPs support in-place and local updates."
+            "\nZIP updates convert installed copies to portable copies and preserve the path and existing shortcuts."))
         enabled = [not self.busy, bool(self.update) and not self.busy,
                    self.busy, bool(self.update) and not self.busy and not self.pending_job,
                    bool(self.setup) and not self.busy]

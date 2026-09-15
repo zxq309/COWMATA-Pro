@@ -11,9 +11,8 @@ from sklearn.model_selection import GroupKFold, GroupShuffleSplit
 
 from cowmata_tailring.workspace.storage import atomic_json
 
-from . import EVENT_CODES, EVENT_TITLES, validation_unit
+from . import EVENT_CODES, EVENT_TITLES, canonical_event_code, validation_unit
 from .analysis import load_features, write_table
-from .features import FEATURE_VERSION
 from .metrics import evaluate_events
 from .models import export_forest, predict_forest, score_events
 
@@ -32,7 +31,7 @@ def training_rows(records, features, code):
         positive = np.zeros(len(t), dtype=bool)
         protected = np.zeros(len(t), dtype=bool)
         for event in record['events']:
-            if event['code'] != code:
+            if canonical_event_code(event['code']) != code:
                 continue
             start = event['start_ms']
             end = event.get('end_ms') or start
@@ -80,7 +79,7 @@ def _scores(model, median, feature):
 
 
 def _truth(record, feature, code, *, observable_only=False):
-    truth = [e for e in record['events'] if e['code'] == code]
+    truth = [dict(e, code=code) for e in record['events'] if canonical_event_code(e['code']) == code]
     if not observable_only:
         return truth
     t = feature['seconds']*1000
@@ -110,12 +109,15 @@ def _threshold(model, median, records, features, code):
     return best['threshold'], curves
 
 
-def train_suite(index, cache, output, *, progress=lambda *_: None, cancelled=lambda: False):
+def train_suite(index, cache, output, *, codes=None, modality='motion', progress=lambda *_: None, cancelled=lambda: False):
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     records, features, issues = [], [], []
-    original = [r for r in index['records'] if r['events']]
+    codes = tuple(codes or ('STANDING_UP','LYING_DOWN','STRAINING_BOUT'))
+    if not codes or any(code not in EVENT_CODES for code in codes):
+        raise ValueError('Unknown behavior algorithm')
+    original = [r for r in index['records'] if r['events'] and r.get('modality','motion') == modality]
     for i, record in enumerate(original):
         if cancelled():
             raise InterruptedError('Training cancelled')
@@ -132,7 +134,7 @@ def train_suite(index, cache, output, *, progress=lambda *_: None, cancelled=lam
     if not records:
         raise ValueError('No usable labeled records')
     metrics, fold_rows, prediction_rows, models = [], [], [], []
-    for code in EVENT_CODES:
+    for code in codes:
         selected = [i for i, r in enumerate(records) if code != 'STRAINING_BOUT' or r.get('identity_eligible', True)]
         rr, ff = [records[i] for i in selected], [features[i] for i in selected]
         groups = split_groups(rr, code)
@@ -179,20 +181,22 @@ def train_suite(index, cache, output, *, progress=lambda *_: None, cancelled=lam
             reason='未完整审核，未命中既有标签的候选不能直接算误报',
             threshold=float(np.median(thresholds)), score_is_probability=False)
         model, median, fit_stats = _fit(rr, ff, code)
+        summary['feature_importance'] = dict(zip(ff[0]['names'],[float(v) for v in model.feature_importances_]))
+        summary['fold_thresholds'] = thresholds
         payload = export_forest(model, ff[0]['names'], median)
         # Ensure the numeric-only deployment produces the same scores as training.
         check = ff[0]['X'][:200]
         assert np.allclose(predict_forest(payload, check), model.predict_proba(np.where(np.isfinite(check), check, median))[:, 1], atol=1e-6)
         payload.update(code=code, title=EVENT_TITLES[code], threshold=summary['threshold'],
-            feature_version=FEATURE_VERSION, training_version=TRAINING_VERSION,
+            feature_version=ff[0]['feature_version'], modality=modality, training_version=TRAINING_VERSION,
             dataset_fingerprint=index['fingerprint'], score_is_probability=False,
             background_policy='unreviewed_weak_background_weight_0.35', fit_stats=fit_stats)
         name=code.lower()+'.json'
         atomic_json(output/name, payload)
-        models.append(dict(code=code, title=EVENT_TITLES[code], file=name, threshold=payload['threshold']))
+        models.append(dict(code=code, title=EVENT_TITLES[code], file=name, modality=modality, threshold=payload['threshold']))
         metrics.append(summary)
         write_table(output/'事件识别评估.csv', metrics)
-        atomic_json(output/'评估报告.json', dict(models=metrics, issues=issues, elapsed_seconds=time.monotonic()-started))
+        atomic_json(output/'评估报告.json', dict(models=metrics, validation_records=fold_rows, settings=dict(n_estimators=64,max_depth=8,min_samples_leaf=5,seed=38,modality=modality,codes=codes), issues=issues, elapsed_seconds=time.monotonic()-started))
     write_table(output/'逐记录评估-实时.csv', fold_rows)
     write_table(output/'留出记录候选.csv', prediction_rows)
     write_table(output/'训练问题.csv', issues, ['path', 'reason'])
@@ -201,7 +205,7 @@ def train_suite(index, cache, output, *, progress=lambda *_: None, cancelled=lam
     import hashlib
     for model in models:
         model['sha256'] = hashlib.sha256((output/model['file']).read_bytes()).hexdigest()
-    manifest = dict(schema='cowmata-event-suite-1', version=output.name, feature_version=FEATURE_VERSION,
+    manifest = dict(schema='cowmata-event-suite-1', version=output.name, feature_version=features[0]['feature_version'], modality=modality,
         training_version=TRAINING_VERSION, dataset_fingerprint=index['fingerprint'], models=models,
         report='评估报告.json', complete=True, elapsed_seconds=time.monotonic()-started)
     atomic_json(output/'suite.json', manifest)

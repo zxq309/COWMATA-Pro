@@ -448,7 +448,7 @@ class OrganizationWindow(TaskWindow):
         )
         self.video_workers.valueChanged.connect(self.invalidate_plan)
         form.addRow("视频并行数", self.video_workers)
-        form.addRow("PPG", QLabel("已预留：按实际日期创建 PPG；当前不参与波形或标注计算"))
+        form.addRow("PPG", QLabel("按实际日期保存 PPG；配置完整时可显示波形、标注并导出训练数据"))
         self.allow_partial = QCheckBox("仅归档通过校验项，异常原件保留并列入报告")
         self.allow_partial.toggled.connect(self.partial_changed)
         form.addRow("异常处理", self.allow_partial)

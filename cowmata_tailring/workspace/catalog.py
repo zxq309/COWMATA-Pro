@@ -126,8 +126,8 @@ class Catalog:
         if day:
             from datetime import date
             date.fromisoformat(day)
-            if not (self.root/'Motion'/day).is_dir():
-                raise ValueError('所选日期没有九轴目录')
+            if not any((self.root/kind/day).is_dir() for kind in ('Motion','PPG')):
+                raise ValueError('所选日期没有九轴或 PPG 目录')
         self._extra_day_paths = set()
         # The full resource registry can contain large video packet indexes.
         # It is not needed to open a daily catalog or recover human work.
@@ -365,7 +365,7 @@ class Catalog:
                 kind = "imu" if suffix == ".json" else "video" if suffix in VIDEO_SUFFIXES else None
                 if kind is None or path.is_symlink():
                     continue
-                if "PPG" in Path(relative).parts or path.name == "资源索引.json":
+                if "Temp" in Path(relative).parts or path.name == "资源索引.json":
                     continue
                 try:
                     before = file_stamp(path)
@@ -429,7 +429,7 @@ class Catalog:
         return result
 
     def in_scope(self, relative):
-        return not self.day or relative.startswith(('Motion/'+self.day+'/', 'Video/'+self.day+'/')) or relative in self._extra_day_paths
+        return not self.day or relative.startswith(('Motion/'+self.day+'/', 'PPG/'+self.day+'/', 'Video/'+self.day+'/')) or relative in self._extra_day_paths
 
     def walk_scope(self,error):
         if not self.day:
@@ -437,7 +437,7 @@ class Catalog:
             return
         self._extra_day_paths=set()
         # Enumerate only the chosen day's two material subtrees.
-        for kind in ('Motion','Video'):
+        for kind in ('Motion','PPG','Video'):
             directory=self.root/kind/self.day
             if directory.is_dir():
                 yield from os.walk(directory,onerror=error,followlinks=False)
@@ -467,8 +467,8 @@ class Catalog:
     def rows(self, *, kind: str | None = None) -> list[dict]:
         where,parameters='',[]
         if self.day:
-            terms=['l.path LIKE ?','l.path LIKE ?']
-            parameters=['Motion/'+self.day+'/%','Video/'+self.day+'/%']
+            terms=['l.path LIKE ?','l.path LIKE ?','l.path LIKE ?']
+            parameters=['Motion/'+self.day+'/%','PPG/'+self.day+'/%','Video/'+self.day+'/%']
             if self._extra_day_paths:
                 terms.append('l.path IN ('+','.join('?' for _ in self._extra_day_paths)+')')
                 parameters.extend(sorted(self._extra_day_paths))

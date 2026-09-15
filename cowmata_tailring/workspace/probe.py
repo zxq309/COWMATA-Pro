@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from cowmata_tailring.annotation.data import UnsupportedRecordError, parse_motion_object
+from cowmata_tailring.annotation.data import UnsupportedRecordError
 from cowmata_tailring.media.ffmpeg_tools import find_ffmpeg, probe_media
 from cowmata_tailring.media.native_ps import SIGNATURE as NATIVE_SIGNATURE
 from cowmata_tailring.media.native_ps import native_hint, read_native_index
@@ -241,7 +241,8 @@ class SourceInspector:
                 obj = json.loads(path.read_text(encoding="utf-8-sig"))
                 if not isinstance(obj, dict):
                     raise UnsupportedRecordError("JSON 顶层必须是对象")
-                motion = parse_motion_object(obj, source_path=path.resolve())
+                from .sensor_records import parse_sensor_object
+                motion = parse_sensor_object(obj, path.resolve())
             except UnsupportedRecordError as exc:
                 return {"ignored": True, "reason": str(exc), "needs_review": False}
             self.last_motion = (path.resolve(), asset_id, motion)

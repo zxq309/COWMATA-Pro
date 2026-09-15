@@ -48,6 +48,9 @@ def load_features(record, cache):
     if hashlib.sha256(content).hexdigest() != record['asset_id'] or stamp(source) != before:
         raise ValueError('Original content identity changed: '+str(source))
     document = json.loads(content.decode('utf-8-sig'))
+    if 'imu' not in document:
+        from .ppg_features import extract
+        return extract(document, source)
     motion = parse_motion_object(document, source_path=source)
     acc = np.column_stack([motion.channels[k] for k in ('ax', 'ay', 'az')])/GRAVITY_MS2
     gyro = np.column_stack([motion.channels[k] for k in ('gx', 'gy', 'gz')])

@@ -1,4 +1,4 @@
-"""Archive original PPG JSON by acquisition time, without claiming waveform support."""
+"""Archive original PPG JSON and retain verified configured waveform timing."""
 import base64
 import json
 from pathlib import Path
@@ -26,7 +26,7 @@ def plan_ppg(path, root, cache, transfer, cancelled, *, digest):
     if isinstance(payload, str):
         if not base64.b64decode(payload, validate=True):
             raise ValueError('PPG 数据为空')
-    elif not isinstance(payload, (list, dict)):
+    elif not isinstance(payload, list | dict):
         raise ValueError('PPG 数据格式无法识别')
     lo = _normalise_epoch_ms(obj.get('create_time'), 'create_time', required=True)
     device = str(obj.get('device') or obj.get('device_id') or '').strip()
@@ -38,14 +38,25 @@ def plan_ppg(path, root, cache, transfer, cancelled, *, digest):
     owner = naming.get('folder_name') if naming.get('status') == 'ready' else core.safe_name(device)
     row.update({k: v for k, v in naming.items() if k not in {'status', 'message'}})
     sha = digest(path, cache, cancelled)
+    metadata = {'modality':'PPG','archive_only':True,'duration_unknown':True}
+    hi = lo+1
+    try:
+        from .sensor_records import parse_ppg_object
+        signal = parse_ppg_object(obj,path)
+        hi = signal.epoch_at(signal.duration_ms)
+        metadata.update(archive_only=False,duration_unknown=False,duration_ms=signal.duration_ms,
+                        sample_rate_hz=signal.sample_rate_hz,samples=signal.sample_count,
+                        capture_timing=signal.capture_timing())
+    except (ValueError,TypeError,KeyError) as exc:
+        metadata['parser_issue'] = str(exc)
     day = day_at(lo)
     target = root / 'PPG' / day / owner / (start_stamp(lo, milliseconds=True) + '.json')
     if target.exists() and digest(target, cache, cancelled) != sha:
         target = target.with_name(target.stem + '__' + sha[:12] + '.json')
     row.update(status='existing' if target.exists() else 'ready', target=str(target),
                sha256=sha, owner=owner, batch=day, record_date=day, covered_dates=[day],
-               record_start_ms=lo, record_end_ms=lo+1, timezone_offset_minutes=480,
+               record_start_ms=lo, record_end_ms=hi, timezone_offset_minutes=480,
                time_basis='unix_epoch_ms', transfer='move' if transfer == 'move' and core.volume(path) == core.volume(root) else 'copy',
-               metadata={'modality': 'PPG', 'archive_only': True, 'duration_unknown': True},
+               metadata=metadata,
                message='按 PPG JSON 采集日期归类；原始数据保持不变')
     return row

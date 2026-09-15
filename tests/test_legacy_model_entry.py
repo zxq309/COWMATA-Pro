@@ -40,7 +40,7 @@ def legacy_window(monkeypatch, tmp_path):
     app.processEvents()
 
 
-def test_legacy_manual_window_can_load_mark_save_reload_without_torch(legacy_window, source, tmp_path):
+def test_legacy_manual_window_can_load_mark_save_reload_without_torch(legacy_window, source, tmp_path):  # noqa: F811 - imported pytest fixture
     window, errors = legacy_window
     window.open_json(str(source[1].source_path))
     assert window.data is not None and window.isVisible()
@@ -57,7 +57,7 @@ def test_legacy_manual_window_can_load_mark_save_reload_without_torch(legacy_win
 
 
 @pytest.mark.parametrize("action", ["run_model_prediction", "choose_prediction_model"])
-def test_missing_optional_runtime_explains_limitation_before_model_picker(legacy_window, source, monkeypatch, action):
+def test_missing_optional_runtime_explains_limitation_before_model_picker(legacy_window, source, monkeypatch, action):  # noqa: F811 - imported pytest fixture
     window, errors = legacy_window
     window.open_json(str(source[1].source_path))
     real_import = builtins.__import__

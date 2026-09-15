@@ -345,7 +345,7 @@ class DualAnchorPrecisionV2Mixin:
                 float(snapshot.get("data_ms", self.playhead_ms))
             )
             view = snapshot.get("view")
-            if isinstance(view, (tuple, list)) and len(view) == 2:
+            if isinstance(view, tuple | list) and len(view) == 2:
                 self.plot.set_view(float(view[0]), float(view[1]))
         if self.media is not None and self.video_path:
             self.media.set_time_ms(float(snapshot.get("video_ms", 0.0)))
@@ -374,7 +374,7 @@ class DualAnchorPrecisionV2Mixin:
         self._source_switch_mapping_committed = False
         self._source_switch_snapshot = {}
         self._set_playhead_visual(data_ms)
-        if isinstance(view, (tuple, list)) and len(view) == 2:
+        if isinstance(view, tuple | list) and len(view) == 2:
             self.plot.set_view(float(view[0]), float(view[1]))
         self._set_timelines_linked(bool(snapshot.get("linked", False)))
         self._update_alignment_status()
@@ -441,7 +441,7 @@ class DualAnchorPrecisionV2Mixin:
 
     def _restore_new_json_view(self, snapshot: dict[str, object]) -> None:
         view = snapshot.get("view")
-        if not isinstance(view, (tuple, list)) or len(view) != 2:
+        if not isinstance(view, tuple | list) or len(view) != 2:
             return
         old_duration = float(snapshot.get("data_duration_ms", 0.0) or 0.0)
         span = max(1.0, float(view[1]) - float(view[0]))
@@ -533,7 +533,7 @@ class DualAnchorPrecisionV2Mixin:
             self._begin_source_switch("video")
         requested = (
             os.path.abspath(os.fspath(path))
-            if isinstance(path, (str, os.PathLike))
+            if isinstance(path, str | os.PathLike)
             else None
         )
         try:
@@ -625,7 +625,7 @@ class DualAnchorPrecisionV2Mixin:
             self._update_alignment_status()
             self.set_playhead(switch_playhead, seek_video=True)
             if (
-                isinstance(preserved_view, (tuple, list))
+                isinstance(preserved_view, tuple | list)
                 and len(preserved_view) == 2
             ):
                 self.plot.set_view(

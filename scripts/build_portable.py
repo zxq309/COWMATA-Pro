@@ -25,9 +25,13 @@ def portable_ignore(directory, names):
     """Exclude only audited unused developer/browser tools, not media codecs.
 
     The app uses Qt Widgets/SVG, VLC and FFmpeg/ffprobe, never Qt WebEngine or
-    ffplay. Keep Qt platform/image/style plugins and both private runtimes.
+    ffplay. Keep Qt platform/image/style plugins and the private runtime.
     """
     path = Path(directory)
+    if path.name == "cowmata_temperature_aux":
+        return {"model.json", "__pycache__"}
+    if path.name == "assets":
+        return {"algorithms", "event_models"}
     ignored = {name for name in names if name == "__pycache__" or name.endswith((".pyc", ".pyi", ".pdb", ".lib", ".exp"))
                or name in {".pytest_cache", ".ruff_cache"}}
     if "site-packages" in path.parts and "PySide6" in path.parts:
@@ -53,7 +57,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
     parser.add_argument("--no-zip", action="store_true")
-    parser.add_argument("--components", type=Path, help="Existing matching offline package supplying private runtimes and model weights")
+    parser.add_argument("--components", type=Path, help="Existing matching offline package supplying the runtime, media tools and OCR resources")
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[1]
     components = args.components.resolve() if args.components else source
@@ -69,13 +73,14 @@ def main():
         raise SystemExit("Archive already exists; choose a fresh distribution name.")
     required = ["COWMATA.exe", "runtime/python.exe", "runtime/pythonw.exe", "runtime/Lib/site-packages/PySide6/QtWidgets.pyd",
                 "runtime/Lib/site-packages/rapidocr/__init__.py",
+                "runtime/Lib/site-packages/xgboost/__init__.py",
                 "assets/ocr/ppocrv6_medium/models.json",
                 "assets/ocr/ppocrv6_medium/PP-OCRv6_det_medium.onnx",
                 "assets/ocr/ppocrv6_medium/PP-OCRv6_rec_medium.onnx",
                 "assets/ocr/ppocrv6_medium/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
                 "runtime/Lib/site-packages/rapidocr_onnxruntime/models/ch_PP-OCRv4_rec_infer.onnx",
                 "vendor/vlc/libvlc.dll", "vendor/ffmpeg/bin/ffmpeg.exe", "vendor/ffmpeg/bin/ffprobe.exe"]
-    required += ["model_runtime_20260906/python.exe", "assets/event_models/20260906/pack.json"]
+
     for relative in required:
         if not input_path(relative).is_file():
             raise SystemExit("Missing portable input: " + relative)
@@ -86,23 +91,24 @@ def main():
             if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
                 raise SystemExit("Portable model hash mismatch: " + item["name"])
     destination.mkdir(parents=True, exist_ok=False)
-    for name in ("cowmata_tailring", "runtime", "model_runtime_20260906", "vendor", "assets"):
+    for name in ("cowmata_tailring", "runtime", "vendor", "assets"):
         # Exclude upstream test corpora and C++ build objects, not runtime DLLs
         # or our reviewed event algorithms. This also avoids NSIS/MAX_PATH
         # failures on deeply nested sklearn test fixtures and Qt object files.
-        shutil.copytree(components / name if name == "assets" else input_path(name), destination / name,
+        shutil.copytree(components / name if name in {"assets", "vendor"} else input_path(name), destination / name,
                         ignore=portable_ignore)
-        if name == "assets" and components != source:
+        if name in {"assets", "vendor"} and components != source:
             shutil.copytree(source / name, destination / name, dirs_exist_ok=True, ignore=portable_ignore)
-    for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
+    for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "修复旧版更新.cmd", "portable_start.py", "使用说明.txt", "README.md", "README.zh-CN.md", "CHANGELOG.md", "CITATION.cff", "CONTRIBUTING.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ('operator-guide-380.html', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'algorithm-validation-382.md', 'client-updates.md'):
+    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md'):
         shutil.copy2(source/'docs'/name, destination/'docs'/name)
     shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
+    shutil.copytree(source/'docs/images/guide390', destination/'docs/images/guide390')
     shutil.copytree(source/'docs/project', destination/'docs/project')
     (destination/'scripts').mkdir()
-    for name in ('portable_startup_self_test.py','portable_self_test.py','verify_label_history.py','verify_event_models.py','verify_candidate_ui.py','register_event_pack.py','verify_evidence_archive.py','train_mother_dataset.py'):
+    for name in ('recover_update.py','portable_startup_self_test.py','portable_self_test.py','verify_label_history.py','verify_event_models.py','verify_candidate_ui.py','register_event_pack.py','verify_evidence_archive.py','train_mother_dataset.py'):
         shutil.copy2(source/'scripts'/name, destination/'scripts'/name)
     inventory = []
     for path in sorted(destination.rglob("*")):

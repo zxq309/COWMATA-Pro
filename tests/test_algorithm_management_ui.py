@@ -17,12 +17,21 @@ def pump_until(predicate):
     assert predicate()
 
 
-def test_management_loads_bundled_metrics_and_can_switch_versions(tmp_path, monkeypatch):
+def test_management_loads_manually_imported_models_and_can_switch_versions(tmp_path, monkeypatch):
     monkeypatch.setenv("COWMATA_ALGORITHM_HOME", str(tmp_path))
+    from test_algorithm_registry import suite
+
+    from cowmata_tailring.algorithms.registry import install_suite
+    source=suite(tmp_path / "source", "manual-test-1")
+    import json
+
+    from cowmata_tailring.algorithms import EVENT_CODES
+    (source/"评估报告.json").write_text(json.dumps(dict(models=[dict(code=code,validation_unit="record") for code in EVENT_CODES])),encoding="utf-8")
+    install_suite(source,tmp_path)
     owner = QWidget()
     window = AlgorithmWorkbench(owner)
-    assert window.metrics.rowCount() >= 3
-    assert "events-20260915-01" in window.active.text()
+    assert window.metrics.rowCount() == 6
+    assert "manual-test-1" in window.active.text()
     window.use_version()
     assert (tmp_path/"active.json").is_file()
     assert window.metrics.item(0, 7).text() == "—"

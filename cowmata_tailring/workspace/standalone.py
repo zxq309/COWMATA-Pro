@@ -24,9 +24,8 @@ def source_context(raw):
             except ValueError:
                 continue
             return parent.parent.parent, parent.name
-    from cowmata_tailring.annotation.data import load_motion_json
-
     from .resource_layout import day_at
+    from .sensor_records import load_sensor_json as load_motion_json
 
     return raw.parent, day_at(load_motion_json(raw).epoch_at(0))
 

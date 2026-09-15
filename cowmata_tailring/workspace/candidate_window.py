@@ -40,7 +40,7 @@ class CandidateWindow(TaskWindow):
         self.resize(700, 520)
         layout = QVBoxLayout(self)
         try:
-            self.packs = available_packs()
+            self.packs = self.compatible_packs()
         except (OSError, ValueError, KeyError):
             self.packs = []
         controls = QHBoxLayout()
@@ -50,7 +50,7 @@ class CandidateWindow(TaskWindow):
         controls.addWidget(self.versions)
         self.models = QComboBox()
         controls.addWidget(self.models, 1)
-        self.start_button = QPushButton("扫描当前完整九轴")
+        self.start_button = QPushButton("扫描当前完整记录")
         self.start_button.clicked.connect(self.start)
         controls.addWidget(self.start_button)
         self.cancel_button = QPushButton("取消")
@@ -91,6 +91,10 @@ class CandidateWindow(TaskWindow):
         self.timer.start()
         self.refresh_results()
 
+    def compatible_packs(self):
+        modality = 'ppg' if getattr(self.owner.motion, 'kind', 'imu') == 'ppg' else 'motion'
+        return [p for p in available_packs() if p.get('modality','motion') == modality]
+
     def token(self):
         w = self.owner
         return (w.load_generation, str(w.catalog.root) if w.catalog else None,
@@ -115,7 +119,7 @@ class CandidateWindow(TaskWindow):
     def showEvent(self, event):
         if not self.running:
             try:
-                self.packs = available_packs()
+                self.packs = self.compatible_packs()
                 self.versions.blockSignals(True)
                 self.versions.clear()
                 for pack in self.packs:
@@ -129,7 +133,7 @@ class CandidateWindow(TaskWindow):
     def start(self):
         if not self.running and self.versions.currentIndex() == 0:
             try:
-                latest = available_packs()
+                latest = self.compatible_packs()
                 if latest and self.packs and latest[0]["hash"] != self.packs[0]["hash"]:
                     code = self.models.currentData()
                     self.packs = latest
@@ -152,7 +156,7 @@ class CandidateWindow(TaskWindow):
         if not w.work.project.cow_id.strip():
             self.status.setText("请先核对当前记录的牛号；不能按设备名猜牛。")
             return
-        if w.motion.version != 2:
+        if self.packs[self.versions.currentIndex()].get('adapter') == 'csv-points-v1' and w.motion.version != 2:
             self.status.setText("此版事件模型只接受完整 V2 原始九轴记录；其他格式仍可人工标注。")
             return
         self.running = True

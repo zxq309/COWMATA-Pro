@@ -76,7 +76,7 @@ class ProjectPicker(QDialog):
         self.modality = QComboBox()
         self.day = QComboBox()
         self.modality.addItem("九轴数据 Motion", "Motion")
-        self.modality.addItem("脉诊数据 PPG（预留）", "PPG")
+        self.modality.addItem("脉诊数据 PPG", "PPG")
         for folder in category_choices(self.farm):
             self.category.addItem(folder.name, str(folder))
         for title, control in (
@@ -124,10 +124,10 @@ class ProjectPicker(QDialog):
         self.day.addItems(dates)
         ppg = self.modality.currentData() == "PPG"
         self.buttons.button(QDialogButtonBox.StandardButton.Open).setEnabled(
-            bool(dates) and not ppg
+            bool(dates)
         )
         self.hint.setText(
-            "PPG 接口已预留，当前尚未接入波形解析；本次请先选择 Motion。"
+            "按设备采样配置显示 PPG 波形；标签与原始 PPG 成对保存，可用于训练及识别。"
             if ppg
             else "仅加载所选日期九轴和对应录像；前日跨午夜录像按覆盖时间补充。其他日期不扫描。"
             if dates

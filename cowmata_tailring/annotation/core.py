@@ -551,14 +551,14 @@ class Project:
 
         label_values = raw.get("labels", [])
         if not isinstance(label_values, Sequence) or isinstance(
-            label_values, (str, bytes, bytearray)
+            label_values, str | bytes | bytearray
         ):
             raise ProjectFormatError("labels 必须是数组")
         labels = [Label.from_dict(item) for item in label_values]
 
         event_values = raw.get("events", raw.get("annotations", []))
         if not isinstance(event_values, Sequence) or isinstance(
-            event_values, (str, bytes, bytearray)
+            event_values, str | bytes | bytearray
         ):
             raise ProjectFormatError("events 必须是数组")
         events = [
@@ -627,7 +627,7 @@ def project_to_json(project: Project, *, indent: int | None = 2) -> str:
 
 
 def project_from_json(text: str | bytes | bytearray) -> Project:
-    if isinstance(text, (bytes, bytearray)):
+    if isinstance(text, bytes | bytearray):
         text = bytes(text).decode("utf-8-sig")
     try:
         raw = json.loads(text.lstrip("\ufeff"))

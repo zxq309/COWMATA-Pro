@@ -1,41 +1,29 @@
-# Contributing
+# Contributing to COWMATA Pro
 
-Thank you for improving COWMATA Tail-Ring Annotator. Keep pull requests focused, reproducible, and safe for research data.
+## Development
 
-## Before opening a pull request
+1. Branch from `main`.
+2. Install Python 3.10+ and `pip install -e ".[dev]"`; see [README](README.md) for media, OCR and model configuration.
+3. Update behavior tests for functional changes.
+4. Run `ruff check cowmata_tailring tests` and `pytest -q`.
+5. For interface changes, verify the corresponding window and use synthetic data for public screenshots.
 
-1. Create a branch from `main`.
-2. Install the development environment with `pip install -e ".[dev]"`.
-3. Add or update tests for behavior changes.
-4. Run:
+## Data and model contracts
 
-   ```powershell
-   ruff check cowmata_tailring tests
-   pytest -q
-   ```
+- Preserve original Motion, PPG and Temp JSON content, identities and timestamps.
+- Keep machine event codes stable across interface languages.
+- Confirm video/signal alignment before accepting synchronized labels; drafts retain their unconfirmed state.
+- Model candidates enter human review and must not overwrite confirmed labels.
+- Keep training and recognition separate. Trained behavior and decision models remain outside source and program packages.
+- Separate cows between decision training and evaluation; record missing inputs and actual grouping units.
+- Preserve existing projects and unknown user files during updates.
 
-5. If the UI changed, test with a local JSON/video pair and attach a screenshot that contains no private paths, people, device identifiers, or restricted data.
+Do not commit real farm recordings, private CSVs, credentials, trained weights or generated caches. Tiny test fixtures must be synthetic or explicitly cleared.
 
-## Design constraints
+## Documentation
 
-- Preserve continuous raw IMU data and absolute timestamps; create learning windows downstream.
-- Keep persisted machine codes stable across interface languages.
-- Do not allow unaligned video/IMU annotation.
-- Keep model output in a human-review queue; never auto-accept a prediction.
-- Maintain compatibility with existing project JSON and event CSV exports when practical.
-
-## Data and large files
-
-Do not commit real farm videos, raw sensor exports, model weights, generated caches, or private datasets. The `examples/` directory is local-only except for its instructions. If a tiny fixture is necessary, use synthetic or explicitly cleared data and explain its provenance in the pull request.
+The current [README](README.md) is the single project overview. Keep the changelog, release notes and current tutorial consistent with delivered behavior. Historical repository explanations are indexed in [repository consolidation](docs/project/repository-consolidation.md); preserve their provenance and licenses. Do not import old distribution bundles as documentation.
 
 ## Bug reports
 
-Include the operating system, Python version, VLC version, launch command, traceback or log excerpt, and minimal reproduction steps. Do not include confidential recordings or credentials.
-
-## Documentation maintenance dates
-
-Update CHANGELOG.md and both README latest-update summaries together for user-visible changes. Date maintenance separately from tagged software releases; retain historical release dates unless primary release evidence supports a correction.
-
-## Project information ownership
-
-Products, company, team, application context and cross-repository navigation are maintained in the cowmata system overview. Specialist READMEs keep one project-overview link and focus on their own functionality, interfaces, usage and validation; preserve component licenses and citation records.
+Include software version, operating system, reproduction steps, error text and a minimal sample with private information removed. Reports should distinguish a functional failure from model evaluation results.

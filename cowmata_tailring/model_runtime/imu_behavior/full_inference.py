@@ -212,7 +212,7 @@ def _load_gbdt_bundle(path: Path) -> dict[str, Any]:
     features = bundle.get("features")
     if not isinstance(models, Mapping):
         raise ValueError("gbdt_full.joblib 缺少 models 字典")
-    if not isinstance(features, Sequence) or isinstance(features, (str, bytes)):
+    if not isinstance(features, Sequence) or isinstance(features, str | bytes):
         raise ValueError("gbdt_full.joblib 缺少 features 列表")
     feature_names = [str(value) for value in features]
     if len(feature_names) != 104 or len(set(feature_names)) != 104:

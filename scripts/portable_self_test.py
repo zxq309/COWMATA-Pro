@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 def main():
+    print("SELF_TEST: imports",flush=True)
     qt_errors = []
     import traceback
     def qt_exception(kind, error, trace):
@@ -22,6 +23,7 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--video")
     parser.add_argument("--json")
+    parser.add_argument("--suite", help="Explicit external behavior suite directory")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     assert Path(sys.executable).resolve().is_relative_to(root / "runtime")
@@ -41,6 +43,7 @@ def main():
     import pandas
     import scipy
     import sklearn
+    import xgboost
     from PySide6 import __version__ as qt_version
     from PySide6.QtWidgets import QApplication, QWidget
 
@@ -56,14 +59,16 @@ def main():
     ffmpeg, ffprobe = find_ffmpeg()
     assert Path(ffmpeg).is_relative_to(root / "vendor")
     assert Path(ffprobe).is_relative_to(root / "vendor")
+    print("SELF_TEST: media engine",flush=True)
     surface = QWidget()
     engine = MediaEngine(surface)
     result = {"python": sys.version, "executable": sys.executable, "qt": qt_version, "vlc": engine.vlc_version,
               "ffmpeg": str(ffmpeg), "ffprobe": str(ffprobe), "PATH": os.environ["PATH"],
               "python_network_blocked": True, "qt_platform": "offscreen",
               "imports": {"cv2": cv2.__version__, "numpy": numpy.__version__, "scipy": scipy.__version__,
-                          "pandas": pandas.__version__, "sklearn": sklearn.__version__, "onnxruntime": onnxruntime.__version__}}
+                          "pandas": pandas.__version__, "sklearn": sklearn.__version__, "xgboost": xgboost.__version__, "onnxruntime": onnxruntime.__version__}}
     engine.close()
+    print("SELF_TEST: workspace",flush=True)
     window = MainWindow()
     window.show()
     app.processEvents()
@@ -75,9 +80,11 @@ def main():
         app.processEvents()
     result["modern_presets_constructed"] = ["A", "B", "C"]
     window.close()
+    print("SELF_TEST: OCR",flush=True)
     ocr = TimestampOCR()
     result["local_ocr_loaded"] = True
     result["ocr_engine"] = ocr.signature
+    print("SELF_TEST: source video",flush=True)
     if args.video:
         source = Path(args.video).resolve()
         before = digest_file(source)
@@ -88,6 +95,7 @@ def main():
         assert report["success"], report
         assert digest_file(source) == before
         result["video_unchanged_sha256"] = before
+    print("SELF_TEST: source signal",flush=True)
     if args.json:
         source = Path(args.json).resolve()
         from cowmata_tailring.workspace.label_file import build_label_file, load_history, save_label_file
@@ -121,12 +129,15 @@ def main():
             assert numpy.array_equal(full_history.motion.times_ms, original.times_ms)
             result["full_original_embedded"] = {"bytes_exact": True, "samples": full_history.motion.sample_count}
             from cowmata_tailring.workspace.event_models import available_packs, predict_one
-            pack = available_packs(root)[0]
             result["event_models"] = []
-            for model in pack["models"]:
-                prediction = predict_one(pack, model, source, work.asset_id, "PORTABLE-TEST-ONLY", original.duration_ms, Path(folder) / "cache")
-                result["event_models"].append({"model": model["id"], "candidates": len(prediction["candidates"]), "seconds": prediction["elapsed_s"],
-                                               "clock_source": prediction["clock_source"], "private_runtime": pack["runtime"]})
+            result["external_model_required"] = True
+            if args.suite:
+                from cowmata_tailring.algorithms.registry import read_suite
+                from cowmata_tailring.algorithms.adapter import available_pack
+                pack = available_pack(read_suite(args.suite))
+                for model in pack["models"]:
+                    prediction = predict_one(pack, model, source, work.asset_id, "PORTABLE-TEST-ONLY", original.duration_ms, Path(folder) / "cache")
+                    result["event_models"].append({"model": model["id"], "candidates": len(prediction["candidates"]), "seconds": prediction["elapsed_s"], "clock_source": prediction["clock_source"]})
         before = digest_file(source)
         motion = load_motion_json(source)
         result["imu"] = {"samples": len(motion.times_ms), "duration_ms": motion.duration_ms, "sha256": before}

@@ -16,8 +16,8 @@ class DownloadIntegration(QObject):
 
     def open(self):
         if self.dialog is None:
-            from .dialog import DownloadDialog
-            self.dialog = DownloadDialog(self.window)
+            from .pro_dialog import ProDownloadDialog
+            self.dialog = ProDownloadDialog(self.window)
         self.dialog.show()
         self.dialog.raise_()
         self.dialog.activateWindow()
@@ -26,13 +26,17 @@ class DownloadIntegration(QObject):
         # Qt may deliver final events while Python attributes are being cleared.
         window = getattr(self, 'window', None)
         dialog = getattr(self, 'dialog', None)
+        if watched is window and event.type() == QEvent.Type.Close and dialog and hasattr(dialog, 'stop_scheduling'):
+            dialog.stop_scheduling()
         if watched is window and event.type() == QEvent.Type.Close and dialog and dialog.running:
             # Never destroy a live QThread. Resume the host's normal close flow
             # (including its own unsaved-work prompts) once cancellation finishes.
             event.ignore()
             if not self.closing:
                 self.closing = True
-                self.dialog.worker.finished.connect(self.resume_close)
+                workers = self.dialog.workers() if hasattr(self.dialog, 'workers') else [self.dialog.worker]
+                for worker in workers:
+                    worker.finished.connect(self.resume_close)
             self.dialog.stop_task()
             return True
         if watched is window and event.type() == QEvent.Type.Hide and not window.isVisible() and dialog and not dialog.running:
@@ -40,6 +44,8 @@ class DownloadIntegration(QObject):
         return False
 
     def resume_close(self):
+        if self.dialog and self.dialog.running:
+            return
         self.closing = False
         QTimer.singleShot(0, self.window.close)
 

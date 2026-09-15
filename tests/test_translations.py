@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cowmata_tailring.ui.translations import ZH_TO_EN  # noqa: E402
+from cowmata_tailring.ui.translations import NON_TRANSLATABLE, ZH_TO_EN  # noqa: E402
 
 PKG_ROOT = Path(__file__).resolve().parent.parent / "cowmata_tailring"
 CJK = re.compile(r"[\u4e00-\u9fff]")
@@ -30,7 +30,7 @@ def _source_strings() -> set[str]:
             continue
         docs = set()
         for node in ast.walk(tree):
-            if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)):
+            if isinstance(node, ast.Module | ast.FunctionDef | ast.ClassDef):
                 first = node.body[0] if node.body else None
                 if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
                     docs.add(id(first.value))
@@ -42,7 +42,7 @@ def _source_strings() -> set[str]:
 
 
 def test_catalogue_is_complete() -> None:
-    missing = _source_strings() - ZH_TO_EN.keys()
+    missing = _source_strings() - ZH_TO_EN.keys() - NON_TRANSLATABLE
     assert not missing, f"{len(missing)} untranslated strings, e.g. {sorted(missing)[:5]}"
 
 
@@ -79,3 +79,10 @@ def test_translation_never_applied_to_stored_data() -> None:
                         if node.func.id == "t":
                             offenders.append(f"{path.name}:{func.name}:{node.lineno}")
     assert not offenders, "translation applied to stored data:\n" + "\n".join(offenders)
+
+
+def test_protocol_constants_are_not_translated(monkeypatch):
+    from cowmata_tailring.ui import i18n
+    monkeypatch.setattr(i18n,"_language","en")
+    for literal in NON_TRANSLATABLE:
+        assert i18n.t(literal)==literal

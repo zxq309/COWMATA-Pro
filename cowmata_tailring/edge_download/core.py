@@ -24,7 +24,7 @@ from .transport import urlopen
 
 CHINA = timezone(timedelta(hours=8))
 MODALITIES = {'motion': 'Motion', 'pulse': 'PPG', 'temp': 'Temp'}
-CATEGORIES = ('产犊', '发情', '正常', '疫病', '怀孕/孕早期', '怀孕/孕中期', '怀孕/孕晚期')
+CATEGORIES = ('产犊', '发情', '正常', '疫病', '怀孕', '待核对', '怀孕/孕早期', '怀孕/孕中期', '怀孕/孕晚期', '未分类')
 
 
 class DownloadError(ValueError):
@@ -82,6 +82,7 @@ class Job:
     kinds: tuple[str, ...]
     start: datetime
     end: datetime
+    ledger_directory: Path | None = None
 
     def validate(self):
         validate_url(self.base_url)
@@ -154,13 +155,17 @@ class Client:
                         raise DownloadError('下载不完整：实际长度与 Content-Length 不一致')
                     return b''.join(chunks)
             except HTTPError as exc:
-                if exc.code < 500 and exc.code != 429:
-                    try:
-                        message = json.loads(exc.read(8192)).get('message', '')
-                    except (ValueError, OSError):
-                        message = ''
-                    raise DownloadError(f'HTTP {exc.code}：{message or "服务器拒绝请求"}') from exc
-                error = exc
+                try:
+                    if exc.code < 500 and exc.code != 429:
+                        try:
+                            payload = json.loads(exc.read(8192))
+                            message = payload.get('message', '') if isinstance(payload, dict) else ''
+                        except (ValueError, OSError):
+                            message = ''
+                        raise DownloadError(f'HTTP {exc.code}：{message or "服务器拒绝请求"}') from exc
+                    error = exc
+                finally:
+                    exc.close()
             except (URLError, OSError, TimeoutError) as exc:
                 error = exc
             except ValueError as exc:
@@ -254,7 +259,7 @@ class Client:
                     external = external.get('data')
                 if not isinstance(external, dict):
                     raise DownloadError('外部 JSON 内容无效')
-                for key in ('device', 'cow_id', 'animal_number', 'create_time'):
+                for key in ('device', 'cow_id', 'animal_number', 'animalNumber', 'create_time'):
                     if data.get(key) not in (None, '') and external.get(key) not in (None, ''):
                         if str(data[key]).upper() != str(external[key]).upper():
                             raise DownloadError(f'外部数据 {key} 与元数据不一致')
@@ -267,8 +272,8 @@ class Client:
                 raise DownloadError('PPG / 温度外部数据必须为 JSON')
         if str(data.get('device', '')).upper() != device.upper():
             raise DownloadError('详情设备编号与查询不一致')
-        historical = str(data.get('cow_id') or data.get('animal_number') or '').strip()
-        if cow and historical and historical != cow:
+        historical = str(data.get('cow_id') or data.get('animal_number') or data.get('animalNumber') or '').strip()
+        if cow and historical and historical.casefold() != cow.casefold():
             raise DownloadError(f'历史牛号不一致：查询 {cow}，记录 {historical}')
         # Explicit user-provided ear tag is allowed for old device-only endpoints.
         data['cow_id'] = historical or cow
@@ -316,7 +321,7 @@ def validate_payload(data, kind):
                 raise DownloadError(f'原始 BIN 完整性校验失败：{key}')
     elif kind == 'temp':
         value = data.get('data')
-        if value is None or isinstance(value, bool) or not isinstance(value, (int, float, str, dict, list)):
+        if value is None or isinstance(value, bool) or not isinstance(value, int | float | str | dict | list):
             raise DownloadError('温度记录缺少有效原始 data 字段')
     else:
         green, infrared, acc = (decoded(data, key) for key in ('data', 'ir_data', 'imu_data'))
@@ -409,6 +414,8 @@ class Result:
     skipped: int = 0
     failed: int = 0
     canceled: bool = False
+    pending: int = 0
+    recycled: int = 0
 
 
 def run_job(job, cancel, log=lambda message: None, progress=lambda done, total: None,
@@ -461,7 +468,7 @@ def run_job(job, cancel, log=lambda message: None, progress=lambda done, total: 
                                     result.skipped += 1
                                     progress(result.saved + result.skipped + result.failed, len(seen))
                                     continue
-                        if target.cow and history_cow and target.cow != history_cow:
+                        if target.cow and history_cow and target.cow.casefold() != history_cow.casefold():
                             raise DownloadError(f'清单历史牛号为 {history_cow}，与填写的 {target.cow} 不一致')
                         data = client.record(kind, uid, device, target.cow or history_cow)
                         actual = datetime.fromtimestamp(int(data['create_time']) / 1000, CHINA)
