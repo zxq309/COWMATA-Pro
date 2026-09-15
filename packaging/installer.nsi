@@ -125,7 +125,11 @@ Function .onInit
   ${EndIf}
   ClearErrors
   ; /D=, staging and registration are exact destinations chosen by the updater.
-  ${GetOptions} $CMDLINE "/D=" $R2
+  ; NSIS removes /D= from $CMDLINE. Read the original Windows command line
+  ; so an explicit target cannot be replaced by another registered install.
+  System::Call 'kernel32::GetCommandLineW() w .r0'
+  ClearErrors
+  ${GetOptions} $0 "/D=" $R2
   ${If} ${Errors}
   ${AndIf} $StageOnly != "1"
   ${AndIf} $RegisterOnly != "1"

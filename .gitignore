@@ -67,3 +67,6 @@ model_packages/
 *.partial
 *.sha256
 /assets/brand/cowmata.ico
+
+# Windows shell caches from hosts with incomplete environment variables
+/%SystemDrive%/

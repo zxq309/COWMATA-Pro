@@ -28,13 +28,13 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "size": 2848,
-      "sha256": "c8a91444b30e1ff55108ec55c42b6bd1b5131fd08e3beaa88402c3c985a0a5bf"
+      "size": 3143,
+      "sha256": "20467e5a4d88fadeacea87d1d323cb48873fc62a616fb14eddb3b22743951bba"
     },
     {
       "path": ".gitignore",
-      "size": 884,
-      "sha256": "4a8cf0a59303ad05c31843133d52e00f5da7e59f8e5fda4cdfcd1c4b237ac711"
+      "size": 973,
+      "sha256": "f9c2b1cca8b9885fd2ed9b47279a3972e4e787d2ed2a1a0639cab1d338822b98"
     },
     {
       "path": "CHANGELOG.md",
@@ -3048,8 +3048,8 @@
     },
     {
       "path": "packaging/installer.nsi",
-      "size": 20381,
-      "sha256": "936ceec3ba748efb93b1aacf888197cc3cd3440f7160a1d23dffe71823319203"
+      "size": 20591,
+      "sha256": "b483f6323901e1f78fc84e08c5db625e68055524059bfd542ad641057bc41c1f"
     },
     {
       "path": "packaging/offline_upgrade.py",
@@ -3480,6 +3480,11 @@
       "path": "tests/test_index_recovery_v332.py",
       "size": 6671,
       "sha256": "180256cadd59b06107a434277bedbc7cba93653177f3b7e72b27367c57938894"
+    },
+    {
+      "path": "tests/test_installer_destination.py",
+      "size": 3347,
+      "sha256": "ad99041ef5e2091026c44f5c79378d55eda740897b84b7fe7d9bcbaf8fc850af"
     },
     {
       "path": "tests/test_installer_resources.py",
