@@ -6,7 +6,6 @@ from pathlib import Path
 from PySide6.QtCore import QAbstractTableModel, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QDialog,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -16,6 +15,8 @@ from PySide6.QtWidgets import (
     QTableView,
     QVBoxLayout,
 )
+
+from cowmata_tailring.ui.task_window import TaskWindow
 
 from .classification_report import CSV_FIELDS, csv_bytes, read_snapshot, source_key, summary_text
 
@@ -29,13 +30,18 @@ class ReportModel(QAbstractTableModel):
         self.cells = []
 
     def replace(self, rows):
-        self.beginResetModel()
+        same = len(self.rows) == len(rows) and all(source_key(a.get('source', '')) == source_key(b.get('source', '')) for a,b in zip(self.rows, rows))
+        if not same:
+            self.beginResetModel()
         self.rows = rows
         self.cells = list(csv.reader(io.StringIO(csv_bytes(rows).decode('utf-8-sig'))))[1:]
         if self.detailed:
             for cell, row in zip(self.cells, rows):
                 cell.extend(str(row.get(k, '')) for k in ('health_seconds', 'recognition_seconds', 'transfer_seconds', 'started_at', 'finished_at'))
-        self.endResetModel()
+        if not same:
+            self.endResetModel()
+        elif rows:
+            self.dataChanged.emit(self.index(0,0), self.index(len(rows)-1,len(self.fields)-1))
 
     def rowCount(self, parent=None):
         return 0 if parent is not None and parent.isValid() else len(self.cells)
@@ -64,7 +70,7 @@ class ReportModel(QAbstractTableModel):
             return QColor('#a4382b' if status in {'blocked', 'invalid'} else '#6b746f' if status == 'empty_video' else '#246139')
 
 
-class ClassificationReportWindow(QDialog):
+class ClassificationReportWindow(TaskWindow):
     def __init__(self, parent, job_provider, *, detailed=False):
         super().__init__(parent, Qt.WindowType.Window)
         self.job_provider = job_provider

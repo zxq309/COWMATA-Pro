@@ -218,7 +218,7 @@ class MainWindow(QMainWindow):
         self._action(view, "全屏 / 退出全屏", self.toggle_fullscreen, "F11")
         self._action(view, "退出单路放大", lambda: self.board.enlarge(None), "Esc")
         self._action(view, "双画面主视角宽度…", self.set_two_view_ratio)
-        self._action(view, "显示完整九轴记录", lambda: self.motion and self.plot.set_view(0, self.motion.duration_ms), "F")
+        self._action(view, "显示完整九轴记录", lambda: self.motion and self.plot.set_view(0, self.motion.duration_ms), "Ctrl+Shift+F")
         self._action(view, "性能与索引诊断…", self.diagnostics)
         self._action(view, "切换硬件 / 软件解码（下次打开工程生效）", self.toggle_decode)
 
@@ -2972,6 +2972,19 @@ class MainWindow(QMainWindow):
             self.source_timer.start()
             self.load_status_timer.start()
             self.tell("人工成果尚未成功保存，请先处理保存错误再关闭。")
+            return
+        from cowmata_tailring.ui.task_window import close_task_windows
+        accepted = all(history.confirm_pending() for history in self._history_windows)
+        if not accepted or not close_task_windows(self):
+            self._closing_requested = False
+            self._close_choice = None
+            self._close_save_started = False
+            self.centralWidget().setEnabled(True)
+            self.board.timer.start()
+            self.save_timer.start()
+            self.source_timer.start()
+            self.load_status_timer.start()
+            event.ignore()
             return
         self._closed = True
         self._close_retry_timer.stop()

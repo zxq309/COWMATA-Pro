@@ -27,12 +27,20 @@ def portable_ignore(directory, names):
     ffplay. Keep Qt platform/image/style plugins and both private runtimes.
     """
     path = Path(directory)
-    ignored = {name for name in names if name == "__pycache__" or name.endswith(".pyc")
+    ignored = {name for name in names if name == "__pycache__" or name.endswith((".pyc", ".pyi", ".pdb", ".lib", ".exp"))
                or name in {".pytest_cache", ".ruff_cache"}}
     if "site-packages" in path.parts and "PySide6" in path.parts:
         ignored.update(name for name in names if (
             "webengine" in name.lower() or name in {"include", "typesystems", "glue", "doc", "examples"}
             or name.startswith("objects-") or name.endswith((".lib", ".exp", ".pdb"))))
+    if "PySide6" in path.parts:
+        profile = json.loads((Path(__file__).resolve().parents[1]/'packaging/portable-profile.json').read_text(encoding='utf-8'))
+        if path.name == 'PySide6':
+            ignored.add('qml')
+            ignored.update(name for name in names if name.endswith('.pyd') and Path(name).stem not in profile['qt_modules'])
+            ignored.update(name for name in names if name.startswith('Qt6') and name.endswith('.dll') and name not in profile['qt_dlls'])
+        elif path.name == 'plugins':
+            ignored.update(name for name in names if name not in profile['plugin_families'])
     if path.name == "bin" and path.parent.name == "ffmpeg":
         ignored.add("ffplay.exe")
     if any(p in {"runtime", "model_runtime_20260906"} for p in path.parts):
@@ -88,23 +96,19 @@ def main():
     for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ("operator-guide-370.html", "release-370.md", "release-364.md", "release-363.md", "release-362.md", "release-360.md", "edge-download.md", "daily-project-guide.html", "daily-project-guide-351.html", "release-352.md", "release-353.md", "daily-project-guide-352.html", "quick-start-illustrated.pdf", "quick-start-illustrated.md", "quick-start-illustrated.source.json", "legacy-dataset-workflow.md", "release-351.md",
-                 "capture-timing.md", "client-updates.md", "evidence-archive.md", "team-returns.md",
-                 "native-video-timing.md", "algorithm-inspection.md", "portable-components.md"):
-        shutil.copy2(source / "docs" / name, destination / "docs" / name)
-    shutil.copytree(source / "docs/images", destination / "docs/images")
-    (destination / "scripts").mkdir()
-    for name in ("portable_startup_self_test.py", "portable_self_test.py", "verify_label_history.py", "verify_event_models.py",
-                 "verify_candidate_ui.py", "register_event_pack.py", "verify_evidence_archive.py",
-                 "train_mother_dataset.py"):
-        shutil.copy2(source / "scripts" / name, destination / "scripts" / name)
+    for name in ('operator-guide-380.html', 'release-380.md'):
+        shutil.copy2(source/'docs'/name, destination/'docs'/name)
+    shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
+    (destination/'scripts').mkdir()
+    for name in ('portable_startup_self_test.py','portable_self_test.py','verify_label_history.py','verify_event_models.py','verify_candidate_ui.py','register_event_pack.py','verify_evidence_archive.py','train_mother_dataset.py'):
+        shutil.copy2(source/'scripts'/name, destination/'scripts'/name)
     inventory = []
     for path in sorted(destination.rglob("*")):
         if path.is_file():
             with path.open("rb") as stream:
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
             inventory.append({"path": path.relative_to(destination).as_posix(), "size": path.stat().st_size, "sha256": digest})
-    (destination / "package-manifest.json").write_text(json.dumps({"version": "3.7.0", "files": inventory}, indent=2), encoding="utf-8")
+    (destination / "package-manifest.json").write_text(json.dumps({"version": "3.8.0", "files": inventory}, indent=2), encoding="utf-8")
     print(json.dumps({"directory": str(destination), "files": len(inventory), "bytes": sum(x["size"] for x in inventory)}), flush=True)
     if not args.no_zip:
         with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=3) as bundle:

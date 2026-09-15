@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDateTimeEdit,
-    QDialog,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -31,6 +30,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from cowmata_tailring.ui.task_window import TaskWindow
 
 from .core import CATEGORIES, CHINA, Cancelled, DownloadError, Job, Target, run_job
 
@@ -81,7 +82,7 @@ class Worker(QThread):
             self.failed.emit(f'任务失败：{exc}')
 
 
-class DownloadDialog(QDialog):
+class DownloadDialog(TaskWindow):
     def __init__(self, parent=None, settings=None):
         super().__init__(parent)
         self.setWindowTitle('端侧数据下载')

@@ -11,7 +11,6 @@ from PySide6.QtCore import QAbstractTableModel, QProcess, QSettings, Qt, QTimer,
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
-    QDialog,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -25,6 +24,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from cowmata_tailring.ui.task_window import TaskWindow
+
 from .paired_dataset import TASKS
 from .theme import STYLE
 
@@ -36,9 +37,14 @@ class PairModel(QAbstractTableModel):
         super().__init__(parent)
         self.rows=[]
     def replace(self, rows):
-        self.beginResetModel()
+        same = len(self.rows) == len(rows) and all(a.get('id', a.get('source')) == b.get('id', b.get('source')) for a,b in zip(self.rows, rows))
+        if not same:
+            self.beginResetModel()
         self.rows=rows
-        self.endResetModel()
+        if not same:
+            self.endResetModel()
+        elif rows:
+            self.dataChanged.emit(self.index(0,0), self.index(len(rows)-1,len(self.COLUMNS)-1))
     def rowCount(self, parent=None):
         return 0 if parent is not None and parent.isValid() else len(self.rows)
     def columnCount(self, parent=None):
@@ -61,7 +67,7 @@ class PairModel(QAbstractTableModel):
             return str(value)
 
 
-class DatasetRecordsWindow(QDialog):
+class DatasetRecordsWindow(TaskWindow):
     def __init__(self, parent, root):
         super().__init__(parent,Qt.WindowType.Window)
         self.root=Path(root)
@@ -133,7 +139,7 @@ def summary(snapshot):
     return f"配对 {c['total']} · 已完成 {c['done']} · 已复用 {c['reused']} · 处理中 {c['processing']} · 待处理 {c['pending']} · 异常 {c['errors']} · 本次 {snapshot.get('seconds',0):.1f} 秒"
 
 
-class DatasetBuildWindow(QDialog):
+class DatasetBuildWindow(TaskWindow):
     def __init__(self, owner, mode=0):
         super().__init__(owner,Qt.WindowType.Window)
         self.owner=owner

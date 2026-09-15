@@ -329,7 +329,7 @@ def test_real_annotator_menu_entry(qt_app):
     host = MainWindow()
     try:
         menus = [a.menu() for a in host.menuBar().actions() if a.menu()]
-        tools = next(m for m in menus if m.title() == '工具(&T)')
+        tools = next(m for m in menus if m.title() == '数据准备(&T)')
         assert sum(a.objectName() == 'edgeDataDownloadAction' for a in tools.actions()) == 1
         assert host._edge_download_integration.dialog is None  # no network or window on startup
     finally:

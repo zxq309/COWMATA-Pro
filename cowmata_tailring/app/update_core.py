@@ -101,16 +101,21 @@ def check_update(current, channel="preview", opener=open_url):
             newer.append((key, release))
     if not newer:
         return None
-    # A release without the protocol descriptor is not installable in place.
-    # Report this instead of silently choosing an older, unrelated executable.
     release = max(newer, key=lambda pair: pair[0])[1]
     assets = {item["name"]: item for item in release.get("assets", [])}
-    if DESCRIPTOR not in assets:
-        raise ValueError("新版本尚未上传自动更新清单，请稍后重试或查看发布页")
-    entry = asset_info(assets[DESCRIPTOR])
-    content = read_bytes(entry["url"], 65536, opener)
-    if len(content) != entry["size"] or hashlib.sha256(content).hexdigest() != entry["sha256"]:
-        raise ValueError("Update descriptor checksum mismatch")
+    if DESCRIPTOR in assets:
+        entry = asset_info(assets[DESCRIPTOR])
+        content = read_bytes(entry["url"], 65536, opener)
+        if len(content) != entry["size"] or hashlib.sha256(content).hexdigest() != entry["sha256"]:
+            raise ValueError("Update descriptor checksum mismatch")
+    else:
+        # Release body comes from the same fixed HTTPS repository API. Keep
+        # package integrity metadata without adding a fourth download asset.
+        body = str(release.get('body') or '')
+        matches = re.findall(r'<!-- cowmata-update\s+(\{.*?\})\s*-->', body, re.DOTALL)
+        if len(matches) != 1 or len(matches[0].encode('utf-8')) > 65536:
+            raise ValueError("新版本尚未上传自动更新清单，请稍后重试或查看发布页")
+        content = matches[0]
     document = json.loads(content)
     if document.get("schema") != 1 or document.get("product") != "cowmata-annotator":
         raise ValueError("Unsupported update protocol or product")

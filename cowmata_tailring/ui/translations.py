@@ -2907,5 +2907,13 @@ ZH_TO_EN.update({' / 导出时间戳 / 行为 / Motion 或 PPG / Raw、Label\n�
 
 ZH_TO_EN.update({'按归类时间浏览，尚未确认相机同步':'Browse using classification time; camera synchronization is unconfirmed', '九轴 / PPG 信号':'IMU / PPG signals', 'PPG 光学':'PPG optical'})
 
+ZH_TO_EN.update({'修改所选标签…': 'Edit selected annotation...', '批量修改标签…': 'Bulk edit annotations...', '数据准备(&T)': 'Data preparation (&T)', '显示与播放': 'Display and playback', '更多标注工具': 'More annotation tools', '标注与复核(&E)': 'Annotation and review (&E)', '用所选九轴区间建立候选': 'Create a candidate from the selected IMU interval', '自动候选': 'Automatic candidates', '自动生成候选…': 'Generate candidates...', '逐项算法检查': 'Individual algorithm inspection', '当前时刻暂未匹配录像 · 仍有未检索素材，可在「数据准备 → 录像索引」继续检索': 'No matching recording yet; continue searching under Data preparation > Video index'})
+
+ZH_TO_EN.update({'更多数据准备工具':'More data preparation tools'})
+
+ZH_TO_EN.update({'当前时刻暂未匹配录像 · 仍有未检索素材，可在「数据准备 → 更多数据准备工具 → 录像索引」继续检索': 'No matching recording yet; continue under Data preparation > More tools > Video index', '未检索不等于无录像。未找到时可用「数据准备 → 更多数据准备工具 → 录像索引 → 扩大当前检索」。\n': 'Unsearched does not mean absent. Continue under Data preparation > More tools > Video index > Expand search.\n'})
+
+ZH_TO_EN.update({'1. 新数据先进入「数据准备」：选择采集类别，检查命名、审查并按日期归类。\n   九轴目录：完整设备编号-牛耳标号-现场记号；同设备跨日期复用分别保留。\n2. 打开工程：先确认牧场，再选择类别、Motion 和一个日期；同步检索当天录像。\n3. 核对设备、牛耳标、现场记号及时间同步，再观察录像并标注。\n4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n5. 标注自动按日期保存；在「数据集构建」生成行为数据集或分享标注片段。\n\n未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n未检索不等于无录像。未找到时可用「数据准备 → 更多数据准备工具 → 录像索引 → 扩大当前检索」。\n更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。': '1. Prepare new data: select category, verify names and classify by date.\n2. Open a farm, category and acquisition day.\n3. Check device, cow ID, field mark and synchronization before annotation.\n4. Complete and save the record; unfinished work resumes at its previous position.\n5. Build versioned datasets or export annotations.\nUnknown video times require initial recognition. Continue searching under Data preparation > More tools > Video index. Updates are in Help > About. Ctrl+L pins the source list.'})
+
 if __name__ == "__main__":
     _coverage()

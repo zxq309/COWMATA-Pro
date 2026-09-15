@@ -45,7 +45,8 @@ def main():
                 folder = args.out / (str(n) + "_reference_" + model["id"])
                 folder.mkdir()
                 output = folder if model["output_directory"] else folder / model["output"]
-                command = [str(args.reference_python), "-B", str(original / model["entry"]), model["input_arg"], str(source.resolve()), "--output", str(output)]
+                bootstrap = "import sys,runpy;from pathlib import Path;p=sys.argv[1];sys.path.insert(0,str(Path(p).parent));sys.argv=sys.argv[1:];runpy.run_path(p,run_name='__main__')"
+                command = [str(args.reference_python), "-B", "-c", bootstrap, str(original / model["entry"]), model["input_arg"], str(source.resolve()), "--output", str(output)]
                 if model.get("cow_arg"):
                     command += [model["cow_arg"], cow]
                 command += model["extra_args"]

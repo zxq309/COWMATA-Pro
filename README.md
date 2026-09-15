@@ -1,8 +1,8 @@
-# COWMATA Annotator 3.7.0
+# COWMATA Annotator 3.8.0
 
 A Windows workstation for classifying and downloading cattle sensor records, synchronizing multiview video with continuous IMU, annotating behavior, and reviewing evidence. Python, Qt, VLC, FFmpeg and offline OCR models are bundled.
 
-Clean delivery: source ZIP, extracted portable folder and installer. [3.7 release notes](docs/release-370.md).
+Clean delivery: source ZIP, extracted portable folder and installer. [3.8 release notes](docs/release-380.md).
 
 Five versioned dataset workflows pair original Motion/PPG JSON with annotations. Existing labels can be reviewed and edited in place without creating duplicate events. Background classification uses bounded decoding/OCR and transfer pools with coalesced UI updates.
 
