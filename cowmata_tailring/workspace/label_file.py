@@ -20,7 +20,6 @@ from pathlib import Path
 import numpy as np
 
 from cowmata_tailring.annotation.core import Project
-from cowmata_tailring.annotation.data import load_motion_json, parse_motion_object
 
 from .annotation_store import FORMAT
 from .catalog import (
@@ -197,12 +196,30 @@ def read_index(root):
                 continue
             metadata=record.get('metadata',{})
             by_path[record['path']]={'path':record['path'],'kind':record['kind'],'asset_id':record['sha256'],
-                'state':'review' if metadata.get('needs_review') else 'ready','stamp':'archive_requires_sha256',
-                'metadata':metadata}
+                'state':'review' if metadata.get('needs_review') else 'ready','stamp':record.get('verified_stamp') or 'archive_requires_sha256',
+                'registry_verified_stamp':bool(record.get('verified_stamp')), 'metadata':metadata}
         rows=list(by_path.values())
     settings_file = path.parent / "project.json"
     settings = json.loads(settings_file.read_text(encoding="utf-8-sig")) if settings_file.is_file() else {}
     return rows, settings
+
+
+def _history_index(root):
+    rows, settings = read_index(root)
+    result = []
+    for row in rows:
+        metadata = row.get('metadata') or {}
+        archive = metadata.get('archive_time') or {}
+        start, duration = archive.get('start_ms'), metadata.get('duration_ms')
+        if row.get('kind') == 'video' and not metadata.get('intervals') and isinstance(start, (int, float)) and isinstance(duration, (int, float)) and duration > 0 and math.isfinite(start + duration):
+            metadata = copy.deepcopy(metadata)
+            metadata['intervals'] = [dict(wall_start=start, wall_end=start+duration,
+                media_start=0, media_end=duration, verified=False,
+                warnings=['按归类时间浏览，尚未确认相机同步'])]
+            metadata['review_nominal_time'] = True
+            row = {**row, 'metadata':metadata}
+        result.append(row)
+    return result, settings
 
 
 @dataclass
@@ -227,14 +244,25 @@ class HistoryData:
 
 def load_history(path, root=None, *, cancelled=lambda: False):
     explicit_root=root is not None
+    from cowmata_tailring.annotation.taxonomy import upgrade_document
+
+    from .paired_dataset import category_for
+    from .review_store import local_source_root, resolve_label_path
+    path = resolve_label_path(path)
+    revision = digest_file(path)
     doc = read_label_file(path)
+    doc = upgrade_document(doc, category=category_for(path, doc))
+    doc['_review_path'] = str(path)
+    doc['_review_sha256'] = revision
     work = SessionWork.from_dict(doc["work"])
     if doc.get("coordinates") == "unix_epoch_ms":
         unknown = len(doc.get("legacy_import", {}).get("unresolved", []))
         return HistoryData(doc, work, None, None, [], VideoTimeline([]),
             [f"旧人工标签：绝对时间记录；未连接九轴，不生成虚构波形。另有 {unknown} 条记录待核，原行随文件保留。"])
     hint = doc["source"].get("project_root_hint", "")
-    root = Path(root).resolve() if root else Path(hint).resolve() if hint and Path(hint).is_dir() else None
+    local_root = local_source_root(path, doc)
+    requested_root = Path(root).resolve() if root else None
+    root = local_root or requested_root or (Path(hint).resolve() if hint and Path(hint).is_dir() else None)
     if root is None and not explicit_root:
         root=next((p for p in Path(path).resolve().parents if
             all((p/name).is_dir() for name in ('Motion','Video','PPG','标注工程'))),None)
@@ -246,7 +274,7 @@ def load_history(path, root=None, *, cancelled=lambda: False):
     if stills["missing"]:
         warnings.append(f"{stills['missing']} 张证据图缺失或损坏；请把标注 JSON 与“证据”文件夹一起复制")
     try:
-        rows, settings = read_index(root) if root else ([], {})
+        rows, settings = _history_index(root) if root else ([], {})
     except (OSError, ValueError, sqlite3.Error):
         rows, settings = [], {}
         warnings.append("当前索引无法读取；改用历史快照核验，原索引不会被修改。")
@@ -263,7 +291,8 @@ def load_history(path, root=None, *, cancelled=lambda: False):
             frames = base64.b64decode(record["imu"], validate=True)
             if hashlib.sha256(frames).hexdigest() != embedded["frames_sha256"]:
                 raise ValueError("Embedded IMU frames failed checksum validation")
-        motion = parse_motion_object(record, source_path=Path(path), acc_scale=embedded["acc_scale"])
+        from .sensor_records import parse_sensor_object
+        motion = parse_sensor_object(record, Path(path), kind=doc["source"].get("kind"), acc_scale=embedded.get("acc_scale", 4096))
         offset = float(embedded["parent_start_ms"])
         if offset != doc["view"]["start_ms"] or abs(offset + motion.duration_ms - doc["view"]["end_ms"]) > .001:
             raise ValueError("Snippet offset does not match its parent view range")
@@ -273,8 +302,11 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         if timing:
             motion = replace(motion, first_frame_elapsed_ms=float(timing.get("first_frame_elapsed_ms", 0))
                              + offset - float(timing.get("coordinate_offset_ms", 0)))
-        motion = replace(motion, times_ms=motion.times_ms + offset, duration_ms=offset + motion.duration_ms,
-                         coordinate_offset_ms=offset)
+        if getattr(motion, "kind", "imu") == "ppg":
+            motion = replace(motion, times_ms=motion.times_ms + offset, coordinate_offset_ms=offset)
+        else:
+            motion = replace(motion, times_ms=motion.times_ms + offset, duration_ms=offset + motion.duration_ms,
+                             coordinate_offset_ms=offset)
     elif root and len(work.asset_id) == 64:
         paths = [r["path"] for r in rows if r["kind"] == "imu" and r["asset_id"] == work.asset_id]
         paths.append(doc["source"].get("path", ""))
@@ -287,21 +319,31 @@ def load_history(path, root=None, *, cancelled=lambda: False):
                 assert_not_being_written(source)
                 if digest_file(source) != work.asset_id:
                     continue
-                motion = load_motion_json(source, acc_scale=doc["source"].get("acc_scale", 4096))
+                from .sensor_records import load_sensor_json
+                motion = load_sensor_json(source, kind=doc["source"].get("kind"), acc_scale=doc["source"].get("acc_scale", 4096))
                 if before != file_stamp(source):
                     motion = None
                     continue
                 break
-            except OSError:
+            except (OSError, ValueError) as exc:
+                warnings.append(str(exc))
                 continue
+    if motion is not None and doc["view"].get("auto_full_record"):
+        doc["view"].update(start_ms=0, end_ms=motion.duration_ms)
     if motion is None:
         warnings.append("未找到身份匹配的九轴原件；仍可查看标签，请重新选择数据工程。")
     if not work.clock.anchors and motion is not None:
-        work.clock = ClockMap.from_capture(motion, settings.get("timezone_offset_minutes", 480))
+        try:
+            work.clock = ClockMap.from_capture(motion, settings.get("timezone_offset_minutes", 480))
+        except ValueError as exc:
+            warnings.append(str(exc))
     if work.clock.basis != "manual":
         warnings.append("按设备采集时间定位候选录像；未替代人工相机校准，历史标签保持原状。")
     elif not work.clock.anchors:
         warnings.append("没有可用九轴采集时间或校准锚点；不会用文件名或服务器收包时间对齐视频。")
+    if requested_root and requested_root != root:
+        root = requested_root
+        rows, settings = _history_index(root)
     saved = doc.get("video", {})
     video_root_hint=saved.get('archive',{}).get('archive_root_hint') or hint
     saved_ids={r['asset_id'] for r in saved.get('rows',[])}
@@ -310,7 +352,7 @@ def load_history(path, root=None, *, cancelled=lambda: False):
     if not explicit_root and not local_match and (saved.get('rows') or not has_local_video and saved.get('archive')) and video_root_hint and Path(video_root_hint).is_dir():
         root=Path(video_root_hint).resolve()
         try:
-            rows,settings=read_index(root)
+            rows,settings=_history_index(root)
         except (OSError,ValueError,sqlite3.Error):
             rows,settings=[],{}
     elif local_match:
@@ -352,7 +394,7 @@ def load_history(path, root=None, *, cancelled=lambda: False):
             assert_not_being_written(source)
             # Stored stamps are only a fast path at the original root. A moved
             # project is checked against SHA-256 before archived timing is used.
-            if root != Path(video_root_hint) or before != row["stamp"]:
+            if before != row["stamp"] or root != Path(video_root_hint) and not row.get("registry_verified_stamp"):
                 if digest_file(source) != row["asset_id"]:
                     raise OSError("Different video content")
             if before != file_stamp(source):
@@ -361,6 +403,8 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         except OSError:
             warnings.append("录像缺失或已变化：" + row["path"])
     timeline = VideoTimeline(intervals_from_rows(usable, overrides), maps)
+    if any(r["metadata"].get("review_nominal_time") for r in usable):
+        warnings.append("按归类时间浏览，尚未确认相机同步")
     if not timeline.intervals:
         warnings.append("原录像当前不在本机或不可用；可回看标签和已保存证据图，不能仅凭截图重新确认整段动作。")
     return HistoryData(doc, work, motion, root, usable, timeline, warnings)

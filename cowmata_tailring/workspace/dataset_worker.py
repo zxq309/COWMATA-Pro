@@ -14,12 +14,19 @@ from cowmata_tailring.workspace.storage import atomic_json
 def main():
     job = Path(sys.argv[1]).resolve(strict=True)
     request = json.loads((job/'request.json').read_text(encoding='utf-8'))
+    from cowmata_tailring.workspace.classification_resources import limit_worker
+    limit_worker()
     def cancelled():
         return (job/'cancel').exists()
     def progress(current, total, path):
         print(json.dumps({'current':current,'total':total,'path':path},ensure_ascii=True),flush=True)
     try:
-        if request['action'] in {'dataset_audit','behavior_build','decision_build'}:
+        if request['action'] == 'paired_build':
+            from cowmata_tailring.workspace.paired_dataset import build_dataset
+            def report(snapshot):
+                print(json.dumps({'event':'snapshot','path':str(Path(snapshot['csv_path']).parent/'构建状态.json')},ensure_ascii=True),flush=True)
+            result=build_dataset(request['sources'],request['target'],request['task'],job=job,cancelled=cancelled,on_report=report)
+        elif request['action'] in {'dataset_audit','behavior_build','decision_build'}:
             from cowmata_tailring.workspace.behavior_dataset import (
                 audit_annotations,
                 build_behavior_dataset,

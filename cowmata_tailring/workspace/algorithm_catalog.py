@@ -5,6 +5,8 @@ never silently treated as a pregnancy/disease classifier.
 """
 from dataclasses import dataclass
 
+from cowmata_tailring.annotation.defaults import DEFAULT_LABELS
+
 
 @dataclass(frozen=True)
 class Algorithm:
@@ -13,12 +15,11 @@ class Algorithm:
     domain: str = "behavior"
 
 
-BEHAVIORS = (
-    Algorithm("STANDING_UP", "起立过程"), Algorithm("LYING_DOWN", "卧倒过程"),
-    Algorithm("TAIL_RAISED", "抬尾"), Algorithm("TAIL_WAGGING", "甩尾"),
-    Algorithm("URINATION", "排尿"), Algorithm("DEFECATION", "排便"),
-    Algorithm("MOUNTING", "爬跨"), Algorithm("STRAINING_BOUT", "努责"),
-)
+
+BEHAVIORS = tuple(Algorithm(row['code'], row['name']) for row in DEFAULT_LABELS)
+TAIL_MODELS = {'STANDING_TAIL_RAISED':'TAIL_RAISED','LYING_TAIL_RAISED':'TAIL_RAISED',
+               'STANDING_TAIL_WAGGING':'TAIL_WAGGING','LYING_TAIL_WAGGING':'TAIL_WAGGING'}
+
 HEALTH = tuple(Algorithm(code, title, "health") for code, title in (
     ("ESTRUS", "发情"), ("CALVING", "产犊"), ("PREGNANCY_EARLY", "孕早期"),
     ("PREGNANCY_MID", "孕中期"), ("PREGNANCY_LATE", "孕晚期"), ("DISEASE", "疫病")))
@@ -27,4 +28,4 @@ HEALTH = tuple(Algorithm(code, title, "health") for code, title in (
 def bindings(spec, packs):
     if spec.domain != "behavior":
         return []  # Future health/decision outputs require a separate contract.
-    return [(pack, model) for pack in packs for model in pack["models"] if model["code"] == spec.code]
+    return [(pack, model) for pack in packs for model in pack["models"] if model["code"] == TAIL_MODELS.get(spec.code, spec.code)]

@@ -18,7 +18,7 @@ CSV_FIELDS = ['序号', '状态', '采集日期', '视角/设备', '来源文件
 LABELS = {'pending': '待处理', 'ready': '待归类', 'existing': '待校验',
           'processing': '处理中', 'done': '已归类', 'empty_video': '无录像内容',
           'excluded_aux': '非采集文件', 'blocked': '异常', 'invalid': '异常',
-          'skip': '已保留', 'deleted': '已清理', 'quarantine': '已隔离', 'junk': '待处理'}
+          'skip': '已保留', 'deleted': '已删除', 'quarantine': '已隔离', 'junk': '待处理'}
 UNAVAILABLE = {'empty_video', 'excluded_aux', 'skip', 'deleted', 'quarantine'}
 
 
@@ -50,14 +50,14 @@ def counts(rows):
     errors = states['blocked'] + states['invalid']
     archived, processing = states['done'], states['processing']
     return dict(total=len(rows), archived=archived, processing=processing,
-                unavailable=unavailable, errors=errors,
+                unavailable=unavailable, deleted=states['deleted'], errors=errors,
                 pending=len(rows)-archived-processing-unavailable-errors,
                 reused=sum(r.get('status') == 'done' and bool(r.get('existing_verified') or r.get('resumed_complete')) for r in rows))
 
 
 def summary_text(value):
     return (f"总计 {value['total']} · 已归类 {value['archived']}（复用 {value['reused']}）"
-            f" · 无录像/非采集 {value['unavailable']} · 处理中 {value['processing']}"
+            f" · 已删除 {value.get('deleted', 0)} · 非采集/保留 {value['unavailable']-value.get('deleted', 0)} · 处理中 {value['processing']}"
             f" · 待处理 {value['pending']} · 异常 {value['errors']}")
 
 
@@ -102,6 +102,7 @@ class LiveReport:
         self.dirty = True
         self.phase = 'running'
         self.started_at = time.time()
+        self.started_monotonic = time.monotonic()
         self.on_publish = on_publish
         self.flush(force=True)
 
@@ -136,7 +137,7 @@ class LiveReport:
         self.revision += 1
         state = dict(schema='classification-report-362', revision=self.revision,
                      updated_at=core.now(), phase=self.phase, csv_path=str(self.path),
-                     started_at=self.started_at, elapsed_seconds=max(0, time.time()-self.started_at),
+                     started_at=self.started_at, elapsed_seconds=max(0, time.monotonic()-self.started_monotonic),
                      counts=counts(rows), rows=rows)
         atomic_json(self.job/'report-state.json', state, backup=False)
         self.dirty = False

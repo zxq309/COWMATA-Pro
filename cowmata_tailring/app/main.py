@@ -86,10 +86,6 @@ def main(argv: list[str] | None = None) -> int:
     splash.show()
     application.processEvents()
 
-    from cowmata_tailring.app.update_ui import verify_startup_update
-    if not args.post_install and not verify_startup_update():
-        splash.close()
-        return 0
     splash.showMessage('正在加载标注界面，请稍候…', Qt.AlignmentFlag.AlignCenter, QColor('#203c2a'))
     application.processEvents()
 

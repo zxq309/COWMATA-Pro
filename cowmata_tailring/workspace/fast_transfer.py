@@ -14,7 +14,8 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
-BLOCK_SIZE = 8 * 1024 * 1024
+BLOCK_SIZE = 2 * 1024 * 1024
+BATCH_BYTES = 8 * 1024 * 1024
 
 
 @lru_cache(maxsize=32)
@@ -123,10 +124,10 @@ def copy_verified(source, partial, expected_sha, *, cancelled=lambda: False,
                         future = pool.submit(inp.read, block_size)
                         write(block)
             else:
-                # Read up to 64 MiB, then write the batch to reduce HDD seeks.
+                # Read up to 8 MiB, then write the batch to reduce HDD seeks.
                 while True:
                     batch = []
-                    for _ in range(max(1, (64 * 1024 * 1024) // block_size)):
+                    for _ in range(max(1, BATCH_BYTES // block_size)):
                         check()
                         block = inp.read(block_size)
                         if not block:

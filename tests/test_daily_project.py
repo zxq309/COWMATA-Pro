@@ -80,7 +80,7 @@ def test_both_open_buttons_use_picker_and_exports_live_in_dataset_menu(monkeypat
     next(b for b in window.findChildren(QAbstractButton) if b.toolTip() == "打开工程").click()
     assert calls == ["picker", "picker"]
     assert not any(a.text() == "导出" for a in menus["文件"].actions())
-    assert any(a.text() == "标注分享与片段" for a in menus["数据集构建"].actions())
+    assert [a.text() for a in menus["数据集构建"].actions()] == ["行为识别数据集", "产犊预测数据集", "发情预测数据集", "怀孕监测数据集", "疫病监测数据集"]
     window.close()
     app.processEvents()
 

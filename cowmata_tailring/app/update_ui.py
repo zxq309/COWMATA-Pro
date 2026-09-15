@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -87,7 +88,7 @@ class UpdateController(QObject):
         self.stop = threading.Event()
         self.dialog = None
         self.notification = None
-        self.status = tr("启动时必须检查最新版；使用中的后台检查可在这里关闭。", "Startup checks are required; background checks during annotation can be disabled here.")
+        self.status = tr("软件可直接离线启动；更新在后台检查，也可手动检查。", "The app starts offline. Updates are checked in the background or on demand.")
         self.button = QPushButton(tr("检查更新", "Updates"))
         self.button.clicked.connect(self.open_dialog)
         # Update entry lives in Help > About. Keep the controller's status
@@ -148,6 +149,10 @@ class UpdateController(QObject):
 
     def auto_check(self):
         if self.option("auto_check") and not self.busy and not self.pending_job:
+            last = self.settings.value('updates/last_auto_check', 0.0, type=float)
+            if 0 <= time.time() - last < 1800:
+                return
+            self.settings.setValue('updates/last_auto_check', time.time())
             self.check()
 
     def check(self):

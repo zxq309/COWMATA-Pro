@@ -386,13 +386,16 @@ class MainWindow(QMainWindow):
         self._button("编辑标签 / 边界 / 备注", self.edit_selected, editing)
         self._button("补充当前画面证据", self.update_evidence, editing)
         self._button("回看所选结束点", lambda: self.review_selected(at_end=True), editing)
+        self._button("批量改标签", self.bulk_relabel, editing)
         self._button("删除所选", self.delete_selected, editing)
         editing.addStretch(1)
         bottom_layout.addLayout(editing)
         self.event_status = QLabel("先看视频即可记录动作草稿，不需要先认出九轴是什么事件。")
+        self.event_status.setWordWrap(True)
         bottom_layout.addWidget(self.event_status)
         self.labels.currentIndexChanged.connect(self.refresh_action_state)
         self.events = QTableWidget(0, 6)
+        self.events.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.events.setHorizontalHeaderLabels(["类型", "标签", "开始时间", "结束时间", "状态", "备注"])
         self.events.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.events.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -410,7 +413,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addWidget(self.index_status, 1)
         for key, function in (("Space", self.toggle_play), ("[", lambda: self.board.step(-1)),
                               ("]", lambda: self.board.step(1)), ("Left", lambda: self.board.seek(self.board.reference_ms - 100)),
-                              ("Right", lambda: self.board.seek(self.board.reference_ms + 100)), ("0", self.pin)):
+                              ("Right", lambda: self.board.seek(self.board.reference_ms + 100)), ("Ctrl+Alt+0", self.pin)):
             QShortcut(QKeySequence(key), self, activated=function)
         for i in range(8):
             QShortcut(QKeySequence(f"Alt+{i + 1}"), self,
@@ -888,7 +891,7 @@ class MainWindow(QMainWindow):
             self._dataset_workflow_window = DatasetBuildWindow(self, tab)
         if single:
             self._dataset_workflow_window.sources.setPlainText(self._standalone_saved_path)
-        self._dataset_workflow_window.tabs.setCurrentIndex(tab)
+        self._dataset_workflow_window.set_task(tab)
         self._dataset_workflow_window.show()
         self._dataset_workflow_window.raise_()
 
@@ -2073,6 +2076,10 @@ class MainWindow(QMainWindow):
         self.refresh_action_state()
         self.refresh_records()
 
+    def selected_entries(self):
+        rows = sorted({index.row() for index in self.events.selectionModel().selectedRows()})
+        return [self.events.item(row, 0).data(Qt.ItemDataRole.UserRole) for row in rows if self.events.item(row, 0)] or ([self.selected_entry()] if self.selected_entry() else [])
+
     def selected_entry(self):
         item = self.events.item(self.events.currentRow(), 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
@@ -2099,7 +2106,7 @@ class MainWindow(QMainWindow):
                 event = next(e for e in self.work.project.events if e.id == identifier)
                 identifier = event.extras.get("draft_id")
                 if identifier is None:
-                    raise ValueError("旧标注没有视频草稿锚点，请先回看并建立视频草稿，不能直接当成已校准真值")
+                    raise ValueError("这是已有标签，请直接复核修改；确认真值按钮用于具备同步和证据的视频草稿，无须新建重复标签")
             self.check_active_sources()
             confirmed = self.work.confirm_draft(identifier, self.motion.duration_ms, source_available=self.source_available,
                                                 evidence_validator=self.validate_evidence)
@@ -2110,6 +2117,8 @@ class MainWindow(QMainWindow):
             if self.isVisible():
                 self.capture_evidence(event=confirmed)
         except (ValueError, StopIteration) as exc:
+            self.event_status.setText(str(exc))
+            self.event_status.setToolTip(str(exc))
             self.tell(str(exc))
 
     def review_selected(self, *_, at_end=False):
@@ -2355,18 +2364,33 @@ class MainWindow(QMainWindow):
             self.save_current()
 
     def delete_selected(self):
-        if not self.writable_work() or not self.selected_entry():
+        selected = self.selected_entries()
+        if not self.writable_work() or not selected:
             return
-        if QMessageBox.question(self, "删除标注", "删除所选条目？可以撤销，保存前一版本也会保留在备份中。") != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(self, '删除标注', f'删除所选 {len(selected)} 条记录？可以一次撤销。') != QMessageBox.StandardButton.Yes:
             return
-        kind, identifier = self.selected_entry()
-        self.work.checkpoint()
-        if kind == "draft":
-            self.work.drafts = [d for d in self.work.drafts if d["id"] != identifier]
-        else:
-            removed = next(e for e in self.work.project.events if e.id == identifier)
-            self.work.drafts = [d for d in self.work.drafts if d["id"] != removed.extras.get("draft_id")]
-            self.work.project.events = [e for e in self.work.project.events if e.id != identifier]
+        try:
+            self.work.delete_entries(selected)
+        except ValueError as exc:
+            self.tell(str(exc))
+            return
+        self.refresh_events()
+        self.dirty = True
+        self.save_current()
+
+    def bulk_relabel(self):
+        selected = self.selected_entries()
+        if not self.writable_work() or not selected:
+            return
+        names = [label.name for label in self.work.project.labels]
+        name, ok = QInputDialog.getItem(self, '批量修改标签', f'将所选 {len(selected)} 条记录改为：', names, 0, False)
+        if not ok:
+            return
+        try:
+            self.work.relabel_entries(selected, names.index(name))
+        except ValueError as exc:
+            self.tell(str(exc))
+            return
         self.refresh_events()
         self.dirty = True
         self.save_current()
@@ -2656,6 +2680,13 @@ class MainWindow(QMainWindow):
         if not path:
             return
         from .history_window import HistoryWindow
+        from .review_store import resolve_label_path
+        try:
+            path = resolve_label_path(path)
+            self.flush_before_review()
+        except (OSError, ValueError) as exc:
+            self.tell(str(exc))
+            return
         # Do not overlay history playback on eight actively decoding streams.
         self.board.play(False)
         self._history_windows = [w for w in self._history_windows if not w.disposed]
@@ -2664,14 +2695,40 @@ class MainWindow(QMainWindow):
             if window.future is not None:
                 self.tell("历史回看仍在核对来源，请等待完成")
                 return
+            if not window.confirm_pending():
+                return
             window.path = Path(path)
-            window.setWindowTitle("COWMATA · 历史标注回看（只读） · " + window.path.name)
+            window.setWindowTitle("COWMATA · 复核与修改 · " + window.path.name)
             window.begin_load(self.catalog.root if self.catalog else None)
         else:
             window = HistoryWindow(path, self.catalog.root if self.catalog else None, reusable=True)
+            window.before_save = self.flush_before_review
+            window.saved.connect(self.accept_review_changes)
             self._history_windows.append(window)
         window.show()
         window.raise_()
+
+    def flush_before_review(self):
+        if self.dirty:
+            self.save_current()
+        self.snapshot_writer.flush()
+        if self.dirty:
+            raise ValueError('当前工程尚未保存，无法覆盖复核文件')
+
+    def accept_review_changes(self, path):
+        if not self.catalog or not self.work:
+            return
+        if Path(path).resolve() != self.catalog.work_path(self.work.asset_id).resolve():
+            return
+        from .label_file import read_label_file
+        restored = SessionWork.from_dict(read_label_file(path)['work'])
+        self.work.checkpoint()
+        self.work.project, self.work.drafts = restored.project, restored.drafts
+        self.labels.clear()
+        for i, label in enumerate(self.work.project.labels):
+            self.labels.addItem(f'[{label.key}] {label.name}', i)
+        self.refresh_events()
+        self.dirty = False
 
     def export_training(self):
         if not self.work or not self.catalog or not self.motion or self._export_running:
@@ -2813,6 +2870,16 @@ class MainWindow(QMainWindow):
             self._close_retry_timer.start(milliseconds)
 
     def closeEvent(self, event):
+        dataset = getattr(self, '_dataset_workflow_window', None)
+        if dataset and dataset.running:
+            dataset.cancel_job()
+            if not hasattr(self, '_dataset_close_timer'):
+                self._dataset_close_timer = QTimer(self)
+                self._dataset_close_timer.setSingleShot(True)
+                self._dataset_close_timer.timeout.connect(self.close)
+            self._dataset_close_timer.start(250)
+            event.ignore()
+            return
         if self._closed:
             event.accept()
             return

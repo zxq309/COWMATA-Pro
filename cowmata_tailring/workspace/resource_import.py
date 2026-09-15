@@ -7,8 +7,10 @@ import json
 import os
 import re
 import shutil
+import threading
 import time
 import uuid
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import ExitStack
 from datetime import date, datetime, timedelta
 from datetime import time as daytime
@@ -502,6 +504,10 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
     sources = [core.safe_path(s["path"]) for s in plan["sources"]]
     if any(core.overlaps(job, p) for p in [root, *sources]):
         raise ValueError("任务记录需位于素材目录之外")
+    def selected_source(source):
+        return any((source == core.safe_path(spec['path']) or source.is_relative_to(core.safe_path(spec['path'])))
+                   and not any(source == core.safe_path(p) or source.is_relative_to(core.safe_path(p)) for p in spec.get('exclude', []))
+                   for spec in plan['sources'])
     job.mkdir(parents=True, exist_ok=True)
     copied, moved, deleted = 0, 0, 0
     with DatasetLease([root, *sources], "organize", owner=plan["id"]) as lease, ExitStack() as locks:
@@ -524,28 +530,69 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
         for reference in plan.get('reference_records',[]):
             indexed[reference['path']]={**indexed.get(reference['path'],{}),
                 **{k:v for k,v in reference.items() if k not in {'identity','reference_path'}}}
-        for row in (selected if row_stream is None else row_stream):
+        commit_lock = threading.RLock()
+
+        def checkpoint():
+            with commit_lock:
+                atomic_json(job / 'plan.json', plan, backup=False)
+
+        def journal(path, entry):
+            with commit_lock:
+                core.append_journal(path, entry)
+
+        def emit_row(row):
+            with commit_lock:
+                on_row(row)
+
+        def process_row(row):
+            nonlocal copied, moved, deleted
             file_started = time.monotonic()
             core.check_cancel(cancelled)
-            if row_stream is not None:
-                atomic_json(job / 'plan.json', plan, backup=False)
-                if row['status'] not in {'ready', 'existing'}:
-                    if row['status'] in {'blocked', 'invalid'}:
-                        unresolved.append(row)
-                    on_row(dict(row))
-                    continue
-                selected.append(row)
-                on_row({**row, 'status': 'processing', 'message': '正在写入目标，完成校验后显示已归档'})
+            with commit_lock:
+                if row_stream is not None:
+                    checkpoint()
+                    if row['status'] not in {'ready', 'existing'}:
+                        if row['status'] in {'blocked', 'invalid'}:
+                            unresolved.append(row)
+                        emit_row(dict(row))
+                        return
+                    selected.append(row)
+                    emit_row({**row, 'status': 'processing', 'message': '正在写入目标，完成校验后显示已归档'})
             try:
                 source, destination = core.safe_path(row["source"]), core.safe_path(row["target"])
-                if row_stream is not None:
-                    for parent in (source, *source.parents):
-                        if parent not in parents and (parent / '标注工程').is_dir():
-                            lock = core.ProjectLock(parent / '标注工程/writer.lock')
-                            locks.callback(lock.close)
-                            if not lock.acquired:
-                                raise OSError('Source annotation project is still open')
-                        parents.add(parent)
+                with commit_lock:
+                    if row_stream is not None:
+                        for parent in (source, *source.parents):
+                            if parent not in parents and (parent / '标注工程').is_dir():
+                                lock = core.ProjectLock(parent / '标注工程/writer.lock')
+                                locks.callback(lock.close)
+                                if not lock.acquired:
+                                    raise OSError('Source annotation project is still open')
+                            parents.add(parent)
+                if row.get('operation') == 'delete_unusable_video':
+                    from .video_intake import protected_file
+                    if (not plan.get('delete_unusable') or protected_file(source)
+                            or source.suffix.lower() not in core.VIDEO_SUFFIXES
+                            or source.is_relative_to(root)
+                            or not selected_source(source)):
+                        raise ValueError('异常录像删除范围不合法，保留原件')
+                    with core.prevent_writes(source):
+                        if (core.identity(source) != row['identity']
+                                or file_stamp(source) != row['health']['stamp']
+                                or not row['health'].get('delete_reason')):
+                            raise ValueError('录像核验后发生变化，保留并重试')
+                        core.check_cancel(cancelled)
+                        journal(job / 'journal.jsonl', {'phase': 'delete_intent', **row})
+                        source.unlink()
+                        row.update(status='deleted', target='', message='已删除：' + row['health']['delete_reason'])
+                        journal(job / 'journal.jsonl', {'phase': 'deleted', **row})
+                    with commit_lock:
+                        deleted += 1
+                        row['finished_at'] = core.now()
+                        row['file_seconds'] = round(time.monotonic() - row.get('_file_started', file_started), 3)
+                        checkpoint()
+                        emit_row(dict(row))
+                    return
                 if row.get('operation') == 'delete_nonvideo':
                     from .video_intake import inspect, protected_file
                     cleanup = core.safe_path(row['cleanup_root'])
@@ -559,20 +606,20 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                                 raise ValueError('待删除文件已变化，保留原处')
                             if inspect(source, job/'cleanup-check', cancelled).get('kind') != 'nonvideo':
                                 raise ValueError('无法再次确认非视频，保留原处')
-                            lease.mark_pending(plan['id'], job)
-                            core.append_journal(job/'journal.jsonl', {'phase': 'delete_intent', **row})
+                            journal(job/'journal.jsonl', {'phase': 'delete_intent', **row})
                             source.unlink()
-                            core.append_journal(job/'journal.jsonl', {'phase': 'deleted', **row})
+                            journal(job/'journal.jsonl', {'phase': 'deleted', **row})
                     else:
-                        journal = job/'journal.jsonl'
-                        entries = [json.loads(line) for line in journal.read_text(encoding='utf-8').splitlines()] if journal.exists() else []
+                        journal_path = job/'journal.jsonl'
+                        entries = [json.loads(line) for line in journal_path.read_text(encoding='utf-8').splitlines()] if journal_path.exists() else []
                         if not any(r.get('phase') in {'delete_intent', 'deleted'} and r.get('source') == str(source)
                                    and r.get('identity') == row['identity'] and r.get('sha256') == row['sha256'] for r in entries):
                             raise ValueError('源文件已不在原处，无法确认本任务删除，需核对')
-                    deleted += 1
-                    on_row({**row, 'status': 'deleted', 'message': '已删除确认的非视频文件'})
-                    continue
-                if not destination.is_relative_to(root) or not any(source == s or source.is_relative_to(s) for s in sources):
+                    with commit_lock:
+                        deleted += 1
+                    emit_row({**row, 'status': 'deleted', 'message': '已删除确认的非视频文件'})
+                    return
+                if not destination.is_relative_to(root) or not selected_source(source):
                     raise ValueError("计划路径越界")
                 if not source.exists() and row.get("transfer") == "move" and destination.exists():
                     if core.identity(destination) != row["identity"] or digest_file(destination, cancelled=cancelled) != row["sha256"]:
@@ -584,12 +631,21 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                     raise ValueError("来源已变化，请重新预览")
                 if source_present:
                     assert_not_being_written(source)
-                lease.mark_pending(plan["id"], job)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 legacy_partial = destination.with_name(destination.name + "." + plan["id"] + ".partial")
                 partial_dir = root / '.归类缓存' / plan['id']
                 partial_dir.mkdir(parents=True, exist_ok=True)
                 temporary = partial_dir / (hashlib.sha256(str(destination).encode()).hexdigest() + '.partial')
+                prefetched = row.get('prefetched')
+                if prefetched:
+                    prepared = core.safe_path(prefetched['path'])
+                    if not prepared.is_relative_to(partial_dir / 'prepared'):
+                        raise ValueError('计划路径越界')
+                    if (prepared.is_file() and core.file_stamp(prepared) == prefetched['stamp']
+                            and prefetched['identity'] == row['identity'] and prepared.stat().st_size == row['size']):
+                        temporary = prepared
+                    else:
+                        prefetched = None
                 if legacy_partial.exists() and not temporary.exists():
                     core.move_no_replace(legacy_partial, temporary)
                 with core.prevent_writes(source if source_present else destination):
@@ -597,52 +653,78 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                         if digest_file(destination, cancelled=cancelled) != row["sha256"]:
                             raise ValueError("已存在目标校验失败：" + str(destination))
                         row['existing_verified'] = True
+                        if prefetched:
+                            temporary.unlink(missing_ok=True)
                     elif row.get("transfer") == "move":
-                        core.append_journal(job / "journal.jsonl", {"phase": "move_intent", **row})
+                        journal(job / "journal.jsonl", {"phase": "move_intent", **row})
                         core.move_no_replace(source, destination)
                         if core.identity(destination) != row["identity"]:
                             raise ValueError("Moved file identity changed")
-                        moved += 1
+                        with commit_lock:
+                            moved += 1
                     else:
                         from .fast_transfer import copy_verified
-                        transfer_stats = copy_verified(source, temporary, row.get('sha256'), cancelled=cancelled,
+                        transfer_stats = prefetched or copy_verified(source, temporary, row.get('sha256'), cancelled=cancelled,
                             progress=lambda current, total, phase: progress(current, total,
-                                ('快速复制' if phase == 'copy' else '校验目标') + ' · ' + str(source.name)))
+                                ('快速复制' if phase == 'copy' else '校验目标') + ' · ' + row.get('owner', '') + ' · ' + str(source.name)))
                         row['sha256'] = transfer_stats['sha256']
-                        atomic_json(job / 'plan.json', plan, backup=False)
-                        core.append_journal(job / 'journal.jsonl', {'phase': 'copy_verified',
+                        checkpoint()
+                        journal(job / 'journal.jsonl', {'phase': 'copy_verified',
                             'source': str(source), 'target': str(destination), **transfer_stats})
                         if core.identity(source) != row["identity"]:
                             raise ValueError("复制期间来源变化")
                         shutil.copystat(source, temporary)
                         core.move_no_replace(temporary, destination)
-                        copied += 1
-                relative = destination.relative_to(root).as_posix()
-                if row.get('transfer')=='move' and source.is_relative_to(root):
-                    indexed.pop(source.relative_to(root).as_posix(),None)
-                indexed[relative] = {"path": relative, **{k: row[k] for k in
-                    ("kind", "sha256", "size", "owner", "record_start_ms", "record_end_ms", "covered_dates", "metadata")},
-                    "time_basis": "unix_epoch_ms", "timezone_offset_minutes": row.get("timezone_offset_minutes", 480),
-                    "source": row["source"], "source_identity": row.get("identity"), "verified_stamp":file_stamp(destination),"device_id": row.get("device_id", ""),
-                    "cow_id": row.get("cow_id", ""), "field_mark": row.get("field_mark", "")}
-                core.append_journal(job / "journal.jsonl", {"phase": "verified", "source": str(source),
-                                      "target": str(destination), "sha256": row["sha256"]})
-                if not destination.is_file() or destination.stat().st_size != row['size']:
-                    raise OSError('Destination missing or size changed after transfer')
-                if row_stream is not None:
-                    atomic_json(index_path, {**index, 'records': list(indexed.values())})
-                    update_context(root, {**plan, 'rows': [{**row, 'status': 'ready'}]})
-                    preserve_annotation_work(root, [row], job)
-                progress(len(selected), plan.get('total_files', len(selected)), str(destination))
-                row['transfer_seconds'] = round(time.monotonic() - file_started, 3)
-                row['file_seconds'] = round(row.get('recognition_seconds', 0) + row['transfer_seconds'], 3)
-                on_row({**row, 'status': 'done', 'message': '已归档：' + str(destination)})
+                        with commit_lock:
+                            copied += 1
+                with commit_lock:
+                    relative = destination.relative_to(root).as_posix()
+                    if row.get('transfer')=='move' and source.is_relative_to(root):
+                        indexed.pop(source.relative_to(root).as_posix(),None)
+                    indexed[relative] = {"path": relative, **{k: row[k] for k in
+                        ("kind", "sha256", "size", "owner", "record_start_ms", "record_end_ms", "covered_dates", "metadata")},
+                        "time_basis": "unix_epoch_ms", "timezone_offset_minutes": row.get("timezone_offset_minutes", 480),
+                        "source": row["source"], "source_identity": row.get("identity"), "verified_stamp":file_stamp(destination),"device_id": row.get("device_id", ""),
+                        "cow_id": row.get("cow_id", ""), "field_mark": row.get("field_mark", "")}
+                    journal(job / "journal.jsonl", {"phase": "verified", "source": str(source),
+                                          "target": str(destination), "sha256": row["sha256"]})
+                    if not destination.is_file() or destination.stat().st_size != row['size']:
+                        raise OSError('Destination missing or size changed after transfer')
+                    if row_stream is not None:
+                        atomic_json(index_path, {**index, 'records': list(indexed.values())})
+                        update_context(root, {**plan, 'rows': [{**row, 'status': 'ready'}]})
+                        preserve_annotation_work(root, [row], job)
+                    progress(len(selected), plan.get('total_files', len(selected)), str(destination))
+                    row['transfer_seconds'] = round((prefetched or {}).get('seconds', 0) + time.monotonic() - file_started, 3)
+                    row['finished_at'] = core.now()
+                    row['file_seconds'] = round(time.monotonic() - row['_file_started'], 3) if row.get('_file_started') else round(row.get('recognition_seconds', 0) + row.get('health_seconds', 0) + row['transfer_seconds'], 3)
+                    emit_row({**row, 'status': 'done', 'message': '已归档：' + str(destination)})
             except (ValueError, OSError, RuntimeError) as exc:
                 if not plan.get('fast_video') or isinstance(exc, InterruptedError):
                     raise
                 row.update(status='blocked', message=str(exc))
-                unresolved.append(row)
-                on_row(dict(row))
+                with commit_lock:
+                    unresolved.append(row)
+                    emit_row(dict(row))
+        # A dedicated lane per selected view prevents another camera's copy or
+        # verification from occupying its worker. All metadata commits are locked.
+        pending = set()
+        lanes = {}
+        stream = list(selected) if row_stream is None else row_stream
+        limit = max(2, 2 * max(len(plan['sources']), len({r.get('owner') for r in plan.get('inventory', plan['rows'])})))
+        with ExitStack() as transfers:
+            for row in stream:
+                core.check_cancel(cancelled)
+                key = row.get('owner') or str(Path(row['source']).parent)
+                if key not in lanes:
+                    lanes[key] = transfers.enter_context(ThreadPoolExecutor(max_workers=1, thread_name_prefix='view-transfer'))
+                pending.add(lanes[key].submit(process_row, row))
+                if len(pending) >= limit:
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        future.result()
+            for future in pending:
+                future.result()
         all_days = sorted({day for r in indexed.values() for day in r["covered_dates"]})
         for day in all_days:
             for modality in (('Video','PPG') if plan.get('scenario')=='attach_video' else MODALITIES):
@@ -654,7 +736,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                      **category_fields(plan["category"]), updated_at=core.now(),
                      ppg={"status": "archived" if any(r.get("kind") == "ppg" for r in indexed.values()) else "reserved", "available": False})
         atomic_json(index_path, index)
-        selected_materials = [r for r in selected if r.get('operation') != 'delete_nonvideo' and r['status'] in {'ready', 'existing'}]
+        selected_materials = [r for r in selected if r.get('operation') not in {'delete_nonvideo', 'delete_unusable_video'} and r['status'] in {'ready', 'existing'}]
         context_plan = {**plan, "rows": [{**r, "status": "ready"} for r in selected_materials]}
         update_context(root, context_plan)
         history = preserve_annotation_work(root, selected_materials, job)

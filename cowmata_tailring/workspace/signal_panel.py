@@ -92,11 +92,20 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
         self._invalidate_static()
 
     def visible_groups(self):
-        groups = [(name, [s for s in self._series if s.key in {prefix + axis for axis in "xyz"}])
-                  for prefix, name in self.GROUPS if self.group in {"all", prefix}]
-        if self.group == "extra":
-            groups = [(s.name, [s]) for s in self._series if s.key in {"temperature", "motion"}]
-        return [(name, series) for name, series in groups if series]
+        groups = []
+        for prefix, name in self.GROUPS:
+            if self.group not in {'all', prefix}:
+                continue
+            series = [s for s in self._series if s.key in {prefix+axis for axis in 'xyz'}]
+            if prefix == 'g':
+                groups.extend((item.name, [item]) for item in series)
+            elif series:
+                groups.append((name, series))
+        if self.group in {'all', 'ppg'}:
+            groups.extend((s.name, [s]) for s in self._series if s.key.startswith('ppg_'))
+        if self.group == 'extra':
+            groups = [(s.name, [s]) for s in self._series if s.key in {'temperature', 'motion'}]
+        return groups
 
     def sample_at(self, series, when):
         """Return a real nearest sample, never interpolate across a gap."""
@@ -200,10 +209,11 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
             span = max(1e-6, ymax - ymin)
             p.save()
             p.setClipRect(area)
-            for index, (item, times, values) in enumerate(slices):
+            for item, times, values in slices:
                 if not len(times):
                     continue
-                p.setPen(QPen(QColor(self.COLORS[index % 3]), 1.1))
+                color = {"x":"#159c8d", "y":"#627de5", "z":"#d59338"}.get(item.key[-1], item.color)
+                p.setPen(QPen(QColor(color), 1.1))
                 xs = plot.left() + (times - self._view_t0) / (self._view_t1 - self._view_t0) * plot.width()
                 ys = area.bottom() - 5 - (values - ymin) / span * max(1, row_h - 10)
                 # Per-pixel min/max envelopes retain brief spikes; no line is
@@ -374,16 +384,16 @@ class SignalPanel(QWidget):
         self.toolbar = QHBoxLayout()
         self.toolbar.setSpacing(8)
         self.toolbar.setContentsMargins(10, 2, 10, 2)
-        title = QLabel("九轴信号")
+        title = QLabel("九轴 / PPG 信号")
         title.setObjectName("sectionTitle")
         self.toolbar.addWidget(title)
         self.group = QComboBox()
-        self.group.addItems(["九轴 · XYZ 分组", "加速度", "角速度", "磁场", "温度 / 活动量"])
-        self.group.currentIndexChanged.connect(lambda i: self.wave.set_group(["all", "a", "g", "m", "extra"][i]))
+        self.group.addItems(["九轴 · XYZ 分组", "加速度", "角速度", "磁场", "温度 / 活动量", "PPG 光学"])
+        self.group.currentIndexChanged.connect(lambda i: self.wave.set_group(["all", "a", "g", "m", "extra", "ppg"][i]))
         self.toolbar.addWidget(self.group)
         legend = QLabel('<span style="color:#159c8d">X</span> / <span style="color:#627de5">Y</span> / <span style="color:#d59338">Z</span>')
         legend.setStyleSheet("color:#6c8385; font-size:11px")
-        legend.setToolTip("X：青绿 · Y：蓝紫 · Z：琥珀；同组共用物理尺度，悬停显示数值与单位")
+        legend.setToolTip("X：青绿 · Y：蓝紫 · Z：琥珀；角速度三轴分行，悬停读取原始数值与单位")
         self.toolbar.addWidget(legend)
         hint = QLabel("标签：拖动两端改起止 · 拖动中间平移")
         hint.setToolTip("先单击标注列表或标签轨道选中；波形上的左右手柄也可直接拖动。修改后请回看复核。")

@@ -58,6 +58,9 @@ def test_compact_window_keeps_intake_controls_visible_without_scrolling(organize
 @pytest.mark.parametrize("existing", ["STANDING", "LYING", "WALKING"])
 @pytest.mark.parametrize("new", ["STANDING", "LYING", "WALKING"])
 def test_state_start_inside_any_existing_state_is_rejected(window, monkeypatch, existing, new):
+    from cowmata_tailring.annotation.core import Label
+    from cowmata_tailring.annotation.defaults import LEGACY_DEFAULT_LABELS
+    window.work.project.labels = [Label.from_dict(r) for r in LEGACY_DEFAULT_LABELS]
     def index(code):
         return next(i for i, label in enumerate(window.work.project.labels) if label.code == code)
 
@@ -74,6 +77,9 @@ def test_state_start_inside_any_existing_state_is_rejected(window, monkeypatch, 
 
 
 def test_rejected_end_can_be_repositioned_and_finished(window, monkeypatch):
+    from cowmata_tailring.annotation.core import Label
+    from cowmata_tailring.annotation.defaults import LEGACY_DEFAULT_LABELS
+    window.work.project.labels = [Label.from_dict(r) for r in LEGACY_DEFAULT_LABELS]
     index = next(
         i for i, label in enumerate(window.work.project.labels) if label.code == "STANDING"
     )
@@ -107,9 +113,11 @@ def test_failed_update_offers_immediate_local_start(startup_gate):
 
 
 def test_state_start_guard_also_checks_confirmed_events():
+    from cowmata_tailring.annotation.core import Label
+    from cowmata_tailring.annotation.defaults import LEGACY_DEFAULT_LABELS
     from cowmata_tailring.workspace.clocks import Anchor, ClockMap
-
     work = SessionWork("sample")
+    work.project.labels = [Label.from_dict(r) for r in LEGACY_DEFAULT_LABELS]
     work.clock = ClockMap([Anchor(0, 10000), Anchor(1000, 11000)])
     index = next(i for i, label in enumerate(work.project.labels) if label.code == "STANDING")
     work.project.add_event(index, 100, 500)

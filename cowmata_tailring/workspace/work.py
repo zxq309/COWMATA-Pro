@@ -32,6 +32,13 @@ class SessionWork:
             item.update(fields)
         for event in self.project.events:
             event.extras.update(fields)
+        self.upgrade_labels(code)
+
+    def upgrade_labels(self, category=None):
+        from cowmata_tailring.annotation.taxonomy import upgrade_document
+        updated = upgrade_document(self.to_dict(), category=category or self.project.extras.get('dataset_category'))
+        self.project = Project.from_dict(updated['project'])
+        self.drafts = updated.get('drafts', [])
 
     def category_fields(self):
         return {key: self.project.extras.get(key, "") for key in ("dataset_category", "dataset_category_label")}
@@ -121,6 +128,40 @@ class SessionWork:
                    data.get("drafts", []), data.get("progress", {}))
         result.history_video=copy.deepcopy({key:video[key] for key in ('archive','camera_maps','camera_overrides','selected_cameras') if key in video})
         return result
+
+    def entries(self, selected):
+        result = []
+        for kind, identifier in dict.fromkeys(selected):
+            item = self.project.event_by_id(identifier) if kind == 'event' else next((d for d in self.drafts if d['id'] == identifier), None)
+            if item is None:
+                raise ValueError('所选记录已变化，请刷新列表')
+            result.append((kind, item))
+        return result
+
+    def delete_entries(self, selected):
+        entries = self.entries(selected)
+        self.checkpoint()
+        self.project.extras['next_event_id_floor'] = self.project.next_event_id
+        events = {e.id for kind, e in entries if kind == 'event'}
+        drafts = {e['id'] for kind, e in entries if kind == 'draft'}
+        drafts.update(e.extras.get('draft_id') for kind, e in entries if kind == 'event')
+        self.project.events = [e for e in self.project.events if e.id not in events]
+        self.drafts = [d for d in self.drafts if d['id'] not in drafts]
+
+    def relabel_entries(self, selected, label_index):
+        entries = self.entries(selected)
+        target = self.project.labels[label_index]
+        for kind, entry in entries:
+            index = entry.li if kind == 'event' else entry['label_index']
+            if self.project.labels[index].type != target.type:
+                raise ValueError('点事件与区间不能直接批量互换，请逐条核对起止')
+        self.checkpoint()
+        for kind, entry in entries:
+            if kind == 'event':
+                entry.li = label_index
+                entry.extras['confirmation'] = 'needs_review'
+            else:
+                entry.update(label_index=label_index, label_code=target.code, confirmation='needs_review')
 
     def checkpoint(self):
         self.undo.push(self.to_dict())

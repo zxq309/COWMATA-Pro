@@ -60,6 +60,7 @@ def test_first_video_reaches_disk_while_next_is_still_recognizing(
         )
 
     monkeypatch.setattr(v, "inspect", inspect)
+    monkeypatch.setattr(v, "resource_snapshot", lambda: {"logical_cpus": 12, "available_bytes": 16*1024**3})
 
     def event(row):
         events.append(row)

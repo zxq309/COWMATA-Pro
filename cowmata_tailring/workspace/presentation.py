@@ -164,7 +164,13 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
         else:
             # The old grid-column preference is intentionally not inherited.
             # B promises a complete grid; eight rows would clip native surfaces.
-            columns = min(len(self.selected), 2 if len(self.selected) <= 4 else 4) or 1
+            count = max(1, len(self.selected))
+            def picture_area(columns):
+                rows = math.ceil(count / columns)
+                width = max(1, (w-gap*(columns-1))/columns)
+                height = max(1, (h-gap*(rows-1))/rows-69)
+                return min(width, height*16/9)**2*9/16
+            columns = max(range(1, count+1), key=picture_area)
             rows = max(1, math.ceil(len(self.selected) / columns))
             cell_w, cell_h = (w - gap * (columns - 1)) // columns, (h - gap * (rows - 1)) // rows
             positions = {camera: ((i % columns) * (cell_w + gap), (i // columns) * (cell_h + gap),

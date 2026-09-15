@@ -7,6 +7,7 @@ import io
 import json
 import math
 import re
+import subprocess
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -16,6 +17,7 @@ from cowmata_tailring.media.ffmpeg_tools import find_ffmpeg
 from cowmata_tailring.media.subprocess_tools import run_cancellable
 
 from . import organization as core
+from .classification_resources import resource_budget, resource_snapshot
 from .resource_layout import day_at, start_stamp
 from .storage import atomic_json
 
@@ -432,8 +434,28 @@ def inspect(path, cache, cancelled=lambda: False):
     return row
 
 
-def parallel_items(items, work, *, workers=4, cancelled=lambda: False):
-    workers = max(1, min(8, int(workers)))
+def parallel_items(items, work, *, workers=4, cancelled=lambda: False, lane_key=None):
+    if lane_key is not None:
+        from collections import defaultdict, deque
+        groups = defaultdict(deque)
+        for item in items:
+            groups[lane_key(item)].append(item)
+        # One outstanding preparation per view. A slow camera keeps its slot;
+        # fast cameras cannot consume the remaining slots with their next files.
+        with ThreadPoolExecutor(max_workers=max(1, len(groups)), thread_name_prefix='view-prepare') as pool:
+            pending = {pool.submit(work, queue.popleft()): key for key, queue in groups.items()}
+            while pending:
+                core.check_cancel(cancelled)
+                done, _ = wait(pending, timeout=.1, return_when=FIRST_COMPLETED)
+                for future in done:
+                    key = pending.pop(future)
+                    result = future.result()
+                    yield result
+                    core.check_cancel(cancelled)
+                    if groups[key]:
+                        pending[pool.submit(work, groups[key].popleft())] = key
+        return
+    workers = max(1, min(32, int(workers)))
     iterator = iter(items)
     with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="video-intake") as pool:
         pending = set()
@@ -472,6 +494,8 @@ def plan_import(
     streaming=False,
     skip_sources=(),
     video_suffix_only=False,
+    delete_unusable=False,
+    on_stage=lambda *_: None,
 ):
     import os
     import uuid
@@ -537,7 +561,10 @@ def plan_import(
             raise ValueError("未知来源类型")
         if scenario == "attach_video" and declared == "imu":
             continue
+        excluded = [core.safe_path(p) for p in spec.get('exclude', [])]
         for path in core.walk_files(source, cancelled):
+            if any(path == p or path.is_relative_to(p) for p in excluded):
+                continue
             if source_key(path) in skipped_keys:
                 continue
             # Existing organized targets are never cleanup input, even when nested in source.
@@ -638,18 +665,96 @@ def plan_import(
                     status="blocked",
                     message=str(exc),
                 )
-        row = inspect(path, cache, cancelled)
-        if row['status'] == 'blocked' and any(word in row.get('message', '') for word in ('timed out', '占用', '媒体格式无法确认')):
+        began = time.monotonic()
+        started_at = core.now()
+        copy_stop = threading.Event()
+        staged = None
+        copy_future = None
+        stage_path = core.safe_path(root / '.归类缓存' / plan['id'] / 'prepared' / (hashlib.sha256(str(path).encode()).hexdigest() + '.partial'))
+        current_identity = core.identity(path)
+
+        def announce(stage):
+            if streaming:
+                on_stage(dict(source=str(path), kind='video', owner=entry['camera'], status='processing',
+                              stage=stage, message=stage, started_at=started_at,
+                              file_seconds=round(time.monotonic()-began, 3), _file_started=began))
+
+        def copy_early():
+            from .fast_transfer import copy_verified
+            stage_path.parent.mkdir(parents=True, exist_ok=True)
+            with core.prevent_writes(path):
+                if core.identity(path) != current_identity:
+                    raise OSError('来源已变化，请重新预览')
+                stats = copy_verified(path, stage_path, None, cancelled=lambda: cancelled() or copy_stop.is_set(),
+                    progress=lambda current, total, phase: progress(current, total,
+                        ('快速复制' if phase == 'copy' else '校验目标') + ' · ' + entry['camera'] + ' · ' + path.name))
+                if core.identity(path) != current_identity:
+                    raise OSError('复制期间来源变化')
+            return dict(path=str(stage_path), stamp=core.file_stamp(stage_path), identity=current_identity, **stats)
+
+        announce('各视角独立处理中：传输与核验并行')
+        if streaming and not (transfer == 'move' and core.volume(path) == core.volume(root)):
+            copy_future = staging_pool.submit(copy_early)
+        def analyze_video():
             core.check_cancel(cancelled)
-            first_error = row['message']
-            row = inspect(path, cache, cancelled)
-            row['retry_reason'] = first_error
-        if row["status"] in {"ready", "nonvideo"} and (not streaming or transfer == 'move' or row['kind'] == 'nonvideo'):
-            try:
-                row["sha256"] = legacy.verified_source_digest(path, cache, cancelled)
-            except Exception as exc:
-                row.update(status="blocked", message=str(exc))
-        return entry, row
+            health, seconds = {}, 0.0
+            if delete_unusable:
+                from .intake_health import assess_video
+                before = time.monotonic()
+                announce('正在核验录像')
+                health = assess_video(path, cache, cancelled)
+                seconds = time.monotonic()-before
+            if health.get('delete_reason'):
+                return health, seconds, None
+            announce('正在识别采集日期')
+            before = time.monotonic()
+            value = inspect(path, cache, cancelled)
+            if value['status'] == 'blocked' and any(word in value.get('message', '') for word in ('timed out', '占用', '媒体格式无法确认')):
+                core.check_cancel(cancelled)
+                error = value['message']
+                value = inspect(path, cache, cancelled)
+                value['retry_reason'] = error
+            value['recognition_seconds'] = round(time.monotonic()-before, 3)
+            return health, seconds, value
+
+        try:
+            announce('等待核验资源；复制仍按队列进行')
+            health, health_seconds, row = heavy_pool.submit(analyze_video).result()
+            if health.get('delete_reason'):
+                copy_stop.set()
+                if copy_future:
+                    try:
+                        staged = copy_future.result()
+                    except (OSError, ValueError, RuntimeError):
+                        pass
+                    stage_path.unlink(missing_ok=True)
+                row = dict(source=str(path), target=str(path), kind='video', status='ready',
+                    operation='delete_unusable_video', identity=current_identity, health=health,
+                    size=path.stat().st_size, owner=entry['camera'], recognition_seconds=0,
+                    message='确认异常，立即删除：' + health['delete_reason'])
+            else:
+                if copy_future:
+                    staged = copy_future.result()
+                    row['prefetched'] = staged
+                    row['sha256'] = staged['sha256']
+                if row['status'] in {'ready', 'nonvideo'} and not row.get('sha256'):
+                    row['sha256'] = legacy.verified_source_digest(path, cache, cancelled)
+            row.update(health=health, health_seconds=round(health_seconds, 3),
+                       started_at=started_at, _file_started=began,
+                       file_seconds=round(time.monotonic()-began, 3))
+            return entry, row
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            copy_stop.set()
+            if copy_future:
+                try:
+                    copy_future.result()
+                except (OSError, ValueError, RuntimeError):
+                    pass
+            core.check_cancel(cancelled)
+            return entry, dict(source=str(path), kind='video', status='blocked', owner=entry['camera'],
+                               started_at=started_at, finished_at=core.now(),
+                               file_seconds=round(time.monotonic()-began, 3), message=str(exc))
+
 
     rows, reserved = [], {}
     plan = dict(
@@ -676,15 +781,33 @@ def plan_import(
         rows=rows,
         total_files=len(jobs),
         streaming=streaming,
+        delete_unusable=delete_unusable,
         workers=workers,
         inventory=[dict(source=str(e['path']), kind=e['kind'], status='pending',
                         owner=e['camera'] if e['camera'] in core.VIEWS else '', message='等待处理')
                    for e in jobs.values()],
     )
 
-    def generate():
+    # Feed recognition fairly across cameras, not an entire folder at a time.
+    from collections import defaultdict, deque
+    groups = defaultdict(deque)
+    for entry in jobs.values():
+        groups[entry['camera'] if entry['camera'] != 'auto' else str(entry['source_root'])].append(entry)
+    ordered = []
+    while groups:
+        for key in list(groups):
+            ordered.append(groups[key].popleft())
+            if not groups[key]:
+                del groups[key]
+
+    staging_pool = heavy_pool = None
+    budget = resource_budget(resource_snapshot())
+    plan["resource_budget"] = budget.to_dict()
+
+    def generate_rows():
         for entry, row in parallel_items(
-            jobs.values(), prepare, workers=workers, cancelled=cancelled
+            ordered, prepare, workers=max(workers, min(32, len(sources))), cancelled=cancelled,
+            lane_key=(lambda e: e['camera'] if e['camera'] != 'auto' else str(e['source_root'])) if streaming else None
         ):
             if row is None:
                 row = dict(source=str(entry['path']), kind=entry['kind'], status='excluded_aux',
@@ -702,7 +825,7 @@ def plan_import(
                     )
                 else:
                     row.update(status="invalid" if streaming else "skip", message="不是视频内容，原文件保留")
-            elif row["kind"] == "video" and row["status"] == "ready":
+            elif row["kind"] == "video" and row["status"] == "ready" and not row.get("operation"):
                 day, camera = row["record_date"], entry["camera"]
                 if camera not in core.VIEWS:
                     # Preserve an unknown camera's source identity, never merge
@@ -724,6 +847,11 @@ def plan_import(
                 while True:
                     key = os.path.normcase(str(destination))
                     known = reserved.get(key)
+                    if isinstance(known, str) and known.startswith('pending:'):
+                        # A prior lane may still be copying. Resolve only this
+                        # collision so identical sources share its final target.
+                        known = legacy.verified_source_digest(Path(known[8:]), cache, cancelled)
+                        reserved[key] = known
                     if destination.exists() and known is None:
                         known = legacy.verified_source_digest(destination, cache, cancelled)
                     if known is not None and not row.get('sha256'):
@@ -759,6 +887,13 @@ def plan_import(
             if row.get('target') and row.get('sha256'):
                 reserved[os.path.normcase(row['target'])] = row['sha256']
             progress(len(rows), plan['total_files'], str(path))
+
+    def generate():
+        nonlocal staging_pool, heavy_pool
+        with ThreadPoolExecutor(max_workers=budget.heavy_workers, thread_name_prefix='bounded-decode') as decoders:
+            with ThreadPoolExecutor(max_workers=budget.copy_workers, thread_name_prefix='bounded-copy') as copies:
+                staging_pool, heavy_pool = copies, decoders
+                yield from generate_rows()
 
     if streaming:
         return plan, generate()
@@ -798,7 +933,13 @@ def _organize(
     from .classification_report import source_key
     live = _report
 
+    completed_lock = threading.RLock()
+
     def completed(row):
+        with completed_lock:
+            publish_row(row)
+
+    def publish_row(row):
         row = dict(row)
         row['task_seconds'] = round(time.monotonic() - started, 3)
         final_rows[source_key(row['source'])] = row
@@ -807,6 +948,16 @@ def _organize(
 
     saved = job / "plan.json"
     previous = json.loads(saved.read_text(encoding="utf-8")) if saved.is_file() else None
+    selected_roots = [(core.safe_path(spec['path']), [core.safe_path(p) for p in spec.get('exclude', [])]) for spec in sources]
+    def in_selection(row):
+        source = core.safe_path(row['source'])
+        return any((source == p or source.is_relative_to(p))
+                   and not any(source == e or source.is_relative_to(e) for e in excluded)
+                   for p, excluded in selected_roots)
+    if previous:
+        previous['rows'] = [r for r in previous['rows'] if in_selection(r)]
+        previous['sources'] = sources
+        previous['delete_unusable'] = bool(options.get('delete_unusable'))
     recovered = set()
     recovered_rows = []
     if previous and previous.get('streaming'):
@@ -815,7 +966,25 @@ def _organize(
         index = json.loads(index_path.read_text(encoding='utf-8')) if index_path.is_file() else {}
         indexed = {r['path']: r for r in index.get('records', [])}
         remaining = []
+        journal = job / 'journal.jsonl'
+        deletions = {}
+        if journal.is_file():
+            for line in journal.read_text(encoding='utf-8').splitlines():
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get('phase') == 'deleted' and event.get('operation') == 'delete_unusable_video':
+                    deletions[source_key(event['source'])] = event
+        for event in deletions.values():
+            if in_selection(event) and not Path(event['source']).exists():
+                done = {**event, 'status': 'deleted', 'target': '', 'file_seconds': 0}
+                recovered.add(event['source'])
+                recovered_rows.append(done)
+                completed(done)
         for row in previous['rows']:
+            if row['source'] in recovered or row.get('operation') == 'delete_unusable_video':
+                continue
             if row['status'] not in {'ready', 'existing', 'done'} or not row.get('target'):
                 continue
             destination = Path(row['target'])
@@ -833,7 +1002,12 @@ def _organize(
                     continue
             except (OSError, ValueError, KeyError):
                 pass
-            remaining.append({**row, 'status': 'ready'})
+            if (options.get('delete_unusable') and row.get('kind') == 'video' and source.exists()
+                    and row.get('health', {}).get('stamp') != file_stamp(source)):
+                # Older plans have no full-health proof. Rescan under the new
+                # policy while retaining this task ID and its partial copies.
+                continue
+            remaining.append({**{k: v for k,v in row.items() if k != '_file_started'}, 'status': 'ready'})
         if remaining:
             # Complete only interrupted transfers. Never rehash hundreds of GB
             # whose full verification and file identity are already recorded.
@@ -842,10 +1016,6 @@ def _organize(
                 if row['status'] in {'done', 'deleted'} and row['source'] not in recovered:
                     recovered.add(row['source'])
                     recovered_rows.append(row)
-    from .fast_transfer import transfer_policy
-    requested_workers = max(1, int(options.get('workers', 4)))
-    if any(transfer_policy(s['path'], target) == 'bulk' for s in sources):
-        options['workers'] = min(2, requested_workers)
     plan, rows = plan_import(
         target,
         sources,
@@ -857,6 +1027,7 @@ def _organize(
         streaming=True,
         skip_sources=recovered,
         video_suffix_only=True,
+        on_stage=completed,
         **options,
     )
     if previous and previous.get("streaming"):
@@ -865,6 +1036,26 @@ def _organize(
     plan['total_files'] += len(recovered_rows)
     live.seed(plan.get('inventory', []) + recovered_rows)
     atomic_json(saved, plan, backup=False)
+    report_errors = []
+
+    def clock_report():
+        while not local_stop.wait(1):
+            try:
+                with completed_lock:
+                    active = [r for r in live.rows.values() if r.get('status') == 'processing' and r.get('_file_started')]
+                    for row in active:
+                        row['file_seconds'] = round(time.monotonic()-row['_file_started'], 3)
+                        row['task_seconds'] = round(time.monotonic()-started, 3)
+                    if active:
+                        live.dirty = True
+                        live.flush(force=True)
+            except Exception as exc:
+                report_errors.append(exc)
+                local_stop.set()
+                return
+
+    clock_thread = threading.Thread(target=clock_report, name='classification-clock', daemon=True)
+    clock_thread.start()
     try:
         result = legacy.execute(plan, job, stopped, progress, on_row=completed, row_stream=rows)
         result["rows"] = list(final_rows.values())
@@ -879,7 +1070,10 @@ def _organize(
     finally:
         local_stop.set()
         rows.close()
+        clock_thread.join()
         atomic_json(saved, plan, backup=False)
+        if report_errors:
+            raise report_errors[0]
 
 
 def organize(target, sources, start='', end=None, note='', cancelled=lambda: False,

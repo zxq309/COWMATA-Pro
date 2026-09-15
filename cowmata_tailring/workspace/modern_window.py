@@ -128,10 +128,8 @@ class MainWindow(ControllerWindow):
         from cowmata_tailring.edge_download import install_menu as install_edge_download
         install_edge_download(self, tools)
         datasets = self.menuBar().addMenu('数据集构建(&G)')
-        for index,title in enumerate(('标签与来源检查…','按行为与耳标构建…','综合决策数据集…','按牛划分与构建说明…')):
+        for index,title in enumerate(('行为识别数据集','产犊预测数据集','发情预测数据集','怀孕监测数据集','疫病监测数据集')):
             self._action(datasets,title,lambda _checked=False,tab=index:self.open_dataset_workflow(tab))
-        datasets.addSeparator()
-        datasets.addMenu(self._annotation_exports)
         self._build_algorithm_menus()
         help_menu = self.menuBar().addMenu("帮助(&H)")
         from cowmata_tailring.ui.about import show_about
@@ -265,11 +263,11 @@ class MainWindow(ControllerWindow):
         self._button("编辑起止", self.edit_selected, boundary_actions)
         details.addLayout(boundary_actions)
         event_actions = QMenu(self)
-        for title, explanation, handler in (("生成候选", "将选中的九轴区间添加为候选标注", self.mark_selection),
-                               ("确认真值", "核对画面与同步关系后确认所选草稿", self.confirm_selected),
+        for title, explanation, handler in (("生成候选", "先打开九轴记录，选择标签并拖选波形区间，再生成候选；候选需要人工复核", self.mark_selection),
+                               ("确认真值", "先选一条视频草稿，核对牛号、有效同步、到位画面和动作起止；已有标签请直接修改", self.confirm_selected),
                                ("编辑", "编辑标签、起止边界和备注", self.edit_selected),
-                               ("补充证据", "补充当前画面对应的证据线索", self.update_evidence),
-                               ("证据截图…", "每个所选视角留存一张原片证据图", self.capture_evidence),
+                               ("补充证据", "先选已有标签或草稿，再将录像定位到动作画面；补充证据会保留原记录编号", self.update_evidence),
+                               ("证据截图…", "先选记录，定位有效的原片画面，再为已就绪视角保存证据图；截图不自动确认真值", self.capture_evidence),
                                ("回看结束点", "跳到所选标注的结束位置", lambda: self.review_selected(at_end=True)),
                                ("删除", "删除所选标注或草稿，可撤销", self.delete_selected)):
             action = self._action(event_actions, title, handler)

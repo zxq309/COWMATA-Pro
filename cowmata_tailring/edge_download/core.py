@@ -13,19 +13,25 @@ import re
 import sqlite3
 import tempfile
 import threading
-import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request
+
+from .transport import urlopen
 
 CHINA = timezone(timedelta(hours=8))
+MODALITIES = {'motion': 'Motion', 'pulse': 'PPG', 'temp': 'Temp'}
 CATEGORIES = ('产犊', '发情', '正常', '疫病', '怀孕/孕早期', '怀孕/孕中期', '怀孕/孕晚期')
 
 
 class DownloadError(ValueError):
+    pass
+
+
+class TransferFailed(DownloadError):
     pass
 
 
@@ -85,14 +91,16 @@ class Job:
             raise DownloadError('请选择已存在的牧场根目录')
         if self.category not in CATEGORIES:
             raise DownloadError('请选择采集类别（怀孕需选择孕期）')
-        if not self.targets or not self.kinds or any(k not in ('motion', 'pulse') for k in self.kinds):
-            raise DownloadError('请填写下载对象并选择 Motion 或 PPG')
+        if not self.targets or not self.kinds or any(k not in MODALITIES for k in self.kinds):
+            raise DownloadError('请填写下载对象并选择 Motion、PPG 或温度')
         if self.start.tzinfo is None or self.end.tzinfo is None or self.start >= self.end:
             raise DownloadError('结束时间必须晚于开始时间')
         for target in self.targets:
             target.validate()
-            if 'pulse' in self.kinds and not target.device:
-                raise DownloadError('PPG 查询需要设备编号；仅按牛号查询时请选择 Motion')
+            if urlsplit(self.base_url).hostname in {'device.cowmata.com', 'data.cowmata.com'} and not target.device:
+                raise DownloadError('当前设备服务器需填写设备编号；牛号查询请使用 3090 接口')
+            if any(k != 'motion' for k in self.kinds) and not target.device:
+                raise DownloadError('PPG / 温度查询需要设备编号；仅按牛号查询时请选择 Motion')
         # Multiple identities on one device require separate dated tasks.
         keys = [t.device.upper() if t.device else 'cow:' + t.cow for t in self.targets]
         if len(set(keys)) != len(keys):
@@ -120,23 +128,20 @@ class Client:
 
     def get(self, url, limit=32 * 1024 * 1024):
         validate_url(url)
-        for attempt in range(3):
+        for attempt in range(4):
             self.check()
             try:
                 req = Request(url, headers={'User-Agent': 'CowmataEdgeDownloader/1.0',
                                            'Accept': 'application/json, application/octet-stream'})
-                with urlopen(req, timeout=10) as response:
+                with urlopen(req, timeout=30) as response:
                     validate_url(response.url)
                     if urlsplit(url).scheme == 'https' and urlsplit(response.url).scheme != 'https':
                         raise DownloadError('拒绝 HTTPS 降级重定向')
                     if int(response.headers.get('Content-Length', 0)) > limit:
                         raise DownloadError('响应超过允许大小')
                     chunks, length = [], 0
-                    deadline = time.monotonic() + 300
                     while True:
                         self.check()
-                        if time.monotonic() > deadline:
-                            raise TimeoutError('单文件下载超过 5 分钟')
                         chunk = response.read1(65536)
                         if not chunk:
                             break
@@ -158,10 +163,12 @@ class Client:
                 error = exc
             except (URLError, OSError, TimeoutError) as exc:
                 error = exc
-            if attempt == 2:
-                raise DownloadError(f'连接失败（已尝试 3 次）：{error}') from error
-            self.log(f'连接中断，正在重试（{attempt + 1}/2）')
-            if self.cancel.wait(0.5 * (attempt + 1)):
+            except ValueError as exc:
+                raise DownloadError(str(exc)) from exc
+            if attempt == 3:
+                raise TransferFailed(f'连接失败（初次及 3 次重试均失败）：{error}') from error
+            self.log(f'连接中断，正在重试（{attempt + 1}/3）')
+            if self.cancel.wait(0.25 * (attempt + 1)):
                 raise Cancelled()
 
     def envelope(self, path, params):
@@ -216,7 +223,24 @@ class Client:
                 yield kind, uid, device, str(record.get('cow_id') or '').strip()
 
     def record(self, kind, uid, device, cow):
-        data = self.envelope('/device/data/' + kind, {'uid': uid, 'device': device})
+        for attempt in range(4):
+            self.check()
+            try:
+                return self._record_once(kind, uid, device, cow)
+            except TransferFailed:
+                raise
+            except DownloadError as exc:
+                if attempt == 3:
+                    raise
+                self.log(f'数据校验失败，重试 {attempt+1}/3 · {kind}/{device}/{uid} · {exc}')
+                if self.cancel.wait(.25*(attempt+1)):
+                    raise Cancelled() from exc
+
+    def _record_once(self, kind, uid, device, cow):
+        params = {'uid': uid}
+        if urlsplit(self.base_url).hostname not in {'device.cowmata.com', 'data.cowmata.com'}:
+            params['device'] = device
+        data = self.envelope('/device/data/' + kind, params)
         if data.get('url'):
             payload = self.get(urljoin(self.base_url + '/', data['url']), 256 * 1024 * 1024)
             try:
@@ -224,8 +248,8 @@ class Client:
             except (UnicodeError, ValueError):
                 external = None
             if isinstance(external, dict):
-                if 'code' in external:
-                    if str(external['code']) != '0':
+                if 'code' in external or 'success' in external:
+                    if ('code' in external and str(external['code']) != '0') or external.get('success') is False:
                         raise DownloadError('外部 JSON 返回错误状态')
                     external = external.get('data')
                 if not isinstance(external, dict):
@@ -240,7 +264,7 @@ class Client:
             elif kind == 'motion':
                 data['imu'] = base64.b64encode(payload).decode('ascii')
             else:
-                raise DownloadError('PPG 外部数据必须为 JSON，原下载器未定义 PPG BIN 格式')
+                raise DownloadError('PPG / 温度外部数据必须为 JSON')
         if str(data.get('device', '')).upper() != device.upper():
             raise DownloadError('详情设备编号与查询不一致')
         historical = str(data.get('cow_id') or data.get('animal_number') or '').strip()
@@ -249,7 +273,7 @@ class Client:
         # Explicit user-provided ear tag is allowed for old device-only endpoints.
         data['cow_id'] = historical or cow
         if not data['cow_id']:
-            raise DownloadError('记录无历史牛号，请在下载对象中填写并核对牛耳标')
+            self.log('记录无历史牛号，按设备下载并归入待核对目录')
         data.pop('url', None)
         validate_payload(data, kind)
         return data
@@ -290,6 +314,10 @@ def validate_payload(data, kind):
         for key, expected in checks.items():
             if key in integrity and str(integrity[key]).lower() != str(expected):
                 raise DownloadError(f'原始 BIN 完整性校验失败：{key}')
+    elif kind == 'temp':
+        value = data.get('data')
+        if value is None or isinstance(value, bool) or not isinstance(value, (int, float, str, dict, list)):
+            raise DownloadError('温度记录缺少有效原始 data 字段')
     else:
         green, infrared, acc = (decoded(data, key) for key in ('data', 'ir_data', 'imu_data'))
         if not (green or infrared) or len(green) % 2 or len(infrared) % 2 or len(acc) % 6:
@@ -301,6 +329,9 @@ def fingerprint(data, kind):
     h = hashlib.sha256()
     h.update(json.dumps([kind, str(data['device']).upper(), data['create_time'],
                          data.get('version')], separators=(',', ':')).encode())
+    if kind == 'temp':
+        h.update(json.dumps(data['data'], sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8'))
+        return h.hexdigest()
     for field in fields:
         raw = decoded(data, field)
         h.update(len(raw).to_bytes(8, 'big'))
@@ -311,15 +342,15 @@ def fingerprint(data, kind):
 def save_record(job, target, kind, data, cancel):
     validate_payload(data, kind)
     device = segment(str(data['device']).upper())
-    cow = segment(data['cow_id'])
+    cow = segment(data.get('cow_id') or '待核对')
     stamp = datetime.fromtimestamp(int(data['create_time']) / 1000, CHINA)
-    day = checked_path(job.farm, Path(job.category) / ('Motion' if kind == 'motion' else 'PPG')
+    day = checked_path(job.farm, Path(job.category) / MODALITIES[kind]
                        / stamp.strftime('%Y-%m-%d'))
     prefix = f'{device}-{cow}-'
     mark = target.mark
     if not mark:
         matches = set()
-        for stream in ('Motion', 'PPG'):
+        for stream in MODALITIES.values():
             sibling = checked_path(job.farm, Path(job.category) / stream / stamp.strftime('%Y-%m-%d'))
             if sibling.is_dir():
                 matches.update(p.name for p in sibling.iterdir()
