@@ -28,8 +28,8 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "size": 2606,
-      "sha256": "833ccda590602360a8c5ccceade0fa9da7b705b05ec45a1e8443b9cbc3ab7066"
+      "size": 2848,
+      "sha256": "c8a91444b30e1ff55108ec55c42b6bd1b5131fd08e3beaa88402c3c985a0a5bf"
     },
     {
       "path": ".gitignore",
@@ -2973,8 +2973,8 @@
     },
     {
       "path": "tests/test_edge_download.py",
-      "size": 15298,
-      "sha256": "def67453bbad5eb009d38e112c2fbfa21228d9dbfc9e000bda45db8bbac99b6d"
+      "size": 15970,
+      "sha256": "59bc3191f393cad0b1029365a4935489c1cb8a7b139fd6d81a17eea910480101"
     },
     {
       "path": "tests/test_event_models.py",
