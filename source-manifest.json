@@ -13,8 +13,8 @@
     },
     {
       "path": ".github/ISSUE_TEMPLATE/config.yml",
-      "size": 415,
-      "sha256": "2f13b30ee6e10b736a029af27dd482ec0566048452b0225f5e985a7e71812ec2"
+      "size": 408,
+      "sha256": "b149f8ca3ec6bf58d2e0fa96ca831ecd453630124a01356f6866f8481059e7b1"
     },
     {
       "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
@@ -43,8 +43,8 @@
     },
     {
       "path": "CITATION.cff",
-      "size": 918,
-      "sha256": "bcffbc01f1a86dfb3b56527f083ce9e92600759222b05fac555a32a913ad0ef0"
+      "size": 862,
+      "sha256": "f5dca2540837c9a02eb6e2f4b2a3a2f36012924924becd9f68b9a86e1b54024f"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -58,23 +58,23 @@
     },
     {
       "path": "NOTICE",
-      "size": 1475,
-      "sha256": "940baf1f0512cebf524dac9fa7a4fac0cf570ed7985785bfcae4714ba375e147"
+      "size": 1784,
+      "sha256": "525564e6a3ce283463ba24bc61fe59185318c561bcf4fd16f6f3d2c594f6d7dd"
     },
     {
       "path": "README.md",
-      "size": 2242,
-      "sha256": "6f0011a31fc14633a7e8a48991edc805f5cc8e3957e2b8c5d4ea1fee3e6d27a9"
+      "size": 3488,
+      "sha256": "354ef0d36bbd70b290130228cff8a64d207aed757575c3999d842c378026d29c"
     },
     {
       "path": "README.zh-CN.md",
-      "size": 2074,
-      "sha256": "d900b7e8291bcd4f8b512b5c83d3a33892e5985e74f2fa0a240fee0c6b22f9ff"
+      "size": 3219,
+      "sha256": "46afde8110d87c59a134d57ec9afdca22f62b306306e86c90da9cb7a549c92a8"
     },
     {
       "path": "SECURITY.md",
-      "size": 847,
-      "sha256": "692c85c76ed2eae739da9a0db8d4b3f11c920d929cdd0f41cae5cbc6278aa71b"
+      "size": 845,
+      "sha256": "6295aba8c5919f2dd550d4a4bb5bdab852732c608d34875cabc629065401f063"
     },
     {
       "path": "START_ANNOTATOR.bat",
@@ -98,28 +98,28 @@
     },
     {
       "path": "assets/app-icon/cowmata.ico",
-      "size": 50968,
-      "sha256": "6cb0a6eb72755a06772ff4e9e3604148c0617b7d6b583ac58cbf0b9e500c5499"
+      "size": 34118,
+      "sha256": "933f5604afcd78b0a81b80c04521472aa2ef887cff5a4cf7d3fe0e2772b654e8"
     },
     {
       "path": "assets/app-icon/cowmata.png",
-      "size": 26291,
-      "sha256": "d4ea819e8365838ed7d51c0485bfccaa9d85dd0ad80165772b7eaf1c1b071664"
+      "size": 10261,
+      "sha256": "4ae894f3afce706733711e2f6ada4d0c50c55bec9dafd3af647eb3cf5584ee44"
     },
     {
       "path": "assets/app-icon/installer-header.bmp",
       "size": 25818,
-      "sha256": "56b17921bd290061fb77d696d4c51c372c0f40349442ebb54b57eb351c45b808"
+      "sha256": "377a2abcbbfdceb24b732a6479baacf18ffafb60ddaac9794f686f2bafbebe47"
     },
     {
       "path": "assets/app-icon/installer.bmp",
       "size": 154542,
-      "sha256": "2a2459470a8a060202b8cfc8baa29f7da1cc1dc8029db1ccc5a6b62e60d611c3"
+      "sha256": "6592704657cbec7b5d5a96d0b677b0830db603ba772fa31b5f3722344cc2e991"
     },
     {
       "path": "assets/app-icon/provenance.json",
       "size": 729,
-      "sha256": "fcc4e1e6921dd1199b85a46a260b2cfb6b8f4f860b3bc572bc99b2b749c004da"
+      "sha256": "cc116465734ae89f0fca33b5d7b1b06435b49ae47c1ae76a333ffb3ba9374858"
     },
     {
       "path": "assets/brand/cowmata-company-logo.png",
@@ -140,6 +140,16 @@
       "path": "assets/brand/official-wordmark.svg",
       "size": 3385,
       "sha256": "83bf7daf564f02e9c833cc658930c3aa3df994bfd8dfcfcf5b4a75959d613714"
+    },
+    {
+      "path": "assets/brand/pro-icon.svg",
+      "size": 3453,
+      "sha256": "e7e366c478ba90c7864af0d671b6a8a1c641f6c026ab206c48598069ed2c6a58"
+    },
+    {
+      "path": "assets/brand/pro-wordmark.svg",
+      "size": 5527,
+      "sha256": "2e953b8ca9f0ed37b6f3e2cd244acf6cc4d7452d753947a4d61982c2f36919e2"
     },
     {
       "path": "assets/dataset_recipes/cowmata_activity_aux/__init__.py",
@@ -1403,8 +1413,8 @@
     },
     {
       "path": "cowmata_tailring/app/main.py",
-      "size": 5013,
-      "sha256": "6ba7105ca2112139bdd1af272449122f08d001744f0e5c3b3d77a0cd7275dfcd"
+      "size": 5007,
+      "sha256": "6a6a2c3ee5c3951039c0a57a2b9beb3c403d3b10539b6a56ff8a6ccb1ef5d194"
     },
     {
       "path": "cowmata_tailring/app/mixins/__init__.py",
@@ -1448,18 +1458,18 @@
     },
     {
       "path": "cowmata_tailring/app/update_core.py",
-      "size": 9260,
-      "sha256": "ced784276c44974b5216341f53449f348e82e4b72c18c975cc3e37affcf4c932"
+      "size": 9253,
+      "sha256": "ccdf06b00ae7a8e072e83fad730fb17af1cd3dc1e854d63c8af7aba09a199b87"
     },
     {
       "path": "cowmata_tailring/app/update_ui.py",
-      "size": 25182,
-      "sha256": "59ef24ccda7c2a654fcaf60906626f2df1458cf410dfff17688e5f5122d6104e"
+      "size": 25180,
+      "sha256": "1dfa11d82baa9ce4abef915332a3add52bddb16c35ec38d4695bedeb3d188a0f"
     },
     {
       "path": "cowmata_tailring/app/update_worker.py",
-      "size": 17763,
-      "sha256": "afddd110f0a38784e67552f400c3b27dead58547936ce72d2ba29e4fd640dfa4"
+      "size": 18302,
+      "sha256": "341401606a06c90ad658777e962ba3ddfba2df36085071b7829e94af1e387d87"
     },
     {
       "path": "cowmata_tailring/app/windows_identity.py",
@@ -1803,8 +1813,8 @@
     },
     {
       "path": "cowmata_tailring/ui/about.py",
-      "size": 3432,
-      "sha256": "114c2b226344b301d1d68d50f8d84bed2e4ad78bd36a45778f7a6b481e933143"
+      "size": 3476,
+      "sha256": "48c9854a8fe8a4bcbaa68f26218fb801735ac6a94ab9f027b3780f3be0821965"
     },
     {
       "path": "cowmata_tailring/ui/cached_widgets.py",
@@ -1848,8 +1858,8 @@
     },
     {
       "path": "cowmata_tailring/ui/translations.py",
-      "size": 298144,
-      "sha256": "3c6ba73816e6e0fc5b6be8582f4cb41b26b01e509ce41f0563167741a5921afb"
+      "size": 298368,
+      "sha256": "a93df64790effc4c6c2528bfd7f8a077f37ae15a9a57d2efade610e0ec6ef3a1"
     },
     {
       "path": "cowmata_tailring/ui/video_timeline.py",
@@ -1953,8 +1963,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dataset_build_ui.py",
-      "size": 15773,
-      "sha256": "ae812b6f50b33972f6da0a102dc8d7243438b6b126ddf2a0ee83692531fbf154"
+      "size": 15787,
+      "sha256": "64e8a5745207a7affb429f193665113d0eb854692fd5f7f73e5d9c8fc343a3c6"
     },
     {
       "path": "cowmata_tailring/workspace/dataset_pipeline.py",
@@ -2028,8 +2038,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/history_window.py",
-      "size": 25446,
-      "sha256": "0de61628e5aa95ef3e917e64d97fb40ac7463ddf68dfc67dbf212133acc1160f"
+      "size": 25453,
+      "sha256": "3b5f6e7d9398f9ce1f1f0800d07ef9c6b959f7f7cc5179e8912c852d734ee75e"
     },
     {
       "path": "cowmata_tailring/workspace/intake_health.py",
@@ -2073,8 +2083,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/modern_window.py",
-      "size": 43327,
-      "sha256": "85f86b5ed49fadeb12388a68ef5476987961c72a043f16971d9393f73f9365a7"
+      "size": 43323,
+      "sha256": "cec9ad6f4957de1e5ae7e55d164150212063e04508e981bb20d9a09f871aa661"
     },
     {
       "path": "cowmata_tailring/workspace/mother_dataset.py",
@@ -2098,8 +2108,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/organization_ui.py",
-      "size": 79372,
-      "sha256": "91f2ce955445f3f1d8dcdbe0a88f3674435e21313662c6a150a88a128e55cf98"
+      "size": 79379,
+      "sha256": "a8167fead4aed177d1b0faea41e1d2cc41f84ca318cd1d1d2f178638e41ab6c8"
     },
     {
       "path": "cowmata_tailring/workspace/organization_worker.py",
@@ -2198,8 +2208,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/window.py",
-      "size": 165173,
-      "sha256": "e05b8d11cfc851c9006ef603c38bd4d52238f194ae4fba3abc7346d1192a6440"
+      "size": 165187,
+      "sha256": "b75b153465d064098090a36128d6e33d430b9a801300e9ff19d99950b7dc2b92"
     },
     {
       "path": "cowmata_tailring/workspace/work.py",
@@ -2210,6 +2220,11 @@
       "path": "cowmata_tailring/workspace/worker.py",
       "size": 17856,
       "sha256": "5dd0d43281a3f97a390d981cedefe5f46b4f2d03509879ee4a94654568a7b132"
+    },
+    {
+      "path": "docs/.nojekyll",
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
       "path": "docs/algorithm-inspection.md",
@@ -2348,13 +2363,13 @@
     },
     {
       "path": "docs/images/guide380/01-main.png",
-      "size": 195667,
-      "sha256": "0c11bc22fa8e6612fa857d1a927f9c6f23fd7e4c66a82c50dd406dd768dd92de"
+      "size": 196836,
+      "sha256": "976838172229acff3c73bfa857c3fa4d7cc453fc58d7f50ab61b22f5f6228a45"
     },
     {
       "path": "docs/images/guide380/04-annotations.png",
-      "size": 366701,
-      "sha256": "35086afb74e6c9af243977de46097a95dab1364ec818b3234f421feb4ddc7259"
+      "size": 319683,
+      "sha256": "155f27a303a9594ad877f6ab327a4c88b411694db12b42cb0183720e641ce942"
     },
     {
       "path": "docs/images/guide380/05-edit.png",
@@ -2383,18 +2398,18 @@
     },
     {
       "path": "docs/images/guide380/10-classification.png",
-      "size": 122456,
-      "sha256": "d9540c5058a37ae683b0f268871c3ceda13a6185b529118691832bde2d85beb9"
+      "size": 121465,
+      "sha256": "02604da4698855ee6fb97d7ab4205c37ed3a476c2b48f867f6bdd6ffeafbf71c"
     },
     {
       "path": "docs/images/guide380/11-download.png",
-      "size": 78150,
-      "sha256": "81d3448a32a76d79acc8702231489fb99f8bb673a9621da81684f1fd033de5e0"
+      "size": 78189,
+      "sha256": "7b23077a784120275f2f7aadd05d135ba377c524eb24ef72e55250e4e32a0d7a"
     },
     {
       "path": "docs/images/guide380/about.png",
-      "size": 65062,
-      "sha256": "fbcbbddc2ccb3f994d1d3782884c8a71198a97688d75860e0728944c1280c965"
+      "size": 67537,
+      "sha256": "0a085cb49052e408176262bf23a75402463c46f38689bc8895a2ccc57606640e"
     },
     {
       "path": "docs/images/guide380/classification-records.png",
@@ -2433,33 +2448,48 @@
     },
     {
       "path": "docs/images/guide380/health-CALVING.png",
-      "size": 314246,
-      "sha256": "46c2f684ff1fbc9f24fc66036779264609a5992416b67a62d4a68d611b65513d"
+      "size": 314731,
+      "sha256": "3b92b2991a592f2f0d97056a6f926f5362bf99430b61a4ed613bcaed705cf39e"
     },
     {
       "path": "docs/images/guide380/health-DISEASE.png",
-      "size": 314274,
-      "sha256": "a2cde23c1aa11e6aebf71cc22d5d17e7797c8994348c24a94a6b9408df858619"
+      "size": 314751,
+      "sha256": "9a13a9d9d9b0c72488310e16063202d0a9bb922de1e8331d07ab3fd12d000e10"
     },
     {
       "path": "docs/images/guide380/health-ESTRUS.png",
-      "size": 314249,
-      "sha256": "1821ba39e78ff7040166cd6c3860019a1ba5eee3a5c7841d3dcdca12571373f7"
+      "size": 314741,
+      "sha256": "8d26fc91eb2d5b213574d3531141fe74173be0b8f43f6808a913235920deee9f"
     },
     {
       "path": "docs/images/guide380/health-PREGNANCY_EARLY.png",
-      "size": 314220,
-      "sha256": "7327f5bb867daf558162c633708bd085ca9f91fe689c5ae92e946bba2202f908"
+      "size": 314736,
+      "sha256": "5a57144de6c3115aa70630e4d5826b553b9e6ba7c94f602b7fd2a1f4667f9e1b"
     },
     {
       "path": "docs/images/guide380/health-PREGNANCY_LATE.png",
-      "size": 314360,
-      "sha256": "12f5890abceda4c3962d88a61224330f01222f297b4e48109f56b9f1db3bfcbd"
+      "size": 314884,
+      "sha256": "e7dc7c8c5f020d1a8579e16b4edaa1551462f3f9d3e180606bcf2c13a140e857"
     },
     {
       "path": "docs/images/guide380/health-PREGNANCY_MID.png",
-      "size": 314228,
-      "sha256": "c511813e4ef377b748f7f41791586284aec74e3ea04f290327d1ebe8b1bacecb"
+      "size": 314735,
+      "sha256": "3aa88844eca35478b382bd7ef054bc5d2d198cc6234e6f33a1c6f4ed7a62be27"
+    },
+    {
+      "path": "docs/images/guide380/install-finished.png",
+      "size": 43505,
+      "sha256": "fe1b9cbf6722e5360b730ec04d3b783b333b723a4910e2db05588b0c9be58d32"
+    },
+    {
+      "path": "docs/images/guide380/install-location.png",
+      "size": 50062,
+      "sha256": "eca2090f9e996fd7c66c5d5b8f0e9d85f9e35cbf9a77ca6b6e6cfa224325759d"
+    },
+    {
+      "path": "docs/images/guide380/install-welcome.png",
+      "size": 43192,
+      "sha256": "075e9c6270d1f81f2a75c359ee4ed41b76396de527c033b220b839cde880057e"
     },
     {
       "path": "docs/images/guide380/menu-1.png",
@@ -2503,18 +2533,18 @@
     },
     {
       "path": "docs/images/guide380/view-A.png",
-      "size": 340699,
-      "sha256": "eca4a090dac079887bcf4732d65debcf60eaa2d20ad24d0f4e5f7e52f2cb1cb4"
+      "size": 332205,
+      "sha256": "39d044b4d7c4766ce1a040a42d65bf0f6507a2fc4caea1bb2abb8bb209bde31b"
     },
     {
       "path": "docs/images/guide380/view-B.png",
-      "size": 372218,
-      "sha256": "d51c717bb78724f3d56b16e0fd3cbe531087823e0b7c6b0da0a4fc71ec73ba08"
+      "size": 319231,
+      "sha256": "0f348f16ee8414e39d6382ebb615445bda2c6c4412eda7fcf79219dd59ce2f57"
     },
     {
       "path": "docs/images/guide380/view-C.png",
-      "size": 290627,
-      "sha256": "ed97b94f8cb53a0acb3df3833a118a3737dac119f06e3c9dd85d837883e287c8"
+      "size": 283612,
+      "sha256": "f9bd24c6e4cb36198c1ad6421fdf3360cc37c966788cda41ade309350be9a8a2"
     },
     {
       "path": "docs/images/single-multiview.png",
@@ -2525,6 +2555,11 @@
       "path": "docs/images/single-save.png",
       "size": 30864,
       "sha256": "848a7b2741cac67b7812207c4ea1ed6fed78b00ab3f622f43738b56b7c08690b"
+    },
+    {
+      "path": "docs/index.html",
+      "size": 228,
+      "sha256": "66022901348b8b10c6fc11c84374b722c4d8ac41f9905c278e945f8ba70f3976"
     },
     {
       "path": "docs/legacy-dataset-workflow.md",
@@ -2568,8 +2603,8 @@
     },
     {
       "path": "docs/model-assist.md",
-      "size": 3337,
-      "sha256": "99d797cf89f09db17a15a80c19b2d3f438aee3fa3cc8709f05ba37552fd2bd4a"
+      "size": 3461,
+      "sha256": "88c77f4c7f348b024cc024637d4101bbe4fc36984708045cee894afa8fa5c782"
     },
     {
       "path": "docs/native-video-timing.md",
@@ -2593,8 +2628,8 @@
     },
     {
       "path": "docs/operator-guide-380.html",
-      "size": 26916,
-      "sha256": "73d913e20a1b42fcd84d6eefa0590a45ae301089b4fb62e476359f43c1215451"
+      "size": 28474,
+      "sha256": "b42f61eccb510eb84041145ff766a4fd974d16dbd13aa05817576568c823e1b6"
     },
     {
       "path": "docs/playback-annotation-fix-20260910.md",
@@ -2610,6 +2645,36 @@
       "path": "docs/portable-components.md",
       "size": 2785,
       "sha256": "43189a6d269e150836d1e29d7eb8fad4bcb801120ed4c4dedb4ec04ebd59f3c2"
+    },
+    {
+      "path": "docs/project/cowmata-NOTICE.txt",
+      "size": 402,
+      "sha256": "ebd475433becaa842be48edd26da9b436fc6a68a23f772f98cc9dc0cef8ef189"
+    },
+    {
+      "path": "docs/project/cowmata-risk-NOTICE.txt",
+      "size": 402,
+      "sha256": "ebd475433becaa842be48edd26da9b436fc6a68a23f772f98cc9dc0cef8ef189"
+    },
+    {
+      "path": "docs/project/cowmata-tailring-NOTICE.txt",
+      "size": 402,
+      "sha256": "ebd475433becaa842be48edd26da9b436fc6a68a23f772f98cc9dc0cef8ef189"
+    },
+    {
+      "path": "docs/project/overview.md",
+      "size": 1356,
+      "sha256": "829a38038e65cb194f6f0297f748f8b369bad183b08f076a5935eb42d48dff3d"
+    },
+    {
+      "path": "docs/project/provenance.json",
+      "size": 620,
+      "sha256": "a854a1d10e680ed228d9f5205cc291940cf9f0c702fea5700695583f8101fdd7"
+    },
+    {
+      "path": "docs/project/repository-consolidation.md",
+      "size": 4032,
+      "sha256": "4aa1741a52d4e0efbf29fe830c9a71997ff0eb41305e0b6d88029de5193f9d0f"
     },
     {
       "path": "docs/quick-start-illustrated.manifest.json",
@@ -2648,8 +2713,8 @@
     },
     {
       "path": "docs/release-321.md",
-      "size": 5576,
-      "sha256": "f19034bc004fc9cb2e228f204c6c1fcb5e117459f0ba2137f9c8716586b3e3a5"
+      "size": 5588,
+      "sha256": "49d79b23d4e73d4f31b3e62705f70210ff36f316ae4dfc48c9e60ef8886a6f7d"
     },
     {
       "path": "docs/release-330-validation.md",
@@ -2658,8 +2723,8 @@
     },
     {
       "path": "docs/release-330.md",
-      "size": 2819,
-      "sha256": "3ff784210194b48c3a078bdfb34d0f1b8a85545fbeb4520e702b97b97a4f679a"
+      "size": 2805,
+      "sha256": "ec7accea3587dddd107189be34da3a4d27dbd005bbc860a5bd15bdf498f9c148"
     },
     {
       "path": "docs/release-331-validation.md",
@@ -2668,8 +2733,8 @@
     },
     {
       "path": "docs/release-331.md",
-      "size": 1500,
-      "sha256": "ffb3b31fa26d00be12bbbdbca67bba1b335ab6965755a16941c49e84457adf7f"
+      "size": 1504,
+      "sha256": "82480dfe2b0ac841c47d419a9e5c79de2c531fc0266bf45e66e90b4249d93dd2"
     },
     {
       "path": "docs/release-332-validation.md",
@@ -2678,8 +2743,8 @@
     },
     {
       "path": "docs/release-332.md",
-      "size": 1154,
-      "sha256": "10eeb81dbc089327474fed528e39643c3052a96439dfcdbe75db0d55be8a7ca1"
+      "size": 1150,
+      "sha256": "867d2b0bf89ab2441157093c2ddf579ae1d4e074feacd508f0179ce2b06fff46"
     },
     {
       "path": "docs/release-340.md",
@@ -2703,8 +2768,8 @@
     },
     {
       "path": "docs/release-342.md",
-      "size": 1985,
-      "sha256": "9602b539194d5a248ea3abb7e87c555152dfcc1a2857f6a026cac6d1c46674df"
+      "size": 1983,
+      "sha256": "718f2ce07c0cf649633445ff355bdf06b5394df700a2418ed0aea6673d8f028b"
     },
     {
       "path": "docs/release-343-validation.md",
@@ -2768,13 +2833,13 @@
     },
     {
       "path": "docs/release-380.md",
-      "size": 1264,
-      "sha256": "6847b6295a20f8914fca92edbf04f90bed4b428f3367398efba571779f4db317"
+      "size": 1582,
+      "sha256": "6f694752a82f951eeaab47073dd7a0cd89dbb926508b09758468a0b34beedf63"
     },
     {
       "path": "docs/release-notes-v2.2.0.md",
-      "size": 6037,
-      "sha256": "1913cfee1998c9de2723bff3831624ee708889b454f0165c3e1b423c3512aa9b"
+      "size": 5865,
+      "sha256": "fe9db02e43e6886d4c03449a7a8328b8d13483bf2dfe999c9afaf181790193b1"
     },
     {
       "path": "docs/team-returns.md",
@@ -2828,8 +2893,8 @@
     },
     {
       "path": "packaging/Launcher.cs",
-      "size": 12726,
-      "sha256": "8f3ad7e0e1427eb02cfa312770698da66350628472e5c921be1536293498291b"
+      "size": 13190,
+      "sha256": "011cfb84f0a31ed88abb3ab0a17220353d0c8a24b3158d3e00a0172b81b2ef76"
     },
     {
       "path": "packaging/app.manifest",
@@ -2838,8 +2903,8 @@
     },
     {
       "path": "packaging/installer.nsi",
-      "size": 18034,
-      "sha256": "b66cb07e663484b021fa0df5e3f0ab1f2488e439a721e34a963f830cd2cebdea"
+      "size": 18475,
+      "sha256": "4f546ec3f01cc6c3c9f78cd36efb6c41a5fce8548ebc435a0420ac4be91ac48d"
     },
     {
       "path": "packaging/portable-profile.json",
@@ -2853,8 +2918,8 @@
     },
     {
       "path": "pyproject.toml",
-      "size": 2520,
-      "sha256": "eca933222855571631acee2c9927be4a44376847804151145b0a366397970a21"
+      "size": 2506,
+      "sha256": "e526b9b6f86672f4ce0bdba2e03910d1035760cf5628b1223bd4f2442a8fa239"
     },
     {
       "path": "requirements-events-20260906.txt",
@@ -2883,8 +2948,8 @@
     },
     {
       "path": "scripts/build_app_icon.py",
-      "size": 2346,
-      "sha256": "c7a1bbc95bcd36009468785ea93a175235402694295350318aed12d7e5cb3113"
+      "size": 2380,
+      "sha256": "ca723ffe05d68072da0b012219631c0a4f0397384d9c80d5646f29320b2582bf"
     },
     {
       "path": "scripts/build_installer.py",
@@ -2898,8 +2963,8 @@
     },
     {
       "path": "scripts/build_portable.py",
-      "size": 7624,
-      "sha256": "e66b5cc3dcdc72ef03f34e42813366c5581fc0fa3f0a7c3842a71bba291834e0"
+      "size": 7694,
+      "sha256": "38c1e9478f0362d5a75666d001955107d8449c6976193df48cc2db0e5bee4195"
     },
     {
       "path": "scripts/build_quick_start_pdf.py",
@@ -3108,8 +3173,8 @@
     },
     {
       "path": "tests/test_classifier_hotfix.py",
-      "size": 11269,
-      "sha256": "faa653aea77d140972cee9c60d00fd2f55956ff910aafac53cec563696bc9e26"
+      "size": 11275,
+      "sha256": "2da5690dc5ead9cfd6ec905a7b8356aa8405ecc05416bc2d82d2ca616e3cfd91"
     },
     {
       "path": "tests/test_clean_filename_policy.py",
@@ -3233,8 +3298,8 @@
     },
     {
       "path": "tests/test_installer_resources.py",
-      "size": 5893,
-      "sha256": "373339403bc076df556e9b0359cdfbf173846b03c03e01e4b74c939ce3c66a8c"
+      "size": 5884,
+      "sha256": "692e20353c7f20668389e4478ff2d99ee20d9f63458883605b33be7ad21090ee"
     },
     {
       "path": "tests/test_interval_shading_v332.py",
@@ -3275,6 +3340,11 @@
       "path": "tests/test_native_ps.py",
       "size": 5258,
       "sha256": "fb1f9d883413c39116f481a3a005e26644d75734bb7b29912c9686c1443686a3"
+    },
+    {
+      "path": "tests/test_native_shortcuts.py",
+      "size": 3682,
+      "sha256": "efc6e6fcba41b73152f33b1e9b912dab6d4d5e8312fd520cac01d47acf003dad"
     },
     {
       "path": "tests/test_ocr_lightweight.py",
@@ -3443,8 +3513,8 @@
     },
     {
       "path": "tests/test_updates.py",
-      "size": 21508,
-      "sha256": "457016b01c45fa6f988483963f080b209dd31bb4bec9cdfac7673734d93aa8f7"
+      "size": 22564,
+      "sha256": "aec91806818b26c275cd74c4f42c48acbbd46234c04da0b57d766ed7fdaa38c6"
     },
     {
       "path": "tests/test_video_file_health.py",
@@ -3503,8 +3573,8 @@
     },
     {
       "path": "\u4f7f\u7528\u8bf4\u660e.txt",
-      "size": 365,
-      "sha256": "9ddcd4b8bbbf35304aa608b040dcbaedc2898f3bb80dd10277d22d184cc4a14d"
+      "size": 362,
+      "sha256": "b6bb7a9b831d902b368c10b1569dab9d962432966c701d6f4cb66d2991dd0ec5"
     }
   ]
 }
