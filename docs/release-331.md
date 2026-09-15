@@ -16,4 +16,4 @@
 - **Source.zip**：纯净源码，供开发维护；普通标注用户选择前两项。
 - **Manual.pdf**：图文操作手册；SHA256 文件用于校验对应下载。
 
-八月录像样本在本机使用缓存后，大段前跳、后跳约 0.12 秒；首次准备和实际速度仍取决于素材与硬盘。详情见 [验证记录](https://github.com/zxq309/cattle-tail-ring-annotator/blob/v3.3.1/docs/release-331-validation.md)。保留旧版发布附件供追溯，自动更新只选择最新版。
+八月录像样本在本机使用缓存后，大段前跳、后跳约 0.12 秒；首次准备和实际速度仍取决于素材与硬盘。详情见 [验证记录](https://github.com/zxq309/COWMATA-Pro/blob/v3.3.1/docs/release-331-validation.md)。保留旧版发布附件供追溯，自动更新只选择最新版。

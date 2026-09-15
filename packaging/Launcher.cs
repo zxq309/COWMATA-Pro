@@ -38,29 +38,32 @@ internal static class Launcher
         [PreserveSig] int SetValue(ref PropertyKey key, ref PropVariant value);
         [PreserveSig] int Commit();
     }
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
-    private static extern int SHGetPropertyStoreFromParsingName(string path, IntPtr context,
-        uint flags, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
+    [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+    private class ShellLink { }
 
     // The installer calls this only for its own newly-created .lnk files.
     private static void RegisterShortcut(string path)
     {
         if (!Path.IsPathRooted(path) || !File.Exists(path) || Path.GetExtension(path) != ".lnk")
             throw new ArgumentException("Expected an existing absolute shortcut path.");
-        Guid iid = typeof(IPropertyStore).GUID;
-        IPropertyStore store;
-        Marshal.ThrowExceptionForHR(SHGetPropertyStoreFromParsingName(path, IntPtr.Zero, 2, ref iid, out store));
+        // Edit the link in memory and save it through IPersistFile. The filesystem
+        // property store's Commit uses ReplaceFile, which can fail on EFS links
+        // with ERROR_UNABLE_TO_REMOVE_REPLACED (0x80070497).
+        object link = new ShellLink();
+        var file = (System.Runtime.InteropServices.ComTypes.IPersistFile)link;
+        file.Load(path, 2);  // STGM_READWRITE: SetValue must not edit a read-only store.
+        var store = (IPropertyStore)link;
         var key = new PropertyKey { Format = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), Id = 5 };
         var value = new PropVariant { Type = 31, Pointer = Marshal.StringToCoTaskMemUni(AppId) };
         try
         {
             Marshal.ThrowExceptionForHR(store.SetValue(ref key, ref value));
-            Marshal.ThrowExceptionForHR(store.Commit());
+            file.Save(path, true);
         }
         finally
         {
             Marshal.FreeCoTaskMem(value.Pointer);
-            Marshal.ReleaseComObject(store);
+            Marshal.ReleaseComObject(link);
         }
     }
 
@@ -177,6 +180,13 @@ internal static class Launcher
         }
         catch (Exception error)
         {
+            // Installer helper commands must return to NSIS, never wait for an
+            // invisible dialog while NSIS is waiting for this process to exit.
+            if (args.Length > 0 && (args[0] == "--register-shortcut" || args[0] == "--check-running"))
+            {
+                Console.Error.WriteLine(error.Message);
+                return 1;
+            }
             MessageBox(IntPtr.Zero, error.Message, "COWMATA Pro™ 启动失败", 0x10);
             return 1;
         }

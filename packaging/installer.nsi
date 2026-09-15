@@ -323,7 +323,7 @@ Section "COWMATA Pro™" Main
   CreateDirectory "$SMPROGRAMS\COWMATA Pro™ ${VERSION}"
   CreateShortcut "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\COWMATA Pro™.lnk" "$INSTDIR\COWMATA.exe" "" "$INSTDIR\COWMATA.exe" 0
   CreateShortcut "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
-  nsExec::ExecToStack '"$INSTDIR\COWMATA.exe" --register-shortcut "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\COWMATA Pro™.lnk"'
+  nsExec::ExecToStack /TIMEOUT=15000 '"$INSTDIR\COWMATA.exe" --register-shortcut "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\COWMATA Pro™.lnk"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -331,7 +331,7 @@ Section "COWMATA Pro™" Main
   ${EndIf}
   ${If} $DesktopEnabled == ${BST_CHECKED}
     CreateShortcut "$DESKTOP\COWMATA Pro™ ${VERSION}.lnk" "$INSTDIR\COWMATA.exe" "" "$INSTDIR\COWMATA.exe" 0
-    nsExec::ExecToStack '"$INSTDIR\COWMATA.exe" --register-shortcut "$DESKTOP\COWMATA Pro™ ${VERSION}.lnk"'
+    nsExec::ExecToStack /TIMEOUT=15000 '"$INSTDIR\COWMATA.exe" --register-shortcut "$DESKTOP\COWMATA Pro™ ${VERSION}.lnk"'
     Pop $0
     Pop $1
     ${If} $0 != 0

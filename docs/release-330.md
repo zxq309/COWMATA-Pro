@@ -11,6 +11,6 @@
 
 安装组件、五类事件模型和 OCR 权重随包提供。启动检查需联网，已打开的工程可离线继续。没有更新器的早期版本仍需手动安装一次；具备更新器的旧版直接获取最新版本。
 
-验证结果与实际运行范围见 [功能实测](https://github.com/zxq309/cattle-tail-ring-annotator/blob/main/docs/release-330-validation.md)，代码审查见 [审查报告](https://github.com/zxq309/cattle-tail-ring-annotator/blob/main/docs/code-audit-330.md)。客户出问题的原始工程在客户电脑，本机采用对应结构复现；不宣称已验证该客户原件或所有硬件条件。
+验证结果与实际运行范围见 [功能实测](https://github.com/zxq309/COWMATA-Pro/blob/main/docs/release-330-validation.md)，代码审查见 [审查报告](https://github.com/zxq309/COWMATA-Pro/blob/main/docs/code-audit-330.md)。客户出问题的原始工程在客户电脑，本机采用对应结构复现；不宣称已验证该客户原件或所有硬件条件。
 
 健康与繁殖分类是人工采集分组，不是自动诊断；未接入的算法仍显示待接入。首次从旧版本升级执行旧版更新器，新版恢复保护从安装3.3后生效。

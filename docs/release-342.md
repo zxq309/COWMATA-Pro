@@ -10,4 +10,4 @@
 
 PPG 继续预留目录、母标签和数据集字段。此前的空格播放、零时长区间拦截、最新标签选择与拖动调整功能保留。修复实际窗口测试发现的 Qt 完成信号重名问题，后台预览完成后界面可正确进入下一步。
 
-源码、完整便携包、安装包和更新描述文件同时发布。图文教程加入本版实际 Windows 窗口截图。数据规范及命令行训练入口见 [操作说明](https://github.com/zxq309/cattle-tail-ring-annotator/blob/main/docs/legacy-dataset-workflow.md)。训练入口只写新研究模型，不替换随包模型或自动上线。
+源码、完整便携包、安装包和更新描述文件同时发布。图文教程加入本版实际 Windows 窗口截图。数据规范及命令行训练入口见 [操作说明](https://github.com/zxq309/COWMATA-Pro/blob/main/docs/legacy-dataset-workflow.md)。训练入口只写新研究模型，不替换随包模型或自动上线。
