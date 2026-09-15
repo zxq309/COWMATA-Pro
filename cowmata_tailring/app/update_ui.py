@@ -307,9 +307,21 @@ class UpdateController(QObject):
         QTimer.singleShot(0, self._close_for_update)
 
     def _close_for_update(self):
-        QApplication.closeAllWindows()
         from shiboken6 import isValid
-        visible = [w for w in [self.window, *QApplication.topLevelWidgets()]
+        # Keep existing Python owners before closing. Recreating wrappers from
+        # Qt's global native window list while GC destroys closed dialogs can
+        # crash in PySide::getWrapperForQObject (Linux/Python 3.10).
+        tracked, pending, seen = [], [self.window], set()
+        while pending:
+            window = pending.pop()
+            if id(window) in seen or not isValid(window):
+                continue
+            seen.add(id(window))
+            tracked.append(window)
+            pending.extend(getattr(window, '_task_windows', {}).values())
+            pending.extend(child for child in window.findChildren(QWidget) if child.isWindow())
+        QApplication.closeAllWindows()
+        visible = [w for w in tracked
                    if isinstance(w, QWidget) and isValid(w) and w.isVisible()]
         if any(getattr(w,'_closing_requested',False) or getattr(w,'_closing_due_to_organization',False)
                or getattr(w,'_export_running',False) for w in visible):

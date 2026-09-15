@@ -399,6 +399,24 @@ def test_cancelled_window_close_does_not_queue_installer_for_later(update_contro
     assert not calls
 
 
+def test_update_close_tracks_owned_windows_without_global_wrapper_enumeration(update_controller, monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QApplication
+
+    from cowmata_tailring.ui.task_window import TaskWindow
+    updater = update_controller
+    class Unsaved(TaskWindow):
+        def closeEvent(self, event):
+            event.ignore()
+    child = Unsaved(updater.window)
+    child.show()
+    updater.pending_job = tmp_path/'job.json'
+    monkeypatch.setattr(QApplication, 'topLevelWidgets', lambda: pytest.fail('Unsafe global wrapper enumeration'))
+    updater._close_for_update()
+    assert updater.pending_job is None and child.isVisible()
+    child.hide()
+    child.deleteLater()
+
+
 @pytest.fixture
 def startup_gate(monkeypatch):
     from PySide6.QtWidgets import QApplication
