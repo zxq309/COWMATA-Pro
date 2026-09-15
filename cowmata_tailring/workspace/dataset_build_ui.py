@@ -178,7 +178,7 @@ class DatasetBuildWindow(TaskWindow):
         self.layout_hint=QLabel()
         self.layout_hint.setWordWrap(True)
         outer.addWidget(self.layout_hint)
-        self.status=QLabel('③ 点击开始新版本，原始数据与标签会逐份配对。')
+        self.status=QLabel('③ 更新完整数据集：补入新增数据，复用已有数据，保留标签修改历史。')
         self.status.setWordWrap(True)
         outer.addWidget(self.status)
         self.model=PairModel(self)
@@ -193,12 +193,12 @@ class DatasetBuildWindow(TaskWindow):
         self.bar=QProgressBar()
         outer.addWidget(self.bar)
         row=QHBoxLayout()
-        self.build_button=QPushButton('开始新版本')
+        self.build_button=QPushButton('更新完整数据集')
         self.build_button.setObjectName('primary')
         self.build_button.clicked.connect(self.submit)
         self.cancel=QPushButton('暂停')
         self.cancel.clicked.connect(self.cancel_job)
-        self.resume=QPushButton('继续当前版本')
+        self.resume=QPushButton('继续更新')
         self.resume.clicked.connect(self.resume_job)
         self.records=QPushButton('实时记录')
         self.records.clicked.connect(self.open_records)
@@ -227,7 +227,7 @@ class DatasetBuildWindow(TaskWindow):
     def task_changed(self,*_):
         spec=TASKS[self.task.currentData()]
         self.setWindowTitle('COWMATA Pro™ · '+spec[0])
-        self.layout_hint.setText(spec[1]+' / 导出时间戳 / 行为 / Motion 或 PPG / Raw、Label\n文件名：设备-耳标-现场标记_采集日期_采集时间_raw.json / label.json')
+        self.layout_hint.setText(spec[1]+' / 行为 / Motion 或 PPG / Raw、Label\n文件名：设备-耳标-现场标记_采集日期_采集时间_raw.json / label.json')
         if not self.running:
             self.model.replace([])
             self.output=''
@@ -250,8 +250,8 @@ class DatasetBuildWindow(TaskWindow):
             if self.owner.dirty:
                 self.status.setText('当前标注尚未保存，请处理保存问题后再构建。')
                 return
-        request=dict(action='paired_build',sources=sources,target=self.target.text().strip(),task=self.task.currentData())
-        self.job=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'COWMATA Annotator/dataset-jobs'/uuid.uuid4().hex
+        request=dict(action='paired_build',sources=sources,target=self.target.text().strip(),task=self.task.currentData(),layout='current')
+        self.job=(Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'COWMATA Annotator/dataset-jobs'/uuid.uuid4().hex).resolve()
         self.job.mkdir(parents=True)
         (self.job/'request.json').write_text(json.dumps(request,ensure_ascii=False),encoding='utf-8')
         self.settings.setValue('dataset370/target',request['target'])
@@ -267,7 +267,7 @@ class DatasetBuildWindow(TaskWindow):
         self.buffer=b''
         self.snapshot_path=None
         self.snapshot_stamp=None
-        self.status.setText('正在扫描来源并创建时间戳版本…')
+        self.status.setText('正在核对来源并更新完整数据集…')
         self.bar.setRange(0,0)
         self.controls()
         if self.process:

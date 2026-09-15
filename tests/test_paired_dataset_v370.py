@@ -24,7 +24,7 @@ def test_dataset_uses_raw_label_pairs_and_timestamp_versions(tmp_path):
     from cowmata_tailring.workspace import paired_dataset as d
     raw,label=fixture_farm(tmp_path/'farm')
     original=label.read_bytes()
-    result=d.build_dataset([tmp_path/'farm'],tmp_path/'datasets','behavior',job=tmp_path/'job')
+    result=d.build_dataset([tmp_path/'farm'],tmp_path/'datasets','behavior',job=tmp_path/'job',layout='versioned')
     root=Path(result['root'])
     assert root.parent.name=='COWMATA_Behavior_Dataset'
     prefix='ABCDEF123456-10001-A_2026-08-21_01-06-47'
@@ -34,14 +34,14 @@ def test_dataset_uses_raw_label_pairs_and_timestamp_versions(tmp_path):
         assert [e['id'] for e in doc['work']['project']['events']]==[event_id]
         assert doc['work']['project']['events'][0]['label_code']==code
     assert label.read_bytes()==original
-    second=d.build_dataset([tmp_path/'farm'],tmp_path/'datasets','behavior',job=tmp_path/'job2')
+    second=d.build_dataset([tmp_path/'farm'],tmp_path/'datasets','behavior',job=tmp_path/'job2',layout='versioned')
     assert second['root']!=result['root'] and root.exists()
 
 
 def test_calving_task_has_only_the_five_requested_classes(tmp_path):
     from cowmata_tailring.workspace import paired_dataset as d
     fixture_farm(tmp_path/'farm')
-    result=d.build_dataset([tmp_path/'farm'],tmp_path/'datasets','calving',job=tmp_path/'job')
+    result=d.build_dataset([tmp_path/'farm'],tmp_path/'datasets','calving',job=tmp_path/'job',layout='versioned')
     root=Path(result['root'])
     assert root.parent.name=='COWMATA_CalvingPred_Dataset'
     assert {'Standup','Liedown','Straining','FetalPartFirstVisible','CalfFullyExpelled'} <= {p.name for p in root.iterdir() if p.is_dir()}
@@ -64,14 +64,14 @@ def test_reviewed_dataset_rebuild_merges_labels_without_overwriting(tmp_path):
     from cowmata_tailring.workspace import paired_dataset as d
     from cowmata_tailring.workspace.review_store import save_review
     fixture_farm(tmp_path/'farm')
-    first=d.build_dataset([tmp_path/'farm'],tmp_path/'datasets','behavior',job=tmp_path/'job1')
+    first=d.build_dataset([tmp_path/'farm'],tmp_path/'datasets','behavior',job=tmp_path/'job1',layout='versioned')
     root=Path(first['root'])
     label=next((root/'Standup/Motion/Label').glob('*.json'))
     doc=json.loads(label.read_text(encoding='utf-8'))
     index=next(i for i,r in enumerate(doc['work']['project']['labels']) if r['code']=='STRAINING_BOUT')
     doc['work']['project']['events'][0].update(li=index,label_code='STRAINING_BOUT')
     save_review(label,doc['work'],expected_sha=hashlib.sha256(label.read_bytes()).hexdigest())
-    second=d.build_dataset([root],tmp_path/'datasets','behavior',job=tmp_path/'job2')
+    second=d.build_dataset([root],tmp_path/'datasets','behavior',job=tmp_path/'job2',layout='versioned')
     result=json.loads(next((Path(second['root'])/'Straining/Motion/Label').glob('*.json')).read_text(encoding='utf-8'))
     assert {e['id'] for e in result['work']['project']['events']}=={11,27}
 

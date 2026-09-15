@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import zipfile
 from pathlib import Path
@@ -96,7 +97,7 @@ def main():
     for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ('operator-guide-380.html', 'release-380.md'):
+    for name in ('operator-guide-380.html', 'release-380.md', 'release-381.md', 'client-updates.md'):
         shutil.copy2(source/'docs'/name, destination/'docs'/name)
     shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
     shutil.copytree(source/'docs/project', destination/'docs/project')
@@ -109,7 +110,8 @@ def main():
             with path.open("rb") as stream:
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
             inventory.append({"path": path.relative_to(destination).as_posix(), "size": path.stat().st_size, "sha256": digest})
-    (destination / "package-manifest.json").write_text(json.dumps({"version": "3.8.0", "files": inventory}, indent=2), encoding="utf-8")
+    version = re.search(r'__version__ = "([^"]+)"', (source/'cowmata_tailring/__init__.py').read_text(encoding='utf-8')).group(1)
+    (destination / "package-manifest.json").write_text(json.dumps({"version": version, "files": inventory}, indent=2), encoding="utf-8")
     print(json.dumps({"directory": str(destination), "files": len(inventory), "bytes": sum(x["size"] for x in inventory)}), flush=True)
     if not args.no_zip:
         with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=3) as bundle:

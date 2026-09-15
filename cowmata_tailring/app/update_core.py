@@ -15,6 +15,8 @@ import urllib.request
 from pathlib import Path
 
 REPO = "zxq309/COWMATA-Pro"
+REPOSITORY_ID = 1318095307
+REPO_ALIASES = (REPO, "zxq309/cattle-tail-ring-annotator")
 API = "https://api.github.com/repos/" + REPO
 PAGE = "https://github.com/" + REPO + "/releases"
 MAX_INSTALLER = 2 * 1024**3 - 1
@@ -34,8 +36,13 @@ def valid_url(url, *, redirect=False):
     if value.scheme != "https" or value.username or value.password or value.port not in {None, 443}:
         raise ValueError("Update requires trusted HTTPS")
     host = value.hostname
-    direct = ((host == "api.github.com" and value.path.startswith("/repos/" + REPO + "/releases"))
-              or (host == "github.com" and value.path.startswith("/" + REPO + "/releases/download/")))
+    path = urllib.parse.unquote(value.path)
+    if '\\' in path or any(part in {'.', '..'} for part in path.split('/')):
+        raise ValueError("Update URL outside the configured repository")
+    api_roots = ["/repos/" + repo + "/releases" for repo in REPO_ALIASES]
+    api_roots.append(f"/repositories/{REPOSITORY_ID}/releases")
+    direct = ((host == "api.github.com" and any(path == root or path.startswith(root + '/') for root in api_roots))
+              or (host == "github.com" and any(path.startswith('/'+repo+'/releases/download/') for repo in REPO_ALIASES)))
     if not direct and not (redirect and host in {"release-assets.githubusercontent.com", "objects.githubusercontent.com", "github-releases.githubusercontent.com"}):
         raise ValueError("Update URL outside the configured repository")
     return url

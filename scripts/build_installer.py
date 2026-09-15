@@ -87,11 +87,34 @@ def main():
     install_list = output.with_suffix('.install.nsh')
     with install_list.open('x', encoding='utf-8-sig') as stream:
         stream.write('\n'.join(install) + '\n')
+    # Reuse the new package's stdlib; NSIS deduplicates these same input bytes
+    # against the full payload. Old clients do not have to import new modules.
+    source = Path(__file__).resolve().parents[1]
+    bridge_list = output.with_suffix('.upgrade.nsh')
+    metadata = output.with_suffix('.upgrade.json')
+    metadata.write_text(json.dumps(dict(version=args.version,
+        package_sha256=hashlib.sha256((root/'package-manifest.json').read_bytes()).hexdigest(),
+        unpacked_size=sum(row['size'] for row in manifest['files']))), encoding='utf-8')
+    zips = list((root/'runtime').glob('python3*.zip'))
+    if len(zips) != 1:
+        raise ValueError('Private updater runtime is incomplete')
+    bridge = ['SetOutPath "$PLUGINSDIR\\upgrade"',
+              'File "'+str(source/'packaging/offline_upgrade.py')+'"',
+              'File /oname=upgrade-metadata.json "'+str(metadata)+'"',
+              'File /oname=COWMATA-Progress.exe "'+str(root/'COWMATA.exe')+'"']
+    bridge += ['File "'+str(root/'cowmata_tailring/app'/name)+'"' for name in ('update_core.py', 'update_worker.py')]
+    bridge += ['SetOutPath "$PLUGINSDIR\\upgrade\\runtime"']
+    bridge += ['File "'+str(path)+'"' for path in sorted((root/'runtime').iterdir())
+               if path.is_file() and path.suffix in {'.exe', '.dll', '.zip', '.pyd'}]
+    bridge += ['FileOpen $0 "$PLUGINSDIR\\upgrade\\runtime\\'+zips[0].stem+'._pth" w',
+               'FileWrite $0 "'+zips[0].name+'$\\r$\\n.$\\r$\\n..$\\r$\\n"', 'FileClose $0']
+    bridge_list.write_text('\n'.join(bridge)+'\n', encoding='utf-8-sig')
     script = Path(__file__).resolve().parents[1] / 'packaging/installer.nsi'
     result = subprocess.run([str(args.compiler.resolve()), '/INPUTCHARSET', 'UTF8', '/WX', '/V2',
                              '/DCOMPRESSION=' + args.compression, '/DVERSION=' + args.version,
                              '/DPACKAGE=' + str(root), '/DOUTPUT=' + str(output),
-                             '/DUNINSTALL_LIST=' + str(listing), '/DINSTALL_LIST=' + str(install_list), str(script)], creationflags=0x08000000)
+                             '/DUNINSTALL_LIST=' + str(listing), '/DINSTALL_LIST=' + str(install_list),
+                             '/DUPGRADE_LIST=' + str(bridge_list), str(script)], creationflags=0x08000000)
     if result.returncode:
         raise SystemExit(result.returncode)
     with output.open('rb') as stream:

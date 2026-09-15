@@ -1,11 +1,14 @@
 """Live, read-only view of the same committed snapshot used by classification."""
 import csv
 import io
+import re
+from collections import defaultdict
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractTableModel, Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -13,12 +16,20 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QTableView,
+    QTabWidget,
     QVBoxLayout,
 )
 
 from cowmata_tailring.ui.task_window import TaskWindow
 
-from .classification_report import CSV_FIELDS, csv_bytes, read_snapshot, source_key, summary_text
+from .classification_report import (
+    CSV_FIELDS,
+    counts,
+    csv_bytes,
+    read_snapshot,
+    source_key,
+    summary_text,
+)
 
 
 class ReportModel(QAbstractTableModel):
@@ -76,7 +87,7 @@ class ClassificationReportWindow(TaskWindow):
         self.job_provider = job_provider
         self.revision = None
         self.snapshot = None
-        self.setWindowTitle('完整归类记录' if detailed else '实时归类记录')
+        self.setWindowTitle('归类记录 · 按视角实时更新')
         self.resize(1440 if detailed else 1100, 740 if detailed else 660)
         layout = QVBoxLayout(self)
         self.summary = QLabel('等待归类记录')
@@ -84,26 +95,27 @@ class ClassificationReportWindow(TaskWindow):
         layout.addWidget(self.summary)
         self.updated = QLabel('每秒自动刷新；每个文件一行，显示最新状态')
         layout.addWidget(self.updated)
-        self.model = ReportModel(self, detailed)
-        self.table = QTableView()
-        self.table.setModel(self.model)
-        self.table.setAlternatingRowColors(True)
-        self.table.setWordWrap(False)
-        self.table.verticalHeader().hide()
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for i, width in enumerate((55, 105, 105, 105, 180, 200, 90, 225)):
-            self.table.setColumnWidth(i, width)
-        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
-        layout.addWidget(self.table, 1)
+        self.detailed = detailed
+        self.sheets = {}
+        self.sheet_tabs = QTabWidget()
+        self.sheet_tabs.setDocumentMode(True)
+        layout.addWidget(self.sheet_tabs, 1)
+        self.sheet_summary = QLabel()
+        self.sheet_summary.setWordWrap(True)
+        layout.addWidget(self.sheet_summary)
         self.details = QLabel()
         self.details.setWordWrap(True)
         self.details.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self.details)
-        self.table.clicked.connect(self.show_details)
+        self.sheet_tabs.currentChanged.connect(self.select_sheet)
+        self.add_sheet('未分配')
         row = QHBoxLayout()
         row.addWidget(QLabel('Excel 直接打开的是静态快照；实时进度请在本窗口查看。'))
         row.addStretch()
-        export = QPushButton('另存当前 CSV…')
+        self.export_scope = QComboBox()
+        self.export_scope.addItems(['当前视角', '全部记录'])
+        row.addWidget(self.export_scope)
+        export = QPushButton('另存为 CSV…')
         export.clicked.connect(self.export_current)
         row.addWidget(export)
         layout.addLayout(row)
@@ -112,6 +124,45 @@ class ClassificationReportWindow(TaskWindow):
         self.timer.timeout.connect(self.refresh)
         self.timer.start()
         self.refresh()
+
+    def add_sheet(self, key):
+        model = ReportModel(self, self.detailed)
+        table = QTableView()
+        table.setModel(model)
+        table.setAlternatingRowColors(True)
+        table.setWordWrap(False)
+        table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        table.verticalHeader().hide()
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for i, width in enumerate((50, 95, 105, 100, 180, 210, 90, 210)):
+            table.setColumnWidth(i, width)
+        table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
+        table.clicked.connect(self.show_details)
+        self.sheets[key] = (table, model)
+        self.sheet_tabs.addTab(table, key)
+        self.select_sheet()
+
+    def current_sheet(self):
+        current = self.sheet_tabs.currentWidget()
+        return next((key for key, (table, _) in self.sheets.items() if table is current), None)
+
+    def select_sheet(self, *_):
+        key = self.current_sheet()
+        if key is None:
+            return
+        self.table, self.model = self.sheets[key]
+        self.sheet_summary.setText(key + ' · ' + summary_text(counts(self.model.rows)))
+        self.show_details(self.table.currentIndex())
+
+    def clear_sheets(self):
+        self.sheet_tabs.blockSignals(True)
+        for table, model in self.sheets.values():
+            table.deleteLater()
+            model.deleteLater()
+        self.sheets.clear()
+        self.sheet_tabs.clear()
+        self.sheet_tabs.blockSignals(False)
+        self.details.clear()
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -126,7 +177,10 @@ class ClassificationReportWindow(TaskWindow):
         job = self.job_provider()
         if not job:
             self.snapshot = self.revision = None
-            self.model.replace([])
+            self._file_stamp = None
+            if list(self.sheets) != ['未分配'] or self.model.rows:
+                self.clear_sheets()
+                self.add_sheet('未分配')
             self.summary.setText('等待归类记录')
             self.details.clear()
             self.updated.setText('每秒自动刷新；每个文件一行，显示最新状态')
@@ -143,38 +197,72 @@ class ClassificationReportWindow(TaskWindow):
         version = (str(job), snapshot['revision'])
         if version == self.revision:
             return
-        selected = self.table.currentIndex().row()
-        selected_key = source_key(self.model.rows[selected]['source']) if 0 <= selected < len(self.model.rows) else None
-        scroll = self.table.verticalScrollBar().value()
-        self.details.clear()
+        selected_sheet = self.current_sheet()
         if self.revision and self.revision[0] != str(job):
-            selected_key = None
+            self.clear_sheets()
+            selected_sheet = None
         self.snapshot, self.revision = snapshot, version
-        self.model.replace(snapshot['rows'])
+        grouped = defaultdict(list)
+        for row in snapshot['rows']:
+            key = str(row.get('owner') or row.get('device_id') or row.get('device') or '未分配')
+            grouped[key].append(row)
+        if not grouped:
+            grouped['未分配'] = []
+        for key in list(self.sheets):
+            if key not in grouped:
+                table, model = self.sheets.pop(key)
+                self.sheet_tabs.removeTab(self.sheet_tabs.indexOf(table))
+                table.deleteLater()
+                model.deleteLater()
+        ordered = sorted(grouped, key=lambda key: [(0, int(p)) if p.isdigit() else (1, p.casefold()) for p in re.split(r'(\d+)', key)])
+        for key in ordered:
+            if key not in self.sheets:
+                self.add_sheet(key)
+            table, model = self.sheets[key]
+            selected = table.currentIndex().row()
+            selected_key = source_key(model.rows[selected]['source']) if 0 <= selected < len(model.rows) else None
+            scroll = table.verticalScrollBar().value()
+            model.replace(grouped[key])
+            for i, row in enumerate(model.rows):
+                if source_key(row['source']) == selected_key:
+                    table.selectRow(i)
+                    break
+            table.verticalScrollBar().setValue(scroll)
+            self.sheet_tabs.setTabText(self.sheet_tabs.indexOf(table), f'{key}（{len(model.rows)}）')
+        self.sheets = {key: self.sheets[key] for key in ordered}
+        for i, key in enumerate(ordered):
+            self.sheet_tabs.tabBar().moveTab(self.sheet_tabs.indexOf(self.sheets[key][0]), i)
+        if selected_sheet in self.sheets:
+            self.sheet_tabs.setCurrentWidget(self.sheets[selected_sheet][0])
+        self.select_sheet()
         self.summary.setText(summary_text(snapshot['counts']) + f" · 本次运行 {snapshot.get('elapsed_seconds', 0):.1f} 秒")
         self.updated.setText('每秒自动刷新 · 更新时间：' + snapshot['updated_at'])
-        for i, row in enumerate(self.model.rows):
-            if source_key(row['source']) == selected_key:
-                self.table.selectRow(i)
-                self.show_details(self.model.index(i, 0))
-                break
-        self.table.verticalScrollBar().setValue(scroll)
 
     def show_details(self, index):
         if not index.isValid() or not 0 <= index.row() < len(self.model.rows):
             self.details.clear()
             return
         row = self.model.rows[index.row()]
-        self.details.setText(row.get('source', '')+'\n'+row.get('target', '')+'\n'+row.get('message', ''))
+        timing = ' · '.join(f'{name} {row[key]} 秒' for key, name in (
+            ('health_seconds', '核验'), ('recognition_seconds', '识别'), ('transfer_seconds', '传输')) if row.get(key) is not None)
+        self.details.setText(row.get('source', '')+'\n'+row.get('target', '')+'\n'+row.get('message', '')+ ('\n'+timing if timing else ''))
+
+    def export_payload(self, all_records=False):
+        self.refresh()
+        rows = self.snapshot['rows'] if all_records and self.snapshot else self.model.rows
+        return csv_bytes(rows)
 
     def export_current(self):
         self.refresh()
         if self.snapshot is None:
             return
-        path, _ = QFileDialog.getSaveFileName(self, '另存当前归类记录', '归类记录.csv', 'CSV (*.csv)')
+        all_records = self.export_scope.currentIndex() == 1
+        payload = self.export_payload(all_records)
+        label = '全部记录' if all_records else str(self.current_sheet())
+        label = re.sub(r'[<>:"/\\|?*]', '_', label)
+        path, _ = QFileDialog.getSaveFileName(self, '另存当前归类记录', '归类记录-'+label+'.csv', 'CSV (*.csv)')
         if path:
             try:
-                self.refresh()
-                Path(path).write_bytes(csv_bytes(self.snapshot['rows']))
+                Path(path).write_bytes(payload)
             except OSError as exc:
                 QMessageBox.warning(self, '无法保存 CSV', str(exc))

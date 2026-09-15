@@ -25,7 +25,8 @@ def main():
             from cowmata_tailring.workspace.paired_dataset import build_dataset
             def report(snapshot):
                 print(json.dumps({'event':'snapshot','path':str(Path(snapshot['csv_path']).parent/'构建状态.json')},ensure_ascii=True),flush=True)
-            result=build_dataset(request['sources'],request['target'],request['task'],job=job,cancelled=cancelled,on_report=report)
+            result=build_dataset(request['sources'],request['target'],request['task'],job=job,
+                layout=request.get('layout', 'versioned'), cancelled=cancelled,on_report=report)
         elif request['action'] in {'dataset_audit','behavior_build','decision_build'}:
             from cowmata_tailring.workspace.behavior_dataset import (
                 audit_annotations,

@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -79,18 +80,39 @@ def installation_lock(root):
 
 
 def write_json(path, value):
-    path = Path(path)
+    path = Path(path).resolve()
     temporary = path.with_name(path.name + ".tmp")
     with temporary.open("w", encoding="utf-8") as stream:
         json.dump(value, stream, ensure_ascii=False, indent=2)
         stream.flush()
         os.fsync(stream.fileno())
-    temporary.replace(path)
+    for attempt, delay in enumerate((0, .02, .04, .08, .16, .32, .64)):
+        if delay:
+            time.sleep(delay)
+        try:
+            os.replace(temporary, path)
+            return
+        except OSError as exc:
+            if getattr(exc, 'winerror', None) not in {5, 32, 33} or attempt == 6:
+                raise
 
 
-def safe_path(path, *, checked_dirs=None):
+def is_product_installation(path):
+    """A drive-root application folder is valid; a bare drive is never valid."""
+    path = Path(path)
+    try:
+        identity = (path/'COWMATA.install-id').read_text(encoding='utf-8').strip()
+        data = json.loads((path/'package-manifest.json').read_text(encoding='utf-8'))
+        return (identity.startswith('COWMATA-') and version_key(identity.removeprefix('COWMATA-')) == version_key(data['version'])
+                and any(row.get('path') == 'COWMATA.exe' for row in data['files']))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def safe_path(path, *, checked_dirs=None, allow_file=False):
     path = Path(os.path.abspath(path))
-    if path.parent == path or len(path.parts) < 3:
+    internal_stage = re.fullmatch(r'\.cma-[0-9a-f]{8}-(?:stage|backup)', path.name)
+    if path.parent == path or len(path.parts) < 3 and not (internal_stage or is_product_installation(path) or allow_file and path.is_file()):
         raise ValueError("Refusing a broad installation target")
     for index, parent in enumerate([path, *path.parents]):
         # A cache lives for ONE inventory pass only. Still lstat every direct
@@ -238,7 +260,7 @@ def install(job, *, runner=run, registration=registered, unregister=remove_regis
 def _install_locked(job, *, runner, registration, unregister, restart):
     started = time.monotonic()
     root = safe_path(job["root"])
-    setup = safe_path(job["setup"])
+    setup = safe_path(job["setup"], allow_file=True)
     update = job["update"]
     version = update["version"]
     version_key(version)

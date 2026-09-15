@@ -2914,5 +2914,17 @@ ZH_TO_EN.update({'当前时刻暂未匹配录像 · 仍有未检索素材，可�
 
 ZH_TO_EN.update({'1. 新数据先进入「数据准备」：选择采集类别，检查命名、审查并按日期归类。\n   九轴目录：完整设备编号-牛耳标号-现场记号；同设备跨日期复用分别保留。\n2. 打开工程：先确认牧场，再选择类别、Motion 和一个日期；同步检索当天录像。\n3. 核对设备、牛耳标、现场记号及时间同步，再观察录像并标注。\n4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n5. 标注自动按日期保存；在「数据集构建」生成行为数据集或分享标注片段。\n\n未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n未检索不等于无录像。未找到时可用「数据准备 → 更多数据准备工具 → 录像索引 → 扩大当前检索」。\n更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。': '1. Prepare new data: select category, verify names and classify by date.\n2. Open a farm, category and acquisition day.\n3. Check device, cow ID, field mark and synchronization before annotation.\n4. Complete and save the record; unfinished work resumes at its previous position.\n5. Build versioned datasets or export annotations.\nUnknown video times require initial recognition. Continue searching under Data preparation > More tools > Video index. Updates are in Help > About. Ctrl+L pins the source list.'})
 
+ZH_TO_EN.update({'归类记录 · 按视角实时更新': 'Classification records by view',
+    '未分配': 'Unassigned', '当前视角': 'Current view', '全部记录': 'All records',
+    '另存为 CSV…': 'Save as CSV...', '查看归类记录': 'View classification records',
+    '归类记录-': 'Classification-', '核验': 'Verification', '识别': 'Recognition', '传输': 'Transfer'})
+
+ZH_TO_EN.update({
+    ' / 行为 / Motion 或 PPG / Raw、Label\n文件名：设备-耳标-现场标记_采集日期_采集时间_raw.json / label.json': ' / Behavior / Motion or PPG / Raw, Label\nFilename: device-cow-field_date_time_raw.json / label.json',
+    ' 项未完成；可查看归类记录了解原因并继续归类。': ' unfinished; open classification records for details and resume.',
+    '③ 更新完整数据集：补入新增数据，复用已有数据，保留标签修改历史。': '3. Update the complete dataset: add new data, reuse existing data and retain annotation history.',
+    '更新完整数据集': 'Update complete dataset', '正在核对来源并更新完整数据集…': 'Checking sources and updating the complete dataset...',
+    '继续更新': 'Resume update'})
+
 if __name__ == "__main__":
     _coverage()
