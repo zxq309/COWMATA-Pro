@@ -35,7 +35,7 @@ def test_menu_order_and_one_to_one_codes(window):
     assert {s.code for s in BEHAVIORS} <= labels
     assert len(HEALTH) == 6
     assert not any(bindings(s, available_packs()) for s in HEALTH)
-    assert sum(bool(bindings(s, available_packs())) for s in BEHAVIORS) == 7
+    assert sum(bool(bindings(s, available_packs())) for s in BEHAVIORS) == 8
 
 
 @pytest.mark.parametrize("spec", BEHAVIORS + HEALTH)
@@ -47,6 +47,12 @@ def test_every_algorithm_locks_one_view_and_returns_layout(window, spec):
     window.open_algorithm(spec)
     app = QApplication.instance()
     app.processEvents()
+    if spec.code == "CALVING":
+        assert window._calving_evidence.isVisible()
+        assert not window.board.single_camera_only
+        assert window.stage.mode == "B"
+        window._calving_evidence.close()
+        return
     assert window.board.single_camera_only
     assert window.algorithm_panel.width() >= 280 and window.algorithm_panel.isVisible()
     assert window.board.playback_policy == "focus"

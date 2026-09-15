@@ -1,0 +1,59 @@
+{
+  "models": [
+    {
+      "code": "STANDING_UP",
+      "title": "起立过程",
+      "validation_unit": "record",
+      "validation_groups": 243,
+      "records": 243,
+      "known_events": 152,
+      "matched_events": 121,
+      "known_recall": 0.7960526315789473,
+      "candidates": 2732,
+      "candidates_per_hour": 11.728981252257649,
+      "precision": null,
+      "f1": null,
+      "false_alarms_per_hour": null,
+      "reason": "未完整审核，未命中既有标签的候选不能直接算误报",
+      "threshold": 0.4,
+      "score_is_probability": false
+    },
+    {
+      "code": "LYING_DOWN",
+      "title": "卧倒过程",
+      "validation_unit": "record",
+      "validation_groups": 243,
+      "records": 243,
+      "known_events": 131,
+      "matched_events": 106,
+      "known_recall": 0.8091603053435115,
+      "candidates": 1961,
+      "candidates_per_hour": 8.418935664596358,
+      "precision": null,
+      "f1": null,
+      "false_alarms_per_hour": null,
+      "reason": "未完整审核，未命中既有标签的候选不能直接算误报",
+      "threshold": 0.7,
+      "score_is_probability": false
+    },
+    {
+      "code": "STRAINING_BOUT",
+      "title": "努责",
+      "validation_unit": "cow",
+      "validation_groups": 37,
+      "records": 228,
+      "known_events": 222,
+      "matched_events": 150,
+      "known_recall": 0.6756756756756757,
+      "candidates": 2406,
+      "candidates_per_hour": 11.014427277121825,
+      "precision": null,
+      "f1": null,
+      "false_alarms_per_hour": null,
+      "reason": "未完整审核，未命中既有标签的候选不能直接算误报",
+      "threshold": 0.95,
+      "score_is_probability": false
+    }
+  ],
+  "elapsed_seconds": 112.4683487000002
+}

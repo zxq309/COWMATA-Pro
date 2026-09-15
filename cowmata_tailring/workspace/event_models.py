@@ -58,6 +58,11 @@ def available_packs(app_root=APP_ROOT):
         if data.get("schema") != 1 or data.get("adapter") != ADAPTER or data.get("runtime") != "model_runtime_20260906":
             continue  # newer runtime contracts need a separately tested adapter
         result.append({**data, "root": path.parent, "hash": digest_file(path), "app_root": Path(app_root)})
+    if Path(app_root).resolve() == APP_ROOT.resolve():
+        from cowmata_tailring.algorithms.adapter import available_pack
+        current = available_pack()
+        if current is not None:
+            result.insert(0, current)
     return result
 
 
@@ -113,6 +118,10 @@ def normalize_output(folder, model, duration_ms):
 
 
 def predict_one(pack, model, source, asset_id, cow_id, duration_ms, cache_dir, *, cancelled=lambda: False, force=False):
+    if pack.get("adapter") == "numeric-event-intervals-1":
+        from cowmata_tailring.algorithms.adapter import predict_one as numeric_predict
+        with inference_load():
+            return numeric_predict(pack, model, source, asset_id, cow_id, duration_ms, cache_dir, cancelled=cancelled, force=force)
     source = Path(source).resolve()
     if cancelled():
         raise InterruptedError("Event inference cancelled")

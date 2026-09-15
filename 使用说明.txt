@@ -1,7 +1,11 @@
-COWMATA Pro™ 3.8
+COWMATA Pro™ 3.8.2
 
 双击 COWMATA.exe。
 任务顺序：文件 → 数据准备 → 标注与复核 → 数据集构建 / 健康与繁殖。
 子窗口可独立最小化和恢复；再次点击菜单也可唤回。
 实测图文教程：docs\operator-guide-380.html，也可在帮助菜单打开。
 Release 只提供源码 ZIP、便携 ZIP、安装 EXE。
+
+算法入口：标注与复核 → 算法管理。
+产犊入口：健康与繁殖 → 产犊。
+本版算法、评估口径与操作说明：docs/release-382.md。

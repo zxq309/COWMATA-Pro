@@ -369,6 +369,7 @@ class MainWindow(ControllerWindow):
 
     def _build_algorithm_menus(self, annotation_menu):
         from .algorithm_catalog import BEHAVIORS, HEALTH
+        self._action(annotation_menu, "算法管理", self.open_algorithm_workbench)
         self.algorithm_actions = {}
         self.algorithm_group = QActionGroup(self)
         self.algorithm_group.setExclusive(True)
@@ -389,13 +390,31 @@ class MainWindow(ControllerWindow):
                     owner_menu=menu
                 action = self._action(owner_menu, spec.title, lambda _checked=False, s=spec: self.open_algorithm(s))
                 action.setCheckable(True)
-                action.setToolTip("单摄像头算法检查 · " + ("对应标签 " + spec.code if spec.domain == "behavior" else "待接入，不生成健康结论"))
+                action.setToolTip("单摄像头算法检查 · " + ("对应标签 " + spec.code if spec.domain == "behavior" else "四项证据与趋势" if spec.code == "CALVING" else "待接入，不生成健康结论"))
                 self.algorithm_group.addAction(action)
                 self.algorithm_actions[spec.code] = action
             menu.addSeparator()
             self._action(menu, "返回标注布局", self.exit_algorithm)
 
+    def open_algorithm_workbench(self):
+        from cowmata_tailring.algorithms.workbench_ui import AlgorithmWorkbench
+        if getattr(self, "_algorithm_workbench", None) is None:
+            self._algorithm_workbench = AlgorithmWorkbench(self)
+        self._algorithm_workbench.show()
+        self._algorithm_workbench.raise_()
+
+    def open_calving_evidence(self):
+        from cowmata_tailring.algorithms.workbench_ui import CalvingEvidenceWindow
+        if getattr(self, "_calving_evidence", None) is None:
+            self._calving_evidence = CalvingEvidenceWindow(self)
+        self._calving_evidence.show()
+        self._calving_evidence.raise_()
+
     def open_algorithm(self, spec):
+        if spec.code == "CALVING":
+            self.algorithm_actions[spec.code].setChecked(False)
+            self.open_calving_evidence()
+            return
         panel = self.algorithm_panel
         if panel.running:
             panel.cancel()
