@@ -97,7 +97,7 @@ def main():
     for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "portable_start.py", "使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ('operator-guide-380.html', 'release-380.md', 'release-381.md', 'release-382.md', 'algorithm-validation-382.md', 'client-updates.md'):
+    for name in ('operator-guide-380.html', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'algorithm-validation-382.md', 'client-updates.md'):
         shutil.copy2(source/'docs'/name, destination/'docs'/name)
     shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
     shutil.copytree(source/'docs/project', destination/'docs/project')

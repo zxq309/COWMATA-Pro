@@ -52,6 +52,7 @@ from cowmata_tailring.annotation.data import load_motion_json
 from cowmata_tailring.ui.interactive_plot import InteractiveSignalPlotWidget
 from cowmata_tailring.ui.widgets import PlotSeries
 
+from .alignment import AlignmentMixin
 from .catalog import Catalog, file_stamp
 from .clocks import ClockMap, VideoTimeline, intervals_from_rows, wall_ms, wall_text
 from .coverage import continuation_target, video_coverage
@@ -71,7 +72,7 @@ from .work import SessionWork
 from .worker import IndexWorker
 
 
-class MainWindow(QMainWindow):
+class MainWindow(AlignmentMixin, QMainWindow):
     motionReady = Signal(object)
     continuationReady = Signal(object)
     backgroundError = Signal(str)
@@ -311,8 +312,10 @@ class MainWindow(QMainWindow):
         self.link = QCheckBox("同步跟随")
         self.link.toggled.connect(self.toggle_link)
         imu_controls.addWidget(self.link)
-        self._button("钉住对应点", self.pin, imu_controls)
+        self._button("一次对齐", self.pin, imu_controls)
         signal_layout.addLayout(imu_controls)
+        self.alignment_controls = self.create_alignment_controls()
+        signal_layout.addWidget(self.alignment_controls)
         self.alignment_label = QLabel("设备采集时间自动定位；相机时钟偏差可人工校准")
         self.alignment_label.setWordWrap(True)
         signal_layout.addWidget(self.alignment_label)
@@ -786,6 +789,7 @@ class MainWindow(QMainWindow):
         self.retired = [(w, c) for w, c in self.retired if w is not worker]
 
     def open_project(self, root, *, preferred_json=None, day=None, standalone=None):
+        self.cancel_alignment()
         from .dataset_access import ensure_available
         if getattr(self, "_organization_pausing", False):
             self.tell("正在保存并暂停工程，请稍候再打开")
@@ -1313,6 +1317,7 @@ class MainWindow(QMainWindow):
         self.board.relayout()
 
     def select_record(self, item, *_, follow=False):
+        self.cancel_alignment()
         if not item or not self.catalog:
             return
         row = item.data(Qt.ItemDataRole.UserRole)
@@ -1566,32 +1571,13 @@ class MainWindow(QMainWindow):
             self.link.blockSignals(True)
             self.link.setChecked(False)
             self.link.blockSignals(False)
-            self.tell("尚无同步点。分别拖动九轴与视频，找到对应位置后点“钉住对应点”。")
+            self.tell("尚未对齐。点击“一次对齐”，分别拖动九轴与视频到同一时刻，然后完成对齐。")
             self.linked = False
         else:
             self.linked = enabled
 
-    def pin(self):
-        if not self.writable_work():
-            return
-        evidence = self.board.evidence()
-        current = next((e for e in evidence if e["camera"] == self.board.main_camera and e["frame_ready"]), None)
-        if not current:
-            self.tell("主视角实际画面尚未到位，请暂停并等待，再钉住对应点。")
-            return
-        try:
-            self.work.calibrate(self.imu_ms, current["reference_ms"], current)
-            self.link.setChecked(True)
-            self.update_alignment_text()
-            self.refresh_events()
-            self.dirty = True
-            self.save_current()
-            self.request_record_videos()
-            self.tell("对应点已保存。请在较远处再次核对并钉住；切视角或换小视频不会重新建立同步。")
-        except ValueError as exc:
-            self.tell(str(exc))
-
     def edit_mapping(self):
+        self.cancel_alignment()
         if not self.writable_work():
             return
         dialog = MappingDialog(self.work.clock, self)
@@ -1630,8 +1616,10 @@ class MainWindow(QMainWindow):
         if self.work.clock.basis != "manual":
             self.alignment_label.setText("已按设备采集时间自动联动录像；相机时钟偏差尚未人工核对，不会自动确认标签或硬拼下一份九轴。"
                                          + (" 旧协议首帧起点为估计。" if self.work.clock.basis == "legacy_estimate" else ""))
+        elif self.work.clock.offset_range is not None:
+            self.alignment_label.setText("已一次对齐 · 固定时间差 · 当前记录有效；发现越播偏差越大时可选精细校准。")
         else:
-            self.alignment_label.setText(f"人工同步锚点 {n} · {self.work.clock.quality(self.imu_ms)} · 版本 {self.work.clock.revision[:8]}；保留原有校准")
+            self.alignment_label.setText(f"精细校准对应点 {n} · {self.work.clock.quality(self.imu_ms)} · 版本 {self.work.clock.revision[:8]}；保留原有校准")
 
     def video_time_changed(self, value):
         if self._closing_requested:
@@ -1738,7 +1726,7 @@ class MainWindow(QMainWindow):
             return
         self._coverage_second = second
         aligned = bool(self.work and self.work.clock.anchors
-                       and self.work.clock.quality(self.work.clock.map(self.board.reference_ms, inverse=True)) == "interpolated")
+                       and self.work.clock.is_calibrated(self.work.clock.map(self.board.reference_ms, inverse=True)))
         status = video_coverage(self.coverage_timeline or self.board.timeline, self.rows, self.board.reference_ms,
                                self.board.selected, scan_complete=self._last_scan_complete, aligned=aligned)
         messages = {
@@ -2870,6 +2858,7 @@ class MainWindow(QMainWindow):
             self._close_retry_timer.start(milliseconds)
 
     def closeEvent(self, event):
+        self.cancel_alignment()
         dataset = getattr(self, '_dataset_workflow_window', None)
         if dataset and dataset.running:
             dataset.cancel_job()

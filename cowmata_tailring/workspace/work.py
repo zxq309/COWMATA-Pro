@@ -184,6 +184,9 @@ class SessionWork:
         updated = self.clock.with_anchor(source_ms, reference_ms, evidence)
         self.set_clock(updated)
 
+    def align_once(self, source_ms, reference_ms, evidence, duration_ms):
+        self.set_clock(self.clock.with_offset(source_ms, reference_ms, evidence, duration_ms))
+
     def set_clock(self, updated):
         self.checkpoint()
         self.mapping_history.append(self.clock.to_dict())
@@ -279,8 +282,8 @@ class SessionWork:
             raise ValueError("草稿牛号与当前记录不一致，请核对对象")
         start, end = self.project_draft(draft, duration_ms)
         self.assert_state_interval(draft['label_index'],draft['reference_start'],draft['reference_end'],exclude_draft=draft_id)
-        if any(self.clock.quality(v) != "interpolated" for v in (start, end if end is not None else start)):
-            raise ValueError("该范围尚未被前后校准点覆盖，或位于未确认区间；可继续保存视频草稿")
+        if any(not self.clock.is_calibrated(v) for v in (start, end if end is not None else start)):
+            raise ValueError("该范围尚未完成对齐，或位于未确认区间；点击“一次对齐”后再确认，视频草稿已保留")
         if end is not None and any(a < end and b > start for a, b in self.clock.breaks):
             raise ValueError("动作跨越未确认的同步区间，请分段复核")
         evidence = draft["video_evidence"]
@@ -293,6 +296,7 @@ class SessionWork:
         event = Event(previous.id if previous else self.project.next_event_id, draft["label_index"], start, end,
                       note=draft.get("note", ""), ev="video",
                       extras={**self.category_fields(), **self.identity_fields(), "confirmation": "confirmed", "mapping_revision": self.clock.revision,
+                              "alignment_quality": self.clock.quality(start),
                               "video_evidence": copy.deepcopy(evidence), "group_id": draft["group_id"],
                               "draft_id": draft_id, "asset_id": self.asset_id,
                               "reference_start": draft["reference_start"], "reference_end": draft["reference_end"]})

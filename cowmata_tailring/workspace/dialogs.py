@@ -227,12 +227,14 @@ class SourceTimeDialog(QDialog):
 class MappingDialog(QDialog):
     def __init__(self, mapping: ClockMap, parent=None, *, camera=False):
         super().__init__(parent)
-        self.setWindowTitle("相机时钟 → 参考时钟校准" if camera else "九轴 → 视频同步锚点与未确认区间")
+        self.setWindowTitle("相机时钟 → 参考时钟校准" if camera else "精细校准 · 时间漂移与未确认区间")
         self.resize(850, 500)
         self.camera = camera
         self.value = mapping
         layout = QVBoxLayout(self)
-        tip = QLabel("每行一对人工对应点。相邻点之间分段线性插值；首尾之外是外推。保存修订不会移动已有标签，已有真值需复核。")
+        tip = QLabel("一般标注使用主界面的“一次对齐”即可。只有越播时间偏差越大时，才需要增加对应点校正漂移。"
+                     "本表相邻点之间校正时间速度，首尾之外为外推。保存修订后，已有真值需复核。" if not camera else
+                     "每行一对相机时间与参考时间。相邻点之间校正时间速度，首尾之外为外推。")
         tip.setWordWrap(True)
         layout.addWidget(tip)
         # Device-clock origins are not human calibration observations.
@@ -244,6 +246,8 @@ class MappingDialog(QDialog):
         for i, anchor in enumerate(manual_anchors):
             self.table.setItem(i, 0, QTableWidgetItem(wall_text(anchor.source_ms) if camera else str(anchor.source_ms / 1000)))
             self.table.setItem(i, 1, QTableWidgetItem(wall_text(anchor.reference_ms)))
+            self.table.item(i, 0).setData(Qt.ItemDataRole.UserRole,
+                (self.table.item(i, 0).text(), self.table.item(i, 1).text(), anchor))
         layout.addWidget(self.table)
         row = QHBoxLayout()
         add = QPushButton("增加锚点")
@@ -273,15 +277,22 @@ class MappingDialog(QDialog):
                 left, right = self.table.item(i, 0), self.table.item(i, 1)
                 if left is None or right is None:
                     raise ValueError("请填写每行的两个时间")
-                source = wall_ms(left.text()) if self.camera else float(left.text()) * 1000
-                anchors.append(Anchor(source, wall_ms(right.text()), {"source": "manual_table"}))
+                # Opening and saving the table must not truncate the observed
+                # frame's milliseconds or discard its evidence provenance.
+                original = left.data(Qt.ItemDataRole.UserRole)
+                if original is not None and original[:2] == (left.text(), right.text()):
+                    anchors.append(original[2])
+                else:
+                    source = wall_ms(left.text()) if self.camera else float(left.text()) * 1000
+                    anchors.append(Anchor(source, wall_ms(right.text()), {"source": "manual_table"}))
             breaks = []
             if not self.camera:
                 for item in self.breaks.text().split(";"):
                     if item.strip():
                         a, b = map(float, item.split(","))
                         breaks.append((a * 1000, b * 1000))
-            self.value = ClockMap(anchors, breaks=breaks)
+            self.value = ClockMap(anchors, breaks=breaks,
+                offset_range=self.value.offset_range if not self.camera and len(anchors) == 1 else None)
             self.accept()
         except ValueError as exc:
             QMessageBox.warning(self, "请检查同步数据", str(exc))

@@ -1,10 +1,10 @@
 <p align="center"><img src="assets/brand/pro-wordmark.svg" width="360" alt="COWMATA Pro™"></p>
 
-# COWMATA Pro™ 3.8.2
+# COWMATA Pro™ 3.8.3
 
 **整理原始数据，加快人工标注，构建完整数据集。** 奶牛多视角录像、连续九轴与 PPG 的离线 Windows 工作台。
 
-[3.8.2 使用说明](docs/release-382.md) · [线上发行记录](https://github.com/zxq309/COWMATA-Pro/releases) · [实测图文教程](https://zxq309.github.io/COWMATA-Pro/operator-guide-380.html) · [English](README.md) · [项目简介](docs/project/overview.md)
+[3.8.3 使用说明](docs/release-383.md) · [线上发行记录](https://github.com/zxq309/COWMATA-Pro/releases) · [实测图文教程](https://zxq309.github.io/COWMATA-Pro/operator-guide-380.html) · [English](README.md) · [项目简介](docs/project/overview.md)
 
 ![实际标注界面，使用受控演示数据](docs/images/guide380/view-B.png)
 
@@ -25,8 +25,8 @@
 
 ## 下载安装
 
-- **安装包**：运行 `COWMATA-Pro-3.8.2-Setup.exe`，选择位置，完成后打开桌面的 **COWMATA Pro™** 快捷方式。
-- **便携包**：解压整个 ZIP，在 `COWMATA-Pro-3.8.2-Portable` 文件夹中运行 `COWMATA.exe`。
+- **安装包**：运行 `COWMATA-Pro-3.8.3-Setup.exe`，选择位置，完成后打开桌面的 **COWMATA Pro™** 快捷方式。
+- **便携包**：解压整个 ZIP，在 `COWMATA-Pro-3.8.3-Portable` 文件夹中运行 `COWMATA.exe`。
 - **源码包**：供开发与审查，包含代码、测试和图文教程。完整离线环境使用便携包。
 
 无需配置 Python。采集数据放在软件目录之外。启动直接进入软件，网络或代理故障不阻断离线标注。3.7 及更早版本请直接下载安装包或完整便携包升级一次。
@@ -35,7 +35,7 @@ Release 仅提供源码 ZIP、便携 ZIP、安装 EXE 三个附件；教程已�
 
 ## 完整项目与验证
 
-三个旧仓库的介绍、训练与评估方法、温度/活动量证据、产品素材及完整历史统一保存在本仓库。[整合入口与来源](docs/project/repository-consolidation.md) · [3.8.2 更新说明](docs/release-382.md)
+三个旧仓库的介绍、训练与评估方法、温度/活动量证据、产品素材及完整历史统一保存在本仓库。[整合入口与来源](docs/project/repository-consolidation.md) · [3.8.3 更新说明](docs/release-383.md)
 
 起立、卧倒、努责已接入独立算法管理，支持从现有数据集训练、比较和回退；四项产犊证据不输出风险结论。[本轮验证](docs/algorithm-validation-382.md)。旧五类模型保留运行一致性验证。端侧下载协议已用本地 HTTP 服务测试，实际远端服务器仍需连通验收。健康与繁殖未注册的任务没有占位预测。
 

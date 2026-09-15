@@ -222,10 +222,12 @@ class MainWindow(ControllerWindow):
         self.imu_position.setToolTip("九轴文件内的位置，不等于服务器收包时间")
         self.plot.toolbar.addWidget(self.imu_position)
         self.plot.toolbar.addWidget(self.link)
-        self._icon_button("Pin", "对齐", self.pin, self.plot.toolbar)
+        self.alignment_button = self._icon_button("Pin", "一次对齐", self.pin, self.plot.toolbar)
+        self.alignment_button.setToolTip("只找一个对应时刻即可完成对齐；点击后可分别拖动录像和九轴。")
         review.addWidget(self.stage, 1)
+        review.addWidget(self.alignment_controls)
         self.alignment_label.setStyleSheet("font-size:11px; color:#7b693d")
-        self.alignment_label.setParent(central)
+        review.addWidget(self.alignment_label)
         self.alignment_label.hide()
         review.addWidget(self.video_slider)
         transport = QHBoxLayout()
@@ -523,7 +525,7 @@ class MainWindow(ControllerWindow):
                     "刷新 / 复制完成，重新检查": "刷新素材", "素材与时间核验…": "素材核验…",
                     "新增唯一拷贝批次…": "新建拷贝批次…", "全文件内容核验（耗时）": "内容核验…",
                     "录像归档副本核验（不删除原片）…": "归档核验…",
-                    "九轴同步锚点与未确认区间…": "九轴校准…", "当前主视角相机时钟校准…": "相机校准…",
+                    "九轴同步锚点与未确认区间…": "精细校准（可选）…", "当前主视角相机时钟校准…": "相机校准…",
                     "新版事件候选预测…": "自动生成候选…", "将本份重新标为进行中": "重新标注本份",
                     "固定 / 收起素材列表": "素材列表", "显示 / 隐藏标注列表": "标注列表",
                     "性能与索引诊断…": "性能诊断…"}.get(original)
@@ -674,6 +676,8 @@ class MainWindow(ControllerWindow):
     def update_alignment_text(self):
         super().update_alignment_text()
         self.link.setToolTip(self.alignment_label.text())
+        self.alignment_label.setVisible(bool(self.work and self.work.clock.basis == "manual"))
+        self.alignment_button.setText("重新对齐" if self.work and self.work.clock.offset_range is not None else "一次对齐")
 
     def update_coverage(self, *, force=False):
         super().update_coverage(force=force)

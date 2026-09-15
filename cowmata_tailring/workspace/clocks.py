@@ -44,6 +44,9 @@ class ClockMap:
     # Breaks are source-clock ranges explicitly declared unconfirmed.
     breaks: list[tuple[float, float]] = field(default_factory=list)
     basis: str = "manual"
+    # Explicit one-point alignment applies only to this recording's bounds.
+    # Historical single anchors remain coarse until the operator confirms one.
+    offset_range: tuple[float, float] | None = None
 
     def __post_init__(self):
         self.anchors.sort(key=lambda a: a.source_ms)
@@ -53,6 +56,12 @@ class ClockMap:
         for left, right in zip(self.anchors, self.anchors[1:]):
             if right.source_ms <= left.source_ms or right.reference_ms <= left.reference_ms:
                 raise ValueError("锚点必须在两个时钟中都递增；跳变应分段而不能倒序连接")
+        if self.offset_range is not None:
+            lo, hi = self.offset_range
+            if (self.basis != "manual" or len(self.anchors) != 1 or
+                    not all(math.isfinite(v) for v in (lo, hi)) or lo >= hi or
+                    not lo <= self.anchors[0].source_ms <= hi):
+                raise ValueError("一次对齐需要本份记录内的一个对应点和有效时间范围")
         for left, right in self.breaks:
             if not math.isfinite(left + right) or left >= right:
                 raise ValueError("未确认区间的结束必须晚于开始")
@@ -61,11 +70,13 @@ class ClockMap:
     def from_dict(cls, data: dict):
         return cls([Anchor(**a) for a in data.get("anchors", [])],
                    data.get("revision") or uuid.uuid4().hex,
-                   [tuple(b) for b in data.get("breaks", [])], data.get("basis", "manual"))
+                   [tuple(b) for b in data.get("breaks", [])], data.get("basis", "manual"),
+                   tuple(data["offset_range"]) if data.get("offset_range") is not None else None)
 
     def to_dict(self):
         return {"anchors": [asdict(a) for a in self.anchors], "revision": self.revision,
-                "breaks": self.breaks, "basis": self.basis}
+                "breaks": self.breaks, "basis": self.basis,
+                **({"offset_range": list(self.offset_range)} if self.offset_range is not None else {})}
 
     @classmethod
     def from_capture(cls, motion, timezone_offset_minutes=480):
@@ -83,6 +94,14 @@ class ClockMap:
         remaining = [a for a in self.anchors if abs(a.source_ms - source_ms) > 0.001] if self.basis == "manual" else []
         return ClockMap(remaining + [Anchor(source_ms, reference_ms, evidence)], breaks=self.breaks.copy())
 
+    def with_offset(self, source_ms, reference_ms, evidence, duration_ms):
+        """Replace the offset using one observed match; do not invent a second point."""
+        return ClockMap([Anchor(source_ms, reference_ms, dict(evidence))],
+                        breaks=self.breaks.copy(), offset_range=(0.0, float(duration_ms)))
+
+    def is_calibrated(self, source_ms):
+        return self.quality(source_ms) in {"interpolated", "offset"}
+
     def map(self, value: float, *, inverse: bool = False) -> float:
         if not math.isfinite(value) or not self.anchors:
             raise ValueError("没有可用的人工校准锚点")
@@ -94,13 +113,16 @@ class ClockMap:
         return y[i] + (value - x[i]) * (y[i + 1] - y[i]) / (x[i + 1] - x[i])
 
     def quality(self, source_ms: float) -> str:
-        if not self.anchors:
+        if not math.isfinite(source_ms) or not self.anchors:
             return "estimated"
         if any(a <= source_ms < b for a, b in self.breaks):
             return "unconfirmed"
         if self.basis != "manual":
             return self.basis
         if len(self.anchors) == 1:
+            if self.offset_range is not None:
+                lo, hi = self.offset_range
+                return "offset" if lo <= source_ms <= hi else "extrapolated"
             return "single_anchor"
         if self.anchors[0].source_ms <= source_ms <= self.anchors[-1].source_ms:
             return "interpolated"
