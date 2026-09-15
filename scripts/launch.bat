@@ -14,7 +14,7 @@ if not defined PYW (
   ) do if not defined PYW if exist "%%~P" set "PYW=%%~P"
 )
 if not defined PYW (
-  echo [ERROR] pythonw.exe not found. Install Python 3.10+ then run install.bat
+  echo [ERROR] pythonw.exe not found. Install Python 3.12+ then run install.bat
   pause
   exit /b 1
 )

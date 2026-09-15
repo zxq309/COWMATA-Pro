@@ -13,7 +13,7 @@ if not defined PY (
   ) do if not defined PY if exist "%%~P" set "PY=%%~P"
 )
 if not defined PY (
-  echo [ERROR] python.exe not found. Install Python 3.10+ first.
+  echo [ERROR] python.exe not found. Install Python 3.12+ first.
   pause
   exit /b 1
 )

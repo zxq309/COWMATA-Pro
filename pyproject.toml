@@ -7,7 +7,7 @@ name = "cowmata-tailring-annotator"
 dynamic = ["version"]
 description = "Video and nine-axis IMU annotation workstation for cattle behaviour"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "zxq309" }]
 keywords = ["annotation", "imu", "cattle", "behaviour", "video", "pyside6"]
@@ -16,9 +16,8 @@ classifiers = [
     "Environment :: X11 Applications :: Qt",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
 ]
 
@@ -71,7 +70,7 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = [
     "E501",  # UI text and translation catalogue intentionally keep readable strings intact.
     "B023",  # Flagged closures are consumed synchronously within their current loop iteration.
-    "B905",  # The codebase supports Python 3.10; explicit zip(strict=) is not required here.
+    "B905",  # Paired lengths are validated by the input contracts.
 ]
 
 [tool.pytest.ini_options]
