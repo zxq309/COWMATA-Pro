@@ -229,7 +229,7 @@ F:\科牧特\_模型\
 
 ### 环境与启动
 
-Windows 分发运行库为 **Python 3.13.15 x64**。源码声明 Python 3.10 及以上，本版完整 Windows 验证以所附运行库为准。建议在源码根目录新建虚拟环境：
+Windows 分发运行库为 **Python 3.13.15 x64**。源码声明 Python 3.12 及以上，本版完整 Windows 验证以所附运行库为准。建议在源码根目录新建虚拟环境：
 
 ```powershell
 py -3.13 -m venv .venv

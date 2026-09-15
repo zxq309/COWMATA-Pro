@@ -33,8 +33,8 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "size": 3146,
-      "sha256": "78979f67b4cb0fc841d30f2d4fd363b6ed55f4725b1d9d697d105b511ebab7d1"
+      "size": 2659,
+      "sha256": "2766eaaf95d917a5a198bb144c5b12e3947b6c94b3f8f0f6e305a8674f14c599"
     },
     {
       "path": ".github/workflows/release-transfer.yml",
@@ -1274,7 +1274,7 @@
     {
       "path": "CONTRIBUTING.md",
       "size": 1842,
-      "sha256": "8386e02569272dccbb31560589af53f884d3db40c275b8cd26610fb97d2eb90c"
+      "sha256": "05ca6f5266e69805d0d215952977b76f69004fbc23b7f2e5e720cbe11c167df9"
     },
     {
       "path": "COWMATA.exe",
@@ -3143,8 +3143,8 @@
     },
     {
       "path": "docs/validation-390.md",
-      "size": 5745,
-      "sha256": "8aff34cf44e7fe035532e55e1b9fa75f2e83565db6a58be1558b2601b730248e"
+      "size": 5748,
+      "sha256": "2410fd25747603607036c73dfabf87e663e5ce8542504a13fa0851525e02dcab"
     },
     {
       "path": "docs/version-update-notes.md",
@@ -3213,13 +3213,13 @@
     },
     {
       "path": "pyproject.toml",
-      "size": 2396,
-      "sha256": "9664a2a293a6f4ff0b6fdb580f2b58384ac2e4f7d1996aa7e36c38610e54e4c9"
+      "size": 2324,
+      "sha256": "83a42a2ac96f1e6d46f8e402d2800c19f40763d6ddc253a90415e8dd7c8960c6"
     },
     {
       "path": "README.md",
       "size": 17976,
-      "sha256": "8369d048f6e2c7a0051dd97c3ce0b6e6fb220af3b67ec60095baf08bf6a07f30"
+      "sha256": "fd80fc8bd789a49048f9c2941cad71d8e232c934cc3473515ccc51773a9e8008"
     },
     {
       "path": "README.zh-CN.md",
@@ -3299,17 +3299,17 @@
     {
       "path": "scripts/install.bat",
       "size": 840,
-      "sha256": "024990f906b93bff38793662005d0c5094e94783264e8d9e3905aa0d53de0b1d"
+      "sha256": "c86d2bf2cc069b6fc9aa178b7bde3c07b9f2f932483171689a9e07a1522c08aa"
     },
     {
       "path": "scripts/launch-debug.bat",
       "size": 630,
-      "sha256": "36fa4970194f3c16507a24845f3dbcb8ab39d3cacf7e7c1cfbc40f697d26eac4"
+      "sha256": "6483ee290347f8849b8632bbcff5b8989e8f02b341d4e29944fa2c3c5d53dce1"
     },
     {
       "path": "scripts/launch.bat",
       "size": 733,
-      "sha256": "d9163a03cb9a9de785e68c388ec69cf926c8acfe686a0c5c228edadf3a07eed2"
+      "sha256": "f1cc73e8c328d582e3cc7df195cbc90995fba78ceaf4ea53628c9661040d9df9"
     },
     {
       "path": "scripts/launch.sh",
@@ -3783,8 +3783,8 @@
     },
     {
       "path": "tests/test_release_390.py",
-      "size": 17281,
-      "sha256": "48e11db62f9ce99adae37816a0a537a01e24f3154c0c190fc6d44f1e0ffaa3ed"
+      "size": 17315,
+      "sha256": "0d1dc320e4c34570fa3d885264cd2daf70b413c1ba51ec572946741f732d8369"
     },
     {
       "path": "tests/test_release_v364.py",

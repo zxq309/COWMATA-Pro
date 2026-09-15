@@ -3,7 +3,7 @@
 ## Development
 
 1. Branch from `main`.
-2. Install Python 3.10+ and `pip install -e ".[dev]"`; see [README](README.md) for media, OCR and model configuration.
+2. Install Python 3.12+ and `pip install -e ".[dev]"`; see [README](README.md) for media, OCR and model configuration.
 3. Update behavior tests for functional changes.
 4. Run `ruff check cowmata_tailring tests` and `pytest -q`.
 5. For interface changes, verify the corresponding window and use synthetic data for public screenshots.

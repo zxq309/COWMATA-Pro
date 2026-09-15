@@ -315,7 +315,7 @@ def test_pro_settings_save_three_modalities_and_ui_preview(tmp_path, monkeypatch
 
     monkeypatch.setenv("COWMATA_ALGORITHM_HOME", str(tmp_path / "models"))
     store = ProSettings(tmp_path / "settings")
-    store.save(auto_enabled=False, ledger_directory=str(ledgers(tmp_path / "ledger")))
+    store.save(auto_enabled=False, data_root=str(tmp_path / "farm"), ledger_directory=str(ledgers(tmp_path / "ledger")))
     reloaded = ProSettings(tmp_path / "settings")
     assert reloaded.value["kinds"] == ["motion", "pulse", "temp"]
     window = ProDownloadDialog(store=reloaded, launch_automatically=False)
