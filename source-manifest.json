@@ -3893,8 +3893,8 @@
     },
     {
       "path": "tests/test_update_drive_root.py",
-      "size": 2825,
-      "sha256": "79da61639f29df38079b926ec9dd38d51919d7770f1c24712ef1d59da29a7f2f"
+      "size": 3174,
+      "sha256": "4914017c1c98173a50e0ec15637a5d6101a80ff29f364926cdd9f9e462e18d6c"
     },
     {
       "path": "tests/test_update_recovery.py",
