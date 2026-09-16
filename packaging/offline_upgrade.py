@@ -25,9 +25,11 @@ def prepare(root, setup, cache, metadata, desktop):
         raise ValueError('请把安装包放在软件目录之外，再运行安装包。')
     if not worker.is_product_installation(root):
         raise ValueError('不是有效的 COWMATA 安装目录，未覆盖任何文件。')
-    old = (root/'COWMATA.install-id').read_text(encoding='utf-8').strip().removeprefix('COWMATA-')
-    if not worker.registered(root, old):
-        raise ValueError('所选目录不是已注册的安装版，请另选空目录。')
+    portable = not (root/'COWMATA.install-id').exists()
+    old = (json.loads((root/'package-manifest.json').read_text(encoding='utf-8'))['version'] if portable
+           else (root/'COWMATA.install-id').read_text(encoding='utf-8').strip().removeprefix('COWMATA-'))
+    if not portable and not worker.registered(root, old):
+        raise ValueError('所选安装版的注册信息与目录不一致，请选择原安装位置。')
     if worker.version_key(metadata['version']) <= worker.version_key(old):
         raise ValueError('已安装相同或更新版本，无需重复安装。')
     worker.inventory(root)
@@ -37,7 +39,8 @@ def prepare(root, setup, cache, metadata, desktop):
     job_dir = cache/('offline-'+uuid.uuid4().hex)
     job_dir.mkdir(parents=True)
     update = dict(metadata, size=setup.stat().st_size, sha256=worker.digest(setup))
-    job = dict(root=str(root), setup=str(setup), job_dir=str(job_dir), update=update, desktop=bool(desktop))
+    job = dict(root=str(root), setup=str(setup), job_dir=str(job_dir), update=update, desktop=bool(desktop),
+               portable_origin=portable)
     worker.write_json(job_dir/'job.json', job)
     return job
 

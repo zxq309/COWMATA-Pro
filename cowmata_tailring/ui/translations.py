@@ -3635,5 +3635,84 @@ ZH_TO_EN.update({
   "；本页扫描 ": "; scanned this page: "
 })
 
+
+ZH_TO_EN.update({
+    '已修正 3.9 的默认下载位置；旧目录文件保留，请核对后合并。': 'The 3.9 download path has been corrected. Existing files remain in their original location for review and merging.',
+    '请先选择存在的训练数据集目录，再开始训练。': 'Select an existing training dataset folder before starting training.',
+})
+NON_TRANSLATABLE = NON_TRANSLATABLE | {r'F:\扬大_高邮牧场'}
+
+ZH_TO_EN.update({
+  " 个有效文件；开始查询缺失记录。": " valid files; querying missing records.",
+  " 个本地原始文件…": " local raw files...",
+  " 分钟后检查。": " minutes.",
+  " 表头不符合上传器 1.3.1": " header does not match uploader 1.3.1",
+  "上传器 1.3.1 账号": "Uploader 1.3.1 account",
+  "上传器账号密码（仅本次登录）": "Uploader password (this session only)",
+  "下载方式": "Download mode",
+  "下载规则保存后，仍需点击启动。": "After saving the rules, click Start to begin.",
+  "产犊监测": "Calving monitoring",
+  "停止 / 取消定时": "Stop / cancel schedule",
+  "先核对本地 Motion、PPG、Temp 原始文件；已有文件和分类位置保持不变…": "Checking local Motion, PPG and Temp files; existing files and categories will be preserved...",
+  "先选择方式、时间范围和数据类型，再点击启动。打开窗口和保存设置均不会开始下载。": "Choose a mode, time range and data types, then click Start. Opening this window or saving settings does not start a download.",
+  "刷新服务器 CSV 使用与上传器相同的账号。会话仅在内存中保存；使用本地 CSV 时可取消每轮刷新。": "Use your uploader account to refresh server CSV files. The session stays in memory. Disable per-cycle refresh to use local CSV files.",
+  "台账服务器未返回上传器 v2 协议确认：": "The ledger server did not confirm uploader protocol v2: ",
+  "台账登录未完成，请核对上传器账号": "Ledger login incomplete; check your uploader account",
+  "同一设备和 UID 的本地数据内容冲突，保留原件，请核对": "Local records have conflicting content for the same device and UID; originals preserved for review",
+  "同秒时间戳文件冲突，原件保留，未另建重复名称：": "Timestamp collision within the same second; original preserved without creating a duplicate name: ",
+  "孕中期监测": "Mid-gestation monitoring",
+  "孕早期监测": "Early-gestation monitoring",
+  "孕晚期监测": "Late-gestation monitoring",
+  "定时启动时间必须晚于当前时间": "The scheduled start must be in the future",
+  "定时启动（北京时间）": "Scheduled start (Beijing time)",
+  "定时：指定时间下载一轮": "Scheduled: one cycle at the selected time",
+  "已启动的任务在关闭此窗口后继续；退出 Pro 会停止。重新打开程序需再次启动。旧文件保持原位，仅补齐缺失数据。": "Started tasks continue when this window closes and stop when Pro exits. Start again after reopening Pro. Existing files stay in place; only missing records are downloaded.",
+  "已启用定时下载：": "Download scheduled: ",
+  "已存在，跳过下载：": "Already present; download skipped: ",
+  "已核对 ": "Checked ",
+  "已登录上传器账号，可刷新 CSV": "Uploader account connected; CSV refresh is available",
+  "怀孕监测": "Pregnancy monitoring",
+  "截至每轮启动时（取消后指定结束时间）": "Through the start of each cycle (uncheck to set an end time)",
+  "手动：点击后下载一轮": "Manual: one cycle after clicking Start",
+  "按所选方式启动": "Start selected mode",
+  "本地文件保留，未计入已下载：": "Local file preserved, not counted as downloaded: ",
+  "本地核对完成：": "Local verification complete: ",
+  "死胎": "Stillbirth",
+  "登录凭据不能保存到下载设置": "Login credentials cannot be saved in download settings",
+  "登录台账服务器": "Log in to ledger server",
+  "目标文件在核对后发生变化，已停止替换": "The target changed after verification; replacement stopped",
+  "端侧数据下载 · 手动 / 自动 / 定时": "Device data download - manual / automatic / scheduled",
+  "缺少完整设备号": "Missing complete device ID",
+  "自动下载已启用，下一轮将在 ": "Automatic download enabled; next cycle in ",
+  "自动：启动后按间隔补齐": "Automatic: fill missing records at intervals after starting",
+  "补齐终点必须晚于起点": "The end time must be later than the start time",
+  "补齐终点（北京时间）": "Download end (Beijing time)",
+  "请先选择手动、自动或定时下载": "Select manual, automatic or scheduled download first",
+  "请填写上传器账号和密码": "Enter your uploader account and password",
+  "请选择下载方式…": "Choose a download mode...",
+  "请选择手动、自动或定时下载": "Choose manual, automatic or scheduled download",
+  "请选择规则后点击启动；当前未启动下载": "Choose download rules and click Start; no download has started",
+  "（北京时间）": " (Beijing time)"
+})
+
+ZH_TO_EN.update({
+  " 行待核对。": " rows need review.",
+  "下载规则": "Download rules",
+  "仅补齐缺失数据，已有文件保持原位。": "Only missing data will be downloaded. Existing files stay in place.",
+  "保存并读取 CSV": "Save and load CSV",
+  "启用自动下载": "Start automatic download",
+  "已有配置已带入。保存配置后，在主窗口点击开始下载。": "Your existing configuration is loaded. Save it, then click Start in the main window.",
+  "手动指定设备下载…": "Download selected devices...",
+  "现场记录与账号": "Field records and account",
+  "至今": "Now",
+  "设定定时下载": "Schedule download",
+  "运行记录": "Activity log",
+  "运行记录…": "Activity log...",
+  "配置下载": "Download configuration",
+  "配置下载…": "Configure download...",
+  "配置已保存，点击开始下载。": "Configuration saved. Click Start to begin.",
+  "高级连接": "Advanced connections"
+})
+
 if __name__ == "__main__":
     _coverage()

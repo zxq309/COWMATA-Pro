@@ -72,7 +72,7 @@ def prepare_job(root, setup, update, cache):
     if len(zips) != 1:
         raise ValueError("Private updater runtime is incomplete")
     (runtime / (zips[0].stem + "._pth")).write_text(zips[0].name + "\n.\n..\n", encoding="utf-8")
-    for name in ("update_core.py", "update_worker.py", "portable_update.py"):
+    for name in ("update_core.py", "update_windows.py", "update_worker.py", "portable_update.py"):
         shutil.copy2(Path(__file__).with_name(name), job_dir / name)
     shutil.copy2(Path(__file__).resolve().parents[2]/'COWMATA.exe', job_dir/'COWMATA-Progress.exe')
     job = {"root": str(root), "setup": str(setup), "update": update, "job_dir": str(job_dir),

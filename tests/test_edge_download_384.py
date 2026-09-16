@@ -390,8 +390,9 @@ def test_pro_ui_saves_locations_and_pauses_then_can_restart(tmp_path, qt_applica
     dialog = ProDownloadDialog(store=store, launch_automatically=False)
     assert dialog.ledger_directory.text() == str(tmp_path / "现场记录")
     assert dialog.raw_mode.currentData() == "http"
-    dialog.auto.setChecked(True)
-    dialog.auto.setChecked(False)
+    dialog.mode.setCurrentIndex(dialog.mode.findData("automatic"))
+    assert not dialog.timer.isActive()
+    dialog.pause()
     assert not dialog.scheduling_stopped and not dialog.timer.isActive()
     assert dialog.save_settings()
     restored = ProSettings(tmp_path / "config")

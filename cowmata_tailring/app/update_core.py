@@ -11,6 +11,7 @@ import http.client
 import json
 import os
 import re
+import ssl
 import time
 import urllib.error
 import urllib.parse
@@ -57,6 +58,24 @@ class _Redirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def transient_error(exc):
+    reason = getattr(exc, 'reason', exc)
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return False
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in {408, 429, 500, 502, 503, 504}
+    return isinstance(exc, urllib.error.URLError | ssl.SSLEOFError |
+                      http.client.IncompleteRead | ConnectionError | TimeoutError)
+
+
+def _native_open(url, headers):
+    try:
+        from .update_windows import open_windows
+    except ImportError:  # Detached updater uses sibling modules.
+        from update_windows import open_windows
+    return open_windows(url, headers, valid_url)
+
+
 def open_url(url, headers=None):
     valid_url(url)
     request = urllib.request.Request(url, headers={"User-Agent": "COWMATA-Annotator-Updater",
@@ -74,14 +93,25 @@ def open_url(url, headers=None):
         fresh = urllib.parse.urlunsplit(split._replace(query=urllib.parse.urlencode(query)))
         retry = urllib.request.Request(fresh, headers={**dict(request.header_items()), "Cache-Control":"no-cache"})
         return transport.open(retry, timeout=30)
+    except (urllib.error.URLError, ssl.SSLEOFError, ConnectionError, TimeoutError) as exc:
+        if os.name != "nt" or not transient_error(exc):
+            raise
+        return _native_open(url, dict(request.header_items()))
 
 
 def read_bytes(url, limit, opener=open_url):
-    with opener(url) as response:
-        result = response.read(limit + 1)
-    if len(result) > limit:
-        raise ValueError("Update metadata too large")
-    return result
+    for attempt in range(3):
+        try:
+            with opener(url) as response:
+                result = response.read(limit + 1)
+            if len(result) > limit:
+                raise ValueError("Update metadata too large")
+            return result
+        except (urllib.error.URLError, ssl.SSLEOFError, http.client.IncompleteRead,
+                ConnectionError, TimeoutError) as exc:
+            if attempt == 2 or not transient_error(exc):
+                raise
+            time.sleep(.25 * (attempt + 1))
 
 
 def digest(path):
@@ -110,7 +140,7 @@ def check_update(current, channel="preview", opener=open_url, package_kind="port
         raise ValueError("Invalid update channel")
     try:
         releases = json.loads(read_bytes(API + "/releases?per_page=100", 4 * 1024**2, opener))
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+    except (urllib.error.HTTPError, urllib.error.URLError, ssl.SSLEOFError, http.client.IncompleteRead, ConnectionError, TimeoutError) as exc:
         if isinstance(exc, urllib.error.HTTPError) and exc.code not in {403, 429, 500, 502, 503, 504}:
             raise
         return public_releases(current, channel, opener, package_kind)
@@ -304,8 +334,8 @@ def download(update, directory, progress=lambda *_: None, cancelled=lambda: Fals
             raise InterruptedError("下载已暂停，下次可续传")
         try:
             return _download_once(update, directory, progress, cancelled, opener)
-        except (urllib.error.URLError, http.client.IncompleteRead, ConnectionError, TimeoutError) as exc:
-            if isinstance(exc, urllib.error.HTTPError) and exc.code not in {403, 408, 429, 500, 502, 503, 504}:
+        except (urllib.error.URLError, ssl.SSLEOFError, http.client.IncompleteRead, ConnectionError, TimeoutError) as exc:
+            if not transient_error(exc) and not (isinstance(exc, urllib.error.HTTPError) and exc.code == 403):
                 raise
             if attempt == 2:
                 raise

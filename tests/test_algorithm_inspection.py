@@ -196,15 +196,17 @@ def test_old_label_order_and_missing_mounting_shortcut_are_safe(window, monkeypa
     from cowmata_tailring.annotation.defaults import LEGACY_DEFAULT_LABELS
     window.work.project.labels = [Label.from_dict(r) for r in LEGACY_DEFAULT_LABELS[:17]]
     window.refresh_events()
-    assert window.labels.count() == 17
+    assert window.labels.itemText(0) == "[1] 起立过程"
+    assert any(label.code == "STANDING" for label in window.work.project.labels)
     called = []
     monkeypatch.setattr(window, "mark", called.append)
     window.mark_code("MOUNTING")
-    assert not called
+    assert called == [13]
     window.work.project.labels.reverse()
     window.refresh_events()
     window.mark_code("STANDING")
-    assert called == [16]
+    assert window.work.project.labels[called[-1]].code == "STANDING"
+    assert not window.work.project.labels[called[-1]].key
 
 
 def test_compact_package_excludes_only_audited_tools():

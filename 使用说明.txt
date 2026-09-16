@@ -1,4 +1,4 @@
-COWMATA Pro 3.9.0
+COWMATA Pro 3.9.1
 
 解压后运行 COWMATA.exe。完整说明见 docs/release-390.md。
 端侧下载自动读取 F:\牛舍\_现场记录 的 CSV。
