@@ -202,7 +202,9 @@ class InteractiveSignalPlotWidget(CachedSignalPlotWidget):
         )
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton:
+        if (event.button() == Qt.MouseButton.LeftButton
+                and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+                and not getattr(self, "pan_enabled", False)):
             hit = self._hit_event(
                 event.position().x(), event.position().y()
             )
@@ -230,6 +232,10 @@ class InteractiveSignalPlotWidget(CachedSignalPlotWidget):
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         if self._event_drag is None:
+            if self._drag_mode == "pan":
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                super().mouseMoveEvent(event)
+                return
             hit = self._hit_event(event.position().x(), event.position().y())
             if hit is None:
                 self.unsetCursor()

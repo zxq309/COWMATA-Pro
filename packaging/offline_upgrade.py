@@ -26,7 +26,7 @@ def prepare(root, setup, cache, metadata, desktop):
     if not worker.is_product_installation(root):
         raise ValueError('不是有效的 COWMATA 安装目录，未覆盖任何文件。')
     portable = not (root/'COWMATA.install-id').exists()
-    old = (json.loads((root/'package-manifest.json').read_text(encoding='utf-8'))['version'] if portable
+    old = (worker.installation_version(root) if portable
            else (root/'COWMATA.install-id').read_text(encoding='utf-8').strip().removeprefix('COWMATA-'))
     if not portable and not worker.registered(root, old):
         raise ValueError('所选安装版的注册信息与目录不一致，请选择原安装位置。')

@@ -114,7 +114,7 @@ def install_locked(job, *, runner, restart=True):
     archive = worker.safe_path(job["setup"], allow_file=True)
     update = job["update"]
     version = update["version"]
-    old = json.loads((root/"package-manifest.json").read_text(encoding="utf-8"))["version"]
+    old = worker.installation_version(root)
     if version_key(version) <= version_key(old):
         raise ValueError("仅允许更新到更高版本")
     if not worker.is_product_installation(root):
@@ -142,7 +142,7 @@ def install_locked(job, *, runner, restart=True):
         worker.write_json(job_dir/"result.json",state)
     phase("waiting")
     deadline = time.monotonic()+180
-    while runner([root/"COWMATA.exe","--check-running"],timeout=15).returncode:
+    while worker.running_check(root, job_dir, runner, version=old):
         if time.monotonic() > deadline:
             raise TimeoutError("请保存并关闭旧版软件，再重新运行更新")
         time.sleep(.5)
@@ -167,7 +167,7 @@ def install_locked(job, *, runner, restart=True):
         if result.returncode or version_key(result.stdout.decode("utf-8","replace").strip()) != version_key(version):
             raise RuntimeError("新版运行库检查失败，旧版未修改")
         worker.inventory(root)
-        if runner([root/"COWMATA.exe","--check-running"],timeout=15).returncode:
+        if worker.running_check(root, job_dir, runner, version=old):
             raise RuntimeError("旧版被重新打开，请保存关闭后重试")
         (stage/worker.LOCK).write_text(str(os.getpid()),encoding="ascii")
         phase("swapping")

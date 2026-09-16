@@ -81,7 +81,8 @@ def add_baselines(rows):
     history = defaultdict(list)
     for row in sorted(rows, key=lambda r: (r["cow_id"], r["start_epoch_ms"] or 0, r["asset_id"])):
         now = row["start_epoch_ms"]
-        prior = [r for r in history[row["cow_id"]] if now is not None
+        identity = row["cow_id"] or ("unidentified", row["asset_id"])
+        prior = [r for r in history[identity] if now is not None
                  and r["end_epoch_ms"] is not None
                  and now-86400000 <= r["end_epoch_ms"] <= now]
         for key in ("activity_index", "temperature_c"):
@@ -90,7 +91,7 @@ def add_baselines(rows):
             row[key+"_baseline"] = baseline
             row[key+"_change"] = row[key]-baseline if row[key] is not None and baseline is not None else None
         row["baseline_windows"] = len(prior)
-        history[row["cow_id"]].append(row)
+        history[identity].append(row)
     return rows
 
 

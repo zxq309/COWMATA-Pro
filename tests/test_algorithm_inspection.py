@@ -206,7 +206,7 @@ def test_old_label_order_and_missing_mounting_shortcut_are_safe(window, monkeypa
     window.refresh_events()
     window.mark_code("STANDING")
     assert window.work.project.labels[called[-1]].code == "STANDING"
-    assert not window.work.project.labels[called[-1]].key
+    assert window.work.project.labels[called[-1]].key == 'G'
 
 
 def test_compact_package_excludes_only_audited_tools():

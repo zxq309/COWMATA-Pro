@@ -640,7 +640,10 @@ def plan_import(
                 pass
         if entry["kind"] == "imu":
             try:
-                from .ppg_intake import plan_ppg
+                from .ppg_intake import plan_ppg, plan_temperature
+                temperature = plan_temperature(path, root, cache, transfer, cancelled, digest=legacy.verified_source_digest)
+                if temperature is not None:
+                    return entry, temperature
                 ppg = plan_ppg(path, root, cache, transfer, cancelled, digest=legacy.verified_source_digest)
                 if ppg is not None:
                     return entry, ppg

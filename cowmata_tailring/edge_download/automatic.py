@@ -27,6 +27,8 @@ from .core import (
     Job,
     Result,
     checked_path,
+    record_datetime,
+    preserve_invalid_record,
     segment,
     validate_payload,
     validate_url,
@@ -212,18 +214,19 @@ def _save_record(job, data, cancel):
     device = _device(exported.get('device'))
     name = (f'{device}-{code.cow_number}-{code.ear_tag or "未提供"}'
             if code.cow_number else f'{device}-待核对')
-    stamp = datetime.fromtimestamp(_integer(exported.get('create_time'), 'create_time', 1) / 1000, CHINA)
+    stamp = record_datetime(exported, 'motion')
     folder = checked_path(job.farm, Path(job.category) / 'Motion' / stamp.strftime('%Y-%m-%d') / segment(name))
     folder.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(exported, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')
     digest = hashlib.sha256(encoded).hexdigest()
     stem = stamp.strftime('%Y-%m-%d_%H-%M-%S')
     candidates = [checked_path(job.farm, folder / (stem + suffix + '.json'))
-                  for suffix in ('', '_' + digest[:16], '_' + digest)]
+                  for suffix in ('',)]
     for path in candidates:
         _check(cancel)
         if path.is_file() and _file_sha256(path, cancel) == digest:
             return path, False, digest
+    previous = preserve_invalid_record(job.farm, candidates[0], 'motion')
     _check_disk(job.farm, len(encoded) + MIN_FREE_BYTES)
     fd, temporary = tempfile.mkstemp(prefix='.edge-auto-', suffix='.part', dir=folder)
     try:
@@ -231,6 +234,12 @@ def _save_record(job, data, cancel):
             stream.write(encoded)
             stream.flush()
             os.fsync(stream.fileno())
+        if previous is not None:
+            _check(cancel)
+            if candidates[0].read_bytes() != previous:
+                raise DownloadError('目标文件在核对后发生变化，已停止替换')
+            os.replace(temporary, candidates[0])
+            return candidates[0], True, digest
         for path in candidates:
             _check(cancel)
             try:

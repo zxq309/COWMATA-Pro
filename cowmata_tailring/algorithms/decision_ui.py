@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -37,12 +38,56 @@ class DecisionWindow(JobWindow):
         self.resize(1180, 850)
         outer = QVBoxLayout(self)
         note = QLabel(
-            "先从原始数据汇总证据，再用产犊登记训练决策模型。训练完成后手动导入模型，查看逐牛趋势与关注窗口。"
+            "手动选择包含连续多日 JSON 的文件夹，按时间滚动预测各时段风险。预测不需要台账，台账与数据集仅用于训练。"
         )
         note.setWordWrap(True)
         outer.addWidget(note)
+        modelrow = QHBoxLayout()
+        self.model = QLineEdit()
+        self.model.setReadOnly(True)
+        self.model.setPlaceholderText("先导入一次决策模型，后续选择 JSON 文件夹即可")
+        modelrow.addWidget(self.model, 1)
+        load = QPushButton("手动导入决策模型…")
+        load.clicked.connect(self.import_model)
+        modelrow.addWidget(load)
+        outer.addLayout(modelrow)
         self.tabs = QTabWidget()
         outer.addWidget(self.tabs, 1)
+        self.folder_page = QWidget()
+        sl = QVBoxLayout(self.folder_page)
+        self.folder_enabled = QCheckBox("手动开启文件夹滚动预测")
+        self.folder_enabled.toggled.connect(self.folder_mode_changed)
+        sl.addWidget(self.folder_enabled)
+        folder_note = QLabel("建议连续3至7天，默认以3天为准备目标；少于24小时仍可分析，但标记参考历史不足。按时间读取目录中的 Motion、PPG 和 Temp，不要求另交台账。")
+        folder_note.setWordWrap(True)
+        sl.addWidget(folder_note)
+        file_row = QHBoxLayout()
+        self.folder_file = QLineEdit()
+        self.folder_file.setReadOnly(True)
+        self.folder_file.setPlaceholderText("选择包含连续多日 JSON 的文件夹")
+        file_row.addWidget(self.folder_file, 1)
+        folder_choose = QPushButton("选择 JSON 文件夹…")
+        folder_choose.clicked.connect(self.receive_folder)
+        file_row.addWidget(folder_choose)
+        folder_predict = QPushButton("开始按时间预测")
+        folder_predict.clicked.connect(self.predict_folder)
+        file_row.addWidget(folder_predict)
+        sl.addLayout(file_row)
+        self.folder_summary = QLabel("文件夹预测已关闭，等待手动开启。")
+        self.folder_summary.setWordWrap(True)
+        sl.addWidget(self.folder_summary)
+        self.folder_table = table(["牛耳标", "数据时刻（北京时间）", "关注窗口截至", "风险分数", "建议", "信号覆盖率", "温度 °C", "缺失指标 / 参考历史", "模型版本"])
+        sl.addWidget(self.folder_table, 3)
+        self.coverage_table = table(["牛耳标", "数据跨度/小时", "有效信号/小时", "最大缺口/小时", "预测窗口数"])
+        self.alert_table = table(["牛耳标", "首次预警", "最后预警", "关注窗口截至", "最高风险分数", "连续窗口数"])
+        details = QTabWidget()
+        details.addTab(self.coverage_table, "数据覆盖与缺口")
+        details.addTab(self.alert_table, "连续预警时段")
+        sl.addWidget(details, 1)
+        folder_limits = QLabel("预测提前量由导入的模型决定。每个时段只使用此前参考数据；高风险表示未来窗口需关注，不等于已确认产犊。没有新数据时结果不会更新，点击开始可重新分析目录。")
+        folder_limits.setWordWrap(True)
+        sl.addWidget(folder_limits)
+        self.tabs.addTab(self.folder_page, "文件夹滚动预警")
         evidence = QWidget()
         el = QVBoxLayout(evidence)
         form = QFormLayout()
@@ -116,18 +161,11 @@ class DecisionWindow(JobWindow):
         tl.addWidget(self.training_detail, 1)
         self.tabs.addTab(training, "决策训练")
         decision = QWidget()
+        self.decision_page = decision
         dl = QVBoxLayout(decision)
-        modelrow = QHBoxLayout()
-        self.model = QLineEdit()
-        self.model.setReadOnly(True)
-        modelrow.addWidget(self.model, 1)
-        load = QPushButton("手动导入决策模型…")
-        load.clicked.connect(self.import_model)
-        modelrow.addWidget(load)
         apply = QPushButton("开始综合决策")
         apply.clicked.connect(self.predict)
-        modelrow.addWidget(apply)
-        dl.addLayout(modelrow)
+        dl.addWidget(apply)
         filterrow = QHBoxLayout()
         self.cow = QComboBox()
         self.cow.currentTextChanged.connect(self.filter_rows)
@@ -164,9 +202,18 @@ class DecisionWindow(JobWindow):
             self.ledger,
             choose_evidence,
             self.evidence_file,
+            self.folder_file,
+            folder_choose,
+            folder_predict,
         ]
         self.decision_rows = []
         self.refresh_history()
+        try:
+            saved = json.loads((self.home / "selected-model.json").read_text(encoding="utf-8"))
+            folder, _ = read_decision(saved["path"])
+            self.model.setText(str(folder))
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
 
     def refresh_models(self):
         self.packs = [
@@ -229,10 +276,40 @@ class DecisionWindow(JobWindow):
         try:
             folder, doc = read_decision(file)
             self.model.setText(str(folder))
+            atomic_json(self.home / "selected-model.json", {"path": str(folder)})
             self.show_metrics(doc)
             self.status.setText("决策模型已手动导入。")
         except (OSError, ValueError, KeyError) as exc:
             self.status.setText(str(exc))
+
+    def folder_mode_changed(self, enabled):
+        self.folder_summary.setText("已开启：选择文件夹后开始按时间预测，也可重新分析当前目录。" if enabled else "文件夹预测已关闭，等待手动开启。")
+        if not enabled and self.running and getattr(self, "request", {}).get("action") == "folder_predict393":
+            self.cancelled_request()
+
+    def receive_folder(self):
+        file = QFileDialog.getExistingDirectory(self, "选择包含连续多日 JSON 的文件夹", self.folder_file.text())
+        if file:
+            self.folder_file.setText(file)
+            if self.folder_enabled.isChecked():
+                self.predict_folder()
+            else:
+                self.folder_summary.setText("文件夹已选择；手动开启后点击开始按时间预测。")
+
+    def predict_folder(self):
+        if not self.folder_enabled.isChecked():
+            self.status.setText("请先手动开启文件夹滚动预测。")
+            return
+        if not self.model.text():
+            self.status.setText("请先导入一次决策模型，后续选择 JSON 文件夹即可。")
+            return
+        if not self.folder_file.text():
+            self.status.setText("请选择包含连续多日 JSON 的文件夹。")
+            return
+        self.last_output = self.fresh_output("folder-prediction")
+        self.launch(dict(action="folder_predict393", folder=self.folder_file.text(),
+                         model=self.model.text(), model_home=str(default_home()),
+                         output=str(self.last_output), cache=str(self.home / "cache")))
 
     def predict(self):
         if not self.model.text() or not self.evidence_file.text():
@@ -360,7 +437,17 @@ class DecisionWindow(JobWindow):
                 + "\n\n按牛留出评价：\n"
                 + json.dumps(model["metrics"], ensure_ascii=False, indent=2)
             )
-            self.tabs.setCurrentIndex(2)
+            if action == "folder_predict393":
+                fill(self.folder_table, [[r["cow_id"] or "未提供", self.at(r["end_epoch_ms"]),
+                    self.at(r["forecast_end_ms"]), r["risk_score"], r["warning_level"], max(r.get("motion_coverage") or 0, r.get("ppg_coverage") or 0),
+                    r.get("temperature_c"), ",".join(r["missing_features"]) + " / " + r["history_status"], r["decision_model"]] for r in result["rows"]])
+                info = result["input"]
+                self.folder_summary.setText(f"已完成 {info['sensor_records']} 份信号记录、{len(result['rows'])} 个预测时段、{len(result['alert_windows'])} 段连续预警；预测未来 {info['horizon_hours']} 小时。")
+                fill(self.coverage_table, [[r['cow_id'] or '未提供', r['span_hours'], r['effective_signal_hours'], r['largest_gap_hours'], r['windows']] for r in result['coverage']])
+                fill(self.alert_table, [[r['cow_id'] or '未提供', self.at(r['first_warning_ms']), self.at(r['last_warning_ms']), self.at(r['forecast_end_ms']), r['max_score'], r['windows']] for r in result['alert_windows']])
+                self.tabs.setCurrentWidget(self.folder_page)
+            else:
+                self.tabs.setCurrentWidget(self.decision_page)
             self.status.setText("综合决策完成；风险分数、缺失指标和逐牛结果已导出。")
 
     @staticmethod

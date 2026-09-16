@@ -27,6 +27,33 @@ except ImportError:  # Copied next to the detached private interpreter.
 REG_BASE = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
 LOCK = "COWMATA.update-lock"
 
+# Exact manifests from the 15 verified public 3.1 RC–3.4.3 executable packages.
+# No version is inferred from directory names or executed legacy Python code.
+LEGACY_MANIFEST_VERSIONS = {
+    "ca42ee1009d95eab68931c9bf0cea576e84210bfd01fe4017730e78c5b22f2ee": "3.1.0",
+    "1f4838d164058f53dadef204ac104a5995c960930ea8e591e39567bdaa33a6fc": "3.1.0-rc.1",
+    "828a70ee757b6ec286f46a28d966afd919bd9b9d532c69797a8708bb3f2ed0e3": "3.2.0",
+    "e0f77904a9cdfabbc43c0eb9cdbc068666ee54d4b737038a4ab09e908805395b": "3.2.1",
+    "0669a05b3975184ee87ae8a38d206f634bd7ab546af74cd470db18d36bd19dc8": "3.3.0",
+    "9b630142e710af4ef1db7507d71fc4c35efabc7869d2ca4d5529101699bd7f2f": "3.3.1",
+    "d8ed5649b9d20cabf30fa14182d99ba8640ef49e7bfe0dd7973fe9eaabf5c434": "3.3.2",
+    "3056e1f96cc6d58045c62e9f53c50fffff31d9cc59946b6d21bd5d83f7033d6a": "3.4.1",
+    "789af69a48718ec2df7bc7ca7d4ede6ecdbe6ec7598bcf82c5548e9fb14c09e2": "3.4.2",
+    "6bc2d8cd3afd98f27c976dbbd2783aa6bc1b69fd3e3e9ef82236d05927989755": "3.4.3",
+}
+
+
+def installation_version(path):
+    raw = (Path(path) / "package-manifest.json").read_bytes()
+    data = json.loads(raw)
+    version = data.get("version")
+    if version is None:
+        version = LEGACY_MANIFEST_VERSIONS.get(hashlib.sha256(raw).hexdigest())
+    if not isinstance(version, str):
+        raise ValueError("Unrecognized legacy package manifest; original files retained")
+    version_key(version)
+    return version
+
 
 class UpdateInProgress(RuntimeError):
     """Another updater already owns this installation transaction."""
@@ -102,11 +129,11 @@ def is_product_installation(path):
     path = Path(path)
     try:
         data = json.loads((path/'package-manifest.json').read_text(encoding='utf-8'))
-        version_key(data['version'])
+        version = installation_version(path)
         identity_path = path/'COWMATA.install-id'
         if identity_path.is_file():
             identity = identity_path.read_text(encoding='utf-8').strip()
-            return identity.startswith('COWMATA-') and version_key(identity.removeprefix('COWMATA-')) == version_key(data['version']) and any(row.get('path') == 'COWMATA.exe' for row in data['files'])
+            return identity.startswith('COWMATA-') and version_key(identity.removeprefix('COWMATA-')) == version_key(version) and any(row.get('path') == 'COWMATA.exe' for row in data['files'])
         required = {'COWMATA.exe','runtime/python.exe','runtime/pythonw.exe','cowmata_tailring/__init__.py'}
         return required.issubset({row.get('path') for row in data['files']}) and all((path/p).is_file() for p in required)
     except (OSError, ValueError, KeyError, TypeError):
@@ -255,6 +282,18 @@ def start_updated_app(root, version):
                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
 
 
+def running_check(root, job_dir, runner, *, version=None):
+    """Probe with the new launcher: the first RC cannot handle --check-running."""
+    for candidate in (Path(job_dir) / "COWMATA-Progress.exe",
+                      Path(__file__).with_name("COWMATA-Progress.exe")):
+        if candidate.is_file():
+            probe = safe_path(candidate, allow_file=True)
+            return runner([probe, "--check-running", root], timeout=15).returncode
+    if version_key(version or installation_version(root)) == version_key("3.1.0-rc.1"):
+        raise ValueError("The first RC requires the current installer's process probe")
+    return runner([root / "COWMATA.exe", "--check-running"], timeout=15).returncode
+
+
 def install(job, *, runner=run, registration=registered, unregister=remove_registration, restart=True):
     with installation_lock(safe_path(job["root"])):
         if job.get("update", {}).get("kind") == "portable_zip":
@@ -280,7 +319,7 @@ def _install_locked(job, *, runner, registration, unregister, restart):
         # copy. Never bypass a broken/mismatched managed-install registration.
         if (root / "COWMATA.install-id").exists() or not is_product_installation(root):
             raise ValueError("Not a verified portable installation")
-        old_version = json.loads((root / "package-manifest.json").read_text(encoding="utf-8"))["version"]
+        old_version = installation_version(root)
     else:
         identity = (root / "COWMATA.install-id").read_text(encoding="utf-8")
         if not identity.startswith("COWMATA-"):
@@ -316,7 +355,7 @@ def _install_locked(job, *, runner, registration, unregister, restart):
     # not kill it, another annotation window, or another user's application.
     phase('waiting')
     deadline = time.monotonic() + 180
-    while runner([root / "COWMATA.exe", "--check-running"], timeout=15).returncode != 0:
+    while running_check(root, job_dir, runner, version=old_version) != 0:
         if time.monotonic() > deadline:
             raise TimeoutError("软件仍在运行；取消升级，旧版未修改")
         time.sleep(.5)
@@ -351,7 +390,7 @@ def _install_locked(job, *, runner, registration, unregister, restart):
             raise RuntimeError("新版运行库导入检查失败；旧版未修改")
         phase("pre_swap_check")
         inventory(root)  # Catch files added during extraction.
-        if runner([root / "COWMATA.exe", "--check-running"], timeout=15).returncode:
+        if running_check(root, job_dir, runner, version=old_version):
             raise RuntimeError("软件被重新打开；已取消替换")
         (stage / LOCK).write_text(str(os.getpid()), encoding="ascii")
         phase("swapping")

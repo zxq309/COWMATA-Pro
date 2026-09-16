@@ -21,7 +21,10 @@ def default_home():
     override = os.environ.get("COWMATA_ALGORITHM_HOME")
     if override:
         return Path(override).resolve()
-    return Path(r'F:\科牧特\_模型\行为识别').resolve()
+    root = Path(r'F:\科牧特_模型')
+    if not root.is_dir():
+        root = Path(r'F:\科牧特\_模型')
+    return (root / '行为识别').resolve()
 
 
 def child(root, name):

@@ -163,9 +163,9 @@ def test_device_server_accepts_uid_only_details_and_missing_cow(tmp_path, monkey
 def test_temperature_raw_payload_is_preserved():
     from cowmata_tailring.edge_download.core import validate_payload
 
-    data = dict(create_time=1786896000000, device="ABC", data=[38.2, 38.3])
+    data = dict(create_time=1786896000000, device="ABC", data=38.2)
     validate_payload(data, "temp")
-    assert data["data"] == [38.2, 38.3]
+    assert data["data"] == 38.2
 
 
 def test_record_time_updates_while_verification_is_running(tmp_path, monkeypatch):

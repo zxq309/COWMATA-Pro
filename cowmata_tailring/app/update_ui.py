@@ -44,7 +44,7 @@ def prepare_job(root, setup, update, cache):
     if portable:
         if not worker.is_product_installation(root):
             raise ValueError("请选择带完整文件清单的 COWMATA 程序目录")
-        old_version = __import__("json").loads((root/"package-manifest.json").read_text(encoding="utf-8"))["version"]
+        old_version = worker.installation_version(root)
         from .portable_update import zip_plan
         if core.version_key(update["version"]) <= core.version_key(old_version):
             raise ValueError("所选版本必须高于当前软件版本")

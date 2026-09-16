@@ -44,6 +44,10 @@ def main():
     if action == 'inspect390':
         from cowmata_tailring.algorithms.inputs import scan_inputs
         result = scan_inputs(request['dataset'], training=request.get('training',False), progress=progress)
+    elif action == 'folder_predict393':
+        from cowmata_tailring.algorithms.live_prediction import predict_folder
+        result = predict_folder(request['folder'], request['model'], request['output'],
+                                request['cache'], request['model_home'], progress=progress)
     elif action == 'fusion390':
         from cowmata_tailring.algorithms.decision import build_fusion
         result = build_fusion(request['root'],request['suites'],request['output'],request['cache'],codes=request.get('codes'),selections=request.get('selections'),progress=progress)

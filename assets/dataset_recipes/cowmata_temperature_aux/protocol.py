@@ -69,6 +69,32 @@ def decode_packet(obj, context, config, received_at_ms):
     if str(obj.get("device", "")).upper() != context.device_id.upper():
         raise PacketError("WRONG_DEVICE", "device/binding mismatch")
     create = _integer(obj, "create_time")
+    if 'imu' not in obj and 'data' in obj:
+        from cowmata_tailring.temperature import read_temperature_record
+        try:
+            sample = read_temperature_record(obj)
+        except ValueError as exc:
+            raise PacketError('BAD_TEMPERATURE', str(exc)) from exc
+        from cowmata_tailring.temperature import validate_temperature_identity
+        try:
+            validate_temperature_identity(obj, context.cow_id)
+        except ValueError as exc:
+            raise PacketError('WRONG_COW', str(exc)) from exc
+        if config.temperature_scale != 0.01:
+            raise PacketError('BAD_SCALE', 'canonical temperature is Celsius; legacy scale must be 0.01')
+        if create < context.binding_start_ms:
+            raise PacketError('BEFORE_BINDING', 'sample precedes binding')
+        if context.binding_end_ms is not None and create >= context.binding_end_ms:
+            raise PacketError('CROSSES_BINDING_END', 'sample follows binding')
+        if create > received_at_ms or sample['available_at_ms'] > received_at_ms:
+            raise PacketError('FUTURE_OBSERVATION', 'sample was not available at receipt time')
+        raw_value = int(round(sample['value'] * 100))
+        digest = hashlib.sha256((str(create)+'|'+context.device_id.upper()+'|'+repr(sample['value'])).encode()).hexdigest()
+        return dict(uid='temp:'+str(obj.get('uid') or digest)+':'+str(create), digest=digest,
+                    create_ms=create, end_ms=float(create), duration_ms=0,
+                    times=np.array([create],dtype=np.float64), values=np.array([sample['value']],dtype=np.float64),
+                    raw=np.array([raw_value],dtype=np.int64), step_ms=60000.0,
+                    imu_max_dt_ms=0, imu_gaps_over_100ms=0, time_basis=sample['time_basis'])
     version = _integer(obj, "version")
     uid = obj.get("uid")
     if uid is None or isinstance(uid, (dict, list, bool)):
@@ -111,10 +137,11 @@ def decode_packet(obj, context, config, received_at_ms):
         )
     if duration > 2 * HOUR:
         raise PacketError("OVERSIZED_PACKET", "supports up to two hours per packet")
-    times = create + (np.arange(len(raw)) + 0.5) * step
+    first_tick = int(tick[0]) if version == 2 else 0
+    times = create + first_tick + (np.arange(len(raw)) + 0.5) * step
     if (
         context.binding_end_ms is not None
-        and create + duration > context.binding_end_ms
+        and create + first_tick + duration > context.binding_end_ms
     ):
         raise PacketError(
             "CROSSES_BINDING_END",
@@ -143,4 +170,5 @@ def decode_packet(obj, context, config, received_at_ms):
         step_ms=step,
         imu_max_dt_ms=int(dif.max()),
         imu_gaps_over_100ms=int((dif > 100).sum()),
+        time_basis="imu_bucket_midpoint_estimate",
     )
