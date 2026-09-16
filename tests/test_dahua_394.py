@@ -216,3 +216,33 @@ def test_disabling_optional_import_keeps_video_request_sensor_free(panel, monkey
     panel.organize()
     assert requests[0]["options"]["json_sources"] == []
     assert requests[0]["options"]["mapping"] == {"channel:1": "视角01"}
+
+
+@pytest.mark.parametrize("modality", ["imu", "ppg"])
+@pytest.mark.parametrize("folder", ["incoming", "Motion", "PPG"])
+def test_system_temp_ancestor_does_not_turn_waveforms_into_temperature(tmp_path, modality, folder):
+    import json
+
+    from cowmata_tailring.workspace.ppg_intake import plan_temperature
+
+    path = tmp_path / "Temp" / folder / "one.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({modality: "MTIzNA==", "create_time": 1786896000000}))
+    assert plan_temperature(
+        path, tmp_path / "farm", tmp_path / "cache", "copy", lambda: False,
+        digest=lambda *args: pytest.fail("Waveform was handled as temperature"),
+    ) is None
+
+
+def test_ppg_data_field_under_system_temp_uses_nearest_sensor_folder(tmp_path):
+    import json
+
+    from cowmata_tailring.workspace.ppg_intake import plan_temperature
+
+    path = tmp_path / "Temp" / "PPG" / "one.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"data": "MTIzNA==", "create_time": 1786896000000}))
+    assert plan_temperature(
+        path, tmp_path / "farm", tmp_path / "cache", "copy", lambda: False,
+        digest=lambda *args: pytest.fail("PPG data field was handled as temperature"),
+    ) is None

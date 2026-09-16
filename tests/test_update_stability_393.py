@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -47,7 +48,16 @@ def test_legacy_identity_rejects_unknown_or_incomplete_product(tmp_path, monkeyp
     assert not worker.is_product_installation(root)
 
 
-def test_known_unversioned_portable_completes_setup_transaction(tmp_path, monkeypatch):
+@pytest.fixture
+def setup_transaction_path():
+    # NSIS staging deliberately requires a short path; pytest's per-test
+    # directory exceeds that contract on Windows CI. Use a real short root.
+    with tempfile.TemporaryDirectory(prefix="cma-") as directory:
+        yield Path(directory).resolve()
+
+
+def test_known_unversioned_portable_completes_setup_transaction(setup_transaction_path, monkeypatch):
+    tmp_path = setup_transaction_path
     root = legacy_product(tmp_path, monkeypatch)
     bridge = module()
     setup = tmp_path / "setup.exe"

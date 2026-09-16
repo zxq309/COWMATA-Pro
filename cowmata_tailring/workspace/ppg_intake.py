@@ -67,9 +67,15 @@ def plan_temperature(path, root, cache, transfer, cancelled, *, digest):
     from cowmata_tailring.temperature import CONTRACT, read_temperature_record, temperature_owner
 
     path = Path(path)
-    if 'temp' not in {part.casefold() for part in path.parts}:
+    kinds = [part.casefold() for part in reversed(path.parent.parts)
+             if part.casefold() in {'temp', 'motion', 'ppg'}]
+    if not kinds or kinds[0] != 'temp':
         return None
     obj = json.loads(path.read_text(encoding='utf-8-sig'))
+    # Windows stores ordinary downloads under AppData/Local/Temp. Explicit
+    # waveform fields take precedence over that ancestor directory name.
+    if isinstance(obj, dict) and any(key in obj for key in ('imu', 'ppg')):
+        return None
     sample = read_temperature_record(obj)
     owner = temperature_owner(path, obj)
     day = day_at(sample['time'])
