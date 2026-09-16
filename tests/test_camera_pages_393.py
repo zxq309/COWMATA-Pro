@@ -1,7 +1,9 @@
 import pytest
-from PySide6.QtWidgets import QApplication, QListWidgetItem
 from PySide6.QtCore import Qt
-from cowmata_tailring.workspace.camera_pages import camera_pages, CameraPages
+from PySide6.QtWidgets import QApplication, QListWidgetItem
+
+from cowmata_tailring.workspace.camera_pages import CameraPages, camera_pages
+
 
 @pytest.fixture(scope='module')
 def app():

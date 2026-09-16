@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use COWMATA Pro™ in research, please cite this software."
 title: "COWMATA Pro™"
 type: software
-version: 3.9.3
-date-released: 2026-09-16
+version: 3.9.4
+date-released: 2026-09-17
 license: MIT
 repository-code: "https://github.com/zxq309/COWMATA-Pro"
 url: "https://github.com/zxq309/COWMATA-Pro"

@@ -3,7 +3,6 @@ from copy import deepcopy
 
 from cowmata_tailring.annotation.defaults import DEFAULT_LABELS
 
-
 LEGACY_KEYS = {
     "STANDING": "G", "LYING": "H", "WALKING": "I",
     "STRAINING_ONSET": "J", "TAIL_RAISED": "Q", "TAIL_WAGGING": "W",

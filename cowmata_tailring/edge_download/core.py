@@ -363,13 +363,13 @@ def preserve_invalid_record(root, file, kind):
     try:
         validate_payload(json.loads(previous), kind)
         return None
-    except (ValueError, TypeError, KeyError, DownloadError):
+    except (ValueError, TypeError, KeyError, DownloadError) as exc:
         backup = checked_path(root, Path('.edge-download/recovery') /
             (file.name + '.' + hashlib.sha256(previous).hexdigest()))
         backup.parent.mkdir(parents=True, exist_ok=True)
         if backup.exists():
             if backup.read_bytes() != previous:
-                raise DownloadError('目标文件冲突，已保留现有文件')
+                raise DownloadError('目标文件冲突，已保留现有文件') from exc
         else:
             with backup.open('xb') as stream:
                 stream.write(previous)

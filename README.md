@@ -1,4 +1,4 @@
-> **3.9.3**：统一温度数据、数据集和模型输入约定，下载器对齐牧场首帧时间戳命名。见 [发布说明](docs/release-393.md) 与 [温度格式](docs/temperature-contract-393.md)。
+> **3.9.4**：原始录像按通道号自动对应视角01–20，直接按日期转码归档；修复已有牧场 JSON 被重复作为输入导致的报错。见 [发布说明](docs/release-394.md)。
 
 # COWMATA Pro™ 3.9
 
@@ -61,9 +61,9 @@ flowchart LR
 
 | 文件 | 用途 |
 |---|---|
-| `COWMATA-Pro-3.9.3-Setup.exe` | Windows 安装版，按向导安装 |
-| `COWMATA-Pro-3.9.3-Portable.zip` | 完整解压到独立目录，运行其中的 `COWMATA.exe` |
-| `COWMATA-Pro-3.9.3-Source.zip` | 开发、审查与修改源码；环境配置见第 8 节 |
+| `COWMATA-Pro-3.9.4-Setup.exe` | Windows 安装版，按向导安装 |
+| `COWMATA-Pro-3.9.4-Portable.zip` | 完整解压到独立目录，运行其中的 `COWMATA.exe` |
+| `COWMATA-Pro-3.9.4-Source.zip` | 开发、审查与修改源码；环境配置见第 8 节 |
 
 安装版和便携版自带运行组件。保留 `runtime`、`vendor`、`assets` 与启动程序的相对位置。
 
@@ -285,8 +285,8 @@ $env:COWMATA_ALGORITHM_HOME = "F:\科牧特\_模型\行为识别"
 维护者可复用本版已验证组件，输出到新位置：
 
 ```powershell
-python scripts/build_portable.py --components "E:\zxq\3.9\COWMATA-Pro-3.9.3-Portable" --out "E:\构建输出\COWMATA-Pro-3.9.3-Portable" --no-zip
-python scripts/build_installer.py --package "E:\构建输出\COWMATA-Pro-3.9.3-Portable" --compiler "D:\Tools\NSIS\makensis.exe" --out "E:\构建输出\COWMATA-Pro-3.9.3-Setup.exe" --version 3.9.0
+python scripts/build_portable.py --components "E:\zxq\3.9\COWMATA-Pro-3.9.4-Portable" --out "E:\构建输出\COWMATA-Pro-3.9.4-Portable" --no-zip
+python scripts/build_installer.py --package "E:\构建输出\COWMATA-Pro-3.9.4-Portable" --compiler "D:\Tools\NSIS\makensis.exe" --out "E:\构建输出\COWMATA-Pro-3.9.4-Setup.exe" --version 3.9.4
 ```
 
 构建拒绝覆盖已有输出，并核验文件清单。组件版本与许可见[便携组件说明](docs/portable-components.md)。

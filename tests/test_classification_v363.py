@@ -1,10 +1,10 @@
 import json
 import threading
 import time
-from PySide6.QtWidgets import QApplication
 from pathlib import Path
 
 import pytest
+from PySide6.QtWidgets import QApplication
 from test_classifier_hotfix import video_row
 from test_fixes_v351 import organizer  # noqa: F401
 

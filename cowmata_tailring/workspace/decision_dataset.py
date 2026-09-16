@@ -20,8 +20,8 @@ def export_decision(root, *, temperature_model=None, progress=lambda *_:None, ca
     events = [json.loads(line) for line in (root/'events.jsonl').read_text(encoding='utf-8').splitlines()]
     output = root/'综合决策'
     output.mkdir(exist_ok=True)
-    from cowmata_tailring.temperature import CONTRACT
     from cowmata_tailring.algorithms.decision import external_temperatures
+    from cowmata_tailring.temperature import CONTRACT
     packets = []
     for source in sources:
         doc = json.loads((root/source['path']).read_text(encoding='utf-8-sig'))
