@@ -4046,5 +4046,35 @@ ZH_TO_EN.update({
   "选择录像机原盘后自动只读扫描；无需打开盘符或格式化。": "Select a recorder disk to scan automatically in read-only mode; no need to open or format the drive."
 })
 
+ZH_TO_EN.update({
+  "选择原始录像 → Channel 01–20 自动对应视角01–20 → 转为标准 MP4，按日期归类。": "Select original recordings → match Channel 01–20 to views 01–20 → transcode to standard MP4 and archive by date.",
+  "按录像日期归档视频": "Archive videos by recording date",
+  "关联已有九轴记录（可选）": "Link existing IMU records (optional)",
+  "同时导入外部传感器 JSON（可选）": "Also import external sensor JSON (optional)",
+  "选择外部 JSON 目录…": "Choose external JSON folder...",
+  "仅转码视频无需选择；牧场中已有的九轴、PPG、温度会保留。": "Not required for video transcoding; existing farm IMU, PPG and temperature data are preserved.",
+  "归档视角": "Archive view",
+  "原通道 / 来源（自动匹配）": "Channel / source (auto matched)",
+  "数据状态": "Data status",
+  "扫描后自动填入同号通道；未发现的通道保留空视角文件夹，可直接开始转码。": "Matching channels are selected after scanning. Missing channels keep empty view folders; transcoding can start directly.",
+  "仅复制导入外部九轴 / PPG / 温度 JSON；不处理该目录中的视频。": "Copy external IMU / PPG / temperature JSON only; videos in that folder are ignored.",
+  "选择外部九轴 / PPG / 温度 JSON 目录": "Select external IMU / PPG / temperature JSON folder",
+  "这是当前牧场已有的数据，无需再次导入；直接开始转码即可。": "This data already belongs to the output farm. No import is needed; start transcoding directly.",
+  "保存位置：牧场目录 / ": "Save to: farm folder / ",
+  " / Video / 日期 / 视角01–20 / 时间戳.mp4（自动建目录）": " / Video / date / views01–20 / timestamp.mp4 (folders created automatically)",
+  "同号通道 · ": "Matching channel · ",
+  "已选择来源 · ": "Selected source · ",
+  "无录像 / 不接入": "No recording / excluded",
+  "没有可自动匹配的通道；请为无通道号的来源选择一个视角": "No channels could be matched; choose a view for sources without a channel number",
+  "缩略图已就绪；同号通道已对应同号视角，可直接开始转码。": "Thumbnails are ready. Matching channel numbers are assigned; start transcoding directly.",
+  " 段，已自动匹配 ": " recordings, automatically matched ",
+  " 个视角；异常索引 ": " views; invalid indexes: ",
+  " 段。": " recordings.",
+  "可直接开始转码并归类。": "Ready to transcode and archive.",
+  "未识别到明确通道号，请选择对应视角。": "No explicit channel number was found; choose the corresponding view."
+})
+
+NON_TRANSLATABLE = NON_TRANSLATABLE | {"(?:^|[ _-])(?:channel|ch|通道|视角)[ _-]*0*(\\d+)(?=$|[ _.\\-])"}
+
 if __name__ == "__main__":
     _coverage()

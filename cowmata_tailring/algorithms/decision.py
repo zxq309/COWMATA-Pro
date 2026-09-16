@@ -15,8 +15,13 @@ from types import SimpleNamespace
 import numpy as np
 
 from cowmata_tailring.edge_download.csv_targets import cow_identity, parse_time
+from cowmata_tailring.temperature import (
+    CONTRACT,
+    read_temperature_record,
+    validate_contract,
+    validate_temperature_identity,
+)
 from cowmata_tailring.workspace.storage import atomic_json
-from cowmata_tailring.temperature import CONTRACT, read_temperature_record, validate_contract, validate_temperature_identity
 
 from .analysis import load_features, write_table
 from .evidence import add_baselines, evidence_rows, infer_features

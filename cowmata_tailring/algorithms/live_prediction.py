@@ -7,12 +7,16 @@ import time
 from pathlib import Path
 
 from cowmata_tailring.edge_download.csv_targets import cow_identity
-from cowmata_tailring.temperature import CONTRACT, read_temperature_record
-from cowmata_tailring.workspace.device_identity import DEVICE, parse_device_folder, source_device_folder
+from cowmata_tailring.temperature import read_temperature_record
+from cowmata_tailring.workspace.device_identity import (
+    DEVICE,
+    parse_device_folder,
+    source_device_folder,
+)
 from cowmata_tailring.workspace.sensor_records import parse_sensor_object
 from cowmata_tailring.workspace.storage import atomic_json
 
-from .decision import FEATURES, build_fusion, predict_decision, read_decision
+from .decision import build_fusion, predict_decision, read_decision
 from .registry import list_suites, read_suite
 
 

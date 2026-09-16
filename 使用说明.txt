@@ -1,4 +1,4 @@
-COWMATA Pro 3.9.3
+COWMATA Pro 3.9.4
 
 解压后运行 COWMATA.exe。说明见 docs/release-393.md 和 docs/temperature-contract-393.md。
 下载器使用纯时间戳文件名；v2 Motion 采用首帧采集时刻。

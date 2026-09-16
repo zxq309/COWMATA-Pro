@@ -528,7 +528,10 @@ def _build_dataset(sources, target, task='behavior', *, job, layout='versioned',
         if layout == 'current':
             for source, group in groups.items():
                 retired.update(retire_stale_pairs(prior_pairs.get(source, []), group, root, history))
-        from cowmata_tailring.temperature import export_temperature_sources, find_temperature_sources
+        from cowmata_tailring.temperature import (
+            export_temperature_sources,
+            find_temperature_sources,
+        )
         temperature_sources = [item['source'] for item in items if item['kind'] == 'Motion']
         allowed = TASKS[task][2]
         temperature_sources.extend(p for p in find_temperature_sources(sources)

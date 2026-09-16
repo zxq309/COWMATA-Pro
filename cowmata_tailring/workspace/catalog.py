@@ -517,7 +517,8 @@ class Catalog:
                 value=archived.get('metadata',{})
                 if value.get('time_engine')==SIGNATURE and not value.get('recheck'):
                     metadata=bind_location_metadata(value,before)
-            from .video_filename import filename_wall, SIGNATURE as FILENAME_SIGNATURE
+            from .video_filename import SIGNATURE as FILENAME_SIGNATURE
+            from .video_filename import filename_wall
             named = row['kind']=='video' and filename_wall(path) is not None
             if named and metadata and not metadata.get('manual_readings') and not metadata.get('recheck') and metadata.get('time_engine')!=FILENAME_SIGNATURE and metadata.get('duration_ms',0)>0:
                 from .video_filename import metadata_from_name
@@ -590,7 +591,8 @@ class Catalog:
         with self.mutex, self.db:
             for row in self.rows(kind="video"):
                 metadata = row["metadata"]
-                from .video_filename import SIGNATURE as FILENAME_SIGNATURE, filename_wall
+                from .video_filename import SIGNATURE as FILENAME_SIGNATURE
+                from .video_filename import filename_wall
                 if metadata.get('time_engine') == FILENAME_SIGNATURE and filename_wall(row['path']) is not None:
                     continue
                 if row["state"] not in {"ready", "review"} or (filename_wall(row['path']) is None and metadata.get("ocr_engine") == signature and

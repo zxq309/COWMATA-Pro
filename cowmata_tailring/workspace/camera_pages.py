@@ -1,7 +1,8 @@
 """Stable camera pages; browsing inventory never creates media decoders."""
 from __future__ import annotations
+
 from PySide6.QtCore import QTimer, Signal
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 VIEWS = tuple(f'视角{i:02}' for i in range(1, 21))
 

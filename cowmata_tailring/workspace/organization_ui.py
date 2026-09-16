@@ -184,13 +184,15 @@ class PlanModel(QAbstractTableModel):
     def set_rows(self, rows):
         self.beginResetModel()
         from .classification_report import latest_rows
+
         self.rows = latest_rows(rows)
         self.endResetModel()
 
     def update_row(self, row):
         from .classification_report import source_key
+
         for index, old in enumerate(self.rows):
-            if source_key(old.get("source", '')) == source_key(row.get("source", '')):
+            if source_key(old.get("source", "")) == source_key(row.get("source", "")):
                 self.rows[index] = row
                 self.dataChanged.emit(
                     self.index(index, 0), self.index(index, len(self.COLUMNS) - 1)
@@ -253,6 +255,7 @@ class PlanModel(QAbstractTableModel):
                 return f"{row.get(key, 0) / 1024**2:,.2f} MiB"
             if key == "status":
                 from .classification_report import status_label
+
                 return status_label(row)
             if key == "device":
                 return row.get("device_id") or row.get("owner") or row.get("device", "")
@@ -593,47 +596,53 @@ class OrganizationWindow(TaskWindow):
         self.mode_sheets = QTabWidget(self)
         normal_page = QWidget()
         outer = QVBoxLayout(normal_page)
-        self.mode_sheets.addTab(normal_page, '常规数据归类')
+        self.mode_sheets.addTab(normal_page, "常规数据归类")
         shell.addWidget(self.mode_sheets)
         outer.setSpacing(8)
-        heading = QLabel('数据归类')
-        heading.setStyleSheet('font-size:20px; font-weight:700;')
+        heading = QLabel("数据归类")
+        heading.setStyleSheet("font-size:20px; font-weight:700;")
         outer.addWidget(heading)
-        outer.addWidget(QLabel('先选牧场，再选视频总目录；只处理勾选视角，暂停后可继续。'))
+        outer.addWidget(QLabel("先选牧场，再选视频总目录；只处理勾选视角，暂停后可继续。"))
+
         def add(layout, widget, stretch=0):
             widget.setParent(self)
             widget.show()
             layout.addWidget(widget, stretch)
+
         row = QHBoxLayout()
-        row.addWidget(QLabel('① 牧场目录'))
+        row.addWidget(QLabel("① 牧场目录"))
         add(row, self.target, 1)
         add(row, self.target_browse)
-        row.addWidget(QLabel('类别'))
+        row.addWidget(QLabel("类别"))
         add(row, self.category)
         add(row, self.pregnancy_stage)
         outer.addLayout(row)
         row = QHBoxLayout()
-        row.addWidget(QLabel('归类方式'))
-        self.scenario.setItemText(0, 'Motion、PPG、温度 JSON 与视频一起归类')
-        self.scenario.setItemText(1, '已有 Motion / PPG / Temp JSON，补充归类视频')
+        row.addWidget(QLabel("归类方式"))
+        self.scenario.setItemText(0, "Motion、PPG、温度 JSON 与视频一起归类")
+        self.scenario.setItemText(1, "已有 Motion / PPG / Temp JSON，补充归类视频")
         add(row, self.scenario, 1)
         add(row, self.transfer_mode)
         outer.addLayout(row)
         self.target.textEdited.connect(lambda value: self.farm.setText(value))
-        self.pregnancy_stage.setVisible(self.category.currentData() == 'pregnancy')
-        self.category.currentIndexChanged.connect(lambda: self.pregnancy_stage.setVisible(self.category.currentData() == 'pregnancy'))
+        self.pregnancy_stage.setVisible(self.category.currentData() == "pregnancy")
+        self.category.currentIndexChanged.connect(
+            lambda: self.pregnancy_stage.setVisible(self.category.currentData() == "pregnancy")
+        )
         row = QHBoxLayout()
-        row.addWidget(QLabel('② 视频总目录'))
+        row.addWidget(QLabel("② 视频总目录"))
         self.video_root = QLineEdit()
         self.video_root.setReadOnly(True)
-        self.video_root.setPlaceholderText('选择包含多个视角的大目录')
+        self.video_root.setPlaceholderText("选择包含多个视角的大目录")
         row.addWidget(self.video_root, 1)
-        self.video_root_browse = QPushButton('选择总目录…')
+        self.video_root_browse = QPushButton("选择总目录…")
         self.video_root_browse.clicked.connect(self.choose_video_root)
         row.addWidget(self.video_root_browse)
         outer.addLayout(row)
         self.sources.setColumnCount(4)
-        self.sources.setHorizontalHeaderLabels(['③ 勾选视角', '总目录内位置', '归档视角', '该视角进度'])
+        self.sources.setHorizontalHeaderLabels(
+            ["③ 勾选视角", "总目录内位置", "归档视角", "该视角进度"]
+        )
         self.sources.setColumnWidth(0, 130)
         self.sources.setColumnWidth(2, 100)
         self.sources.setColumnWidth(3, 210)
@@ -642,35 +651,50 @@ class OrganizationWindow(TaskWindow):
         self.sources.setFixedHeight(232)
         self.sources.verticalHeader().setDefaultSectionSize(26)
         row = QHBoxLayout()
-        self.select_views = QPushButton('全选视角')
-        self.clear_views = QPushButton('取消全选')
+        self.select_views = QPushButton("全选视角")
+        self.clear_views = QPushButton("取消全选")
         self.select_views.clicked.connect(lambda: self.check_views(True))
         self.clear_views.clicked.connect(lambda: self.check_views(False))
         row.addWidget(self.select_views)
         row.addWidget(self.clear_views)
-        self.json_sources = QPushButton('添加 Motion / PPG / Temp JSON…')
-        self.json_sources.clicked.connect(lambda: self.add_directory('imu'))
+        self.json_sources = QPushButton("添加 Motion / PPG / Temp JSON…")
+        self.json_sources.clicked.connect(lambda: self.add_directory("imu"))
         row.addWidget(self.json_sources)
         row.addStretch()
-        self.resume_button.setText('继续上次归类')
+        self.resume_button.setText("继续上次归类")
         add(row, self.resume_button)
         outer.addLayout(row)
-        notice = QLabel('确认全程黑屏、空录像或损坏后立即删除原文件；正常视频按所选方式归类。')
-        notice.setStyleSheet('color:#a13c17;')
+        notice = QLabel("确认全程黑屏、空录像或损坏后立即删除原文件；正常视频按所选方式归类。")
+        notice.setStyleSheet("color:#a13c17;")
         outer.addWidget(notice)
-        self.transfer_mode.setItemText(0, '复制正常视频')
-        self.transfer_mode.setItemText(1, '同盘移动正常视频，跨盘复制')
+        self.transfer_mode.setItemText(0, "复制正常视频")
+        self.transfer_mode.setItemText(1, "同盘移动正常视频，跨盘复制")
         add(outer, self.summary)
         add(outer, self.table, 1)
         self.table.setMinimumHeight(140)
-        for key in ('source_folder', 'suggested_folder', 'cow_id', 'field_mark', 'size'):
-            self.table.setColumnHidden(next(i for i,c in enumerate(self.model.COLUMNS) if c[0] == key), True)
+        for key in ("source_folder", "suggested_folder", "cow_id", "field_mark", "size"):
+            self.table.setColumnHidden(
+                next(i for i, c in enumerate(self.model.COLUMNS) if c[0] == key), True
+            )
         header = self.table.horizontalHeader()
-        for position, (key, width) in enumerate((('status', 80), ('record_date', 165), ('device', 85), ('source', 155), ('target', 165), ('file_seconds', 78), ('message', 240))):
+        for position, (key, width) in enumerate(
+            (
+                ("status", 80),
+                ("record_date", 165),
+                ("device", 85),
+                ("source", 155),
+                ("target", 165),
+                ("file_seconds", 78),
+                ("message", 240),
+            )
+        ):
             column = next(i for i, c in enumerate(self.model.COLUMNS) if c[0] == key)
             header.moveSection(header.visualIndex(column), position)
             self.table.setColumnWidth(column, width)
-        header.setSectionResizeMode(next(i for i,c in enumerate(self.model.COLUMNS) if c[0] == 'message'), QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(
+            next(i for i, c in enumerate(self.model.COLUMNS) if c[0] == "message"),
+            QHeaderView.ResizeMode.Stretch,
+        )
         self.record_details.setMinimumHeight(48)
         self.record_details.setMaximumHeight(65)
         self.record_details.hide()
@@ -678,12 +702,12 @@ class OrganizationWindow(TaskWindow):
         add(outer, self.bar)
         row = QHBoxLayout()
         add(row, self.execute_top)
-        self.cancel_button.setText('暂停')
+        self.cancel_button.setText("暂停")
         add(row, self.cancel_button)
-        self.export_button.setText('查看归类记录')
+        self.export_button.setText("查看归类记录")
         add(row, self.export_button)
         self.records_button = self.export_button  # Existing callers share the single entry.
-        self.open_directory_button.setText('打开归类目录')
+        self.open_directory_button.setText("打开归类目录")
         add(row, self.open_directory_button)
         outer.addLayout(row)
         self.resize(1180, 830)
@@ -693,58 +717,71 @@ class OrganizationWindow(TaskWindow):
         self._live_timer.setInterval(1000)
         self._live_timer.timeout.connect(self.refresh_live)
         self._live_timer.start()
-        self.summary.setText('等待选择视角 · 记录实时保存')
+        self.summary.setText("等待选择视角 · 记录实时保存")
         from .dahua_ui import DahuaPanel
+
         self.dahua_panel = DahuaPanel(self)
-        self.mode_sheets.addTab(self.dahua_panel, '原始录像转码与归类')
+        self.mode_sheets.addTab(self.dahua_panel, "原始录像转码与归类")
 
     def apply_report_snapshot(self):
         from .classification_report import read_snapshot, source_key, summary_text
+
         if not self.job:
             return
         try:
-            stat = (self.job / 'report-state.json').stat()
+            stat = (self.job / "report-state.json").stat()
             stamp = (str(self.job), stat.st_size, stat.st_mtime_ns)
-            if getattr(self, '_report_revision', None) and getattr(self, '_report_stamp', None) == stamp:
+            if (
+                getattr(self, "_report_revision", None)
+                and getattr(self, "_report_stamp", None) == stamp
+            ):
                 return
             snapshot = read_snapshot(self.job)
             self._report_stamp = stamp
         except (OSError, ValueError):
             return
-        revision = (str(self.job), snapshot['revision'])
-        if getattr(self, '_report_revision', None) == revision:
+        revision = (str(self.job), snapshot["revision"])
+        if getattr(self, "_report_revision", None) == revision:
             return
         current = self.table.currentIndex().row()
-        selected = source_key(self.model.rows[current]['source']) if 0 <= current < len(self.model.rows) else None
+        selected = (
+            source_key(self.model.rows[current]["source"])
+            if 0 <= current < len(self.model.rows)
+            else None
+        )
         scroll = self.table.verticalScrollBar().value()
         self._report_revision = revision
-        self.model.set_rows(snapshot['rows'])
-        self._report_counts = snapshot['counts']
-        self.refresh_view_progress(snapshot['rows'])
+        self.model.set_rows(snapshot["rows"])
+        self._report_counts = snapshot["counts"]
+        self.refresh_view_progress(snapshot["rows"])
         self._view_progress_dirty = False
-        c = snapshot['counts']
-        self.bar.setValue(round(1000 * (c['archived'] + c['unavailable'] + c['errors']) / max(1, c['total'])))
-        self.summary.setText(summary_text(snapshot['counts']))
+        c = snapshot["counts"]
+        self.bar.setValue(
+            round(1000 * (c["archived"] + c["unavailable"] + c["errors"]) / max(1, c["total"]))
+        )
+        self.summary.setText(summary_text(snapshot["counts"]))
         for i, row in enumerate(self.model.rows):
-            if source_key(row['source']) == selected:
+            if source_key(row["source"]) == selected:
                 self.table.selectRow(i)
                 break
         self.table.verticalScrollBar().setValue(scroll)
-        if getattr(self, '_report_window', None) and self._report_window.isVisible():
+        if getattr(self, "_report_window", None) and self._report_window.isVisible():
             self._report_window.refresh()
 
     def refresh_live(self):
-        if getattr(self, '_view_progress_dirty', False):
+        if getattr(self, "_view_progress_dirty", False):
             self.refresh_view_progress(self.model.rows)
             self._view_progress_dirty = False
-        if self.running and getattr(self, '_progress_pending_text', None):
+        if self.running and getattr(self, "_progress_pending_text", None):
             self.status.setText(self._progress_pending_text)
             self._progress_pending_text = None
         if hasattr(self, "records_button"):
-            self.records_button.setEnabled(bool(self.job and (self.job / "report-state.json").exists()))
+            self.records_button.setEnabled(
+                bool(self.job and (self.job / "report-state.json").exists())
+            )
         if self.job:
             self.apply_report_snapshot()
-        self.export_button.setEnabled(bool(self.job and (self.job / 'report-state.json').exists()))
+        self.export_button.setEnabled(bool(self.job and (self.job / "report-state.json").exists()))
 
     @property
     def running(self):
@@ -820,7 +857,7 @@ class OrganizationWindow(TaskWindow):
         self.sources.setItem(row, 1, location)
         combo = QComboBox()
         combo.addItem("按目录识别", "auto")
-        combo.addItems([f"视角{i:02}" for i in range(1,21)])
+        combo.addItems([f"视角{i:02}" for i in range(1, 21)])
         if camera != "auto":
             if combo.findText(camera) < 0:
                 combo.addItem(camera)
@@ -829,7 +866,7 @@ class OrganizationWindow(TaskWindow):
         combo.currentTextChanged.connect(self.invalidate_plan)
         self.sources.setCellWidget(row, 2, combo)
         if self.sources.columnCount() > 3:
-            state = QTableWidgetItem('等待开始' if checked else '未勾选')
+            state = QTableWidgetItem("等待开始" if checked else "未勾选")
             state.setFlags(state.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.sources.setItem(row, 3, state)
         if notify:
@@ -840,7 +877,7 @@ class OrganizationWindow(TaskWindow):
 
     def reset_source_session(self):
         self.job = self.plan = self.plan_job = self.result_pending = None
-        self.completed_target = ''
+        self.completed_target = ""
         self._report_revision = None
         self._report_counts = {}
         self._view_transfers = {}
@@ -849,15 +886,20 @@ class OrganizationWindow(TaskWindow):
         self.record_details.clear()
         self.bar.setRange(0, 1000)
         self.bar.setValue(0)
-        self.summary.setText('等待选择视角 · 记录实时保存')
+        self.summary.setText("等待选择视角 · 记录实时保存")
         self.export_button.setEnabled(False)
         self.records_button.setEnabled(False)
         self.open_button.setEnabled(False)
-        if getattr(self, '_report_window', None):
+        if getattr(self, "_report_window", None):
             self._report_window.refresh()
 
     def choose_video_root(self):
-        path = QFileDialog.getExistingDirectory(self, '选择包含所有视角的视频总目录', self.video_root.text(), QFileDialog.Option.DontUseNativeDialog)
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "选择包含所有视角的视频总目录",
+            self.video_root.text(),
+            QFileDialog.Option.DontUseNativeDialog,
+        )
         if path:
             self.set_video_root(path)
 
@@ -865,7 +907,8 @@ class OrganizationWindow(TaskWindow):
         if self.running:
             return
         from .video_discovery import VideoDirectoryScanner
-        if not hasattr(self, '_directory_scanner'):
+
+        if not hasattr(self, "_directory_scanner"):
             self._directory_scanner = VideoDirectoryScanner(self)
             self._directory_scanner.updated.connect(self._directory_counts)
             self._directory_render_timer = QTimer(self)
@@ -874,14 +917,14 @@ class OrganizationWindow(TaskWindow):
         self._directory_scanner.cancel()
         self._directory_render_timer.stop()
         self.reset_source_session()
-        for row in range(self.sources.rowCount()-1, -1, -1):
-            if self.sources.item(row, 0).data(Qt.ItemDataRole.UserRole) != 'imu':
+        for row in range(self.sources.rowCount() - 1, -1, -1):
+            if self.sources.item(row, 0).data(Qt.ItemDataRole.UserRole) != "imu":
                 self.sources.removeRow(row)
         self.video_root.setText(str(root))
         self._discovery_rows = {}
         self._discovering = True
         self._discovery_incomplete = True
-        self.status.setText('正在后台发现视角，文件数量将逐步更新；可以取消或重新选择目录。')
+        self.status.setText("正在后台发现视角，文件数量将逐步更新；可以取消或重新选择目录。")
         self.bar.setRange(0, 0)
         self.render()
         self._directory_scanner.start(str(root))
@@ -890,14 +933,16 @@ class OrganizationWindow(TaskWindow):
         if not self._discovering:
             return
         from collections import deque
+
         self._directory_snapshot = value
-        self._directory_pending_rows = deque(value['counts'].items())
+        self._directory_pending_rows = deque(value["counts"].items())
         self._directory_render_timer.start()
 
     def _render_directory_rows(self):
         from .video_discovery import ALIASES
+
         value = self._directory_snapshot
-        root = Path(value['root'])
+        root = Path(value["root"])
         self.sources.setUpdatesEnabled(False)
         try:
             for _ in range(24):
@@ -907,73 +952,96 @@ class OrganizationWindow(TaskWindow):
                 path = Path(folder)
                 row = self._discovery_rows.get(folder)
                 if row is None:
-                    self.add_source('video', path, ALIASES.get(path.name, 'auto'), checked=False, notify=False)
-                    row = self.sources.rowCount()-1
+                    self.add_source(
+                        "video", path, ALIASES.get(path.name, "auto"), checked=False, notify=False
+                    )
+                    row = self.sources.rowCount() - 1
                     self._discovery_rows[folder] = row
-                    self.sources.item(row,1).setText(str(path.relative_to(root)) if path != root else '本目录')
-                self.sources.item(row,0).setText(path.name + f'（{count}）')
+                    self.sources.item(row, 1).setText(
+                        str(path.relative_to(root)) if path != root else "本目录"
+                    )
+                self.sources.item(row, 0).setText(path.name + f"（{count}）")
         finally:
             self.sources.setUpdatesEnabled(True)
         if self._directory_pending_rows:
             return
         self._directory_render_timer.stop()
-        total = sum(value['counts'].values())
-        self.status.setText(f"已发现 {len(value['counts'])} 路视角、{total} 个视频。" +
-                            ('勾选需要归类的视角。' if value['done'] else '后台继续统计中…'))
-        if value['done']:
-            for folder, row in sorted(self._discovery_rows.items(), key=lambda p:p[1], reverse=True):
-                if folder not in value['counts']:
+        total = sum(value["counts"].values())
+        self.status.setText(
+            f"已发现 {len(value['counts'])} 路视角、{total} 个视频。"
+            + ("勾选需要归类的视角。" if value["done"] else "后台继续统计中…")
+        )
+        if value["done"]:
+            for folder, row in sorted(
+                self._discovery_rows.items(), key=lambda p: p[1], reverse=True
+            ):
+                if folder not in value["counts"]:
                     self.sources.removeRow(row)
             self._discovering = False
-            self._discovery_incomplete = bool(value['error'])
-            self.bar.setRange(0,1000);self.bar.setValue(0)
-            if value['error']:
-                self.status.setText('目录扫描未完成：'+value['error'])
+            self._discovery_incomplete = bool(value["error"])
+            self.bar.setRange(0, 1000)
+            self.bar.setValue(0)
+            if value["error"]:
+                self.status.setText("目录扫描未完成：" + value["error"])
             self.invalidate_plan()
         else:
             self.render()
 
     def cancel_directory_scan(self):
-        if hasattr(self, '_directory_scanner'):
+        if hasattr(self, "_directory_scanner"):
             self._directory_scanner.cancel()
             self._directory_render_timer.stop()
         self._discovering = False
         self._discovery_incomplete = True
-        self.bar.setRange(0,1000);self.bar.setValue(0)
-        self.status.setText('目录扫描已取消；重新选择目录即可继续。')
+        self.bar.setRange(0, 1000)
+        self.bar.setValue(0)
+        self.status.setText("目录扫描已取消；重新选择目录即可继续。")
         self.render()
 
     def check_views(self, checked):
         for row in range(self.sources.rowCount()):
             item = self.sources.item(row, 0)
-            if item.data(Qt.ItemDataRole.UserRole) == 'video':
+            if item.data(Qt.ItemDataRole.UserRole) == "video":
                 item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
         self.invalidate_plan()
 
     def refresh_view_progress(self, rows):
-        indexed = [(os.path.normcase(os.path.normpath(r['source'])), r) for r in rows]
+        indexed = [(os.path.normcase(os.path.normpath(r["source"])), r) for r in rows]
         self.sources.blockSignals(True)
         try:
             for i in range(self.sources.rowCount()):
                 location = self.sources.item(i, 1)
-                if location is None or self.sources.item(i, 0) is None or self.sources.item(i, 3) is None:
+                if (
+                    location is None
+                    or self.sources.item(i, 0) is None
+                    or self.sources.item(i, 3) is None
+                ):
                     continue
-                base = os.path.normcase(os.path.normpath(location.data(Qt.ItemDataRole.UserRole) or location.text()))
-                prefix = base.rstrip('\\/') + os.sep
+                base = os.path.normcase(
+                    os.path.normpath(location.data(Qt.ItemDataRole.UserRole) or location.text())
+                )
+                prefix = base.rstrip("\\/") + os.sep
                 relevant = [r for path, r in indexed if path == base or path.startswith(prefix)]
-                finished = sum(r.get('status') == 'done' for r in relevant)
-                deleted = sum(r.get('status') == 'deleted' for r in relevant)
-                active = sum(r.get('status') == 'processing' for r in relevant)
-                errors = sum(r.get('status') in {'blocked', 'invalid'} for r in relevant)
-                stage = ''
+                finished = sum(r.get("status") == "done" for r in relevant)
+                deleted = sum(r.get("status") == "deleted" for r in relevant)
+                active = sum(r.get("status") == "processing" for r in relevant)
+                errors = sum(r.get("status") in {"blocked", "invalid"} for r in relevant)
+                stage = ""
                 if active:
                     camera = self.sources.cellWidget(i, 2).currentText()
-                    phase, percent = getattr(self, '_view_transfers', {}).get(camera, ('', 100))
-                    stage = f' · {phase} {percent}%' if percent < 100 else ' · 处理中'
-                value = (f'已归类 {finished} / {len(relevant)} · 删除 {deleted}'
-                         + stage + (f' · 异常 {errors}' if errors else ''))
+                    phase, percent = getattr(self, "_view_transfers", {}).get(camera, ("", 100))
+                    stage = f" · {phase} {percent}%" if percent < 100 else " · 处理中"
+                value = (
+                    f"已归类 {finished} / {len(relevant)} · 删除 {deleted}"
+                    + stage
+                    + (f" · 异常 {errors}" if errors else "")
+                )
                 if not relevant:
-                    value = '等待开始' if self.sources.item(i, 0).checkState() == Qt.CheckState.Checked else '未勾选'
+                    value = (
+                        "等待开始"
+                        if self.sources.item(i, 0).checkState() == Qt.CheckState.Checked
+                        else "未勾选"
+                    )
                 self.sources.item(i, 3).setText(value)
         finally:
             self.sources.blockSignals(False)
@@ -1034,7 +1102,7 @@ class OrganizationWindow(TaskWindow):
                 next(i for i, c in enumerate(self.model.COLUMNS) if c[0] == key),
                 True,
             )
-        if (attach or self._job_action == "organize") and not hasattr(self, '_live_timer'):
+        if (attach or self._job_action == "organize") and not hasattr(self, "_live_timer"):
             header = self.table.horizontalHeader()
             for position, key in enumerate(
                 ("status", "record_date", "device", "source", "target", "message")
@@ -1058,18 +1126,35 @@ class OrganizationWindow(TaskWindow):
             else "留空自动读取真实日期；右侧日历可选择"
         )
         self.end_date.setPlaceholderText("可选结束日期（包含当日）")
-        if hasattr(self, 'json_sources'):
+        if hasattr(self, "json_sources"):
             self.json_sources.setVisible(not attach)
         self.invalidate_plan()
 
     def source_specs(self):
-        locations = [Path(self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole) or self.sources.item(i, 1).text())
-                     if self.sources.item(i, 1) else None for i in range(self.sources.rowCount())]
+        locations = [
+            Path(
+                self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole)
+                or self.sources.item(i, 1).text()
+            )
+            if self.sources.item(i, 1)
+            else None
+            for i in range(self.sources.rowCount())
+        ]
         return [
             {
                 "kind": self.sources.item(i, 0).data(Qt.ItemDataRole.UserRole),
-                "path": self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole) or self.sources.item(i, 1).text().strip(),
-                "exclude": list(dict.fromkeys((self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole + 1) or []) + [str(p) for p in locations if p and p != locations[i] and p.is_relative_to(locations[i])])),
+                "path": self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole)
+                or self.sources.item(i, 1).text().strip(),
+                "exclude": list(
+                    dict.fromkeys(
+                        (self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole + 1) or [])
+                        + [
+                            str(p)
+                            for p in locations
+                            if p and p != locations[i] and p.is_relative_to(locations[i])
+                        ]
+                    )
+                ),
                 "camera": self.sources.cellWidget(i, 2).currentData()
                 or self.sources.cellWidget(i, 2).currentText(),
             }
@@ -1115,6 +1200,7 @@ class OrganizationWindow(TaskWindow):
     def start_organize(self, request, job=None):
         paths = [request["target"], *(s["path"] for s in request["sources"])]
         from .organization_live import pending_job
+
         try:
             pending = pending_job(paths)
             if pending and (job is None or Path(job) != pending):
@@ -1222,26 +1308,38 @@ class OrganizationWindow(TaskWindow):
                 message = json.loads(line)
             except (ValueError, UnicodeError):
                 continue
-            if message['event'] == 'snapshot':
+            if message["event"] == "snapshot":
                 self._report_dirty = True
-            elif message['event'] == 'resources':
-                self._resource_budget = message['budget']
+            elif message["event"] == "resources":
+                self._resource_budget = message["budget"]
             elif message["event"] == "progress":
                 total, current = message["total"], message["current"]
-                if total and self._job_action != 'organize':
+                if total and self._job_action != "organize":
                     self.bar.setRange(0, 1000)
                     self.bar.setValue(round(current / total * 1000))
-                if message.get('unit') == 'bytes':
-                    parts = message['path'].split(' · ', 2)
+                if message.get("unit") == "bytes":
+                    parts = message["path"].split(" · ", 2)
                     if len(parts) == 3:
-                        if not hasattr(self, '_view_transfers'):
+                        if not hasattr(self, "_view_transfers"):
                             self._view_transfers = {}
-                        self._view_transfers[parts[1]] = (parts[0], round(100*current/max(1,total)))
+                        self._view_transfers[parts[1]] = (
+                            parts[0],
+                            round(100 * current / max(1, total)),
+                        )
                         self._view_progress_dirty = True
-                    self._progress_pending_text = f"{message['path']} · {current / 1024**2:.1f} / {total / 1024**2:.1f} MiB"
+                    self._progress_pending_text = (
+                        f"{message['path']} · {current / 1024**2:.1f} / {total / 1024**2:.1f} MiB"
+                    )
                 else:
-                    self._total_files = total or getattr(self, '_total_files', 0)
-                    self._progress_pending_text = message["path"] if self._job_action == "organize" else f"已处理 {current}" + (f" / {total}" if total else "") + " · " + message["path"]
+                    self._total_files = total or getattr(self, "_total_files", 0)
+                    self._progress_pending_text = (
+                        message["path"]
+                        if self._job_action == "organize"
+                        else f"已处理 {current}"
+                        + (f" / {total}" if total else "")
+                        + " · "
+                        + message["path"]
+                    )
             elif message["event"] == "result":
                 self.result_pending = self.job / "result.json"
             elif message["event"] == "row":
@@ -1277,7 +1375,7 @@ class OrganizationWindow(TaskWindow):
                 self.status.setText(
                     "审查完成。可预览隔离临时/空文件，再到数据归类确认目标。异常原件继续保留。"
                 )
-            elif result.get("completed") or result.get('requires_attention'):
+            elif result.get("completed") or result.get("requires_attention"):
                 if result.get("streaming"):
                     self.summary.setText(
                         f"已归类 {counts['done']} 项 · 本次新增 {result.get('copied', 0) + result.get('same_volume_moved', 0)} 项 · 直接复用 {result.get('reused_files', 0)} 项 · 需处理 {counts['blocked'] + counts['invalid']} 项"
@@ -1321,7 +1419,7 @@ class OrganizationWindow(TaskWindow):
                     self.tabs.hide()
                     self.options_toggle.setText("展开整理选项")
         else:
-            if self.job and (self.job / 'plan.json').is_file():
+            if self.job and (self.job / "plan.json").is_file():
                 self.load_task(self.job)
             self.status.setText(
                 self.last_error
@@ -1387,18 +1485,23 @@ class OrganizationWindow(TaskWindow):
         if self.running:
             return
         from .organization_live import pending_job
+
         try:
-            paths = [p for p in [self.target.text().strip(), *(s['path'] for s in self.source_specs())] if p]
+            paths = [
+                p
+                for p in [self.target.text().strip(), *(s["path"] for s in self.source_specs())]
+                if p
+            ]
             job = pending_job(paths) if paths else None
-            job = job or Path(self.settings.value('organization/resume_job', '', type=str))
-            if not (job / 'plan.json').is_file():
-                request_path = job / 'request.json'
+            job = job or Path(self.settings.value("organization/resume_job", "", type=str))
+            if not (job / "plan.json").is_file():
+                request_path = job / "request.json"
                 if request_path.is_file():
-                    request = json.loads(request_path.read_text(encoding='utf-8'))
-                    if request.get('action') == 'organize':
+                    request = json.loads(request_path.read_text(encoding="utf-8"))
+                    if request.get("action") == "organize":
                         self.start_organize(request, job)
                         return
-                self.status.setText('没有可继续的归类任务。')
+                self.status.setText("没有可继续的归类任务。")
                 return
             self.load_task(job)
             if self.plan_job == job:
@@ -1439,7 +1542,12 @@ class OrganizationWindow(TaskWindow):
             self.sources.setRowCount(0)
             for spec in plan["sources"]:
                 if spec.get("kind") in {"imu", "video", "auto"}:
-                    self.add_source(spec["kind"], spec["path"], spec.get("camera", VIEWS[0]), exclude=spec.get("exclude", []))
+                    self.add_source(
+                        spec["kind"],
+                        spec["path"],
+                        spec.get("camera", VIEWS[0]),
+                        exclude=spec.get("exclude", []),
+                    )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             self.status.setText(str(exc))
             self.invalidate_plan()
@@ -1453,7 +1561,7 @@ class OrganizationWindow(TaskWindow):
         self.render()
 
     def cancel(self):
-        if getattr(self, '_discovering', False):
+        if getattr(self, "_discovering", False):
             self.cancel_directory_scan()
         if self.running:
             (self.job / "cancel").touch()
@@ -1512,7 +1620,8 @@ class OrganizationWindow(TaskWindow):
 
     def export_report(self):
         from .classification_viewer import ClassificationReportWindow
-        if not getattr(self, '_report_window', None):
+
+        if not getattr(self, "_report_window", None):
             self._report_window = ClassificationReportWindow(self, lambda: self.job)
         self._report_window.refresh()
         self._report_window.show()
@@ -1601,11 +1710,11 @@ class OrganizationWindow(TaskWindow):
 
     def render(self):
         busy = self.running or self.pause_pending
-        for name in ('video_root_browse', 'select_views', 'clear_views', 'json_sources'):
+        for name in ("video_root_browse", "select_views", "clear_views", "json_sources"):
             if hasattr(self, name):
                 getattr(self, name).setEnabled(not busy)
-        if hasattr(self, 'json_sources'):
-            self.json_sources.setVisible(self.scenario.currentData() == 'mixed')
+        if hasattr(self, "json_sources"):
+            self.json_sources.setVisible(self.scenario.currentData() == "mixed")
         for widget in (
             self.bulk_video_button,
             self.video_workers,
@@ -1659,7 +1768,9 @@ class OrganizationWindow(TaskWindow):
             if r.get("status") in {"ready", "existing", "quarantine"}
         ]
         deletes = sum(r.get("operation") == "delete_nonvideo" for r in selected)
-        self.execute_top.setText('继续归类' if self.plan and self.plan.get('streaming') else '一键归类')
+        self.execute_top.setText(
+            "继续归类" if self.plan and self.plan.get("streaming") else "一键归类"
+        )
         if busy:
             self.execution_hint.setText(
                 "仅预览进行中：未复制或移动文件。"
@@ -1688,9 +1799,7 @@ class OrganizationWindow(TaskWindow):
             for widget in self.add_buttons[:2]:
                 widget.setEnabled(False)
         self.pause_project.setEnabled(not busy and bool(getattr(self.owner, "catalog", None)))
-        self.export_button.setEnabled(
-            bool(self.job and (self.job / "report-state.json").is_file())
-        )
+        self.export_button.setEnabled(bool(self.job and (self.job / "report-state.json").is_file()))
 
     def closeEvent(self, event):
         self._close_requested = True
@@ -1703,7 +1812,7 @@ class OrganizationWindow(TaskWindow):
     def request_shutdown(self):
         if getattr(self, "_discovering", False):
             self.cancel_directory_scan()
-        dahua_ready = self.dahua_panel.request_shutdown() if hasattr(self, 'dahua_panel') else True
+        dahua_ready = self.dahua_panel.request_shutdown() if hasattr(self, "dahua_panel") else True
         self._pending_organize_request = None
         self._execute_after_pause = False
         if self.pause_pending and not getattr(self.owner, "_organization_pausing", False):
