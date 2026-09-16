@@ -167,6 +167,8 @@ class TemperatureModule:
     def __init__(self, context, config=None, model=None):
         self.context = context
         self.model = load_model() if model is None else model
+        from cowmata_tailring.temperature import validate_contract
+        validate_contract(self.model.get("temperature_contract"))
         if config is None and self.model.get("decision_config"):
             config = Config(**self.model["decision_config"])
         self.config = config or Config()

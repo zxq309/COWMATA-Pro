@@ -5,15 +5,18 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 import warnings
-from datetime import datetime
+from bisect import bisect_left
+from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
-from cowmata_tailring.edge_download.core import CHINA
+from cowmata_tailring.edge_download.csv_targets import cow_identity, parse_time
 from cowmata_tailring.workspace.storage import atomic_json
+from cowmata_tailring.temperature import CONTRACT, read_temperature_record, validate_contract, validate_temperature_identity
 
 from .analysis import load_features, write_table
 from .evidence import add_baselines, evidence_rows, infer_features
@@ -48,7 +51,7 @@ def external_temperatures(root):
     rows, issues = [], []
     for file in Path(root).rglob("*.json"):
         relative = file.relative_to(Path(root))
-        if "Temp" not in relative.parts or ".edge-download" in relative.parts:
+        if "temp" not in {p.casefold() for p in relative.parts} or any(p.startswith(".") or p == "标注工程" for p in relative.parts):
             continue
         try:
             from cowmata_tailring.workspace.device_identity import resolve_device_identity
@@ -57,15 +60,11 @@ def external_temperatures(root):
             owner = resolve_device_identity(file, data.get("device"))
             if owner["status"] != "ready":
                 raise ValueError(owner["message"])
-            value = data.get("temperature_c", data.get("data"))
-            # Raw ADC, unknown units and temperature arrays are preserved for review.
-            if isinstance(value, dict):
-                value = value.get("temperature_c", value.get("temperature"))
-            if isinstance(value, bool) or isinstance(value, list | dict):
-                raise ValueError("独立温度字段尚未提供单个摄氏温度值")
-            value = float(value)
-            if not np.isfinite(value) or not -30 <= value <= 80:
-                raise ValueError("独立温度单位或数值需要核对")
+            sample = read_temperature_record(data)
+            validate_temperature_identity(data, owner["cow_id"], owner["field_mark"])
+            value = sample["value"]
+            if not -30 <= value <= 80:
+                raise ValueError("独立温度数值需要核对")
             rows.append(
                 dict(
                     cow=owner["cow_id"],
@@ -74,6 +73,10 @@ def external_temperatures(root):
                     time=int(data["create_time"]),
                     value=value,
                     source=str(file),
+                    available_at_ms=sample["available_at_ms"],
+                    time_basis=sample["time_basis"],
+                    sample_id=sample["sample_id"],
+                    source_kind=sample["source_kind"],
                 )
             )
         except (OSError, ValueError, TypeError, KeyError) as exc:
@@ -81,8 +84,9 @@ def external_temperatures(root):
     return rows, issues
 
 
-def build_fusion(root, suites, output, cache, *, codes=None, selections=None, progress=lambda *_: None):
-    index = scan_inputs(root, progress=progress)
+def build_fusion(root, suites, output, cache, *, codes=None, selections=None, progress=lambda *_: None,
+                 input_index=None, include_external_temperature=True, input_temperatures=None):
+    index = input_index if input_index is not None else scan_inputs(root, progress=progress)
     selected = [read_suite(p) for p in suites]
     for suite in selected:
         allowed = (selections or {}).get(str(suite['root']))
@@ -120,6 +124,11 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
                     row["straining_seconds"] = None
                 row["behavior_versions"] = versions
                 row["decision_epoch_ms"] = row["end_epoch_ms"] + 20000
+                available = f.get("update_time_ms")
+                if available is not None and available > row["decision_epoch_ms"]:
+                    row["temperature_c"] = None
+                    row["temperature_samples"] = 0
+                    row["temperature_availability"] = "packet_not_yet_received"
                 row["heart_rate_bpm"] = None
                 row["spo2_percent"] = None
                 row["prediction_probability"] = None
@@ -128,21 +137,32 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
         except (OSError, ValueError, KeyError) as exc:
             issues.append(dict(path=record["raw"], reason=str(exc)))
         progress(i + 1, len(index["records"]), "汇总行为、活动量与温度")
-    temperatures, temp_issues = external_temperatures(root)
+    temperatures, temp_issues = ((input_temperatures, []) if input_temperatures is not None
+                                else external_temperatures(root) if include_external_temperature else ([], []))
     issues.extend(temp_issues)
+    temperature_groups = defaultdict(list)
+    seen_temperatures = set()
+    for sample in temperatures:
+        key = (sample["cow"], sample["device"], sample["mark"])
+        observation = (key, sample["time"], sample["value"])
+        if observation not in seen_temperatures:
+            seen_temperatures.add(observation)
+            temperature_groups[key].append(sample)
+    temperature_index = {}
+    for key, samples in temperature_groups.items():
+        samples.sort(key=lambda sample: sample["time"])
+        temperature_index[key] = ([sample["time"] for sample in samples], samples)
     for row in rows:
-        matches = [
-            t
-            for t in temperatures
-            if t["cow"] == row["cow_id"]
-            and t["device"] == row["device_id"]
-            and t["mark"] == row["field_mark"]
-            and row["start_epoch_ms"] <= t["time"] < row["end_epoch_ms"]
-        ]
+        times, samples = temperature_index.get((row["cow_id"],row["device_id"],row["field_mark"]), ([], []))
+        left = bisect_left(times, row["start_epoch_ms"])
+        right = bisect_left(times, row["end_epoch_ms"])
+        matches = [sample for sample in samples[left:right]
+                   if sample["available_at_ms"] <= row["decision_epoch_ms"]]
         if matches:
             row["temperature_c"] = float(np.median([t["value"] for t in matches]))
             row["temperature_samples"] = len(matches)
             row["temperature_sources"] = [t["source"] for t in matches]
+            row["temperature_availability"] = "independent_samples_available"
         # occupancy keeps unknown segments explicit; only known coverage is used.
         row["lying_fraction_known"] = row.get("lying_fraction_known", row.get("lying_fraction"))
     optical = [r for r in rows if r["modality"] == "ppg"]
@@ -177,6 +197,7 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
         behavior_models=[dict(version=s["version"], sha256=s["hash"], codes=sorted(m["code"] for m in s["models"])) for s in selected],
         delayed_seconds=20,
         temperature_basis="sensor_celsius",
+        temperature_contract=dict(CONTRACT),
         future_extensions=["heart_rate_bpm", "spo2_percent"],
     )
     output = Path(output)
@@ -197,11 +218,12 @@ def attach_outcomes(rows, ledger_path, horizon_hours=24):
             if not clock or ":" not in clock:
                 continue
             try:
-                date = datetime.fromisoformat(day + "T" + clock).replace(tzinfo=CHINA)
-                cow = str(row["牛号"]).strip()
-                if len(cow) != 5 or not cow.isdigit():
-                    continue
-                births.setdefault(cow, []).append(date.timestamp() * 1000)
+                clock = clock.strip()
+                text = day.strip() + "T" + clock if re.match(r"^\d{1,2}:", clock) else clock
+                date = parse_time(text)
+                cow, _ = cow_identity(row["牛号"])
+                if date is not None:
+                    births.setdefault(cow, []).append(date.timestamp() * 1000)
             except (ValueError, KeyError):
                 continue
     labeled = []
@@ -292,6 +314,7 @@ def train_decision(
     )
     from sklearn.model_selection import GroupKFold
 
+    validate_contract(evidence.get("temperature_contract"))
     if horizon_hours not in (6, 12, 24, 48):
         raise ValueError("预测提前量无效")
     labeled = attach_outcomes(evidence["rows"], ledger_path, horizon_hours)
@@ -367,6 +390,7 @@ def train_decision(
         version=output.name,
         algorithm=algorithm,
         feature_names=list(FEATURES),
+        temperature_contract=dict(CONTRACT),
         median=median.tolist(),
         model_file=file.name,
         sha256=hashlib.sha256(file.read_bytes()).hexdigest(),
@@ -426,6 +450,7 @@ def read_decision(folder):
         or doc.get("feature_names") != list(FEATURES)
     ):
         raise ValueError("决策模型不完整或输入格式不兼容")
+    validate_contract(doc.get("temperature_contract"))
     file = child(folder, doc["model_file"])
     if hashlib.sha256(file.read_bytes()).hexdigest() != doc["sha256"]:
         raise ValueError("决策模型校验失败")
@@ -437,6 +462,7 @@ def read_decision(folder):
 
 def predict_decision(evidence, model_path, output):
     folder, doc = read_decision(model_path)
+    validate_contract(evidence.get("temperature_contract"))
     # Behavioral feature semantics are model-version-dependent.
     if doc.get("behavior_models") != evidence.get("behavior_models", []):
         raise ValueError("行为模型版本与决策训练时不同；请恢复对应行为模型或重新训练决策模型")

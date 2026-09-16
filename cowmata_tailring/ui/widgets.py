@@ -391,8 +391,9 @@ class SignalPlotWidget(QWidget):
         self._drag_start_x = event.position().x()
         self._drag_last_x = self._drag_start_x
         self._drag_start_t = self._time_for_x(self._drag_start_x)
-        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+        if event.modifiers() & Qt.KeyboardModifier.ShiftModifier or getattr(self, "pan_enabled", False):
             self._drag_mode = "pan"
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
             self._pan_start_view = (self._view_t0, self._view_t1)
         else:
             self._drag_mode = "select"
@@ -425,6 +426,7 @@ class SignalPlotWidget(QWidget):
                 self.rangeSelected.emit(min(self._drag_start_t, t1), max(self._drag_start_t, t1))
         self._drag_mode = None
         self._selection_t = None
+        self.unsetCursor()
         self.update()
         event.accept()
 

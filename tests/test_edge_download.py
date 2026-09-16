@@ -25,7 +25,7 @@ from cowmata_tailring.edge_download.core import (
 )
 
 START = datetime(2026, 8, 17, tzinfo=CHINA)
-RAW = b'\x00\x01' * 22
+RAW = bytes(4) + b'\x00\x01' * 9 + (20).to_bytes(4, 'little') + b'\x00\x01' * 9
 
 
 def record(kind='motion', stamp=None, cow='23077', device='546C50CA07FA'):
@@ -134,7 +134,8 @@ def test_failed_records_retry_and_late_upload_is_discovered(tmp_path, server):
     file.write_text('corrupt')
     result = run_job(job, threading.Event())
     assert result.saved == 1
-    assert file.read_text() == 'corrupt'  # no overwrite, even of damaged originals
+    assert json.loads(file.read_bytes())['imu'] == state['rows'][3]['imu']
+    assert any(p.read_bytes() == b'corrupt' for p in (tmp_path/'.edge-download/recovery').iterdir())
 
 
 def test_cross_device_cow_query_preserves_history(tmp_path, server):
@@ -177,8 +178,9 @@ def test_same_second_different_payload_no_overwrite(tmp_path):
     b = record()
     b['imu'] = base64.b64encode(bytes(44)).decode()
     first, _ = save_record(job, job.targets[0], 'motion', a, threading.Event())
-    second, _ = save_record(job, job.targets[0], 'motion', b, threading.Event())
-    assert first != second
+    with pytest.raises(DownloadError, match='冲突'):
+        save_record(job, job.targets[0], 'motion', b, threading.Event())
+    assert list(first.parent.glob('*.json')) == [first]
     assert json.loads(first.read_bytes()) == a
 
 

@@ -327,7 +327,8 @@ def test_paginated_sync_late_upload_pending_and_repair(tmp_path, automatic_serve
     file = next((tmp_path / "未分类/Motion").rglob("*.json"))
     file.write_bytes(b"corrupt")
     result = run_automatic_job(job, threading.Event())
-    assert result.saved == 1 and file.read_bytes() == b"corrupt"
+    assert result.saved == 1 and json.loads(file.read_bytes())["imu"]
+    assert any(p.read_bytes() == b"corrupt" for p in (tmp_path/".edge-download/recovery").iterdir())
 
 
 def test_csv_revision_reclassifies_without_rewriting_raw_bytes(tmp_path, automatic_server):

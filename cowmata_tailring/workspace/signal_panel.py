@@ -4,13 +4,14 @@ from __future__ import annotations
 import html
 
 import numpy as np
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPixmap, QValidator
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QToolTip,
     QVBoxLayout,
@@ -121,12 +122,24 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
         value = float(series.values[idx])
         return (float(ts[idx]), value) if np.isfinite(value) else None
 
+    def event(self, event):
+        # Qt emits ToolTip after the pointer stops; use the same raw readout
+        # instead of allowing QWidget's generic help to replace the values.
+        if event.type() == QEvent.Type.ToolTip:
+            self.show_readout(QPointF(event.pos()), event.globalPos())
+            event.accept()
+            return True
+        return super().event(event)
+
     def mouseMoveEvent(self, event):
         super().mouseMoveEvent(event)
-        if not self._plot_rect().contains(event.position()) or self._drag_mode or self._event_drag:
+        self.show_readout(event.position(), event.globalPosition().toPoint())
+
+    def show_readout(self, position, global_position):
+        if not self._plot_rect().contains(position) or self._drag_mode or self._event_drag:
             QToolTip.hideText()
             return
-        when = self._time_for_x(event.position().x())
+        when = self._time_for_x(position.x())
         lines = ["<b>" + self._format_time(when, True) + "</b>"]
         for name, series in self.visible_groups():
             values = []
@@ -136,7 +149,7 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
                 values.append(f"{html.escape(item.key.upper())}: {value}")
             lines.append(html.escape(name) + " · " + " &nbsp; ".join(values))
         lines.append("— 表示缺口或无有效样本；读数来自最近的原始采样点")
-        QToolTip.showText(event.globalPosition().toPoint(), "<br>".join(lines), self)
+        QToolTip.showText(global_position, "<br>".join(lines), self, QRect(), 60000)
 
     def leaveEvent(self, event):
         QToolTip.hideText()
@@ -399,6 +412,15 @@ class SignalPanel(QWidget):
         hint.setToolTip("先单击标注列表或标签轨道选中；波形上的左右手柄也可直接拖动。修改后请回看复核。")
         self.toolbar.addWidget(hint)
         self.toolbar.addStretch(1)
+        self.pan_button = QPushButton("平移")
+        self.pan_button.setCheckable(True)
+        self.pan_button.setToolTip("先用滚轮放大，再拖动平移；也可按住 Shift 拖动。不会修改标注边界。")
+        self.pan_button.toggled.connect(lambda enabled: setattr(self.wave, "pan_enabled", enabled))
+        self.toolbar.addWidget(self.pan_button)
+        self.full_button = QPushButton("完整记录")
+        self.full_button.setToolTip("显示这份记录的完整时间跨度（Ctrl+Shift+F），保留当前播放位置。")
+        self.full_button.clicked.connect(lambda: self.set_view(0, self.wave._duration_ms))
+        self.toolbar.addWidget(self.full_button)
         layout.addLayout(self.toolbar)
         layout.addWidget(self.wave, 1)
         self.track = EventStrip(self.wave)

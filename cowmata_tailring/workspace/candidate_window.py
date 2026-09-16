@@ -5,7 +5,7 @@ import copy
 import json
 import threading
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
@@ -64,6 +64,15 @@ class CandidateWindow(TaskWindow):
         self.status = QLabel("单任务后台推理，最多使用两个逻辑 CPU；分数不是概率，空结果不是负样本。")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        model_actions = QHBoxLayout()
+        self.model_setup_button = QPushButton("导入或训练行为模型…")
+        self.model_setup_button.clicked.connect(lambda: self.owner.open_behavior_390())
+        model_actions.addWidget(self.model_setup_button)
+        self.refresh_button = QPushButton("刷新可用模型")
+        self.refresh_button.clicked.connect(self.refresh_packs)
+        model_actions.addWidget(self.refresh_button)
+        model_actions.addStretch(1)
+        layout.addLayout(model_actions)
         self.items = QListWidget()
         self.items.itemDoubleClicked.connect(self.review)
         self.items.currentItemChanged.connect(self.show_audit)
@@ -131,6 +140,8 @@ class CandidateWindow(TaskWindow):
             for model in self.packs[self.versions.currentIndex()]["models"]:
                 self.models.addItem(model["title"], model["id"])
         self.start_button.setEnabled(bool(self.packs) and not self.running)
+        if not self.packs:
+            self.status.setText("尚未启用当前数据类型的行为模型。请点“导入或训练行为模型”，在识别页导入 suite.json；返回后即可扫描。人工标注可继续使用。")
 
     def check_context(self):
         self.bind_label_keys()
@@ -139,39 +150,44 @@ class CandidateWindow(TaskWindow):
             self.status.setText("记录、牛号或工程已改变；旧任务结果不会写入当前记录。")
         revision = self.owner.work.clock.revision if self.owner.work else None
         if self.view_token != self.token() or self.clock_revision != revision:
+            self.refresh_packs()
             self.refresh_results()
 
+    def refresh_packs(self):
+        if self.running:
+            return
+        version, code = self.versions.currentText(), self.models.currentData()
+        try:
+            packs = self.compatible_packs()
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            self.packs = []
+            self.versions.clear()
+            self.refresh_models()
+            self.status.setText("模型读取失败，请核对模型库：" + str(exc))
+            return
+        self.packs = packs
+        self.versions.blockSignals(True)
+        self.versions.clear()
+        for pack in packs:
+            self.versions.addItem(pack["version"])
+        self.versions.setCurrentIndex(max(0, self.versions.findText(version)))
+        self.versions.blockSignals(False)
+        self.refresh_models()
+        self.models.setCurrentIndex(max(0, self.models.findData(code)))
+        if packs:
+            self.status.setText("可扫描当前完整记录；模型分数用于筛选候选，仍需人工看录像复核。")
+
+    def event(self, event):
+        if event.type() == QEvent.Type.WindowActivate and hasattr(self, "refresh_button"):
+            self.refresh_packs()
+        return super().event(event)
+
     def showEvent(self, event):
-        if not self.running:
-            try:
-                self.packs = self.compatible_packs()
-                self.versions.blockSignals(True)
-                self.versions.clear()
-                for pack in self.packs:
-                    self.versions.addItem(pack["version"])
-                self.versions.blockSignals(False)
-                self.refresh_models()
-            except (OSError, ValueError, KeyError) as exc:
-                self.status.setText(str(exc))
+        self.refresh_packs()
         super().showEvent(event)
 
     def start(self):
-        if not self.running and self.versions.currentIndex() == 0:
-            try:
-                latest = self.compatible_packs()
-                if latest and self.packs and latest[0]["hash"] != self.packs[0]["hash"]:
-                    code = self.models.currentData()
-                    self.packs = latest
-                    self.versions.blockSignals(True)
-                    self.versions.clear()
-                    for pack in latest:
-                        self.versions.addItem(pack["version"])
-                    self.versions.blockSignals(False)
-                    self.refresh_models()
-                    self.models.setCurrentIndex(max(0, self.models.findData(code)))
-            except (OSError, ValueError, KeyError) as exc:
-                self.status.setText(str(exc))
-                return
+        self.refresh_packs()
         w = self.owner
         if getattr(w, "algorithm_panel", None) is not None and w.algorithm_panel.running:
             self.status.setText("独立算法正在运行，请结束或取消后再扫描候选。")

@@ -121,11 +121,15 @@ def export_dataset(source, target, *, split_map=None, views=True, progress=lambd
         if embedded and embedded.get('kind') == 'original_json':
             content = base64.b64decode(embedded['original_json_base64'], validate=True)
         if content is None and doc['coordinates'] == 'parent_imu_ms':
-            root = doc.get('source', {}).get('project_root_hint')
-            if root:
-                candidate = (Path(root)/doc['source']['path']).resolve()
-                if candidate.is_relative_to(Path(root).resolve()) and candidate.is_file():
+            hint = doc.get('source', {}).get('project_root_hint')
+            roots = [root for root in source_roots if root.is_dir()]
+            if hint:
+                roots.append(Path(hint).resolve())
+            for root in roots:
+                candidate = (root/doc['source']['path']).resolve()
+                if candidate.is_relative_to(root) and candidate.is_file():
                     content = candidate.read_bytes()
+                    break
         if content is not None:
             if hashlib.sha256(content).hexdigest() != asset:
                 raise ValueError('母九轴来源校验失败')
@@ -290,10 +294,18 @@ def export_dataset(source, target, *, split_map=None, views=True, progress=lambd
         'training_eligible=false 的记录仅供复核；未标注区间是未知，不能自动转为负样本。'
         'cow-splits.json 对所有行为共用，同一牛不可跨训练、验证、测试。少于三牛不自动划分。\n\n'
         '缺少九轴的产犊绝对时刻仍保留，但不能作为九轴模型输入。PPG 保留占位。\n',encoding='utf-8')
+    from cowmata_tailring.temperature import export_temperature_sources, find_temperature_sources
+    temperature_inputs = [dict(path=str(target/row['path']),
+        device_folder='-'.join(str(row.get(key) or '') for key in ('device_id','cow_id','field_mark')).rstrip('-'))
+        for row in sources.values() if row.get('identity_eligible') and row.get('cow_id')]
+    temperature_inputs.extend(find_temperature_sources(source_roots))
+    temperature = export_temperature_sources(temperature_inputs,target,cancelled=cancelled,progress=progress)
+    result['temperature_samples'] = temperature['samples']
     files = [{'path':p.relative_to(target).as_posix(),'sha256':digest_file(p),'size':p.stat().st_size}
              for p in sorted(target.rglob('*')) if p.is_file()]
     atomic_json(target/'dataset-manifest.json',{'schema':SCHEMA,'raw_resampling':'none','window_policy':'algorithm_specific',
-                'source_annotations':inputs,'files':files,'counts':result,'unknown_is_negative':False})
+                'source_annotations':inputs,'files':files,'counts':result,'unknown_is_negative':False,
+                'temperature':temperature,'pipeline_complete':not temperature['issues']})
     return result
 
 

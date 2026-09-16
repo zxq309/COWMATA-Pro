@@ -21,6 +21,7 @@ from .core import (
     Target,
     checked_path,
     fingerprint,
+    record_datetime,
     validate_payload,
 )
 from .csv_targets import CsvPlan
@@ -30,7 +31,8 @@ from .settings import atomic_json
 
 
 def save_record(job, plan, kind, data):
-    stamp = datetime.fromtimestamp(int(data["create_time"]) / 1000, CHINA)
+    validate_payload(data, kind)
+    stamp = record_datetime(data, kind)
     wear, reason = plan.resolve(data["device"], stamp, data.get("cow_id", ""))
     category = wear.category if wear else "待核对"
     owner = wear.identity.folder_name if wear else data["device"].upper() + "-待核对"

@@ -320,9 +320,11 @@ def validate_payload(data, kind):
             if key in integrity and str(integrity[key]).lower() != str(expected):
                 raise DownloadError(f'原始 BIN 完整性校验失败：{key}')
     elif kind == 'temp':
-        value = data.get('data')
-        if value is None or isinstance(value, bool) or not isinstance(value, int | float | str | dict | list):
-            raise DownloadError('温度记录缺少有效原始 data 字段')
+        from cowmata_tailring.temperature import read_temperature_record
+        try:
+            read_temperature_record(data)
+        except ValueError as exc:
+            raise DownloadError(str(exc)) from exc
     else:
         green, infrared, acc = (decoded(data, key) for key in ('data', 'ir_data', 'imu_data'))
         if not (green or infrared) or len(green) % 2 or len(infrared) % 2 or len(acc) % 6:
@@ -330,7 +332,7 @@ def validate_payload(data, kind):
 
 
 def fingerprint(data, kind):
-    fields = ('imu',) if kind == 'motion' else ('data', 'ir_data', 'imu_data')
+    fields = ('imu', 'temperature', 'motion') if kind == 'motion' else ('data', 'ir_data', 'imu_data')
     h = hashlib.sha256()
     h.update(json.dumps([kind, str(data['device']).upper(), data['create_time'],
                          data.get('version')], separators=(',', ':')).encode())
@@ -344,15 +346,53 @@ def fingerprint(data, kind):
     return h.hexdigest()
 
 
+
+def record_datetime(data, kind):
+    """Match organized farm names to the first acquired frame, in China time."""
+    stamp = int(data['create_time'])
+    if kind == 'motion' and str(data.get('version')) == '2':
+        stamp += int.from_bytes(decoded(data, 'imu', True)[:4], 'little')
+    return datetime.fromtimestamp(stamp / 1000, CHINA)
+
+
+def preserve_invalid_record(root, file, kind):
+    """Snapshot invalid bytes before repairing the same canonical filename."""
+    if not file.exists():
+        return None
+    previous = file.read_bytes()
+    try:
+        validate_payload(json.loads(previous), kind)
+        return None
+    except (ValueError, TypeError, KeyError, DownloadError):
+        backup = checked_path(root, Path('.edge-download/recovery') /
+            (file.name + '.' + hashlib.sha256(previous).hexdigest()))
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        if backup.exists():
+            if backup.read_bytes() != previous:
+                raise DownloadError('目标文件冲突，已保留现有文件')
+        else:
+            with backup.open('xb') as stream:
+                stream.write(previous)
+                stream.flush()
+                os.fsync(stream.fileno())
+        return previous
+
+
 def save_record(job, target, kind, data, cancel):
     validate_payload(data, kind)
     device = segment(str(data['device']).upper())
     cow = segment(data.get('cow_id') or data.get('animal_number') or data.get('animalNumber') or target.cow or '待核对')
-    stamp = datetime.fromtimestamp(int(data['create_time']) / 1000, CHINA)
+    stamp = record_datetime(data, kind)
     day = checked_path(job.farm, Path(job.category) / MODALITIES[kind]
                        / stamp.strftime('%Y-%m-%d'))
-    prefix = f'{device}-{cow}-'
     mark = target.mark
+    combined = re.fullmatch(r'([0-9]{5})([A-Za-z][A-Za-z0-9]*)', cow)
+    if combined:
+        cow, declared_mark = combined.groups()
+        if mark and mark != declared_mark:
+            raise DownloadError('JSON 牛号或现场记号与目标目录不一致')
+        mark = mark or declared_mark
+    prefix = f'{device}-{cow}-'
     if not mark:
         matches = set()
         for stream in MODALITIES.values():
@@ -378,7 +418,9 @@ def save_record(job, target, kind, data, cancel):
                 return existing, False
         except (ValueError, KeyError, TypeError):
             continue
-    encoded = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+    final = checked_path(job.farm, folder / (name + '.json'))
+    previous = preserve_invalid_record(job.farm, final, kind)
+    encoded = json.dumps(data, ensure_ascii=False, separators=(',', ':'), allow_nan=False).encode('utf-8')
     # Windows rename refuses existing targets (also works on exFAT); POSIX
     # uses hard links because its rename would overwrite existing originals.
     fd, temporary = tempfile.mkstemp(prefix='.edge-', suffix='.part', dir=folder)
@@ -389,7 +431,12 @@ def save_record(job, target, kind, data, cancel):
             os.fsync(stream.fileno())
         if cancel.is_set():
             raise Cancelled()
-        for suffix in ('', '_' + digest):
+        if previous is not None:
+            if final.read_bytes() != previous:
+                raise DownloadError('目标文件在核对后发生变化，已停止替换')
+            os.replace(temporary, final)
+            return final, True
+        for suffix in ('',):
             final = checked_path(job.farm, folder / (name + suffix + '.json'))
             try:
                 if os.name == 'nt':

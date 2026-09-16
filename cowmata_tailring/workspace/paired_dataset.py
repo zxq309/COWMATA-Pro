@@ -526,7 +526,13 @@ def _build_dataset(sources, target, task='behavior', *, job, layout='versioned',
         if layout == 'current':
             for source, group in groups.items():
                 retired.update(retire_stale_pairs(prior_pairs.get(source, []), group, root, history))
-        checkpoint('completed' if not _counts(rows)['errors'] else 'needs_attention')
+        from cowmata_tailring.temperature import export_temperature_sources, find_temperature_sources
+        temperature_sources = [item['source'] for item in items if item['kind'] == 'Motion']
+        allowed = TASKS[task][2]
+        temperature_sources.extend(p for p in find_temperature_sources(sources)
+                                   if allowed is None or category_for(p) in allowed)
+        manifest['temperature'] = export_temperature_sources(temperature_sources, root, cancelled=cancelled)
+        checkpoint('completed' if not _counts(rows)['errors'] and not manifest['temperature']['issues'] else 'needs_attention')
         report.publish(force=True, phase=manifest['status'])
         return manifest
     except InterruptedError:

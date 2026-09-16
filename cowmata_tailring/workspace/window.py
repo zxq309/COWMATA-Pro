@@ -504,7 +504,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 video_directory=root/'Video'/day
                 if not video_directory.is_dir():
                     selected=QFileDialog.getExistingDirectory(self,'未找到当天 Video 目录；可选择该日录像目录，取消则仅加载九轴',str(root))
-                    video_directory=Path(selected) if selected else video_directory
+                    video_directory=Path(selected) if selected else None
             self.open_project(root,preferred_json=Path(raw),day=day,
                 standalone=dict(raw=Path(raw),video=video,video_directory=video_directory))
             if self.catalog and getattr(self.catalog,'standalone',False):
@@ -1474,16 +1474,13 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 self.work.set_clock(origin)
         self.cow.setText(self.work.project.cow_id)
         self.plot.set_data([PlotSeries(**series) for series in motion.plot_series()], motion.duration_ms)
-        self.plot.set_view(0, min(motion.duration_ms, 120000))
+        self.plot.set_view(0, motion.duration_ms)
         self.imu_position.setMaximum(motion.duration_ms / 1000)
         self.imu_ms = float(self.work.progress.get("imu_ms", 0))
         if follow:
             self.imu_ms = self.work.clock.map(self.board.reference_ms, inverse=True)
         self.selection = None
         self._set_imu(self.imu_ms)
-        if self.imu_ms > 120000:
-            view_start = max(0, min(self.imu_ms - 60000, motion.duration_ms - 120000))
-            self.plot.set_view(view_start, min(motion.duration_ms, view_start + 120000))
         self.link.setChecked(bool(self.work.clock.anchors))
         if self.active_event:
             if self.active_event["cow_id"] != self.work.project.cow_id:
@@ -2037,7 +2034,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             return
         self.sync_label_keys()
         # Remap event indices by stable code before exposing current shortcuts.
-        titles = [f"[{label.key}] {label.name}" for label in self.work.project.labels]
+        titles = [f"[{label.key}] {label.name}" if label.key else label.name for label in self.work.project.labels]
         if titles != [self.labels.itemText(i) for i in range(self.labels.count())]:
             selected_label = self.labels.currentText()
             self.labels.blockSignals(True)

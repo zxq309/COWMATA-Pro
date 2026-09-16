@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -53,6 +54,8 @@ def table(headers):
     widget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     widget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     widget.setAlternatingRowColors(True)
+    widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+    widget.horizontalHeader().setMinimumSectionSize(60)
     return widget
 
 
@@ -63,7 +66,6 @@ def fill(widget, rows):
             item = QTableWidgetItem(display(value))
             item.setToolTip(display(value))
             widget.setItem(i, j, item)
-    widget.resizeColumnsToContents()
 
 
 def export_table(owner, widget):
@@ -77,6 +79,9 @@ def export_table(owner, widget):
 
 
 def dataset_default(name):
+    for root in (Path(r'F:\科牧特_数据集'), Path(r'F:\科牧特\_数据集')):
+        if (root / name).is_dir():
+            return str(root / name)
     app = Path(__file__).resolve().parents[2]
     for base in [Path.cwd(), app, *app.parents]:
         for candidate in (base / "科牧特_数据集" / name, base / name):
@@ -329,7 +334,7 @@ class AlgorithmWorkbench(JobWindow):
         self.records.insertRow(i)
         for j, value in enumerate([datetime.now().isoformat(timespec="seconds"), self.request["action"], str(self.output)]):
             self.records.setItem(i, j, QTableWidgetItem(value))
-        self.records.resizeColumnsToContents()
+        # Keep the header stretch mode when results arrive.
 
 
 class EvidenceTrend(QWidget):

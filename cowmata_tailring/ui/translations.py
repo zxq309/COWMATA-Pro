@@ -3714,5 +3714,118 @@ ZH_TO_EN.update({
   "高级连接": "Advanced connections"
 })
 
+ZH_TO_EN.update({
+  "同秒温度内容冲突，原件保留：": "Temperature records conflict within the same second; original preserved: ",
+  "提取独立摄氏温度": "Exporting standalone Celsius temperature",
+  "数据集名称与来源设备不一致": "Dataset filename and source device do not match",
+  "温度 JSON 牛号与目录耳标不一致": "Temperature JSON cow ID and folder ear tag do not match",
+  "温度 JSON 牛号或现场记号与目录不一致": "Temperature JSON cow ID or field mark does not match the folder",
+  "温度 JSON 顶层必须是对象": "Temperature JSON must contain a top-level object",
+  "温度 create_time 必须是 Unix 毫秒整数": "Temperature create_time must be an integer Unix timestamp in milliseconds",
+  "温度 data 必须是有限的单个摄氏温度数值": "Temperature data must be a single finite Celsius number",
+  "温度 update_time 必须是 Unix 毫秒整数或空值": "Temperature update_time must be an integer Unix timestamp in milliseconds or null",
+  "温度协议版本不兼容": "Incompatible temperature protocol version",
+  "温度单位必须为摄氏度": "Temperature unit must be Celsius",
+  "温度提取已暂停；原始数据保留": "Temperature extraction paused; original data preserved",
+  "温度格式不兼容：需要 cowmata-temperature-1 摄氏温度协议": "Incompatible temperature format; cowmata-temperature-1 Celsius contract required",
+  "温度目录与来源设备不一致": "Temperature folder and source device do not match",
+  "温度设备目录不合法": "Invalid temperature device folder",
+  "温度路径越界": "Temperature path is outside the selected root",
+  "独立温度数值需要核对": "Standalone temperature value requires review"
+})
+
+ZH_TO_EN["JSON 牛号或现场记号与目标目录不一致"] = "JSON cow ID or field mark does not match the target folder"
+
+ZH_TO_EN.update({
+  "先用滚轮放大，再拖动平移；也可按住 Shift 拖动。不会修改标注边界。": "Zoom in with the wheel, then drag to pan; Shift-drag also pans. Annotation boundaries are preserved.",
+  "刷新可用模型": "Refresh available models",
+  "导入或训练行为模型…": "Import or train a behavior model...",
+  "尚未启用当前数据类型的行为模型。请点“导入或训练行为模型”，在识别页导入 suite.json；返回后即可扫描。人工标注可继续使用。": "No behavior model is enabled for this data type. Open Import or train a behavior model and import suite.json on the Recognition tab, then return to scan. Manual annotation remains available.",
+  "模型读取失败，请核对模型库：": "Unable to read models; check the model library: ",
+  "可扫描当前完整记录；模型分数用于筛选候选，仍需人工看录像复核。": "Scan the complete current recording. Model scores identify candidates that require manual video review.",
+  "平移": "Pan",
+  "完整记录": "Full recording",
+  "显示这份记录的完整时间跨度（Ctrl+Shift+F），保留当前播放位置。": "Show the full recording (Ctrl+Shift+F) and retain the playback position."
+})
+
+NON_TRANSLATABLE = NON_TRANSLATABLE | {r'F:\科牧特_模型', r'F:\科牧特\_模型', r'F:\科牧特_数据集', r'F:\科牧特\_数据集'}
+
+ZH_TO_EN["按温度采集时间归类；保留原始摄氏温度记录"] = "Organize by temperature acquisition time; preserve the original Celsius record"
+
+ZH_TO_EN.update({
+  " 秒；未读取其他数据文件。": " seconds; no other data files were read.",
+  "JSON 内牛号或设备与所在目录不一致，请核对原始记录。": "The JSON cow or device ID conflicts with its folder; review the original record.",
+  "JSON 内设备编号不是完整 12 位十六进制编号。": "The JSON device ID must contain 12 hexadecimal characters.",
+  "JSON 已接收；手动开启实时预测后点击立即预测。": "JSON received. Enable real-time prediction manually, then click Predict now.",
+  "信号覆盖率": "Signal coverage",
+  "先导入一次决策模型，后续只需提供 JSON": "Import a decision model once; subsequent predictions only need JSON",
+  "单个 JSON 实时预测": "Single JSON real-time prediction",
+  "单个 JSON 实时预测由你手动开启；接收文件后立即使用已导入模型预测。台账与数据集仅用于模型训练。": "Enable single JSON prediction manually. Each received file is immediately evaluated with the imported model. Ledgers and datasets are only needed for training.",
+  "只接收你选择的一份原始 Motion、PPG 或 Temp JSON；不要求台账、目录或其他文件。开启后，每次选择 JSON 都立即开始预测；关闭后不自动运行。": "Receive one selected Motion, PPG or Temp JSON. No ledger, folder or other data file is required. While enabled, selecting a JSON starts prediction immediately. Disabled mode never runs automatically.",
+  "实时预测已关闭，等待手动开启。": "Real-time prediction is off. Enable it manually to start.",
+  "已开启：接收下一份 JSON 后立即预测。": "Enabled: the next received JSON will be evaluated immediately.",
+  "手动开启实时预测": "Manually enable real-time prediction",
+  "接收一个 JSON…": "Receive one JSON...",
+  "接收一个原始 JSON": "Receive one original JSON",
+  "数据时刻（北京时间）": "Data time (Beijing time)",
+  "本份 JSON 已完成 · ": "JSON completed - ",
+  "此 JSON 没有可用于预测的信号窗口。": "This JSON has no signal windows usable for prediction.",
+  "立即预测": "Predict now",
+  "缺少决策模型训练时使用的行为模型：": "Missing a behavior model used to train this decision model: ",
+  "行为模型事件与决策训练记录不一致。": "Behavior model events differ from the decision training record.",
+  "请先导入一次决策模型，后续只需提供 JSON。": "Import a decision model once; subsequent predictions only need JSON.",
+  "请先手动开启实时预测。": "Enable real-time prediction manually first.",
+  "请选择一个原始 JSON 文件。": "Select one original JSON file.",
+  "请选择一个原始传感 JSON 文件。": "Select one original sensor JSON file.",
+  "请选择原始 Motion、PPG 或 Temp JSON。": "Select an original Motion, PPG or Temp JSON.",
+  "选择一个原始 JSON 文件": "Select one original JSON file",
+  "预测只使用本份记录；缺少历史基线或其他信号时如实显示缺失。信号不足时显示数据不足，不生成虚假分数。数据时刻与收到文件的当前时刻分别记录。": "Prediction uses only this record. Missing historical baselines or other signals remain missing. Insufficient signal produces an insufficient-data result without an invented score. Data time and file receipt time are recorded separately."
+})
+
+ZH_TO_EN.update({
+  " 个预测时段、": " prediction intervals, ",
+  " 份信号记录、": " signal records, ",
+  " 小时。": " hours.",
+  " 段连续预警；预测未来 ": " warning intervals; forecast horizon: ",
+  "先导入一次决策模型，后续选择 JSON 文件夹即可": "Import a decision model once, then select a JSON folder",
+  "关注窗口截至": "Forecast window ends",
+  "参考历史不足24小时": "Reference history shorter than 24 hours",
+  "参考跨度已达24小时，完整性见数据覆盖": "Reference span reaches 24 hours; check data coverage for completeness",
+  "已完成 ": "Completed ",
+  "已开启：选择文件夹后开始按时间预测，也可重新分析当前目录。": "Enabled: select a folder to predict chronologically, or analyze the current folder again.",
+  "建议连续3至7天，默认以3天为准备目标；少于24小时仍可分析，但标记参考历史不足。按时间读取目录中的 Motion、PPG 和 Temp，不要求另交台账。": "Prepare 3 to 7 consecutive days, with 3 days as the default target. Less than 24 hours can be analyzed with an insufficient-history notice. Motion, PPG and Temp JSON are read chronologically; no separate ledger is needed.",
+  "建议连续3至7天；不足24小时标记参考历史不足": "Prepare 3 to 7 consecutive days; less than 24 hours is marked as insufficient reference history",
+  "开始按时间预测": "Start chronological prediction",
+  "手动开启文件夹滚动预测": "Manually enable folder prediction",
+  "手动选择包含连续多日 JSON 的文件夹，按时间滚动预测各时段风险。预测不需要台账，台账与数据集仅用于训练。": "Select a folder containing consecutive days of JSON to predict risk over time. Prediction does not need a ledger; ledgers and datasets are used for training.",
+  "按文件内采集时间回放；各窗口只使用此前基线。预警窗口不是已确认产犊时刻。": "Replay by recorded acquisition time using only prior baselines. Forecast windows are not confirmed calving times.",
+  "数据覆盖与缺口": "Data coverage and gaps",
+  "数据跨度/小时": "Data span (hours)",
+  "文件夹内没有可用于预测的 Motion 或 PPG 记录；只有温度不足以给出产犊风险。": "No usable Motion or PPG records in this folder. Temperature alone is insufficient for a calving risk score.",
+  "文件夹内没有可用于预测的信号窗口，请核对数据问题记录。": "No usable prediction windows in the folder; review the data issue report.",
+  "文件夹已选择；手动开启后点击开始按时间预测。": "Folder selected. Enable prediction manually, then click Start chronological prediction.",
+  "文件夹滚动预警": "Folder risk timeline",
+  "文件夹预测已关闭，等待手动开启。": "Folder prediction is off. Enable it manually to start.",
+  "最后预警": "Last warning",
+  "最大缺口/小时": "Largest gap (hours)",
+  "最高风险分数": "Peak risk score",
+  "有效信号/小时": "Usable signal (hours)",
+  "独立温度缺少牛号，不能跨文件推测关联。": "Standalone temperature has no cow ID; cross-file association cannot be inferred.",
+  "相同记录对应不同牛号，请核对来源。": "The same record is assigned to different cows; review its sources.",
+  "缺失指标 / 参考历史": "Missing features / history",
+  "请先导入一次决策模型，后续选择 JSON 文件夹即可。": "Import a decision model once, then select a JSON folder.",
+  "请先手动开启文件夹滚动预测。": "Enable folder prediction manually first.",
+  "请选择包含连续多日 JSON 的文件夹。": "Select a folder containing consecutive days of JSON.",
+  "读取文件夹中的原始 JSON": "Reading original JSON files in the folder",
+  "连续窗口数": "Consecutive windows",
+  "连续预警时段": "Continuous warning intervals",
+  "选择 JSON 文件夹…": "Select JSON folder...",
+  "选择包含连续多日 JSON 的文件夹": "Select a folder containing consecutive days of JSON",
+  "预测提前量由导入的模型决定。每个时段只使用此前参考数据；高风险表示未来窗口需关注，不等于已确认产犊。没有新数据时结果不会更新，点击开始可重新分析目录。": "The imported model determines the prediction horizon. Each interval uses only prior reference data. High risk marks a future window for attention, not confirmed calving. New results require new data; click Start to analyze the folder again.",
+  "预测窗口数": "Prediction windows",
+  "首次预警": "First warning"
+})
+NON_TRANSLATABLE = NON_TRANSLATABLE | {".标注", "数据覆盖.csv", "连续预警时段.csv"}
+
 if __name__ == "__main__":
     _coverage()

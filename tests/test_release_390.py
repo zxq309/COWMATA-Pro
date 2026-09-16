@@ -323,7 +323,9 @@ def test_pro_settings_save_three_modalities_and_ui_preview(tmp_path, monkeypatch
     behavior = BehaviorWindow()
     assert behavior.algorithm.count() == 6 and behavior.tabs.count() == 2
     decision = DecisionWindow()
-    assert decision.tabs.count() == 3 and decision.behavior.count() == 7
+    assert decision.tabs.count() == 4 and decision.behavior.count() == 7
+    assert decision.tabs.tabText(0) == "文件夹滚动预警"
+    assert not decision.folder_enabled.isChecked()
     for widget in (window, behavior, decision):
         widget.close()
         widget.deleteLater()

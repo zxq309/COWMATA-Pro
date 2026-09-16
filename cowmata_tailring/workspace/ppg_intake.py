@@ -50,9 +50,9 @@ def plan_ppg(path, root, cache, transfer, cancelled, *, digest):
     except (ValueError,TypeError,KeyError) as exc:
         metadata['parser_issue'] = str(exc)
     day = day_at(lo)
-    target = root / 'PPG' / day / owner / (start_stamp(lo, milliseconds=True) + '.json')
+    target = root / 'PPG' / day / owner / (start_stamp(lo) + '.json')
     if target.exists() and digest(target, cache, cancelled) != sha:
-        target = target.with_name(target.stem + '__' + sha[:12] + '.json')
+        raise ValueError('目标同名但内容不同，停止覆盖')
     row.update(status='existing' if target.exists() else 'ready', target=str(target),
                sha256=sha, owner=owner, batch=day, record_date=day, covered_dates=[day],
                record_start_ms=lo, record_end_ms=hi, timezone_offset_minutes=480,
@@ -60,3 +60,31 @@ def plan_ppg(path, root, cache, transfer, cancelled, *, digest):
                metadata=metadata,
                message='按 PPG JSON 采集日期归类；原始数据保持不变')
     return row
+
+
+def plan_temperature(path, root, cache, transfer, cancelled, *, digest):
+    """Archive existing Temp records byte-for-byte using the shared contract."""
+    from cowmata_tailring.temperature import CONTRACT, read_temperature_record, temperature_owner
+
+    path = Path(path)
+    if 'temp' not in {part.casefold() for part in path.parts}:
+        return None
+    obj = json.loads(path.read_text(encoding='utf-8-sig'))
+    sample = read_temperature_record(obj)
+    owner = temperature_owner(path, obj)
+    day = day_at(sample['time'])
+    target = root / 'Temp' / day / owner / (start_stamp(sample['time']) + '.json')
+    sha = digest(path, cache, cancelled)
+    if target.exists() and digest(target, cache, cancelled) != sha:
+        raise ValueError('目标同名但内容不同，停止覆盖')
+    naming = core.resolve_device_identity(path, obj['device'])
+    return dict(source=str(path), kind='temp', size=path.stat().st_size,
+                identity=core.identity(path), device=obj['device'],
+                target=str(target), sha256=sha, owner=owner, batch=day, record_date=day,
+                record_start_ms=sample['time'], record_end_ms=sample['time']+1,
+                covered_dates=[day], timezone_offset_minutes=480, time_basis='unix_epoch_ms',
+                status='existing' if target.exists() else 'ready',
+                transfer='move' if transfer == 'move' and core.volume(path) == core.volume(root) else 'copy',
+                cow_id=naming.get('cow_id',''), device_id=obj['device'], field_mark=naming.get('field_mark',''),
+                metadata={'modality':'Temp','temperature_contract':dict(CONTRACT)},
+                message='按温度采集时间归类；保留原始摄氏温度记录')

@@ -13,8 +13,8 @@ using Drawing = System.Drawing;
 [assembly: AssemblyTitle("COWMATA Pro™")]
 [assembly: AssemblyDescription("Offline cattle video and IMU annotation workstation")]
 [assembly: AssemblyCompany("Yangling Yuanshangyuan Intelligent Technology Co., Ltd.")]
-[assembly: AssemblyVersion("3.9.2.0")]
-[assembly: AssemblyFileVersion("3.9.2.0")]
+[assembly: AssemblyVersion("3.9.3.0")]
+[assembly: AssemblyFileVersion("3.9.3.0")]
 
 internal static class Launcher
 {
@@ -120,8 +120,8 @@ internal static class Launcher
             if (args.Length >= 2 && args[0] == "--update-progress")
                 return ShowUpdateProgress(args[1], args.Length > 2 ? args[2] : "0");
             Marshal.ThrowExceptionForHR(SetCurrentProcessExplicitAppUserModelID(AppId));
-            if (args.Length == 1 && args[0] == "--check-running")
-                return InstallationIsRunning(AppDomain.CurrentDomain.BaseDirectory) ? 6 : 0;
+            if ((args.Length == 1 || args.Length == 2) && args[0] == "--check-running")
+                return InstallationIsRunning(args.Length == 2 ? args[1] : AppDomain.CurrentDomain.BaseDirectory) ? 6 : 0;
             if (args.Length == 2 && args[0] == "--register-shortcut")
             {
                 RegisterShortcut(args[1]);

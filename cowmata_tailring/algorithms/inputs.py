@@ -32,7 +32,7 @@ def scan_inputs(root, *, training=False, progress=lambda *_: None, cancelled=lam
         if (
             path.is_symlink()
             or any(part in EXCLUDED for part in relative.parts)
-            or "Temp" in relative.parts
+            or "temp" in {part.casefold() for part in relative.parts}
         ):
             continue
         try:
