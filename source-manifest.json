@@ -1693,13 +1693,13 @@
     },
     {
       "path": "cowmata_tailring/edge_download/paths.py",
-      "size": 201,
-      "sha256": "c67c7808e655d82d5e825b144d7617e3e4d5eb14b368940215520f457156b482"
+      "size": 200,
+      "sha256": "bd038554a10d3a7127a9da45a4fc5472b8c0273bf9db9bee08450f6be46b46c2"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_dialog.py",
-      "size": 37717,
-      "sha256": "93e9d7195f241cdfa3a98eca50399bde45eaf6be01c5b53552db91cbbfa1a46b"
+      "size": 37839,
+      "sha256": "e16816a9d0d6db7b279de9155e12f5fbac0a97c4ee9dabc259b682594ec72aad"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_settings.py",
@@ -3168,8 +3168,8 @@
     },
     {
       "path": "docs/release-392.md",
-      "size": 2245,
-      "sha256": "1a4528ed1bf64e2bd7265c0bd733976c9a6ba2dd48770c5c7b1f6f9722e5c954"
+      "size": 2347,
+      "sha256": "df9725b09191e6b40dbdd44a00c9b569ab246e021e39e03b208b5afeb5d7966e"
     },
     {
       "path": "docs/release-notes-v2.2.0.md",
@@ -3618,18 +3618,18 @@
     },
     {
       "path": "tests/test_download_layout_392.py",
-      "size": 2891,
-      "sha256": "e85275869fca291275df19de1c6a7a9b7b122003ce91cb4200a7c5c0cf7a8880"
+      "size": 3394,
+      "sha256": "3b5fd3671bafe8a67702c76fdb34cf160d83db66a47a7235895c773d6bfb1862"
     },
     {
       "path": "tests/test_download_paths_391.py",
-      "size": 1342,
-      "sha256": "e56898ce581a950dce7e75158e48327f6fde16c30a76734a8d033d86cdc405aa"
+      "size": 1454,
+      "sha256": "c1f3128973d57258b30334039c30a560b01e2210624839fe8df48bd62e8dc015"
     },
     {
       "path": "tests/test_download_repair_391.py",
-      "size": 14960,
-      "sha256": "b0bba6f6fb5f8f2ab17fd498c5c0d37744251bfd58c7e8a3dc8a6cddc9814aa8"
+      "size": 15112,
+      "sha256": "53edcaa68017876b7495a489a63017b5b824b4960d843b72bb51e7a93ecb10ee"
     },
     {
       "path": "tests/test_early_seek.py",
@@ -3878,8 +3878,8 @@
     },
     {
       "path": "tests/test_shortcuts_391.py",
-      "size": 4725,
-      "sha256": "8c7ebe5f9c0aa44d0d7c207daaf679721d0ec5da2a37b481eda657a19645dd0f"
+      "size": 5017,
+      "sha256": "79a217da0ec391c7517f1db58eec96f28ad26442e5315494adbdd9d8166098b4"
     },
     {
       "path": "tests/test_shutdown_update_v353.py",

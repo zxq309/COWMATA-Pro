@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
@@ -52,8 +54,14 @@ def test_repeated_physical_keys_match_display_after_old_project_load(window,monk
     assert all(window.work.project.labels[x['label_index']].code == code for x in window.work.drafts)
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows VLC keyboard integration")
 def test_candidate_editor_f_is_assistance_not_waveform_fit(monkeypatch):
     from cowmata_tailring.app.model_assist_window import MainWindow
+    from cowmata_tailring.media.engine import MediaEngine, MediaEngineError
+    try:
+        MediaEngine.find_vlc_directory()
+    except MediaEngineError as exc:
+        pytest.skip(str(exc))
     app = QApplication.instance() or QApplication([])
     w = MainWindow()
     try:
