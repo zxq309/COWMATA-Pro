@@ -4,13 +4,28 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
+import tempfile
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from .core import CHINA, MODALITIES, Cancelled, Client, DownloadError, Result, Target, checked_path
+from .core import (
+    CHINA,
+    MODALITIES,
+    Cancelled,
+    Client,
+    DownloadError,
+    Result,
+    Target,
+    checked_path,
+    fingerprint,
+    validate_payload,
+)
 from .csv_targets import CsvPlan
 from .deduplication import RootSyncLock
+from .local_records import LocalRecords
 from .settings import atomic_json
 
 
@@ -22,32 +37,45 @@ def save_record(job, plan, kind, data):
     folder = checked_path(
         job.farm, Path(category) / MODALITIES[kind] / stamp.strftime("%Y-%m-%d") / owner
     )
-    # Empty modalities make the same category directly selectable as a project.
-    for modality in ("Motion", "PPG", "Temp", "Video"):
-        checked_path(job.farm, Path(category) / modality).mkdir(parents=True, exist_ok=True)
-    raw = json.dumps(
-        data, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
-    ).encode("utf-8")
-    digest = hashlib.sha256(raw).hexdigest()
-    file = checked_path(
-        job.farm,
-        folder / (stamp.strftime("%Y-%m-%d_%H-%M-%S-%f")[:-3] + "_" + digest[:12] + ".json"),
-    )
-    if file.is_file() and file.read_bytes() == raw:
-        return file, False, wear, reason
+    validate_payload(data, kind)
+    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    file = checked_path(job.farm, folder / (stamp.strftime("%Y-%m-%d_%H-%M-%S") + ".json"))
     folder.mkdir(parents=True, exist_ok=True)
     if file.exists():
-        # Retain a damaged local copy for review; never silently overwrite it.
-        backup = checked_path(
-            job.farm,
-            Path(".edge-download/recovery")
-            / (file.name + "." + datetime.now(CHINA).strftime("%Y%m%d%H%M%S%f")),
-        )
+        previous = file.read_bytes()
+        try:
+            old = json.loads(previous)
+            validate_payload(old, kind)
+            valid = True
+        except (ValueError, TypeError, KeyError):
+            valid = False
+        if valid:
+            if fingerprint(old, kind) == fingerprint(data, kind):
+                return file, False, wear, reason
+            raise DownloadError("同秒时间戳文件冲突，原件保留，未另建重复名称：" + str(file))
+        backup = checked_path(job.farm, Path('.edge-download/recovery') / (file.name + '.' + uuid.uuid4().hex))
         backup.parent.mkdir(parents=True, exist_ok=True)
-        backup.write_bytes(file.read_bytes())
-    temporary = checked_path(job.farm, file.with_suffix(".partial"))
-    temporary.write_bytes(raw)
-    temporary.replace(file)
+        backup.write_bytes(previous)
+        # Only replace an invalid file after preserving its exact bytes.
+        repair = True
+    else:
+        repair = False
+    fd, temporary = tempfile.mkstemp(prefix='.edge-', suffix='.partial', dir=folder)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if repair:
+            if file.read_bytes() != previous:
+                raise DownloadError('目标文件在核对后发生变化，已停止替换')
+            os.replace(temporary, file)
+        elif os.name == 'nt':
+            os.rename(temporary, file)
+        else:
+            os.link(temporary, file)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
     return file, True, wear, reason
 
 
@@ -85,6 +113,8 @@ def run_csv_job(
         )
         seen = set()
         try:
+            local = LocalRecords(root, db, cancel, log)
+            local.refresh()
             for device, lo, hi in ranges:
                 while lo < hi:
                     client.check()
@@ -98,6 +128,12 @@ def run_csv_job(
                                 continue
                             seen.add(key)
                             try:
+                                existing = local.find_uid(kind, actual_device, uid, lo, end)
+                                if existing is not None:
+                                    result.skipped += 1
+                                    log("已存在，跳过下载：" + existing.relative_to(root).as_posix())
+                                    progress(result.saved + result.skipped + result.failed, len(seen))
+                                    continue
                                 cached = db.execute(
                                     "SELECT path,sha,ledger FROM files WHERE key=?", (key,)
                                 ).fetchone()
@@ -107,7 +143,7 @@ def run_csv_job(
                                     if previous.is_file():
                                         raw = previous.read_bytes()
                                         if hashlib.sha256(raw).hexdigest() == cached[1]:
-                                            if cached[2] == plan.fingerprint:
+                                            if local.remember(previous, kind):
                                                 result.skipped += 1
                                                 continue
                                             data = json.loads(raw)
@@ -118,7 +154,13 @@ def run_csv_job(
                                 )
                                 if not lo <= actual < end:
                                     raise DownloadError("详情采集时间不在请求时段")
-                                file, saved, wear, reason = save_record(job, plan, kind, data)
+                                existing = local.find_data(kind, data)
+                                if existing is not None:
+                                    file, saved = existing, False
+                                    wear, reason = plan.resolve(actual_device, actual, data.get("cow_id", ""))
+                                else:
+                                    file, saved, wear, reason = save_record(job, plan, kind, data)
+                                local.remember(file, kind)
                                 relative = file.relative_to(root).as_posix()
                                 digest = hashlib.sha256(file.read_bytes()).hexdigest()
                                 db.execute(

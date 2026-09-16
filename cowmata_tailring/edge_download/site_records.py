@@ -1,4 +1,4 @@
-"""Read-only Ledger 1.1.0 protocol and verified, recoverable three-CSV refresh."""
+"""Read-only Ledger 1.3.1 protocol and verified, recoverable three-CSV refresh."""
 
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def read_csv(content, sheet):
         raise DownloadError("现场记录 CSV 超过 64 MiB")
     reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig"), newline=""), strict=True)
     if reader.fieldnames != SCHEMAS[sheet]["fields"]:
-        raise DownloadError(SCHEMAS[sheet]["filename"] + " 表头不符合上传器 1.1.0")
+        raise DownloadError(SCHEMAS[sheet]["filename"] + " 表头不符合上传器 1.3.1")
     rows = list(reader)
     ids = set()
     for row in rows:
@@ -195,15 +195,31 @@ class LedgerClient:
         target = str(
             PureWindowsPath(self.values["ledger_server_directory"]) / SCHEMAS[sheet]["filename"]
         )
+        request = dict(version=2, action="pull", sheet_id=sheet, target=target,
+                       changes=[], known_ids=[], session_token=self.values.get('session_token', ''))
+        return decode_reply(self.request(request), sheet, target)
+
+    def login(self, username, password):
+        if not username.strip() or not password:
+            raise DownloadError('请填写上传器账号和密码')
+        reply = json.loads(self.request(dict(version=2, action='login', username=username.strip(), password=password)))
+        if (reply.get('ok') is not True or reply.get('version') != 2
+                or not isinstance(reply.get('token'), str) or not reply['token']
+                or reply.get('user', {}).get('role') not in ('admin', 'operator')
+                or not isinstance(reply.get('expires_at'), (int, float))
+                or reply['expires_at'] <= time.time()):
+            raise DownloadError('台账登录未完成，请核对上传器账号')
+        return {key: reply[key] for key in ('token', 'user', 'expires_at')}
+
+    def request(self, request):
+        if self.cancel.is_set():
+            raise Cancelled()
         key = Path(self.values["ledger_key"])
         executable = self.app_root / "vendor/ledger-ssh/usr/bin/ssh.exe"
         hosts = Path(__file__).with_name("ledger_known_hosts")
         for p in (key, executable, hosts):
             if not p.is_file():
                 raise DownloadError("缺少台账连接组件或已有授权：" + str(p))
-        request = dict(
-            version=2, action="pull", sheet_id=sheet, target=target, changes=[], known_ids=[]
-        )
         with self.bridge_factory(
             self.values["ledger_host"], int(self.values["ledger_port"])
         ) as bridge:
@@ -293,7 +309,7 @@ class LedgerClient:
                     process.wait(timeout=3)
         if self.cancel.is_set():
             raise Cancelled()
-        return decode_reply(raw, sheet, target)
+        return raw
 
 
 def decode_reply(raw, sheet, target):
@@ -301,7 +317,7 @@ def decode_reply(raw, sheet, target):
         reply = json.loads(raw)
         if not isinstance(reply, dict) or reply.get("version") != 2 or reply.get("ok") is not True:
             raise DownloadError(
-                "台账服务器未返回 1.1.0 协议确认："
+                "台账服务器未返回上传器 v2 协议确认："
                 + str(reply.get("error", "") if isinstance(reply, dict) else "")
             )
         if reply.get("target") != target or reply.get("sheet_id", sheet) != sheet:

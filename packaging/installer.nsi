@@ -269,9 +269,9 @@ Function ValidateLocation
   ${If} $StageOnly != "1"
     ; Full identity/registration/inventory validation is done by the embedded
     ; Python bridge before any change; unknown directories stay forbidden.
-    IfFileExists "$INSTDIR\COWMATA.install-id" 0 not_existing_install
     IfFileExists "$INSTDIR\package-manifest.json" 0 not_existing_install
     IfFileExists "$INSTDIR\COWMATA.exe" 0 not_existing_install
+    IfFileExists "$INSTDIR\runtime\python.exe" 0 not_existing_install
     StrCpy $UpgradeExisting "1"
     StrCpy $PathError ""
     Return

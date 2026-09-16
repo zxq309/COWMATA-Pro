@@ -76,7 +76,7 @@ class MainWindow(ControllerWindow):
         self.resize(1600, 1000)
         self.setMinimumSize(1080, 720)
         self.setStyleSheet(STYLE)
-        self.setWindowTitle("COWMATA Pro™ · 行为真值标注")
+        self.setWindowTitle("COWMATA Pro")
         central = FrostedCanvas()
         self.shell = central
         outer = QVBoxLayout(central)

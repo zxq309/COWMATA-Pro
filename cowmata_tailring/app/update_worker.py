@@ -274,11 +274,21 @@ def _install_locked(job, *, runner, registration, unregister, restart):
     update = job["update"]
     version = update["version"]
     version_key(version)
-    identity = (root / "COWMATA.install-id").read_text(encoding="utf-8")
-    if not identity.startswith("COWMATA-"):
-        raise ValueError("Not a managed COWMATA installation")
-    old_version = identity.removeprefix("COWMATA-")
-    if version_key(version) <= version_key(old_version) or not registration(root, old_version):
+    portable_origin = job.get("portable_origin") is True
+    if portable_origin:
+        # Only the current Setup bridge opts into converting a verified portable
+        # copy. Never bypass a broken/mismatched managed-install registration.
+        if (root / "COWMATA.install-id").exists() or not is_product_installation(root):
+            raise ValueError("Not a verified portable installation")
+        old_version = json.loads((root / "package-manifest.json").read_text(encoding="utf-8"))["version"]
+    else:
+        identity = (root / "COWMATA.install-id").read_text(encoding="utf-8")
+        if not identity.startswith("COWMATA-"):
+            raise ValueError("Not a managed COWMATA installation")
+        old_version = identity.removeprefix("COWMATA-")
+        if not registration(root, old_version):
+            raise ValueError("Refusing downgrade or unregistered installation")
+    if version_key(version) <= version_key(old_version):
         raise ValueError("Refusing downgrade or unregistered installation")
     if setup.stat().st_size != update["size"] or digest(setup) != update["sha256"]:
         raise ValueError("Installer changed after download")
@@ -384,7 +394,8 @@ def _install_locked(job, *, runner, registration, unregister, restart):
             state['restart_warning'] = str(exc)
     try:
         phase("cleaning_backup")
-        unregister(root, old_version)
+        if not portable_origin:
+            unregister(root, old_version)
         remove_owned(backup)
     except (OSError, ValueError) as exc:
         state["cleanup_warning"] = str(exc)

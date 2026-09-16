@@ -43,6 +43,7 @@ class AnnotationMixin:
 
     def _rebuild_shortcuts(self) -> None:
         for shortcut in self._shortcut_objects:
+            shortcut.setEnabled(False)
             shortcut.setParent(None)
             shortcut.deleteLater()
         self._shortcut_objects.clear()
@@ -54,7 +55,7 @@ class AnnotationMixin:
             ("Backspace", self.delete_selected_event),
             ("[", self.previous_frame),
             ("]", self.next_frame),
-            ("F", self.plot.show_all),
+            ("Ctrl+Shift+F", self.plot.show_all),
             ("N", lambda: self._jump_activity(1)),
             ("P", lambda: self._jump_activity(-1)),
             ("Left", lambda: self.set_playhead(self.playhead_ms - 100)),
@@ -70,6 +71,7 @@ class AnnotationMixin:
             if not key:
                 continue
             shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setAutoRepeat(False)
             shortcut.activated.connect(
                 lambda label_index=index: self._label_shortcut(label_index)
             )

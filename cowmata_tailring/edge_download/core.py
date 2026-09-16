@@ -276,8 +276,8 @@ class Client:
         if cow and historical and historical.casefold() != cow.casefold():
             raise DownloadError(f'历史牛号不一致：查询 {cow}，记录 {historical}')
         # Explicit user-provided ear tag is allowed for old device-only endpoints.
-        data['cow_id'] = historical or cow
-        if not data['cow_id']:
+        # Identity inferred from CSV/query belongs in the plan, never in raw JSON.
+        if not (historical or cow):
             self.log('记录无历史牛号，按设备下载并归入待核对目录')
         data.pop('url', None)
         validate_payload(data, kind)
@@ -347,7 +347,7 @@ def fingerprint(data, kind):
 def save_record(job, target, kind, data, cancel):
     validate_payload(data, kind)
     device = segment(str(data['device']).upper())
-    cow = segment(data.get('cow_id') or '待核对')
+    cow = segment(data.get('cow_id') or data.get('animal_number') or data.get('animalNumber') or target.cow or '待核对')
     stamp = datetime.fromtimestamp(int(data['create_time']) / 1000, CHINA)
     day = checked_path(job.farm, Path(job.category) / MODALITIES[kind]
                        / stamp.strftime('%Y-%m-%d'))

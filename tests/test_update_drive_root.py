@@ -24,7 +24,7 @@ def test_prepare_save_and_update_for_registered_drive_root_install(tmp_path, mon
         (runtime / "python313.zip").write_bytes(b"stdlib fixture")
         code = root / "cowmata_tailring/app"
         code.mkdir(parents=True)
-        for name in ("update_core.py", "update_worker.py", "portable_update.py"):
+        for name in ("update_core.py", "update_windows.py", "update_worker.py", "portable_update.py"):
             (code / name).write_text("# updater fixture", encoding="utf-8")
         # The source checkout intentionally does not carry compiled binaries.
         monkeypatch.setattr(update_ui, "__file__", str(code / "update_ui.py"))

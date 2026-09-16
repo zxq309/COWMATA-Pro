@@ -81,7 +81,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("COWMATA Pro™ · 九轴与多视角标注工作台")
+        self.setWindowTitle("COWMATA Pro")
         self.resize(1600, 1000)
         self.catalog = None
         self.worker = None
@@ -369,13 +369,16 @@ class MainWindow(AlignmentMixin, QMainWindow):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
         self.labels = QComboBox()
-        # Reuse the complete v4 protocol and its original shortcuts.
+        self._label_shortcuts = []
+        # Bind the same labels that are displayed.
         prototype = SessionWork("0" * 64)
         for i, label in enumerate(prototype.project.labels):
             self.labels.addItem(f"[{label.key}] {label.name}", i)
             if label.key and label.code != "SYNC_ANCHOR":
                 shortcut = QShortcut(QKeySequence(label.key), self)
+                shortcut.setAutoRepeat(False)
                 shortcut.activated.connect(lambda code=label.code: self.mark_code(code))
+                self._label_shortcuts.append(shortcut)
         row.addWidget(self.labels, 1)
         self.mark_button = self._button("开始视频动作", self.mark_current, row)
         self.cancel_action_button = self._button("取消本次动作…", self.cancel_active_action, row)
@@ -1844,6 +1847,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
         if index is None:
             self.tell("当前标签配置中没有该事件类型，请先核对标签配置。")
             return
+        self.labels.setCurrentIndex(index)
         self.mark(index)
 
     def refresh_action_state(self, *_):
@@ -1912,7 +1916,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.active_event = {"label": index, "start": value, "evidence": evidence,
                                  "group_id": uuid.uuid4().hex, "assets": {self.work.asset_id},
                                  "cow_id": self.work.project.cow_id,
-                                 "label_name": label.name, "label_key": label.key}
+                                 "label_name": label.name, "label_key": label.key, "label_code": label.code}
             self.refresh_action_state()
             self.dirty = True
             self.save_current()
@@ -1939,9 +1943,13 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 targets = []
                 for asset_id in sorted(active['assets']):
                     target = self.work if asset_id == self.work.asset_id else SessionWork.from_dict(read_json(self.catalog.work_path(asset_id)))
+                    target_index = next((i for i, item in enumerate(target.project.labels) if item.code == label.code), None)
+                    if target_index is None:
+                        target_index = len(target.project.labels)
+                        target.project.labels.append(copy.deepcopy(label))
                     if not any(d['group_id'] == active['group_id'] for d in target.drafts):
-                        target.assert_state_interval(index, active['start'], active.get('end', value))
-                    targets.append((asset_id, target))
+                        target.assert_state_interval(target_index, active['start'], active.get('end', value))
+                    targets.append((asset_id, target, target_index))
             except (OSError, ValueError, TypeError, KeyError) as exc:
                 self.tell('当前动作尚未结束：' + str(exc) + ' 请调整结束位置；若原起点有冲突，可取消本次动作后重新开始。')
                 return
@@ -1949,9 +1957,9 @@ class MainWindow(AlignmentMixin, QMainWindow):
             active.setdefault("end_evidence", evidence)
             try:
                 self.snapshot_writer.flush()
-                for asset_id, target in targets:
+                for asset_id, target, target_index in targets:
                     if not any(draft["group_id"] == active["group_id"] for draft in target.drafts):
-                        target.add_draft(index, active["start"], active["end"], active["evidence"] + active["end_evidence"], group_id=active["group_id"])
+                        target.add_draft(target_index, active["start"], active["end"], active["evidence"] + active["end_evidence"], group_id=active["group_id"])
                     if target is self.work:
                         latest = next(d for d in target.drafts if d["group_id"] == active["group_id"])
                     from .annotation_store import updated_work
@@ -1984,6 +1992,37 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.dirty = True
         self.save_current()
 
+    def sync_label_keys(self):
+        from cowmata_tailring.annotation.core import Label
+        from cowmata_tailring.annotation.label_keys import current_labels
+
+        old = self.work.project.labels
+        labels, mapping = current_labels([x.to_dict() for x in old])
+        normalized = [Label.from_dict(x) for x in labels]
+        if [x.to_dict() for x in normalized] != [x.to_dict() for x in old]:
+            for event in self.work.project.events:
+                event.li = mapping[event.li]
+            for draft in self.work.drafts:
+                draft['label_index'] = mapping[draft['label_index']]
+            if self.active_event and self.active_event.get('label') in mapping:
+                active_code = self.active_event.get('label_code')
+                self.active_event['label'] = next((i for i, x in enumerate(normalized) if x.code == active_code), mapping[self.active_event['label']])
+            self.work.project.labels = normalized
+            self.dirty = True
+        signature = tuple((x.code, x.key) for x in self.work.project.labels)
+        if signature != getattr(self, '_label_key_signature', None):
+            for shortcut in self._label_shortcuts:
+                shortcut.setEnabled(False)
+                shortcut.deleteLater()
+            self._label_shortcuts = []
+            for label in self.work.project.labels:
+                if label.key and label.code != 'SYNC_ANCHOR':
+                    shortcut = QShortcut(QKeySequence(label.key), self)
+                    shortcut.setAutoRepeat(False)
+                    shortcut.activated.connect(lambda code=label.code: self.mark_code(code))
+                    self._label_shortcuts.append(shortcut)
+            self._label_key_signature = signature
+
     def refresh_events(self, *, preferred=None):
         selected = preferred or self.selected_entry()
         selection_blocker = QSignalBlocker(self.events)
@@ -1996,8 +2035,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.events.setRowCount(0)
             self.refresh_action_state()
             return
-        # Historic projects own their label order. A new default label must
-        # never expose an out-of-range index or relabel an existing event.
+        self.sync_label_keys()
+        # Remap event indices by stable code before exposing current shortcuts.
         titles = [f"[{label.key}] {label.name}" for label in self.work.project.labels]
         if titles != [self.labels.itemText(i) for i in range(self.labels.count())]:
             selected_label = self.labels.currentText()

@@ -1,4 +1,4 @@
-"""Ledger 1.1.0 identities and per-wearing download plan; originals stay unchanged."""
+"""Ledger 1.3.1 identities and per-wearing download plan; originals stay unchanged."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 from cowmata_tailring.workspace.device_identity import DeviceIdentity
 
 from .core import CHINA
-from .ledger import CSV_CATEGORIES
+from .ledger import csv_category
 
 PREFIX = "546C50CA"
 FILES = ("样本试验台账.csv", "扬大测试设备台账.csv", "扬大产犊登记汇总.csv")
@@ -125,8 +125,8 @@ class CsvPlan:
                         end += timedelta(days=1)
                     if end and end <= start:
                         raise ValueError("佩戴结束时间不晚于开始时间")
-                    category = CSV_CATEGORIES.get(row.get("数据分类"), "未分类")
-                    if sample and warnings:
+                    category = csv_category(row)
+                    if end_issue or (sample and warnings):
                         category = "待核对"
                     self.wears.append(
                         Wear(identity, start, end, category, name, index, exact, warnings)

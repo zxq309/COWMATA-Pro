@@ -1,22 +1,24 @@
-"""Data-preparation download window: automatic motion plus Ledger 1.1.0 CSV mirror."""
+"""Explicit manual, automatic and scheduled downloads with Ledger 1.3.1 CSV mirror."""
 
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QDateTime, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QDateTime, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDateTimeEdit,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -24,6 +26,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -66,7 +69,14 @@ class SyncWorker(QThread):
         report = dict(errors=[], motion=None, ledger=None, canceled=False)
         try:
             values = self.values
-            if self.operation == "probe":
+            if self.operation == "login":
+                client = self.client_factory(values, self.cancel, self.message.emit)
+                try:
+                    report["session"] = client.login(values.get("ledger_username", ""), values.get("ledger_password", ""))
+                    self.status.emit("ledger", "已登录上传器账号，可刷新 CSV")
+                finally:
+                    self.values.pop("ledger_password", None)
+            elif self.operation == "probe":
                 try:
                     client = self.client_factory(values, self.cancel, self.message.emit)
                     for sheet in SCHEMAS:
@@ -121,7 +131,8 @@ class SyncWorker(QThread):
                         (),
                         tuple(values.get("kinds", ["motion", "pulse", "temp"])),
                         datetime.fromisoformat(values["start_time"]),
-                        datetime.now(CHINA).replace(microsecond=0),
+                        datetime.fromisoformat(values["end_time"]) if values.get("end_time")
+                        else datetime.now(CHINA).replace(microsecond=0),
                         Path(values["ledger_directory"]),
                     )
                     try:
@@ -150,23 +161,117 @@ class SyncWorker(QThread):
         self.completed.emit(report)
 
 
+class DownloadPlanTable(QTableWidget):
+    """Keep headers readable at every window width and scroll long CSV plans."""
+
+    def __init__(self):
+        super().__init__(0, 7)
+        self.setHorizontalHeaderLabels(
+            ['完整设备编号', '牛耳标', '现场标号', '佩戴开始', '佩戴结束', '类别', 'CSV 来源行']
+        )
+        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.setAlternatingRowColors(True)
+        self.setWordWrap(False)
+        self.setMinimumHeight(150)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+
+    def fit_columns(self):
+        header = self.horizontalHeader()
+        metrics = header.fontMetrics()
+        widths = [
+            max(metrics.horizontalAdvance(self.horizontalHeaderItem(col).text()) + 32,
+                self.sizeHintForColumn(col) + 20)
+            for col in range(self.columnCount())
+        ]
+        # Share spare width; never squeeze text to avoid horizontal scrolling.
+        extra = max(0, self.viewport().width() - sum(widths))
+        for col in range(len(widths)):
+            widths[col] += extra // len(widths)
+        widths[-1] += extra % len(widths)
+        for col, width in enumerate(widths):
+            self.setColumnWidth(col, width)
+        self.verticalHeader().setDefaultSectionSize(max(36, self.fontMetrics().height() + 20))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.fit_columns()
+
+
 class ProDownloadDialog(TaskWindow):
     def __init__(
-        self, parent=None, store=None, worker_factory=SyncWorker, launch_automatically=True
+        self, parent=None, store=None, worker_factory=SyncWorker, launch_automatically=False
     ):
         super().__init__(parent)
         self.store = store or ProSettings()
         self.worker_factory = worker_factory
         self.worker = self.manual_dialog = None
         self.scheduling_stopped = False
-        self.setWindowTitle("端侧数据下载 · CSV 自动配置")
-        self.resize(980, 820)
+        self.armed = False
+        self.session = {}
+        self.setWindowTitle("端侧数据下载")
+        self.resize(1060, 720)
         outer = QVBoxLayout(self)
-        intro = QLabel("从现场 CSV 自动读取设备、耳标、现场标号和佩戴时段，下载九轴、PPG 与温度。")
-        intro.setWordWrap(True)
-        outer.addWidget(intro)
-        self.fields = QWidget()
-        form = QFormLayout(self.fields)
+        outer.setSpacing(12)
+        heading = QHBoxLayout()
+        title = QLabel("端侧数据下载")
+        font = title.font()
+        font.setPointSize(font.pointSize() + 3)
+        font.setBold(True)
+        title.setFont(font)
+        heading.addWidget(title, 1)
+        self.config_button = QPushButton("配置下载…")
+        self.config_button.clicked.connect(self.open_configuration)
+        heading.addWidget(self.config_button)
+        self.more_button = QPushButton("更多")
+        self.more_menu = QMenu(self.more_button)
+        self.more_button.setMenu(self.more_menu)
+        heading.addWidget(self.more_button)
+        outer.addLayout(heading)
+        self.quick_fields = QWidget()
+        quick = QHBoxLayout(self.quick_fields)
+        quick.setContentsMargins(0, 0, 0, 0)
+        self.mode = QComboBox()
+        for label, value in [("请选择下载方式…", ""), ("手动：点击后下载一轮", "manual"),
+                             ("自动：启动后按间隔补齐", "automatic"), ("定时：指定时间下载一轮", "scheduled")]:
+            self.mode.addItem(label, value)
+        self.mode.setCurrentIndex(max(0, self.mode.findData(self.store.value.get("download_mode", ""))))
+        quick.addWidget(QLabel("下载方式"))
+        quick.addWidget(self.mode, 1)
+        modalities = QHBoxLayout()
+        self.kind_checks = {}
+        for key, label in [('motion','九轴'),('pulse','PPG'),('temp','温度')]:
+            check = QCheckBox(label)
+            check.setChecked(key in self.store.value.get('kinds', ['motion','pulse','temp']))
+            self.kind_checks[key] = check
+            modalities.addWidget(check)
+        quick.addLayout(modalities)
+        outer.addWidget(self.quick_fields)
+        self.summary = QLabel()
+        self.summary.setWordWrap(True)
+        outer.addWidget(self.summary)
+        self.config_dialog = QDialog(self)
+        self.config_dialog.setWindowTitle("配置下载")
+        self.config_dialog.resize(780, 610)
+        config_layout = QVBoxLayout(self.config_dialog)
+        self.fields = QTabWidget()
+        config_layout.addWidget(self.fields, 1)
+
+        def add_page(title):
+            page = QWidget()
+            form = QFormLayout(page)
+            form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(page)
+            self.fields.addTab(scroll, title)
+            return form
+
+        form = add_page("下载规则")
         self.directory = QLineEdit(self.store.value["data_root"])
         self.ledger_directory = QLineEdit(self.store.value["ledger_directory"])
         for label, field in (
@@ -184,26 +289,6 @@ class ProDownloadDialog(TaskWindow):
         )
         self.path_hint.setWordWrap(True)
         form.addRow(self.path_hint)
-        modalities = QHBoxLayout()
-        self.kind_checks = {}
-        for key, label in [('motion','九轴'),('pulse','PPG'),('temp','温度')]:
-            check = QCheckBox(label)
-            check.setChecked(key in self.store.value.get('kinds', ['motion','pulse','temp']))
-            self.kind_checks[key] = check
-            modalities.addWidget(check)
-        form.addRow('下载数据类型', modalities)
-        self.plan_label = QLabel()
-        self.plan_label.setWordWrap(True)
-        form.addRow(self.plan_label)
-        self.plan_table = QTableWidget(0, 7)
-        self.plan_table.setHorizontalHeaderLabels(['完整设备编号','牛耳标','现场标号','佩戴开始','佩戴结束','类别','CSV 来源行'])
-        self.plan_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.plan_table.setMinimumHeight(190)
-        form.addRow('CSV 自动配置的下载对象', self.plan_table)
-        refresh_plan = QPushButton('重新读取本地 CSV')
-        refresh_plan.clicked.connect(self.refresh_plan)
-        form.addRow(refresh_plan)
-        self.refresh_plan()
         self.start_at = QDateTimeEdit()
         self.start_at.setCalendarPopup(True)
         self.start_at.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
@@ -216,19 +301,51 @@ class ProDownloadDialog(TaskWindow):
             )
         )
         form.addRow("补齐起点（北京时间）", self.start_at)
+        self.until_now = QCheckBox("截至每轮启动时（取消后指定结束时间）")
+        self.until_now.setChecked(not self.store.value.get("end_time"))
+        self.end_at = QDateTimeEdit()
+        self.end_at.setCalendarPopup(True)
+        self.end_at.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        self.end_at.setDateTime(QDateTime.currentDateTime())
+        if self.store.value.get("end_time"):
+            end_text = datetime.fromisoformat(self.store.value["end_time"]).astimezone(CHINA).strftime("%Y-%m-%d %H:%M:%S")
+            self.end_at.setDateTime(QDateTime.fromString(end_text, "yyyy-MM-dd HH:mm:ss"))
+        self.end_at.setEnabled(not self.until_now.isChecked())
+        self.until_now.toggled.connect(lambda checked: self.end_at.setEnabled(not checked))
+        form.addRow("补齐终点（北京时间）", self.until_now)
+        form.addRow(self.end_at)
         self.interval = QSpinBox()
         self.interval.setRange(1, 1440)
         self.interval.setSuffix(" 分钟")
         self.interval.setValue(self.store.value["interval_seconds"] // 60)
         form.addRow("自动检查间隔", self.interval)
+        self.scheduled_at = QDateTimeEdit()
+        self.scheduled_at.setCalendarPopup(True)
+        self.scheduled_at.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        self.scheduled_at.setDateTime(QDateTime.currentDateTime().addSecs(3600))
+        if self.store.value.get("scheduled_time"):
+            text = datetime.fromisoformat(self.store.value["scheduled_time"]).astimezone(CHINA).strftime("%Y-%m-%d %H:%M:%S")
+            self.scheduled_at.setDateTime(QDateTime.fromString(text, "yyyy-MM-dd HH:mm:ss"))
+        form.addRow("定时启动（北京时间）", self.scheduled_at)
+        form = add_page("现场记录与账号")
         self.sync_ledger = QCheckBox("每轮先从服务器刷新三个 CSV")
         self.sync_ledger.setChecked(self.store.value["sync_ledger"])
         form.addRow(self.sync_ledger)
-        self.connection_toggle = QPushButton("展开服务器连接设置 ▾")
-        self.connection_toggle.setCheckable(True)
-        form.addRow(self.connection_toggle)
-        group = QGroupBox("服务器连接")
-        group_layout = QVBoxLayout(group)
+        self.ledger_username = QLineEdit()
+        self.ledger_password = QLineEdit()
+        self.ledger_password.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow('上传器 1.3.1 账号', self.ledger_username)
+        form.addRow('上传器账号密码（仅本次登录）', self.ledger_password)
+        self.login_button = QPushButton('登录台账服务器')
+        self.login_button.clicked.connect(lambda: self.start_task('login'))
+        form.addRow(self.login_button)
+        login_hint = QLabel('刷新服务器 CSV 使用与上传器相同的账号。会话仅在内存中保存；使用本地 CSV 时可取消每轮刷新。')
+        login_hint.setWordWrap(True)
+        form.addRow(login_hint)
+        self.ledger_status = QLabel("现场记录：尚未检测")
+        self.ledger_status.setWordWrap(True)
+        form.addRow(self.ledger_status)
+        form = add_page("高级连接")
         self.connection_fields = QWidget()
         connection_form = QFormLayout(self.connection_fields)
         self.server = QLineEdit(self.store.value["server"])
@@ -285,82 +402,144 @@ class ProDownloadDialog(TaskWindow):
         key_button.clicked.connect(self.choose_key)
         key_row.addWidget(key_button)
         connection_form.addRow("上传器已有授权文件", key_row)
-        group_layout.addWidget(self.connection_fields)
-        group.hide()
-        self.connection_toggle.toggled.connect(group.setVisible)
-        self.connection_toggle.toggled.connect(
-            lambda opened: self.connection_toggle.setText("收起服务器连接设置 ▴" if opened else "展开服务器连接设置 ▾")
-        )
-        form.addRow(group)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(self.fields)
-        scroll.setMinimumHeight(280)
-        outer.addWidget(scroll, 2)
-        options = QHBoxLayout()
-        self.auto = QCheckBox("在 Pro 运行期间自动同步")
-        self.auto.setChecked(self.store.value["auto_enabled"])
-        options.addWidget(self.auto)
-        options.addStretch()
-        save = QPushButton("保存设置")
-        save.clicked.connect(self.save_settings)
-        options.addWidget(save)
-        outer.addLayout(options)
-        controls = QHBoxLayout()
-        self.start_button = QPushButton("一键下载 / 立即同步")
-        self.ledger_button = QPushButton("仅刷新三个 CSV")
-        self.probe_button = QPushButton("检测服务器连接")
-        self.stop_button = QPushButton("停止并暂停自动")
-        for button in (self.start_button, self.ledger_button, self.probe_button, self.stop_button):
-            controls.addWidget(button)
-        outer.addLayout(controls)
-        self.start_button.clicked.connect(lambda: self.start_task("all"))
-        self.ledger_button.clicked.connect(lambda: self.start_task("ledger"))
-        self.probe_button.clicked.connect(lambda: self.start_task("probe"))
-        self.stop_button.clicked.connect(self.pause)
-        self.motion_status, self.ledger_status, self.status = (
-            QLabel("原始数据：尚未检测"),
-            QLabel("现场记录：尚未检测"),
-            QLabel("就绪"),
-        )
-        for label in (self.motion_status, self.ledger_status, self.status):
-            label.setWordWrap(True)
-            outer.addWidget(label)
+        form.addRow(self.connection_fields)
+        self.config_message = QLabel("已有配置已带入。保存配置后，在主窗口点击开始下载。")
+        self.config_message.setWordWrap(True)
+        config_layout.addWidget(self.config_message)
+        self.config_save = QPushButton("保存并读取 CSV")
+        self.config_save.clicked.connect(self.apply_configuration)
+        config_layout.addWidget(self.config_save)
+        self.config_dialog.rejected.connect(self.restore_configuration)
+        self._config_snapshot = None
+        self.plan_label = QLabel()
+        self.plan_label.setWordWrap(True)
+        outer.addWidget(self.plan_label)
+        self.plan_table = DownloadPlanTable()
+        outer.addWidget(self.plan_table, 1)
+        self.status = QLabel("就绪")
+        self.status.setWordWrap(True)
+        outer.addWidget(self.status)
         self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximumHeight(8)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
         outer.addWidget(self.progress_bar)
+        controls = QHBoxLayout()
+        hint = QLabel("仅补齐缺失数据，已有文件保持原位。")
+        hint.setWordWrap(True)
+        controls.addWidget(hint, 1)
+        self.stop_button = QPushButton("停止 / 取消定时")
+        self.stop_button.clicked.connect(self.pause)
+        controls.addWidget(self.stop_button)
+        self.start_button = QPushButton("开始下载")
+        self.start_button.setDefault(True)
+        self.start_button.clicked.connect(self.start_selected)
+        controls.addWidget(self.start_button)
+        outer.addLayout(controls)
+        self.log_dialog = QDialog(self)
+        self.log_dialog.setWindowTitle("运行记录")
+        self.log_dialog.resize(820, 500)
+        log_layout = QVBoxLayout(self.log_dialog)
+        self.motion_status = QLabel("原始数据：尚未检测")
+        self.motion_status.setWordWrap(True)
+        log_layout.addWidget(self.motion_status)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(1000)
-        outer.addWidget(self.log, 1)
-        links = QHBoxLayout()
-        for label, field in (
-            ("打开数据目录", self.directory),
-            ("打开现场记录目录", self.ledger_directory),
-        ):
-            button = QPushButton(label)
-            button.clicked.connect(
-                lambda checked=False, edit=field: QDesktopServices.openUrl(
-                    QUrl.fromLocalFile(edit.text())
-                )
-            )
-            links.addWidget(button)
-        manual = QPushButton("查看 CSV 核对清单…")
-        manual.clicked.connect(self.show_csv_issues)
-        links.addWidget(manual)
-        outer.addLayout(links)
-        footer = QLabel(
-            "关闭此窗口可继续同步；退出 Pro 会停止。台账修订会重新核对数据分类，原始 JSON 保持不变。"
-        )
+        log_layout.addWidget(self.log, 1)
+        footer = QLabel("已启动的任务在关闭此窗口后继续；退出 Pro 会停止。重新打开程序需再次启动。旧文件保持原位，仅补齐缺失数据。")
         footer.setWordWrap(True)
-        outer.addWidget(footer)
+        log_layout.addWidget(footer)
+        close_log = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close_log.rejected.connect(self.log_dialog.hide)
+        log_layout.addWidget(close_log)
+        self.more_menu.addAction("运行记录…", self.log_dialog.show)
+        self.more_menu.addAction("查看 CSV 核对清单…", self.show_csv_issues)
+        self.more_menu.addSeparator()
+        self.more_menu.addAction("重新读取本地 CSV", self.refresh_plan)
+        self.ledger_button = self.more_menu.addAction("仅刷新三个 CSV", lambda: self.start_task("ledger"))
+        self.probe_button = self.more_menu.addAction("检测服务器连接", lambda: self.start_task("probe"))
+        self.more_menu.addSeparator()
+        for label, field in (("打开数据目录", self.directory), ("打开现场记录目录", self.ledger_directory)):
+            self.more_menu.addAction(label, lambda checked=False, edit=field:
+                                     QDesktopServices.openUrl(QUrl.fromLocalFile(edit.text())))
+        self.more_menu.addSeparator()
+        self.more_menu.addAction("手动指定设备下载…", self.open_manual)
+        self.refresh_plan()
+        self.update_summary()
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
-        self.timer.timeout.connect(lambda: self.start_task("all", from_timer=True))
-        self.auto.toggled.connect(self.auto_changed)
+        self.timer.timeout.connect(self.timer_fired)
+        self.mode.currentIndexChanged.connect(self.mode_changed)
+        self.mode_changed()
         if self.store.notice:
             self.append(self.store.notice)
-        if launch_automatically and self.auto.isChecked():
-            self.timer.start(500)
+        # launch_automatically is retained for callers, but never authorizes a transfer.
+
+    def configuration_widgets(self):
+        return [*self.fields.findChildren(QLineEdit), *self.fields.findChildren(QComboBox),
+                *self.fields.findChildren(QSpinBox), *self.fields.findChildren(QDateTimeEdit),
+                *self.fields.findChildren(QCheckBox)]
+
+    def open_configuration(self):
+        # Snapshot only editable rules, never login secrets or transient session state.
+        self._config_snapshot = []
+        for widget in self.configuration_widgets():
+            if widget in (self.ledger_username, self.ledger_password):
+                continue
+            if isinstance(widget, QLineEdit):
+                if isinstance(widget.parent(), (QSpinBox, QDateTimeEdit, QComboBox)):
+                    continue
+                value = widget.text()
+            elif isinstance(widget, QComboBox):
+                value = widget.currentIndex()
+            elif isinstance(widget, QSpinBox):
+                value = widget.value()
+            elif isinstance(widget, QDateTimeEdit):
+                value = widget.dateTime()
+            else:
+                value = widget.isChecked()
+            self._config_snapshot.append((widget, value))
+        self.config_dialog.open()
+
+    def restore_configuration(self):
+        for widget, value in self._config_snapshot or []:
+            if isinstance(widget, QLineEdit):
+                widget.setText(value)
+            elif isinstance(widget, QComboBox):
+                widget.setCurrentIndex(value)
+            elif isinstance(widget, QSpinBox):
+                widget.setValue(value)
+            elif isinstance(widget, QDateTimeEdit):
+                widget.setDateTime(value)
+            else:
+                widget.setChecked(value)
+        self._config_snapshot = None
+        self.ledger_password.clear()
+        self.refresh_plan()
+        self.update_summary()
+
+    def apply_configuration(self):
+        if self.save_settings():
+            self.stop_scheduling()
+            self.refresh_plan()
+            self.update_summary()
+            self._config_snapshot = None
+            self.config_dialog.accept()
+            self.status.setText("配置已保存，点击开始下载。")
+        else:
+            self.config_message.setText(self.status.text())
+
+    def update_summary(self):
+        end = "至今" if self.until_now.isChecked() else self.end_at.dateTime().toString("yyyy-MM-dd HH:mm")
+        period = self.start_at.dateTime().toString("yyyy-MM-dd HH:mm") + " — " + end
+        if self.mode.currentData() == "automatic":
+            period += " · " + self.interval.text()
+        elif self.mode.currentData() == "scheduled":
+            period += " · " + self.scheduled_at.dateTime().toString("yyyy-MM-dd HH:mm")
+        self.summary.setText(self.directory.text() + "\n" + period)
+        self.summary.setToolTip(self.ledger_directory.text())
 
     @property
     def running(self):
@@ -405,6 +584,8 @@ class ProDownloadDialog(TaskWindow):
                 raise ValueError("补齐起点应早于当前时间")
             if not any(check.isChecked() for check in self.kind_checks.values()):
                 raise ValueError("请至少选择一种数据类型")
+            if not self.until_now.isChecked() and self._field_time(self.end_at) <= start:
+                raise ValueError("补齐终点必须晚于起点")
             self.store.save(
                 kinds=[key for key, check in self.kind_checks.items() if check.isChecked()],
                 server=self.server.text().strip().rstrip("/"),
@@ -418,7 +599,10 @@ class ProDownloadDialog(TaskWindow):
                 ledger_user=self.ledger_user.text().strip(),
                 ledger_server_directory=self.remote_directory.text().strip(),
                 ledger_key=self.key.text().strip(),
-                auto_enabled=self.auto.isChecked(),
+                auto_enabled=False,
+                download_mode=self.mode.currentData(),
+                scheduled_time=self._field_time(self.scheduled_at).isoformat(),
+                end_time="" if self.until_now.isChecked() else self._field_time(self.end_at).isoformat(),
                 raw_connection=self.raw_mode.currentData(),
                 raw_user=self.raw_user.text().strip(),
                 raw_key=self.raw_key.text().strip(),
@@ -428,6 +612,65 @@ class ProDownloadDialog(TaskWindow):
         except (ValueError, OSError, KeyError) as exc:
             self.status.setText("设置未保存：" + str(exc))
             return False
+
+    @staticmethod
+    def _field_time(field):
+        return datetime.strptime(field.dateTime().toString("yyyy-MM-dd HH:mm:ss"),
+                                 "%Y-%m-%d %H:%M:%S").replace(tzinfo=CHINA)
+
+    def mode_changed(self):
+        self.stop_scheduling()
+        self.interval.setEnabled(self.mode.currentData() == 'automatic')
+        self.scheduled_at.setEnabled(self.mode.currentData() == 'scheduled')
+        self.status.setText('请选择规则后点击启动；当前未启动下载')
+        self.start_button.setText({'automatic': '启用自动下载', 'scheduled': '设定定时下载'}.get(self.mode.currentData(), '开始下载'))
+        self.update_summary()
+
+    def start_selected(self):
+        if self.running:
+            return
+        mode = self.mode.currentData()
+        if not mode:
+            self.status.setText('请先选择手动、自动或定时下载')
+            return
+        if not self.save_settings():
+            return
+        self.stop_scheduling()
+        self.scheduling_stopped = False
+        if mode == 'scheduled':
+            delay = (self._field_time(self.scheduled_at) - datetime.now(CHINA)).total_seconds()
+            if delay <= 0:
+                self.status.setText('定时启动时间必须晚于当前时间')
+                return
+            self.armed = True
+            self._schedule()
+        else:
+            self.armed = mode == 'automatic'
+            self.start_task('all')
+
+    def _schedule(self):
+        mode = self.store.value.get('download_mode')
+        if mode == 'scheduled':
+            due = datetime.fromisoformat(self.store.value['scheduled_time'])
+            delay = max(1, int((due - datetime.now(CHINA)).total_seconds() * 1000))
+            self.status.setText('已启用定时下载：' + due.strftime('%Y-%m-%d %H:%M:%S') + '（北京时间）')
+        else:
+            delay = self.store.value['interval_seconds'] * 1000
+            self.append('自动下载已启用，下一轮将在 ' + str(delay // 60000) + ' 分钟后检查。')
+        self.timer.start(min(delay, 2147483647))
+
+    def timer_fired(self):
+        if not self.armed or self.scheduling_stopped:
+            return
+        if self.running:
+            self.timer.start(1000)
+            return
+        if self.store.value.get('download_mode') == 'scheduled':
+            if datetime.fromisoformat(self.store.value['scheduled_time']) > datetime.now(CHINA):
+                self._schedule()
+                return
+            self.armed = False
+        self.start_task('all', from_timer=True)
 
     def start_task(self, operation="all", from_timer=False):
         if self.running:
@@ -440,13 +683,22 @@ class ProDownloadDialog(TaskWindow):
         if not self.save_settings():
             return
         self.timer.stop()
-        self.worker = self.worker_factory(self.store.value, operation, self)
+        values = dict(self.store.value)
+        if self.session:
+            values['session_token'] = self.session['token']
+        if operation == 'login':
+            values.update(ledger_username=self.ledger_username.text().strip(),
+                          ledger_password=self.ledger_password.text())
+            self.ledger_password.clear()
+        self.worker = self.worker_factory(values, operation, self)
         self.worker.message.connect(self.append)
         self.worker.status.connect(self.connection_status)
         self.worker.progress.connect(self.progress_changed)
         self.worker.completed.connect(self.cycle_completed)
         self.worker.finished.connect(self.task_finished)
         self.fields.setEnabled(False)
+        self.quick_fields.setEnabled(False)
+        self.config_save.setEnabled(False)
         for b in (self.start_button, self.ledger_button, self.probe_button):
             b.setEnabled(False)
         self.status.setText("正在同步…" if operation != "probe" else "正在分别检测台账和数据连接…")
@@ -464,6 +716,8 @@ class ProDownloadDialog(TaskWindow):
         self.progress_bar.setValue(done)
 
     def cycle_completed(self, report):
+        if report.get("session"):
+            self.session = report["session"]
         self.refresh_plan()
         if report["canceled"]:
             text = "已停止，可稍后继续"
@@ -472,6 +726,7 @@ class ProDownloadDialog(TaskWindow):
         else:
             text = "本轮完成"
         self.status.setText(text)
+        self.config_message.setText(text)
         self.append(text)
         try:
             result = report["motion"]
@@ -495,32 +750,17 @@ class ProDownloadDialog(TaskWindow):
         if worker:
             worker.deleteLater()
         self.fields.setEnabled(True)
+        self.quick_fields.setEnabled(True)
+        self.config_save.setEnabled(True)
         for b in (self.start_button, self.ledger_button, self.probe_button):
             b.setEnabled(True)
         self.progress_bar.setRange(0, 1)
         self.progress_bar.setValue(1)
-        if self.auto.isChecked() and not self.scheduling_stopped:
-            self.timer.start(self.store.value["interval_seconds"] * 1000)
-            self.append(
-                "自动同步开启，下次检查将在 "
-                + str(self.store.value["interval_seconds"] // 60)
-                + " 分钟后进行。"
-            )
-
-    def auto_changed(self, checked):
-        try:
-            self.store.save(auto_enabled=checked)
-        except (OSError, ValueError) as exc:
-            self.append("自动同步设置未保存：" + str(exc))
-        if checked:
-            self.scheduling_stopped = False
-            if not self.running:
-                self.timer.start(100)
-        else:
-            self.stop_task()
-            self.scheduling_stopped = False
+        if self.armed and not self.scheduling_stopped:
+            self._schedule()
 
     def stop_scheduling(self):
+        self.armed = False
         self.scheduling_stopped = True
         self.timer.stop()
 
@@ -530,7 +770,6 @@ class ProDownloadDialog(TaskWindow):
             worker.cancel.set()
 
     def pause(self):
-        self.auto.setChecked(False)
         self.stop_task()
         self.scheduling_stopped = False
         self.status.setText("正在停止当前请求…" if self.running else "自动同步已暂停")
@@ -548,10 +787,11 @@ class ProDownloadDialog(TaskWindow):
                     item = QTableWidgetItem(value)
                     item.setToolTip(record['folder'] + '\n' + record['warnings'])
                     self.plan_table.setItem(row, col, item)
-            self.plan_table.resizeColumnsToContents()
-            self.plan_label.setText(f'已读取 {len(plan.by_device)} 台设备 / {len(records)} 段佩戴记录；{len(plan.issues)} 行待核对。现场标号可为空。')
+            self.plan_table.fit_columns()
+            self.plan_label.setText(f'已读取 {len(plan.by_device)} 台设备 / {len(records)} 段佩戴记录；{len(plan.issues)} 行待核对。')
             self.csv_issues = plan.issues
         except (OSError, ValueError) as exc:
+            self.plan_table.setRowCount(0)
             self.plan_label.setText('CSV 尚未读取：' + str(exc))
             self.csv_issues = []
 
@@ -570,7 +810,6 @@ class ProDownloadDialog(TaskWindow):
         self.manual_dialog.raise_()
 
     def show(self):
-        self.scheduling_stopped = False
         super().show()
 
     def reject(self):

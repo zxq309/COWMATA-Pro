@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from cowmata_tailring.edge_download.pro_settings import configured_data_root
 from cowmata_tailring.workspace.event_models import available_packs
 from cowmata_tailring.workspace.storage import atomic_json
 
@@ -45,7 +46,7 @@ class DecisionWindow(JobWindow):
         evidence = QWidget()
         el = QVBoxLayout(evidence)
         form = QFormLayout()
-        self.raw, choose = path_row(self, form, "原始下载目录", r"F:\牛舍")
+        self.raw, choose = path_row(self, form, "原始下载目录", str(configured_data_root()))
         self.behavior = QComboBox()
         self.behavior.addItem("全部已导入的行为模型", None)
         for code in EVENT_CODES:

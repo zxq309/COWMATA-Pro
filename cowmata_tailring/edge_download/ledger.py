@@ -326,7 +326,26 @@ CSV_CATEGORIES = {
     "pregnancy_late": "怀孕/孕晚期",
     "calving": "产犊",
     "disease": "疫病",
+    "review": "待核对",
+    "unclassified": "未分类",
 }
+
+
+def csv_category(row):
+    """Honor explicit uploader classification; fill missing/unclassified from purpose."""
+    value = str(row.get("数据分类") or "").strip()
+    category = CSV_CATEGORIES.get(value, value if value in CSV_CATEGORIES.values() else "未分类")
+    if category != "未分类":
+        return category
+    purpose = str(row.get("监测目的") or "").strip()
+    purposes = {
+        "孕后期监测": "怀孕/孕晚期", "孕晚期监测": "怀孕/孕晚期",
+        "孕早期监测": "怀孕/孕早期", "孕中期监测": "怀孕/孕中期",
+        "产犊监测": "产犊", "产后监测": "产犊", "难产": "产犊", "死胎": "产犊",
+        "正常监测": "正常", "正常对照": "正常", "发情监测": "发情",
+        "疫病监测": "疫病", "疾病监测": "疫病", "怀孕监测": "怀孕",
+    }
+    return purposes.get(purpose, purpose if purpose in CSV_CATEGORIES.values() else "未分类")
 
 
 def parse_csv_ledger(path):
@@ -347,7 +366,7 @@ def parse_csv_ledger(path):
     for index, row in enumerate(read_csv(raw, "samples"), 2):
         if row["已删除"] == "1":
             continue
-        reason, category = "上传器台账明确数据分类", CSV_CATEGORIES.get(row["数据分类"], "待核对")
+        reason, category = "上传器台账明确数据分类", csv_category(row)
         try:
             start, end = stamp(row["佩戴开始"]), stamp(row["佩戴结束"])
             if not start or (end is not None and end <= start):

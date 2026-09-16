@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from cowmata_tailring.edge_download.pro_settings import configured_data_root
 from cowmata_tailring.workspace.storage import atomic_json
 
 from . import EVENT_CODES, EVENT_TITLES
@@ -158,7 +159,7 @@ class BehaviorWindow(JobWindow):
         recognition = QWidget()
         rr = QVBoxLayout(recognition)
         form2 = QFormLayout()
-        self.raw, choose_raw = path_row(self, form2, "原始下载目录", r"F:\牛舍")
+        self.raw, choose_raw = path_row(self, form2, "原始下载目录", str(configured_data_root()))
         self.model = QLineEdit()
         self.model.setReadOnly(True)
         modelrow = QHBoxLayout()
@@ -228,6 +229,10 @@ class BehaviorWindow(JobWindow):
         self.launch(dict(action="inspect390", dataset=self.dataset.text(), training=True))
 
     def train(self):
+        dataset = self.dataset.text().strip()
+        if not dataset or not Path(dataset).is_dir():
+            self.status.setText("请先选择存在的训练数据集目录，再开始训练。")
+            return
         code = self.algorithm.currentData()
         modality = self.modality.currentData()
         self.last_output = self.fresh_output(code.lower() + "-" + modality)

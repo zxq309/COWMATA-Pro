@@ -6,6 +6,7 @@ import json
 import threading
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -36,6 +37,8 @@ class CandidateWindow(TaskWindow):
         self.job_token = None
         self.view_token = None
         self.clock_revision = None
+        self._label_shortcuts = []
+        self._key_signature = None
         self.setWindowTitle("事件候选 · 模型预测后需人工看录像")
         self.resize(700, 520)
         layout = QVBoxLayout(self)
@@ -91,6 +94,27 @@ class CandidateWindow(TaskWindow):
         self.timer.start()
         self.refresh_results()
 
+    def bind_label_keys(self):
+        labels = self.owner.work.project.labels if self.owner.work else []
+        signature = tuple((label.code, label.key) for label in labels)
+        if signature == self._key_signature:
+            return
+        for shortcut in self._label_shortcuts:
+            shortcut.setEnabled(False)
+            shortcut.deleteLater()
+        self._label_shortcuts = []
+        for label in labels:
+            if label.key and label.code != 'SYNC_ANCHOR':
+                shortcut = QShortcut(QKeySequence(label.key), self)
+                shortcut.setAutoRepeat(False)
+                shortcut.activated.connect(lambda code=label.code: self.mark_code(code))
+                self._label_shortcuts.append(shortcut)
+        self._key_signature = signature
+
+    def mark_code(self, code):
+        self.owner.mark_code(code)
+        self.status.setText(self.owner.event_status.text())
+
     def compatible_packs(self):
         modality = 'ppg' if getattr(self.owner.motion, 'kind', 'imu') == 'ppg' else 'motion'
         return [p for p in available_packs() if p.get('modality','motion') == modality]
@@ -109,6 +133,7 @@ class CandidateWindow(TaskWindow):
         self.start_button.setEnabled(bool(self.packs) and not self.running)
 
     def check_context(self):
+        self.bind_label_keys()
         if self.running and self.token() != self.job_token:
             self.cancel()
             self.status.setText("记录、牛号或工程已改变；旧任务结果不会写入当前记录。")
@@ -226,6 +251,7 @@ class CandidateWindow(TaskWindow):
         self.cancelled.set()
 
     def refresh_results(self):
+        self.bind_label_keys()
         self.view_token = self.token()
         self.items.clear()
         w = self.owner
