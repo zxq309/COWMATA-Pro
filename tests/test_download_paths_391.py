@@ -1,5 +1,8 @@
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from cowmata_tailring.edge_download.pro_settings import ProSettings
 from cowmata_tailring.edge_download.settings import defaults
@@ -16,6 +19,7 @@ def test_upgrade_keeps_explicit_existing_farm(tmp_path):
     assert Path(store.value['data_root']) == farm
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Migration of native Windows drive paths")
 def test_390_wrong_default_migrates_without_creating_data(tmp_path,monkeypatch):
     monkeypatch.setenv('LOCALAPPDATA',str(tmp_path/'local'))
     # The legacy-default branch is independent of CSV files on the host.

@@ -63,3 +63,17 @@ def test_existing_csv_detected_only_for_missing_legacy_default(tmp_path, monkeyp
     assert module.ProSettings(tmp_path / "settings").value["ledger_directory"] == str(custom)
     legacy.mkdir()
     assert module.ProSettings(tmp_path / "other-settings").value["ledger_directory"] == str(legacy)
+
+
+def test_default_schedule_is_future_beijing_time_on_every_host(tmp_path, qt_application):
+    from datetime import datetime
+
+    from cowmata_tailring.edge_download.core import CHINA
+
+    dialog = make_dialog(tmp_path)
+    try:
+        delay = (dialog._field_time(dialog.scheduled_at) - datetime.now(CHINA)).total_seconds()
+        assert 3590 < delay <= 3600
+        assert abs((dialog._field_time(dialog.end_at) - datetime.now(CHINA)).total_seconds()) < 10
+    finally:
+        dialog.deleteLater()

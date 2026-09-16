@@ -306,7 +306,9 @@ class ProDownloadDialog(TaskWindow):
         self.end_at = QDateTimeEdit()
         self.end_at.setCalendarPopup(True)
         self.end_at.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
-        self.end_at.setDateTime(QDateTime.currentDateTime())
+        china_now = QDateTime.fromString(datetime.now(CHINA).strftime("%Y-%m-%d %H:%M:%S"),
+                                           "yyyy-MM-dd HH:mm:ss")
+        self.end_at.setDateTime(china_now)
         if self.store.value.get("end_time"):
             end_text = datetime.fromisoformat(self.store.value["end_time"]).astimezone(CHINA).strftime("%Y-%m-%d %H:%M:%S")
             self.end_at.setDateTime(QDateTime.fromString(end_text, "yyyy-MM-dd HH:mm:ss"))
@@ -322,7 +324,7 @@ class ProDownloadDialog(TaskWindow):
         self.scheduled_at = QDateTimeEdit()
         self.scheduled_at.setCalendarPopup(True)
         self.scheduled_at.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
-        self.scheduled_at.setDateTime(QDateTime.currentDateTime().addSecs(3600))
+        self.scheduled_at.setDateTime(china_now.addSecs(3600))
         if self.store.value.get("scheduled_time"):
             text = datetime.fromisoformat(self.store.value["scheduled_time"]).astimezone(CHINA).strftime("%Y-%m-%d %H:%M:%S")
             self.scheduled_at.setDateTime(QDateTime.fromString(text, "yyyy-MM-dd HH:mm:ss"))
