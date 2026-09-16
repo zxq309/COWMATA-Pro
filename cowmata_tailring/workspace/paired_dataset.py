@@ -264,6 +264,8 @@ def _label_document(item, focus, raw_sha, raw_target, root, metadata):
     result['work']['asset_id'] = raw_sha
     result['work']['project'].setdefault('source', {}).update(asset_id=raw_sha, name=raw_target.name,
         path=source['path'], project_root_hint=str(root), device=metadata.get('device', ''))
+    from .shared_labels import CONTRACT
+    result['work']['project']['shared_label_contract'] = copy.deepcopy(CONTRACT)
     result.update(dataset_category=item['category'], dataset=dict(schema='paired-dataset-370', focus_code=focus,
                   original_source=item['source'], original_label=item['label_source'], original_label_sha256=item.get('label_source_sha256',''), additional_labels=item.get('additional_labels', []), raw_sha256=raw_sha,
                   pending_annotation=focus in {'Unlabeled', 'Context'}, historical_only=focus=='HistoricalLabels'))
@@ -532,7 +534,15 @@ def _build_dataset(sources, target, task='behavior', *, job, layout='versioned',
         temperature_sources.extend(p for p in find_temperature_sources(sources)
                                    if allowed is None or category_for(p) in allowed)
         manifest['temperature'] = export_temperature_sources(temperature_sources, root, cancelled=cancelled)
-        checkpoint('completed' if not _counts(rows)['errors'] and not manifest['temperature']['issues'] else 'needs_attention')
+        from cowmata_tailring.algorithms.dataset import scan_dataset
+        shared = scan_dataset(root, cancelled=cancelled, collect_shared=True)
+        atomic_json(root/'共享行为标签.json', dict(contract=shared['shared_label_contract'],
+            events=shared['shared_labels'], issues=shared['issues'],
+            dataset_fingerprint=shared['fingerprint'],
+            note='派生快照；修改来源标签后由训练读取重新计算，温度按牛号与采集时刻引用，不修改原始 JSON'), backup=False)
+        manifest['shared_labels'] = dict(contract=shared['shared_label_contract'],
+            path='共享行为标签.json', events=len(shared['shared_labels']), issues=shared['issues'])
+        checkpoint('completed' if not _counts(rows)['errors'] and not manifest['temperature']['issues'] and not shared['issues'] else 'needs_attention')
         report.publish(force=True, phase=manifest['status'])
         return manifest
     except InterruptedError:

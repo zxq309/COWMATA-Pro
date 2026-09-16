@@ -252,6 +252,8 @@ class HistoryWindow(QMainWindow):
         if data.motion:
             self.plot.set_data([PlotSeries(**s) for s in data.motion.plot_series()], data.motion.duration_ms)
             self.plot.set_view(*self.bounds())
+            if data.root:
+                self.plot.load_related(data.motion, data.root, data.work.project.cow_id)
         self.plot.set_events([label.to_dict() for label in data.work.project.labels], [e.to_dict() for e in data.work.project.events])
         clock = data.work.clock
         for event in data.work.project.events:

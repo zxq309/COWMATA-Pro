@@ -205,7 +205,8 @@ def train_suite(index, cache, output, *, codes=None, modality='motion', progress
     import hashlib
     for model in models:
         model['sha256'] = hashlib.sha256((output/model['file']).read_bytes()).hexdigest()
-    manifest = dict(schema='cowmata-event-suite-1', version=output.name, feature_version=features[0]['feature_version'], modality=modality,
+    from cowmata_tailring.workspace.shared_labels import CONTRACT as SHARED_LABEL_CONTRACT
+    manifest = dict(shared_label_contract=dict(SHARED_LABEL_CONTRACT), schema='cowmata-event-suite-1', version=output.name, feature_version=features[0]['feature_version'], modality=modality,
         training_version=TRAINING_VERSION, dataset_fingerprint=index['fingerprint'], models=models,
         report='评估报告.json', complete=True, elapsed_seconds=time.monotonic()-started)
     atomic_json(output/'suite.json', manifest)

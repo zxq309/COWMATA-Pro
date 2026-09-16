@@ -181,7 +181,8 @@ def test_video_timestamp_naming_and_unverified_clock_blocks(tmp_path, monkeypatc
     org.execute(plan,tmp_path/'verified-job')
     scope = Path(plan['target'])
     hint = SourceInspector(scope, scope/'标注工程').video_hint(Path(row['target']))
-    assert hint['start_ms'] == lo and hint['end_ms'] == lo+10000
+    assert hint['start_ms'] == lo and hint['end_ms'] is None
+    assert hint['basis'] == 'classified_filename'
     monkeypatch.setattr(SourceInspector,'video',lambda *_: {'needs_review': True, 'intervals': []})
     bad = org.plan_import(tmp_path/'out', [{'path':str(source),'kind':'video','camera':'视角08'}], category='pregnancy_late',cache=tmp_path/'other-cache')
     assert bad['rows'][0]['status'] == 'blocked'

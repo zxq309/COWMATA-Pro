@@ -122,6 +122,10 @@ def source_span(row, hints):
         # derived index is rechecked. intervals_from_rows still excludes them
         # from playback/evidence until inspection succeeds.
         return min(s["wall_start"] for s in spans), max(s["wall_end"] for s in spans)
+    from .video_names import filename_wall
+    named = filename_wall(row['path'])
+    if named is not None:
+        return named, None
     hint = hints.get(row["path"], {})
     start = hint.get("start_ms")
     return (start, hint.get("end_ms")) if start is not None else None

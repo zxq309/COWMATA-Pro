@@ -47,7 +47,9 @@ def _overlap(start, end, lo, hi):
 
 def build_label_file(work, motion, root, rows, settings, *, selection=None, include_record=True):
     root = Path(root).resolve()
+    from .shared_labels import CONTRACT
     snapshot = copy.deepcopy(work.to_dict())
+    snapshot["project"]["shared_label_contract"] = copy.deepcopy(CONTRACT)
     lo, hi = 0.0, motion.duration_ms
     embedded = None
     content = None
