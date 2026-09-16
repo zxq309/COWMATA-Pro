@@ -114,6 +114,8 @@ class SessionWork:
     def to_dict(self):
         from .resource_layout import PPG_PLACEHOLDER
         self.project.extras.setdefault("ppg", copy.deepcopy(PPG_PLACEHOLDER))
+        from .shared_labels import CONTRACT
+        self.project.extras.setdefault("shared_label_contract", copy.deepcopy(CONTRACT))
         return {"schema": 1, "asset_id": self.asset_id, "project": self.project.to_dict(),
                 "clock": self.clock.to_dict(), "mapping_history": self.mapping_history,
                 "drafts": self.drafts, "progress": self.progress,

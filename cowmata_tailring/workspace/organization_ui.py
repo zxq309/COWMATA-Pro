@@ -589,7 +589,12 @@ class OrganizationWindow(TaskWindow):
         legacy = QWidget(self)
         legacy.setLayout(original)
         legacy.hide()
-        outer = QVBoxLayout(self)
+        shell = QVBoxLayout(self)
+        self.mode_sheets = QTabWidget(self)
+        normal_page = QWidget()
+        outer = QVBoxLayout(normal_page)
+        self.mode_sheets.addTab(normal_page, '常规数据归类')
+        shell.addWidget(self.mode_sheets)
         outer.setSpacing(8)
         heading = QLabel('数据归类')
         heading.setStyleSheet('font-size:20px; font-weight:700;')
@@ -609,8 +614,8 @@ class OrganizationWindow(TaskWindow):
         outer.addLayout(row)
         row = QHBoxLayout()
         row.addWidget(QLabel('归类方式'))
-        self.scenario.setItemText(0, 'Motion、PPG JSON 与视频一起归类')
-        self.scenario.setItemText(1, '已有 Motion / PPG JSON，补充归类视频')
+        self.scenario.setItemText(0, 'Motion、PPG、温度 JSON 与视频一起归类')
+        self.scenario.setItemText(1, '已有 Motion / PPG / Temp JSON，补充归类视频')
         add(row, self.scenario, 1)
         add(row, self.transfer_mode)
         outer.addLayout(row)
@@ -643,7 +648,7 @@ class OrganizationWindow(TaskWindow):
         self.clear_views.clicked.connect(lambda: self.check_views(False))
         row.addWidget(self.select_views)
         row.addWidget(self.clear_views)
-        self.json_sources = QPushButton('添加 Motion / PPG JSON…')
+        self.json_sources = QPushButton('添加 Motion / PPG / Temp JSON…')
         self.json_sources.clicked.connect(lambda: self.add_directory('imu'))
         row.addWidget(self.json_sources)
         row.addStretch()
@@ -689,6 +694,9 @@ class OrganizationWindow(TaskWindow):
         self._live_timer.timeout.connect(self.refresh_live)
         self._live_timer.start()
         self.summary.setText('等待选择视角 · 记录实时保存')
+        from .dahua_ui import DahuaPanel
+        self.dahua_panel = DahuaPanel(self)
+        self.mode_sheets.addTab(self.dahua_panel, '原始录像转码与归类')
 
     def apply_report_snapshot(self):
         from .classification_report import read_snapshot, source_key, summary_text
@@ -1632,11 +1640,12 @@ class OrganizationWindow(TaskWindow):
             event.accept()
 
     def request_shutdown(self):
+        dahua_ready = self.dahua_panel.request_shutdown() if hasattr(self, 'dahua_panel') else True
         self._pending_organize_request = None
         self._execute_after_pause = False
         if self.pause_pending and not getattr(self.owner, "_organization_pausing", False):
             self.pause_pending = False
-        if not self.running and not self.pause_pending:
+        if not self.running and not self.pause_pending and dahua_ready:
             self._shutdown_timer.stop()
             return True
         if self._shutdown_started is None:
@@ -1644,14 +1653,15 @@ class OrganizationWindow(TaskWindow):
             self.cancel()
             self._shutdown_timer.start()
         self._poll_shutdown()
-        return not self.running and not self.pause_pending
+        return not self.running and not self.pause_pending and not self.dahua_panel.running
 
     def _poll_shutdown(self):
+        dahua_ready = self.dahua_panel.request_shutdown() if hasattr(self, "dahua_panel") else True
         if self.process is None or self.process.state() == QProcess.ProcessState.NotRunning:
             self._active_task = False
         if self.pause_pending and not getattr(self.owner, "_organization_pausing", False):
             self.pause_pending = False
-        if not self.running and not self.pause_pending:
+        if not self.running and not self.pause_pending and dahua_ready:
             self._shutdown_timer.stop()
             return
         elapsed = time.monotonic() - (self._shutdown_started or time.monotonic())

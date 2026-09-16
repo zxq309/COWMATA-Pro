@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QTabBar,
     QToolTip,
     QVBoxLayout,
     QWidget,
@@ -104,8 +105,8 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
                 groups.append((name, series))
         if self.group in {'all', 'ppg'}:
             groups.extend((s.name, [s]) for s in self._series if s.key.startswith('ppg_'))
-        if self.group == 'extra':
-            groups = [(s.name, [s]) for s in self._series if s.key in {'temperature', 'motion'}]
+        if self.group in {'extra', 'temp'}:
+            groups = [(s.name, [s]) for s in self._series if s.key in ({'temperature'} if self.group == 'temp' else {'temperature', 'motion'})]
         return groups
 
     def sample_at(self, series, when):
@@ -200,7 +201,7 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
         groups = self.visible_groups()
         if not groups:
             p.setPen(QColor("#6c8385"))
-            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "选择九轴记录后显示波形")
+            p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, getattr(self, "empty_text", "选择记录后显示波形"))
             return
         row_h = plot.height() / len(groups)
         for row, (name, series) in enumerate(groups):
@@ -225,7 +226,7 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
             for item, times, values in slices:
                 if not len(times):
                     continue
-                color = {"x":"#159c8d", "y":"#627de5", "z":"#d59338"}.get(item.key[-1], item.color)
+                color = {"x":"#159c8d", "y":"#627de5", "z":"#d59338"}.get(item.key[-1], item.color) if item.key in {p+a for p in "agm" for a in "xyz"} else item.color
                 p.setPen(QPen(QColor(color), 1.1))
                 xs = plot.left() + (times - self._view_t0) / (self._view_t1 - self._view_t0) * plot.width()
                 ys = area.bottom() - 5 - (values - ymin) / span * max(1, row_h - 10)
@@ -254,6 +255,11 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
                             path.lineTo(float(x), float(y))
                         previous = when
                     p.drawPath(path)
+                    if item.key == "temperature":
+                        # Sparse temperature records are samples, including isolated ones.
+                        for x, y in zip(xs, ys):
+                            if np.isfinite(y):
+                                p.drawEllipse(QPointF(float(x), float(y)), 2.3, 2.3)
             p.restore()
         self._paint_time_axis(p)
 
@@ -397,16 +403,17 @@ class SignalPanel(QWidget):
         self.toolbar = QHBoxLayout()
         self.toolbar.setSpacing(8)
         self.toolbar.setContentsMargins(10, 2, 10, 2)
-        title = QLabel("九轴 / PPG 信号")
+        title = QLabel("信号曲线")
         title.setObjectName("sectionTitle")
         self.toolbar.addWidget(title)
         self.group = QComboBox()
         self.group.addItems(["九轴 · XYZ 分组", "加速度", "角速度", "磁场", "温度 / 活动量", "PPG 光学"])
-        self.group.currentIndexChanged.connect(lambda i: self.wave.set_group(["all", "a", "g", "m", "extra", "ppg"][i]))
+        self.group.currentIndexChanged.connect(self._group_changed)
         self.toolbar.addWidget(self.group)
         legend = QLabel('<span style="color:#159c8d">X</span> / <span style="color:#627de5">Y</span> / <span style="color:#d59338">Z</span>')
         legend.setStyleSheet("color:#6c8385; font-size:11px")
         legend.setToolTip("X：青绿 · Y：蓝紫 · Z：琥珀；角速度三轴分行，悬停读取原始数值与单位")
+        self.axis_legend = legend
         self.toolbar.addWidget(legend)
         hint = QLabel("标签：拖动两端改起止 · 拖动中间平移")
         hint.setToolTip("先单击标注列表或标签轨道选中；波形上的左右手柄也可直接拖动。修改后请回看复核。")
@@ -421,6 +428,20 @@ class SignalPanel(QWidget):
         self.full_button.setToolTip("显示这份记录的完整时间跨度（Ctrl+Shift+F），保留当前播放位置。")
         self.full_button.clicked.connect(lambda: self.set_view(0, self.wave._duration_ms))
         self.toolbar.addWidget(self.full_button)
+        self.sheets = QTabBar()
+        self.sheets.setExpanding(False)
+        for name in ("九轴 Motion", "PPG", "温度 Temp"):
+            self.sheets.addTab(name)
+        self.sheets.setAccessibleName("传感器曲线页签")
+        self.sheets.setToolTip("同牛、同设备、同一时间轴；共用下方标签，保留缩放和播放位置")
+        self.modalities = {"motion": [], "ppg": [], "temp": []}
+        self.sensor_messages = {}
+        self.sheets.currentChanged.connect(self._switch_sheet)
+        layout.addWidget(self.sheets)
+        self.sensor_status = QLabel("选择记录后显示曲线；三个页签共用一份标签")
+        self.sensor_status.setWordWrap(True)
+        self.sensor_status.setStyleSheet("color:#5f777b; padding:2px 10px; font-size:11px")
+        layout.addWidget(self.sensor_status)
         layout.addLayout(self.toolbar)
         layout.addWidget(self.wave, 1)
         self.track = EventStrip(self.wave)
@@ -441,21 +462,72 @@ class SignalPanel(QWidget):
     def view_range(self):
         return self.wave.view_range
 
-    def set_data(self, *args, **kwargs):
-        self.wave.set_data(*args, **kwargs)
-        series = args[0] if args else kwargs.get("series", [])
-        ppg = any(s.key.startswith("ppg_") for s in series)
-        if ppg:
-            self.group.setCurrentIndex(5)
-        elif self.group.currentIndex() == 5:
-            self.group.setCurrentIndex(0)
+    @staticmethod
+    def split_series(series):
+        series = list(series)
+        ppg = any(s.key.startswith('ppg_') for s in series)
+        return {'motion': [] if ppg else [s for s in series if s.key != 'temperature'],
+                'ppg': [s for s in series if s.key != 'temperature'] if ppg else [],
+                'temp': [s for s in series if s.key == 'temperature']}
+
+    def set_data(self, series, duration_ms, **kwargs):
+        if hasattr(self, "related_loader"):
+            self.related_loader.cancel()
+        self.set_modalities(self.split_series(series), duration_ms,
+            messages={'temp': '来源内附温度；时间为区间中点估计'}, **kwargs)
+
+    def set_modalities(self, modalities, duration_ms, messages=None, **kwargs):
+        self.modalities = {k: list(modalities.get(k, [])) for k in ('motion','ppg','temp')}
+        self.sensor_messages = dict(messages or {})
+        self.wave.set_data([], duration_ms, **kwargs)
+        initial = 1 if self.modalities['ppg'] and not self.modalities['motion'] else 0
+        self.sheets.blockSignals(True)
+        self.sheets.setCurrentIndex(initial)
+        self.sheets.blockSignals(False)
+        self._switch_sheet(initial)
+
+    def update_modalities(self, modalities, messages=None):
+        self.modalities = {k: list(modalities.get(k, [])) for k in ('motion','ppg','temp')}
+        self.sensor_messages = dict(messages or {})
+        self._switch_sheet(self.sheets.currentIndex())
+
+    def _group_changed(self, index):
+        if hasattr(self, 'sheets') and index in (4,5):
+            self.sheets.setCurrentIndex(2 if index == 4 else 1)
+        elif hasattr(self, 'sheets') and self.sheets.currentIndex() == 0:
+            self.wave.set_group(['all','a','g','m'][min(index,3)])
+
+    def _switch_sheet(self, index):
+        key = ('motion','ppg','temp')[max(0,index)]
+        # Replace only curves. Labels, current edit, view and cursor have one owner.
+        self.wave._series = self.modalities.get(key, [])
+        self.group.setVisible(key == 'motion')
+        self.axis_legend.setVisible(key == 'motion')
+        group = ('all','a','g','m')[min(self.group.currentIndex(),3)] if key == 'motion' else key
+        self.wave.empty_text = '当前时段无匹配的' + {'motion':'九轴','ppg':'PPG','temp':'温度'}[key] + '数据'
+        note = self.sensor_messages.get(key, '')
+        self.sensor_status.setText(('' if self.wave._series else self.wave.empty_text + '；') + note +
+            ' · 共用标签；无样本的区间不代表负样本')
+        self.sensor_status.setToolTip(self.sensor_status.text())
+        self.wave.set_group(group)
         self.track.refresh()
+
+    def load_related(self, primary, root, cow_id):
+        from .multi_sensor import RelatedSignalLoader
+        if not hasattr(self, "related_loader"):
+            self.related_loader = RelatedSignalLoader(self)
+        self.related_loader.load(primary, root, cow_id)
 
     def set_clock(self, clock):
         self.wave.set_clock(clock)
 
     def clear_data(self):
+        if hasattr(self, "related_loader"):
+            self.related_loader.cancel()
+        self.modalities = {"motion": [], "ppg": [], "temp": []}
+        self.sensor_messages = {}
         self.wave.clear_data()
+        self._switch_sheet(self.sheets.currentIndex())
         self.track.refresh()
 
     def set_events(self, labels, events):

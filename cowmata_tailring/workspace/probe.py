@@ -198,6 +198,10 @@ class SourceInspector:
 
     def video_hint(self, path: Path) -> dict:
         """Cheap routing OSD; never a verified interval or evidence identity."""
+        from .video_filename import filename_wall
+        start = filename_wall(path)
+        if start is not None:
+            return {'start_ms': start, 'end_ms': None, 'hint_only': True, 'basis': 'classified_filename'}
         resource = self.resource_records.get(self.relative_path(path).as_posix())
         if resource:
             offset = resource.get("timezone_offset_minutes", 480) * 60000
@@ -251,6 +255,9 @@ class SourceInspector:
                     "update_time_ms": motion.update_time_ms, "version": motion.version,
                     "warnings": motion.warnings, "time_semantics": "device_acquisition_start",
                     "capture_timing": motion.capture_timing(), "needs_review": False}
+        from .video_names import filename_wall
+        if filename_wall(path) is not None:
+            return self.video(path,asset_id)
         resource = self.resource_records.get(self.relative_path(path).as_posix())
         if resource and resource.get("sha256") == asset_id:
             metadata = copy.deepcopy(resource["metadata"])
@@ -375,6 +382,32 @@ class SourceInspector:
     def video(self, path: Path, asset_id: str, *, roi=None) -> dict:
         correction = read_json(self.meta / "video_corrections" / (asset_id + ".json"), {})
         roi = roi or correction.get("roi")
+        from .video_filename import filename_wall, metadata_from_name
+        if filename_wall(path) is not None and not roi and not correction.get('readings'):
+            self.progress(f'读取文件名时间与媒体时长：{path.name}')
+            info = probe_media(path, cancelled=self.stop.is_set)
+            try:
+                result = metadata_from_name(path, self.relative_path(path), info)
+                if 'mp4' in str(info.get('format',{}).get('format_name','')):
+                    return result
+            except ValueError:
+                pass
+            # Old recorder streams can have an .mp4 suffix but no MP4 duration.
+            # The confirmed filename still anchors time; build playback timing only.
+            self.progress(f'读取历史录像播放索引：{path.name}')
+            try:
+                native = read_native_index(path, timezone_minutes=self.timezone_minutes, cancelled=self.stop.is_set)
+            except ValueError:
+                native = None
+            if native:
+                stat = path.stat();duration = native['duration_ms']
+                timeline = MediaTimelineIndex(str(path.resolve()), stat.st_size, stat.st_mtime_ns,
+                    native['first_pts_ms'], native['frame_ms'], (TimelineSegment(0,duration,0,duration),),(),native=native)
+            else:
+                _, ffprobe = find_ffmpeg()
+                timeline = probe_media_timeline(path,ffprobe,timeout_seconds=180,cancelled=self.stop.is_set)
+            result = metadata_from_name(path,self.relative_path(path),info,timeline)
+            return result
         self.progress(f"校验数据包时间轴：{path.name}")
         info = probe_media(path, cancelled=self.stop.is_set)
         video = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), None)

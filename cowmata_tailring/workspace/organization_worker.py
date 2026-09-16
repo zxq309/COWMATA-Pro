@@ -47,6 +47,8 @@ def main():
             emit({'event': 'row', 'row': row})
 
     try:
+        from cowmata_tailring.workspace.classification_resources import acquire_preparation_slot
+        acquire_preparation_slot(cancelled, progress)
         action = request["action"]
         if action == "audit":
             result = core.audit(request["roots"], cancelled, progress)

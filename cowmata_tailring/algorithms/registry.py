@@ -40,6 +40,8 @@ def child(root, name):
 def read_suite(folder, *, verify=True):
     folder = Path(folder).resolve()
     doc = json.loads((folder / "suite.json").read_text(encoding="utf-8"))
+    from cowmata_tailring.workspace.shared_labels import validate_contract
+    validate_contract(doc.get("shared_label_contract"))
     if (doc.get("schema") != "cowmata-event-suite-1" or doc.get("complete") is not True
             or doc.get("feature_version") not in (FEATURE_VERSION, "ppg-second-features-1")
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", str(doc.get("version", "")))):

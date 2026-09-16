@@ -93,3 +93,25 @@ def limit_worker(budget=None):
         else:
             kernel.CloseHandle(job)
     return result
+
+
+_slots = []
+def acquire_preparation_slot(cancelled=lambda: False, progress=lambda *_: None):
+    """Shared admission for old and new preparation workers, outside data roots."""
+    import atexit,time
+    from pathlib import Path
+    from .storage import ProjectLock
+    root=Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'COWMATA Annotator'/'preparation-slots'
+    root.mkdir(parents=True,exist_ok=True)
+    count=resource_budget().heavy_workers
+    last=0
+    while True:
+        if cancelled():raise InterruptedError('已暂停，尚未占用转码资源')
+        for i in range(count):
+            slot=ProjectLock(root/f'{i}.lock')
+            if slot.acquired:
+                _slots.append(slot);atexit.register(slot.close);return slot
+            slot.close()
+        if time.monotonic()-last>1:
+            progress(0,0,'等待其他归类任务释放资源；标注仍可使用');last=time.monotonic()
+        time.sleep(.1)

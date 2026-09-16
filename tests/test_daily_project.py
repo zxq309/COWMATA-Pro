@@ -152,7 +152,9 @@ def test_organized_video_reuses_verified_import_clock_without_hash_or_ocr(tmp_pa
         lambda *a: (_ for _ in ()).throw(AssertionError("do not re-run OCR")),
         eager=True,
     )
-    assert result["asset_id"] == sha and result["state"] == "review"
+    assert result["asset_id"] == sha and result["state"] == "ready"
+    assert result["metadata"]["time_basis"] == "classified_filename"
+    assert result["metadata"]["duration_ms"] == 1000
     cat.close()
 
 

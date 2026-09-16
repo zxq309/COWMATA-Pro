@@ -16,7 +16,7 @@ def stamp(path):
     return [value.st_size, value.st_mtime_ns]
 
 
-def scan_dataset(root, *, pool_general_events=False, progress=lambda *_: None, cancelled=lambda: False):
+def scan_dataset(root, *, pool_general_events=False, progress=lambda *_: None, cancelled=lambda: False, collect_shared=False):
     root = Path(root).resolve()
     if not root.is_dir():
         raise ValueError('Dataset directory does not exist')
@@ -97,6 +97,8 @@ def scan_dataset(root, *, pool_general_events=False, progress=lambda *_: None, c
         row['events'] = sorted(row['events'].values(), key=lambda e: (e['start_ms'], e['code']))
         row['review_coverage'] = sorted({tuple(v) for v in row['review_coverage']})
         result.append(row)
+    from cowmata_tailring.workspace.shared_labels import CONTRACT, link_records
+    shared = link_records(result, issues, cancelled, collect_all=collect_shared)
     counts = Counter(e['code'] for r in result for e in r['events'])
     cows = defaultdict(set)
     for r in result:
@@ -104,7 +106,7 @@ def scan_dataset(root, *, pool_general_events=False, progress=lambda *_: None, c
             cows[e['code']].add(r['cow_id'])
     digest = hashlib.sha256(json.dumps([entries, pool_general_events], sort_keys=True).encode()).hexdigest()
     return dict(schema='algorithm-dataset-1', root=str(root), fingerprint=digest, records=result,
-        pool_general_events=pool_general_events,
+        pool_general_events=pool_general_events, shared_label_contract=dict(CONTRACT), shared_labels=shared,
         issues=issues, summary=dict(label_files=len(paths), unique_records=len(result),
         labeled_records=sum(bool(r['events']) for r in result), events=dict(counts),
         event_cows={k: len(v) for k, v in cows.items()}, cow_count=len({r['cow_id'] for r in result}),

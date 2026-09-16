@@ -63,12 +63,15 @@ def file_stamp(path: Path) -> str:
     return json.dumps([stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino])
 
 
-def bind_location_metadata(metadata, stamp):
+def bind_location_metadata(metadata, stamp, relative=None):
     """Bind content-level timing to a SHA-validated location, not old mtime.
 
     Call only after location identity validation. Consumers still check this
     location's complete stamp before decoding; this does not hash or trust files.
     """
+    if relative is not None:
+        from .video_filename import bind_filename_location
+        metadata = bind_filename_location(metadata, relative, stamp)
     timeline = metadata.get("timeline") or {}
     if timeline.get("native"):
         size, mtime = json.loads(stamp)[:2]
@@ -476,7 +479,7 @@ class Catalog:
         with self.mutex:
             rows = self.db.execute("""SELECT l.*,a.metadata FROM locations l
                 LEFT JOIN assets a ON l.asset_id=a.id"""+where+' ORDER BY l.path',parameters).fetchall()
-        return [{**dict(r), "metadata": bind_location_metadata(json.loads(r["metadata"] or "{}"), r["stamp"])
+        return [{**dict(r), "metadata": bind_location_metadata(json.loads(r["metadata"] or "{}"), r["stamp"], r["path"])
                  if r["state"] in {"ready", "review"} else json.loads(r["metadata"] or "{}")}
                 for r in rows if kind is None or r["kind"] == kind]
 
@@ -514,11 +517,25 @@ class Catalog:
                 value=archived.get('metadata',{})
                 if value.get('time_engine')==SIGNATURE and not value.get('recheck'):
                     metadata=bind_location_metadata(value,before)
-            if not metadata or metadata.get("recheck"):
+            from .video_filename import filename_wall, SIGNATURE as FILENAME_SIGNATURE
+            named = row['kind']=='video' and filename_wall(path) is not None
+            if named and metadata and not metadata.get('manual_readings') and not metadata.get('recheck') and metadata.get('time_engine')!=FILENAME_SIGNATURE and metadata.get('duration_ms',0)>0:
+                from .video_filename import metadata_from_name
+                # Validated cached media duration needs no second hash, probe or OCR.
+                info={'streams':[dict(codec_type='video',codec_name=metadata.get('codec'),
+                    width=metadata.get('width'),height=metadata.get('height'),duration=metadata['duration_ms']/1000)],
+                    'format':{'format_name':metadata.get('format'),'duration':metadata['duration_ms']/1000}}
+                from cowmata_tailring.media.timeline import MediaTimelineIndex
+                cached_timeline=MediaTimelineIndex.from_dict(metadata['timeline']) if metadata.get('timeline') else None
+                metadata=metadata_from_name(path,relative,info,cached_timeline)
+            filename_changed = row['kind']=='video' and not metadata.get('manual_readings') and (
+                named != (metadata.get('time_engine')==FILENAME_SIGNATURE))
+            if not metadata or metadata.get("recheck") or filename_changed:
                 previous_camera = metadata.get("camera")
                 metadata = inspect(path, row["kind"], asset_id)
                 if previous_camera and row["kind"] == "video":
                     metadata["camera"] = previous_camera
+            metadata = bind_location_metadata(metadata, before, relative)
             if cancelled and cancelled():
                 raise InterruptedError("素材检查已暂停")
             if not isinstance(metadata, dict):
@@ -573,7 +590,10 @@ class Catalog:
         with self.mutex, self.db:
             for row in self.rows(kind="video"):
                 metadata = row["metadata"]
-                if row["state"] not in {"ready", "review"} or (metadata.get("ocr_engine") == signature and
+                from .video_filename import SIGNATURE as FILENAME_SIGNATURE, filename_wall
+                if metadata.get('time_engine') == FILENAME_SIGNATURE and filename_wall(row['path']) is not None:
+                    continue
+                if row["state"] not in {"ready", "review"} or (filename_wall(row['path']) is None and metadata.get("ocr_engine") == signature and
                         (time_signature is None or metadata.get("time_engine") == time_signature)):
                     continue
                 # Two explicit human anchors remain authoritative, including
@@ -582,7 +602,7 @@ class Catalog:
                     continue
                 self.db.execute("UPDATE assets SET metadata=json_set(metadata,'$.recheck',1) WHERE id=?", (row["asset_id"],))
                 self.db.execute("UPDATE locations SET state='pending',attempt_at=0,error=? WHERE path=?",
-                                ("OCR 算法已升级，等待复核；人工标签和校准记录保留", row["path"]))
+                                ("视频时间规则已更新，等待读取；人工标签和校准记录保留", row["path"]))
                 queued += 1
         return queued
 

@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from datetime import date, datetime, timedelta
 from datetime import time as daytime
 from functools import lru_cache
@@ -494,7 +494,7 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
             "end": max((r["covered_dates"][-1] for r in dated), default=end or start), "rows": rows}
 
 
-def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_row=lambda *_: None, row_stream=None):
+def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_row=lambda *_: None, row_stream=None, _lease=None):
     started = time.monotonic()
     root, job = core.safe_path(plan["target"]), core.safe_path(job)
     selected = [r for r in plan["rows"] if r["status"] in {"ready", "existing"}]
@@ -502,15 +502,20 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
     if (not selected and row_stream is None) or unresolved and not plan.get("allow_partial"):
         raise ValueError("无有效素材或存在待核实项，请先核对报告")
     sources = [core.safe_path(s["path"]) for s in plan["sources"]]
-    if any(core.overlaps(job, p) for p in [root, *sources]):
+    dahua = plan.get("adapter") == "cowmata-dahua-1"
+    if any(core.overlaps(job, p) for p in [root, *sources]
+           if not (dahua and _lease is not None and p == job / "records")):
         raise ValueError("任务记录需位于素材目录之外")
+    if _lease is not None and (not dahua or _lease.file_lock is None or
+            any(not any(p == Path(q) or p.is_relative_to(Path(q)) for q in _lease.paths) for p in [root, *sources])):
+        raise ValueError("借用的归类锁未覆盖本次输出与来源")
     def selected_source(source):
         return any((source == core.safe_path(spec['path']) or source.is_relative_to(core.safe_path(spec['path'])))
                    and not any(source == core.safe_path(p) or source.is_relative_to(core.safe_path(p)) for p in spec.get('exclude', []))
                    for spec in plan['sources'])
     job.mkdir(parents=True, exist_ok=True)
     copied, moved, deleted = 0, 0, 0
-    with DatasetLease([root, *sources], "organize", owner=plan["id"]) as lease, ExitStack() as locks:
+    with (nullcontext(_lease) if _lease is not None else DatasetLease([root, *sources], "organize", owner=plan["id"])) as lease, ExitStack() as locks:
         for reference in plan.get('reference_records',[]):
             if core.identity(Path(reference['reference_path']))!=reference['identity']:
                 raise ValueError('作为归类基准的九轴已变化，请重新预览')
@@ -534,7 +539,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
 
         def checkpoint():
             with commit_lock:
-                atomic_json(job / 'plan.json', plan, backup=False)
+                atomic_json(job / ('dahua-commit.json' if dahua else 'plan.json'), plan, backup=False)
 
         def journal(path, entry):
             with commit_lock:
@@ -729,7 +734,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
         for day in all_days:
             for modality in (('Video','PPG') if plan.get('scenario')=='attach_video' else MODALITIES):
                 (root / modality / day).mkdir(parents=True, exist_ok=True)
-            for view in core.VIEWS:
+            for view in (tuple(f"视角{i:02}" for i in range(1, 21)) if dahua else core.VIEWS):
                 (root / "Video" / day / view).mkdir(exist_ok=True)
 
         index.update(records=list(indexed.values()), dates=all_days, farm=plan["farm"],

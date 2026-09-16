@@ -280,6 +280,11 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.cameras.itemChanged.connect(self.select_cameras)
         self.cameras.model().rowsMoved.connect(self.select_cameras)
         sidebar.addWidget(self.cameras, 1)
+        from .camera_pages import CameraPages
+        self.camera_pages = CameraPages(self)
+        self.camera_pages.selectionRequested.connect(self.select_camera_page)
+        self.camera_pages.customRequested.connect(self.show_camera_choices)
+        sidebar.addWidget(self.camera_pages)
         layout_row = QHBoxLayout()
         self.layout_choice = QComboBox()
         self.layout_choice.addItems(["自动网格", "1 列", "2 列", "3 列", "4 列", "主画面 + 辅画面"])
@@ -488,8 +493,11 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.open_standalone(path)
 
     def choose_video_record(self):
-        video,_=QFileDialog.getOpenFileName(self,'选择单个录像文件','','Video (*.mp4 *.dav *.mkv *.avi *.ts *.mov *.h264 *.h265)')
+        video,_=QFileDialog.getOpenFileName(self,'选择归类后的 MP4 视频','','MP4 视频 (*.mp4)')
         if not video:
+            return
+        if Path(video).suffix.lower() != '.mp4':
+            self.tell('请先在数据准备 → 数据归类中转为 MP4，再加载到标注界面。')
             return
         raw,_=QFileDialog.getOpenFileName(self,'选择与该录像配对的单个九轴文件','','JSON (*.json)')
         if raw:
@@ -1122,7 +1130,9 @@ class MainWindow(AlignmentMixin, QMainWindow):
             item.setToolTip(name + "\n" + self.board.coverage_message(name))
             self.cameras.addItem(item)
         self.cameras.blockSignals(False)
+        self.camera_pages.set_inventory(camera_names)
         selected = self.checked_cameras()
+        self.camera_pages.set_selected(selected)
         if selected != self.board.selected:
             self.board.select(selected)
         elif any(not t.interval and timeline.locate(c, self.board.reference_ms) for c, t in self.board.tiles.items()):
@@ -1296,6 +1306,31 @@ class MainWindow(AlignmentMixin, QMainWindow):
         return [self.cameras.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.cameras.count())
                 if self.cameras.item(i).checkState() == Qt.CheckState.Checked]
 
+    def show_camera_choices(self):
+        if hasattr(self, 'source_panel'):
+            self.source_panel.show()
+            self.source_toggle.setChecked(True)
+        self.cameras.setFocus()
+
+    def select_camera_page(self, names):
+        if self._closed or getattr(self, '_closing_requested', False):
+            return
+        visible = {self.cameras.item(i).data(Qt.ItemDataRole.UserRole)
+                   for i in range(self.cameras.count())}
+        chosen = [name for name in names if name in visible][:8]
+        if not chosen:
+            self.tell('该组当前没有可浏览的录像')
+            return
+        self.cameras.blockSignals(True)
+        try:
+            for i in range(self.cameras.count()):
+                item = self.cameras.item(i)
+                item.setCheckState(Qt.CheckState.Checked if item.data(Qt.ItemDataRole.UserRole)
+                                   in chosen else Qt.CheckState.Unchecked)
+        finally:
+            self.cameras.blockSignals(False)
+        self.select_cameras()
+
     def select_cameras(self, *_):
         self._manual_view_devices.add(str(self.devices.currentData()))
         selected = self.checked_cameras()
@@ -1309,6 +1344,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.cameras.blockSignals(False)
             selected = selected[:8]
         self.board.select(selected)
+        self.camera_pages.set_selected(selected)
         if self.catalog:
             visible = {self.cameras.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.cameras.count())}
             remembered = self.settings.get("device_views", {}).get(str(self.devices.currentData()), self.settings.get("selected_cameras", []))
@@ -1475,6 +1511,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.cow.setText(self.work.project.cow_id)
         self.plot.set_data([PlotSeries(**series) for series in motion.plot_series()], motion.duration_ms)
         self.plot.set_view(0, motion.duration_ms)
+        if hasattr(self.plot, "load_related"):
+            self.plot.load_related(motion, self.catalog.root, self.work.project.cow_id)
         self.imu_position.setMaximum(motion.duration_ms / 1000)
         self.imu_ms = float(self.work.progress.get("imu_ms", 0))
         if follow:
@@ -1542,6 +1580,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
             value = self.cow.text().strip()
             if value != self.work.project.cow_id or self.work.project.extras.get("device_identity", {}).get("status") == "conflict":
                 self.work.confirm_cow(value)
+                if hasattr(self.plot, "load_related"):
+                    self.plot.load_related(self.motion, self.catalog.root, value)
                 self.update_identity_display()
                 self.refresh_events()
                 self.dirty = True
