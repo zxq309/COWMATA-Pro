@@ -803,7 +803,7 @@ class OrganizationWindow(TaskWindow):
             self.target.setText(value)
             self.invalidate_plan()
 
-    def add_source(self, kind, path, camera="视角01", *, checked=True, exclude=()):
+    def add_source(self, kind, path, camera="视角01", *, checked=True, exclude=(), notify=True):
         row = self.sources.rowCount()
         self.sources.insertRow(row)
         item = QTableWidgetItem("九轴" if kind == "imu" else "混合" if kind == "auto" else "录像")
@@ -820,8 +820,10 @@ class OrganizationWindow(TaskWindow):
         self.sources.setItem(row, 1, location)
         combo = QComboBox()
         combo.addItem("按目录识别", "auto")
-        combo.addItems(VIEWS)
+        combo.addItems([f"视角{i:02}" for i in range(1,21)])
         if camera != "auto":
+            if combo.findText(camera) < 0:
+                combo.addItem(camera)
             combo.setCurrentText(camera)
         combo.setEnabled(kind in {"video", "auto"})
         combo.currentTextChanged.connect(self.invalidate_plan)
@@ -830,7 +832,8 @@ class OrganizationWindow(TaskWindow):
             state = QTableWidgetItem('等待开始' if checked else '未勾选')
             state.setFlags(state.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.sources.setItem(row, 3, state)
-        self.invalidate_plan()
+        if notify:
+            self.invalidate_plan()
 
     def open_full_records(self):
         self.export_report()
@@ -854,41 +857,91 @@ class OrganizationWindow(TaskWindow):
             self._report_window.refresh()
 
     def choose_video_root(self):
-        path = QFileDialog.getExistingDirectory(self, '选择包含所有视角的视频总目录', self.video_root.text())
+        path = QFileDialog.getExistingDirectory(self, '选择包含所有视角的视频总目录', self.video_root.text(), QFileDialog.Option.DontUseNativeDialog)
         if path:
             self.set_video_root(path)
 
     def set_video_root(self, root):
         if self.running:
             return
+        from .video_discovery import VideoDirectoryScanner
+        if not hasattr(self, '_directory_scanner'):
+            self._directory_scanner = VideoDirectoryScanner(self)
+            self._directory_scanner.updated.connect(self._directory_counts)
+            self._directory_render_timer = QTimer(self)
+            self._directory_render_timer.setInterval(0)
+            self._directory_render_timer.timeout.connect(self._render_directory_rows)
+        self._directory_scanner.cancel()
+        self._directory_render_timer.stop()
         self.reset_source_session()
-        from . import organization as core
-        from .video_intake import protected_file
-        root = core.safe_path(root)
-        aliases = {'乐橙': '视角01', '右1': '视角02', '右2': '视角03', '右3': '视角04',
-                   '左1': '视角05', '左2': '视角06', '左3': '视角07'}
-        aliases.update({v: v for v in VIEWS})
-        found = {}
-        for path in core.walk_files(root):
-            if path.suffix.lower() not in core.VIDEO_SUFFIXES or protected_file(path):
-                continue
-            parents = [p for p in path.parents if p == root or p.is_relative_to(root)]
-            folder = next((p for p in parents if p.name in aliases), None)
-            if folder is None:
-                parts = path.relative_to(root).parts
-                folder = root / parts[0] if len(parts) > 1 else root
-            found[folder] = found.get(folder, 0) + 1
         for row in range(self.sources.rowCount()-1, -1, -1):
             if self.sources.item(row, 0).data(Qt.ItemDataRole.UserRole) != 'imu':
                 self.sources.removeRow(row)
         self.video_root.setText(str(root))
-        for folder, count in sorted(found.items(), key=lambda pair: str(pair[0])):
-            self.add_source('video', folder, aliases.get(folder.name, 'auto'), checked=False)
-            row = self.sources.rowCount()-1
-            self.sources.item(row, 0).setText(folder.name + f'（{count}）')
-            self.sources.item(row, 1).setText(str(folder.relative_to(root)) if folder != root else '本目录')
-        self.status.setText(f'已找到 {len(found)} 路视角、{sum(found.values())} 个视频。勾选需要归类的视角。')
-        self.invalidate_plan()
+        self._discovery_rows = {}
+        self._discovering = True
+        self._discovery_incomplete = True
+        self.status.setText('正在后台发现视角，文件数量将逐步更新；可以取消或重新选择目录。')
+        self.bar.setRange(0, 0)
+        self.render()
+        self._directory_scanner.start(str(root))
+
+    def _directory_counts(self, value):
+        if not self._discovering:
+            return
+        from collections import deque
+        self._directory_snapshot = value
+        self._directory_pending_rows = deque(value['counts'].items())
+        self._directory_render_timer.start()
+
+    def _render_directory_rows(self):
+        from .video_discovery import ALIASES
+        value = self._directory_snapshot
+        root = Path(value['root'])
+        self.sources.setUpdatesEnabled(False)
+        try:
+            for _ in range(24):
+                if not self._directory_pending_rows:
+                    break
+                folder, count = self._directory_pending_rows.popleft()
+                path = Path(folder)
+                row = self._discovery_rows.get(folder)
+                if row is None:
+                    self.add_source('video', path, ALIASES.get(path.name, 'auto'), checked=False, notify=False)
+                    row = self.sources.rowCount()-1
+                    self._discovery_rows[folder] = row
+                    self.sources.item(row,1).setText(str(path.relative_to(root)) if path != root else '本目录')
+                self.sources.item(row,0).setText(path.name + f'（{count}）')
+        finally:
+            self.sources.setUpdatesEnabled(True)
+        if self._directory_pending_rows:
+            return
+        self._directory_render_timer.stop()
+        total = sum(value['counts'].values())
+        self.status.setText(f"已发现 {len(value['counts'])} 路视角、{total} 个视频。" +
+                            ('勾选需要归类的视角。' if value['done'] else '后台继续统计中…'))
+        if value['done']:
+            for folder, row in sorted(self._discovery_rows.items(), key=lambda p:p[1], reverse=True):
+                if folder not in value['counts']:
+                    self.sources.removeRow(row)
+            self._discovering = False
+            self._discovery_incomplete = bool(value['error'])
+            self.bar.setRange(0,1000);self.bar.setValue(0)
+            if value['error']:
+                self.status.setText('目录扫描未完成：'+value['error'])
+            self.invalidate_plan()
+        else:
+            self.render()
+
+    def cancel_directory_scan(self):
+        if hasattr(self, '_directory_scanner'):
+            self._directory_scanner.cancel()
+            self._directory_render_timer.stop()
+        self._discovering = False
+        self._discovery_incomplete = True
+        self.bar.setRange(0,1000);self.bar.setValue(0)
+        self.status.setText('目录扫描已取消；重新选择目录即可继续。')
+        self.render()
 
     def check_views(self, checked):
         for row in range(self.sources.rowCount()):
@@ -1400,6 +1453,8 @@ class OrganizationWindow(TaskWindow):
         self.render()
 
     def cancel(self):
+        if getattr(self, '_discovering', False):
+            self.cancel_directory_scan()
         if self.running:
             (self.job / "cancel").touch()
             self.status.setText("正在暂停，完成当前文件后停止；已完成项和记录保留。")
@@ -1621,7 +1676,13 @@ class OrganizationWindow(TaskWindow):
             )
         else:
             self.execution_hint.setText("选好来源后直接点击一键执行归类；识别一条、实际归档一条。")
-        self.cancel_button.setEnabled(self.running)
+        scanning = getattr(self, "_discovering", False)
+        if scanning or getattr(self, "_discovery_incomplete", False):
+            self.execute_top.setEnabled(False)
+            self.execute_button.setEnabled(False)
+        if scanning:
+            self.execution_hint.setText("正在后台统计视频目录；可以勾选视角，扫描完成后即可归类。")
+        self.cancel_button.setEnabled(self.running or scanning)
         self.pregnancy_stage.setEnabled(not busy and self.category.currentData() == "pregnancy")
         if self.scenario.currentData() == "attach_video":
             for widget in self.add_buttons[:2]:
@@ -1640,6 +1701,8 @@ class OrganizationWindow(TaskWindow):
             event.accept()
 
     def request_shutdown(self):
+        if getattr(self, "_discovering", False):
+            self.cancel_directory_scan()
         dahua_ready = self.dahua_panel.request_shutdown() if hasattr(self, 'dahua_panel') else True
         self._pending_organize_request = None
         self._execute_after_pause = False

@@ -4028,5 +4028,23 @@ ZH_TO_EN.update({'读取历史录像播放索引：': 'Reading legacy recording 
 
 ZH_TO_EN.update({'暂存记录身份冲突，请重新扫描': 'Temporary record identity conflict; scan again'})
 
+ZH_TO_EN.update({
+  " · 录像机原盘": " · Recorder disk",
+  " · 磁盘 ": " · Disk ",
+  " · 非支持的录像机原盘": " · Unsupported recorder disk",
+  " 个视频。": " videos.",
+  "勾选需要归类的视角。": "Select views to classify.",
+  "后台继续统计中…": "Counting files in the background...",
+  "已发现 ": "Found ",
+  "无盘符": "No drive letter",
+  "正在后台发现视角，文件数量将逐步更新；可以取消或重新选择目录。": "Discovering views in the background. Counts will update; cancel or select another folder at any time.",
+  "正在后台统计视频目录；可以勾选视角，扫描完成后即可归类。": "Counting videos in the background. Select views now; classification is available when the scan finishes.",
+  "没有可恢复的视频任务": "No video task to restore",
+  "目录扫描已取消；重新选择目录即可继续。": "Folder scan cancelled; select a folder to continue.",
+  "目录扫描未完成：": "Folder scan incomplete: ",
+  "请选择录像机原盘…": "Select a recorder disk...",
+  "选择录像机原盘后自动只读扫描；无需打开盘符或格式化。": "Select a recorder disk to scan automatically in read-only mode; no need to open or format the drive."
+})
+
 if __name__ == "__main__":
     _coverage()

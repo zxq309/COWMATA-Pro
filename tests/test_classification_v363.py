@@ -1,10 +1,20 @@
 import json
 import threading
+import time
+from PySide6.QtWidgets import QApplication
 from pathlib import Path
 
 import pytest
 from test_classifier_hotfix import video_row
 from test_fixes_v351 import organizer  # noqa: F401
+
+
+def wait_for_views(window):
+    deadline = time.monotonic() + 5
+    while window._discovering and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(.01)
+    assert not window._discovering
 
 
 @pytest.mark.parametrize('transfer', ['copy', 'move'])
@@ -48,6 +58,7 @@ def test_parent_directory_lists_views_and_only_checked_views_are_sources(organiz
     discover = getattr(organizer, 'set_video_root', None)
     assert callable(discover), 'Missing parent-directory discovery with view selection'
     discover(tmp_path)
+    wait_for_views(organizer)
     assert organizer.sources.rowCount() == 3
     assert organizer.source_specs() == []
     organizer.sources.item(1, 0).setCheckState(Qt.CheckState.Checked)
@@ -147,6 +158,7 @@ def test_nested_unchecked_view_is_excluded_from_parent_selection(organizer, tmp_
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_bytes(file.name.encode())
     organizer.set_video_root(root)
+    wait_for_views(organizer)
     for i in range(organizer.sources.rowCount()):
         path = Path(organizer.sources.item(i, 1).data(Qt.ItemDataRole.UserRole))
         if path == root:

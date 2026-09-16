@@ -88,11 +88,47 @@ def disk_info(number):
         k.CloseHandle(handle)
 
 
+def disk_letters():
+    """Map mounted letters to physical disks without opening the filesystem."""
+    if os.name!='nt':return {}
+    import ctypes as c
+    from ctypes import wintypes as w
+    k=c.WinDLL('kernel32',use_last_error=True)
+    k.GetLogicalDrives.restype=w.DWORD
+    k.CreateFileW.argtypes=[w.LPCWSTR,w.DWORD,w.DWORD,c.c_void_p,w.DWORD,w.DWORD,w.HANDLE]
+    k.CreateFileW.restype=w.HANDLE
+    k.DeviceIoControl.argtypes=[w.HANDLE,w.DWORD,c.c_void_p,w.DWORD,c.c_void_p,w.DWORD,c.POINTER(w.DWORD),c.c_void_p]
+    k.CloseHandle.argtypes=[w.HANDLE]
+    k.SetThreadErrorMode.argtypes=[w.DWORD,c.POINTER(w.DWORD)]
+    previous=w.DWORD();changed=k.SetThreadErrorMode(0x8001,c.byref(previous));result={}
+    try:
+        mask=k.GetLogicalDrives()
+        for i in range(26):
+            if not mask & (1<<i):continue
+            letter=chr(65+i)+':'
+            handle=k.CreateFileW('\\\\.\\'+letter,0,3,None,3,0,None)
+            if handle==w.HANDLE(-1).value:continue
+            try:
+                buffer=c.create_string_buffer(4096);used=w.DWORD()
+                if k.DeviceIoControl(handle,0x560000,None,0,buffer,len(buffer),c.byref(used),None):
+                    count=struct.unpack_from('<I',buffer.raw)[0]
+                    for offset in range(8,min(used.value,8+count*24),24):
+                        if offset+24<=used.value:
+                            number=struct.unpack_from('<I',buffer.raw,offset)[0]
+                            result.setdefault(number,[]).append(letter)
+            finally:k.CloseHandle(handle)
+    finally:
+        if changed:k.SetThreadErrorMode(previous,None)
+    return result
+
+
 def disks():
     result = []
+    letters = disk_letters()
     for number in range(32):
         try:
-            result.append(disk_info(number))
+            row=disk_info(number);row["letters"]=letters.get(number,[])
+            result.append(row)
         except OSError:
             continue
     return result

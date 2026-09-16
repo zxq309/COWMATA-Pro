@@ -141,6 +141,7 @@ def install_locked(job, *, runner, restart=True):
         state["timings_seconds"][value] = round(time.monotonic()-start,3)
         worker.write_json(job_dir/"result.json",state)
     phase("waiting")
+    worker.request_app_close(root, job_dir, runner, authorized=job.get("request_close") is True)
     deadline = time.monotonic()+180
     while worker.running_check(root, job_dir, runner, version=old):
         if time.monotonic() > deadline:
