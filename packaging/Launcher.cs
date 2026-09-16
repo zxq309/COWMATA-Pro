@@ -92,6 +92,35 @@ internal static class Launcher
         return false;
     }
 
+    private static int RequestInstallationClose(string root)
+    {
+        root = Path.GetFullPath(root);
+        if (!File.Exists(Path.Combine(root, "package-manifest.json")) ||
+            !File.Exists(Path.Combine(root, "COWMATA.exe")))
+            throw new ArgumentException("Expected a COWMATA installation");
+        string prefix = root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        int self = Process.GetCurrentProcess().Id;
+        foreach (Process process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                if (process.Id == self) continue;
+                try
+                {
+                    string name = process.ProcessName;
+                    if (name != "COWMATA" && name != "pythonw" && name != "python") continue;
+                    if (!Path.GetFullPath(process.MainModule.FileName).StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                    // WM_CLOSE follows the app's save/cancel handlers. One request
+                    // only: a cancelled save must never be retried into a forced exit.
+                    if (process.MainWindowHandle != IntPtr.Zero) process.CloseMainWindow();
+                }
+                catch (InvalidOperationException) { }
+                catch (System.ComponentModel.Win32Exception) { }
+            }
+        }
+        return 0;
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int MessageBox(IntPtr window, string text, string caption, uint flags);
 
@@ -120,6 +149,8 @@ internal static class Launcher
             if (args.Length >= 2 && args[0] == "--update-progress")
                 return ShowUpdateProgress(args[1], args.Length > 2 ? args[2] : "0");
             Marshal.ThrowExceptionForHR(SetCurrentProcessExplicitAppUserModelID(AppId));
+            if (args.Length == 2 && args[0] == "--request-close")
+                return RequestInstallationClose(args[1]);
             if ((args.Length == 1 || args.Length == 2) && args[0] == "--check-running")
                 return InstallationIsRunning(args.Length == 2 ? args[1] : AppDomain.CurrentDomain.BaseDirectory) ? 6 : 0;
             if (args.Length == 2 && args[0] == "--register-shortcut")
@@ -182,7 +213,7 @@ internal static class Launcher
         {
             // Installer helper commands must return to NSIS, never wait for an
             // invisible dialog while NSIS is waiting for this process to exit.
-            if (args.Length > 0 && (args[0] == "--register-shortcut" || args[0] == "--check-running"))
+            if (args.Length > 0 && (args[0] == "--register-shortcut" || args[0] == "--check-running" || args[0] == "--request-close"))
             {
                 Console.Error.WriteLine(error.Message);
                 return 1;

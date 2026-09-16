@@ -4,7 +4,7 @@ import json,os,sys,uuid
 from collections import defaultdict
 from pathlib import Path
 from PySide6.QtCore import QProcess,QSettings,Qt,QTimer,QUrl,QSize
-from PySide6.QtGui import QDesktopServices,QPixmap,QIcon
+from PySide6.QtGui import QDesktopServices,QPixmap,QIcon,QStandardItemModel,QStandardItem
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QComboBox,
     QLineEdit,QFileDialog,QTableWidget,QTableWidgetItem,QHeaderView,QCheckBox,QProgressBar,QAbstractItemView,QDialog)
 from . import dahua_tasks as tasks
@@ -72,6 +72,10 @@ class DahuaPanel(QWidget):
         self.report_button=QPushButton('查看视频任务记录');self.report_button.clicked.connect(self.open_report);row.addWidget(self.report_button)
         outer.addLayout(row)
         self.controls=[self.mode,self.source_text,self.disk_choice,self.files_button,self.folder_button,self.disk_button,self.target,self.target_button,self.category,self.scenario,self.start_time,self.end_time,self.midnight,self.json_button,self.scan_button,self.preview_button,self.resume_button,self.run_button,*self.mapping]
+        self._disks_loaded=False
+        self.disk_choice.addItem('请选择录像机原盘…',None)
+        self.disk_choice.activated.connect(self.disk_selected)
+        self.mode.setCurrentIndex(1)
         self.refresh()
     def fit_table_rows(self):
         # Match the controls and current font/DPI, not an empty thumbnail frame.
@@ -82,6 +86,9 @@ class DahuaPanel(QWidget):
         self.table.setColumnWidth(2,max(150,self.fontMetrics().horizontalAdvance('查看大图')+70))
     def showEvent(self,event):
         super().showEvent(event);self.fit_table_rows()
+        if self.mode.currentIndex()==1 and not self._disks_loaded and not self.running:
+            self._disks_loaded=True
+            QTimer.singleShot(0,lambda:self.start('disks',{}))
     def resizeEvent(self,event):
         super().resizeEvent(event)
         if hasattr(self,'mapping'):self.fit_table_rows()
@@ -99,12 +106,15 @@ class DahuaPanel(QWidget):
         disk=self.mode.currentIndex()==1
         for widget in (self.source_text,self.files_button,self.folder_button):widget.setVisible(not disk)
         self.disk_choice.setVisible(disk);self.disk_button.setVisible(disk)
+        if disk and self.isVisible() and hasattr(self,'controls') and not self._disks_loaded and not self.running:
+            self._disks_loaded=True
+            self.start('disks',{})
     def choose_files(self):
         paths,_=QFileDialog.getOpenFileNames(self,'选择原始录像','','原始录像 (*.dav *.dhav *.h264 *.h265)')
-        if paths:self.files=paths;self.source_text.setText('；'.join(paths));self.index=None;self.refresh()
+        if paths:self.files=paths;self.source_text.setText('；'.join(paths));self.index=None;self.scan()
     def choose_folder(self):
-        directory=QFileDialog.getExistingDirectory(self,'选择原始录像目录')
-        if directory:self.files=[directory];self.source_text.setText(directory);self.index=None;self.refresh()
+        directory=QFileDialog.getExistingDirectory(self,'选择原始录像目录','',QFileDialog.Option.DontUseNativeDialog)
+        if directory:self.files=[directory];self.source_text.setText(directory);self.index=None;self.scan()
     def choose_target(self):
         directory=QFileDialog.getExistingDirectory(self,'选择输出牧场',self.target.text())
         if directory:self.target.setText(directory)
@@ -140,26 +150,36 @@ class DahuaPanel(QWidget):
             if not self.target.text().strip():raise ValueError('请选择输出牧场')
             options=dict(target=self.target.text().strip(),category=self.category.currentData(),scenario=self.scenario.currentData(),mapping=self.selected_mapping(),
                 start=self.start_time.text().strip(),end=self.end_time.text().strip(),split_midnight=self.midnight.isChecked(),json_sources=self.json_sources)
-            tasks.select_records(self.index,options)
             self.settings.setValue('dahua/target',options['target']);self.start('organize',dict(options=options),self.job)
         except (OSError,ValueError) as exc:self.status.setText(str(exc))
     def restore(self):
-        job=Path(str(self.settings.value('dahua/last_job','')))
-        try:
-            index=tasks.read_json(job/'dahua-index.json')
-            if not index:raise ValueError('没有可恢复的视频任务，请重新扫描')
-            self.job=job;self.apply_index(index)
-            plan=tasks.read_json(job/'dahua-plan.json',{});options=plan.get('request',{})
-            if options:
-                self.target.setText(options['target']);self.category.setCurrentIndex(self.category.findData(options['category']))
-                self.scenario.setCurrentIndex(self.scenario.findData(options.get('scenario','mixed')))
-                self.start_time.setText(str(options.get('start') or ''));self.end_time.setText(str(options.get('end') or ''))
-                self.midnight.setChecked(options.get('split_midnight',True));self.json_sources=options.get('json_sources',[])
-                for group,view in options.get('mapping',{}).items():
-                    combo=self.mapping[tasks.VIEWS.index(view)];combo.setCurrentIndex(combo.findData(group))
-            self.status.setText('任务已恢复；核对范围与映射后点击开始。来源和已完成 MP4 会再次校验。')
-        except (OSError,ValueError,KeyError) as exc:self.status.setText(str(exc))
-        self.refresh()
+        saved=str(self.settings.value('dahua/last_job','')).strip()
+        if not saved or not Path(saved).is_absolute():
+            self.status.setText('没有可恢复的视频任务');return
+        job=Path(saved)
+        self.job=job;self.start('restore',{},job)
+    def apply_restored_options(self,options):
+        if not options:return
+        self.target.setText(options['target']);self.category.setCurrentIndex(self.category.findData(options['category']))
+        self.scenario.setCurrentIndex(self.scenario.findData(options.get('scenario','mixed')))
+        self.start_time.setText(str(options.get('start') or ''));self.end_time.setText(str(options.get('end') or ''))
+        self.midnight.setChecked(options.get('split_midnight',True));self.json_sources=options.get('json_sources',[])
+        for group,view in options.get('mapping',{}).items():
+            combo=self.mapping[tasks.VIEWS.index(view)];combo.setCurrentIndex(combo.findData(group))
+    def apply_disks(self,disks):
+        self.disks=disks;self._disks_loaded=True;self.disk_choice.clear()
+        self.disk_choice.addItem('请选择录像机原盘…',None)
+        for disk in disks:
+            letters=' / '.join(disk.get('letters',[])) or '无盘符'
+            self.disk_choice.addItem(f"{letters} · 磁盘 {disk['number']} · {disk['model']} · {disk['size']/1e12:.2f} TB"+
+                                    (' · 录像机原盘' if disk.get('dhfs') else ' · 非支持的录像机原盘'),disk)
+            if not disk.get('dhfs'):
+                item=self.disk_choice.model().item(self.disk_choice.count()-1)
+                if item:item.setEnabled(False)
+        self.status.setText('选择录像机原盘后自动只读扫描；无需打开盘符或格式化。')
+    def disk_selected(self,index):
+        disk=self.disk_choice.itemData(index)
+        if disk and disk.get('dhfs') and not self.running:self.scan()
     def start(self,action,request,job=None):
         if self.running:return
         self.operation=action;self.operation_job=Path(job) if job else tasks.task_root()/('devices-'+uuid.uuid4().hex)
@@ -197,10 +217,10 @@ class DahuaPanel(QWidget):
             if self.result_path:
                 result=tasks.read_json(self.result_path)
                 if self.operation=='disks':
-                    self.disks=result['disks'];self.disk_choice.clear()
-                    for disk in self.disks:self.disk_choice.addItem(f"磁盘 {disk['number']} · {disk['model']} · {disk['size']/1e12:.2f} TB",disk)
-                    self.status.setText('请选择录像机原盘；读取过程不会格式化或修改磁盘')
-                elif self.operation=='scan':self.apply_index(result)
+                    self.apply_disks(result['disks'])
+                elif self.operation in {'scan','restore'}:
+                    self.apply_index(result)
+                    if self.operation=='restore':self.apply_restored_options(result.get('options',{}))
                 elif self.operation=='organize':
                     self.output=result.get('output','');self.status.setText(('归类完成' if result.get('status')=='completed' else '所选范围没有可输出录像')+f"；待核对 {len(result.get('issues',[]))} 项。原始录像保留。")
                 elif self.operation=='previews':self.status.setText('缩略图核对完成；通道号只作来源说明，请人工确认视角映射。')
@@ -208,16 +228,19 @@ class DahuaPanel(QWidget):
         except (OSError,ValueError,KeyError) as exc:self.status.setText('读取任务结果失败：'+str(exc))
         self.refresh()
     def apply_index(self,index):
-        self.index=index;self.groups=defaultdict(list)
-        for row in index['rows']:self.groups[row['group']].append(row)
+        if 'rows' in index:index=tasks.index_summary(index)
+        self.index=index;self.groups=index['groups']
+        model=QStandardItemModel(self)
+        empty=QStandardItem('不接入此视角');empty.setData('',Qt.ItemDataRole.UserRole);model.appendRow(empty)
+        for group,count in self.groups.items():
+            item=QStandardItem(group+' · '+str(count)+' 段');item.setData(group,Qt.ItemDataRole.UserRole);model.appendRow(item)
+        previous=getattr(self,'_mapping_model',None);self._mapping_model=model
         for i,combo in enumerate(self.mapping):
-            combo.clear();combo.addItem('不接入此视角','')
-            for group,rows in self.groups.items():combo.addItem(group+' · '+str(len(rows))+' 段',group)
-            self.table.setItem(i,3,QTableWidgetItem('未选择来源'))
-            self.preview_paths.pop(i,None)
+            combo.setModel(model);combo.setCurrentIndex(0)
+            self.table.setItem(i,3,QTableWidgetItem('未选择来源'));self.preview_paths.pop(i,None)
             button=self.table.cellWidget(i,2);button.setIcon(QIcon());button.setText('尚未预览');button.setEnabled(False)
-        invalid=sum(r['status']=='invalid' for r in index['rows'])
-        self.status.setText(f"扫描到 {len(index['rows'])} 段、{len(self.groups)} 组来源，异常索引 {invalid} 段。请人工选择映射。")
+        if previous:previous.deleteLater()
+        self.status.setText(f"扫描到 {index['total']} 段、{len(self.groups)} 组来源，异常索引 {index['invalid']} 段。请人工选择映射。")
     def apply_preview(self,row):
         for i,combo in enumerate(self.mapping):
             if combo.currentData()!=row['group']:continue

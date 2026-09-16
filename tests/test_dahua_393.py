@@ -188,7 +188,7 @@ def test_worker_closes_shared_slot_on_success(tmp_path,monkeypatch):
     import json
     from cowmata_tailring.workspace import dahua_worker, classification_resources
     from cowmata_tailring.workspace.storage import atomic_json, ProjectLock
-    job=tmp_path/'job';job.mkdir();atomic_json(job/'dahua-request.json',dict(action='disks'))
+    job=tmp_path/'job';job.mkdir();atomic_json(job/'dahua-request.json',dict(action='previews',groups=[]));atomic_json(job/'dahua-index.json',dict(rows=[]))
     slot=ProjectLock(tmp_path/'slot.lock')
     monkeypatch.setattr(classification_resources,'limit_worker',lambda:{})
     monkeypatch.setattr(classification_resources,'acquire_preparation_slot',lambda *a:slot)
@@ -196,4 +196,4 @@ def test_worker_closes_shared_slot_on_success(tmp_path,monkeypatch):
     monkeypatch.setattr(dahua_worker.sys,'argv',['worker',str(job)])
     assert dahua_worker.main()==0
     assert slot.file.closed
-    assert json.loads((job/'dahua-result.json').read_text())=={'disks':[]}
+    assert json.loads((job/'dahua-result.json').read_text())=={'previews':[]}

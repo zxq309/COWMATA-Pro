@@ -282,6 +282,18 @@ def start_updated_app(root, version):
                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
 
 
+def request_app_close(root, job_dir, runner, *, authorized=False):
+    """Ask sibling app instances to save and close; never terminate processes."""
+    if not authorized:
+        return
+    probe = Path(job_dir) / "COWMATA-Progress.exe"
+    if not probe.is_file():
+        raise ValueError("Cooperative update launcher is missing")
+    result = runner([safe_path(probe, allow_file=True), "--request-close", root], timeout=15)
+    if result.returncode:
+        raise RuntimeError("Could not request normal application closure")
+
+
 def running_check(root, job_dir, runner, *, version=None):
     """Probe with the new launcher: the first RC cannot handle --check-running."""
     for candidate in (Path(job_dir) / "COWMATA-Progress.exe",
@@ -354,6 +366,7 @@ def _install_locked(job, *, runner, registration, unregister, restart):
     # The client requests closure through its normal save/close handlers. Do
     # not kill it, another annotation window, or another user's application.
     phase('waiting')
+    request_app_close(root, job_dir, runner, authorized=job.get('request_close') is True)
     deadline = time.monotonic() + 180
     while running_check(root, job_dir, runner, version=old_version) != 0:
         if time.monotonic() > deadline:

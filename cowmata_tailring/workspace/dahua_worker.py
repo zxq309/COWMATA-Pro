@@ -1,6 +1,6 @@
 """Independent Dahua task process; cancellation and state never touch the old page."""
 import json,sys,time
-from contextlib import closing
+from contextlib import closing,nullcontext
 from pathlib import Path
 if __package__ in {None,''}:sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 from cowmata_tailring.workspace import dahua_tasks as tasks
@@ -18,10 +18,15 @@ def main():
     try:
         from cowmata_tailring.workspace.classification_resources import limit_worker,acquire_preparation_slot
         emit(dict(event='resources',budget=limit_worker()))
-        with closing(acquire_preparation_slot(cancelled,progress)):
-            action=request['action']
+        action=request['action']
+        # Source discovery must not queue behind lengthy transcodes.
+        admission=nullcontext() if action in {'disks','scan','restore'} else closing(acquire_preparation_slot(cancelled,progress))
+        with admission:
             if action=='disks':result=dict(disks=tasks.disks())
-            elif action=='scan':result=tasks.scan(request,job,cancelled,progress)
+            elif action=='scan':result=tasks.index_summary(tasks.scan(request,job,cancelled,progress))
+            elif action=='restore':
+                result=tasks.index_summary(tasks.read_json(job/'dahua-index.json'))
+                result['options']=tasks.read_json(job/'dahua-plan.json',{}).get('request',{})
             elif action=='previews':
                 index=tasks.read_json(job/'dahua-index.json');result=dict(previews=[])
                 for position,group in enumerate(request['groups']):

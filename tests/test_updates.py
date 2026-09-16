@@ -297,7 +297,8 @@ def test_new_version_reminder_is_nonmodal_and_not_repeated(monkeypatch):
     second = UpdateController(second_window, automatic=False)
     second.option = lambda *_: False
     second._found(dict(update))
-    assert second.notification is None  # Includes reopening the application.
+    assert second.notification is not None and second.notification.isVisible()
+    second.notification.close()  # A fresh launch must remind again.
     second_window.close()
     window.close()
     first.close()

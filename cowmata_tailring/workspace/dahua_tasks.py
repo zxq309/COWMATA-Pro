@@ -68,16 +68,23 @@ def scan(request,job,cancelled=lambda:False,progress=lambda *_:None):
         for position,path in enumerate(paths):
             check(cancelled)
             before=core.identity(path)
-            sha=digest_file(path,cancelled=cancelled)
-            if core.identity(path)!=before:raise ValueError('来源在扫描期间变化')
-            identifier=hashlib.sha256((str(path)+'|'+sha).encode()).hexdigest()
+            # Discovery uses file identity only. Hash selected sources in normalized().
+            sha=None
+            identifier=hashlib.sha256((str(path)+'|'+json.dumps(before)).encode()).hexdigest()
             row=dict(id=identifier,source=str(path),source_identity=before,sha256=sha,
-                mode='file',group=('folder:'+str(path.parent) if any(path.is_relative_to(p) for p in folder_inputs) else 'file:'+str(path)),channel='待人工映射',stream='未知',status='indexed')
+                mode='file',group=('folder:'+str(path.parent) if any(path.is_relative_to(p) for p in folder_inputs) else 'file:'+str(path)),channel='待人工映射',stream='未知',status='discovered')
             rows.append(row)
             progress(position+1,len(paths),path.name)
         snapshot=dict(adapter=ADAPTER,mode='file',files=[str(p) for p in paths],rows=rows)
     atomic_json(job/'dahua-index.json',snapshot,backup=False)
     return snapshot
+
+
+def index_summary(index):
+    groups={}
+    for row in index['rows']:groups[row['group']]=groups.get(row['group'],0)+1
+    return dict(adapter=index['adapter'],mode=index['mode'],groups=groups,
+                total=len(index['rows']),invalid=sum(r['status']=='invalid' for r in index['rows']))
 
 
 def original_paths(index):
@@ -92,8 +99,14 @@ def normalized(row,index,job,cancelled):
         raise ValueError('暂存记录身份冲突，请重新扫描')
     if index['mode']=='file':
         path=Path(row['source'])
-        if core.identity(path)!=row['source_identity'] or digest_file(path,cancelled=cancelled)!=row['sha256']:
+        if core.identity(path)!=row['source_identity']:
             raise ValueError('原始码流已变化，请重新扫描')
+        source_sha=digest_file(path,cancelled=cancelled)
+        if core.identity(path)!=row['source_identity'] or row.get('sha256') not in (None,source_sha):
+            raise ValueError('原始码流已变化，请重新扫描')
+        if row.get('sha256') is None:
+            row.update(sha256=source_sha,status='indexed')
+            atomic_json(job/'dahua-index.json',index,backup=False)
     else:
         disk=fresh_disk(index['disk'])
     if source.is_file() and saved.get('sha256')==digest_file(source,cancelled=cancelled):

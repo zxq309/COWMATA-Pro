@@ -76,7 +76,8 @@ def prepare_job(root, setup, update, cache):
         shutil.copy2(Path(__file__).with_name(name), job_dir / name)
     shutil.copy2(Path(__file__).resolve().parents[2]/'COWMATA.exe', job_dir/'COWMATA-Progress.exe')
     job = {"root": str(root), "setup": str(setup), "update": update, "job_dir": str(job_dir),
-           "desktop": False if portable else worker.desktop_enabled(root, old_version)}
+           "desktop": False if portable else worker.desktop_enabled(root, old_version),
+           "request_close": True}
     worker.write_json(job_dir / "job.json", job)
     result = worker.run([runtime / "python.exe", "-I", "-B", job_dir / "update_worker.py", "--help"], timeout=15)
     if result.returncode:
@@ -105,6 +106,7 @@ class UpdateController(QObject):
         self.stop = threading.Event()
         self.dialog = None
         self.notification = None
+        self._announced_packages = set()
         self.status = tr("软件可直接离线启动；更新在后台检查，也可手动检查。", "The app starts offline. Updates are checked in the background or on demand.")
         self.button = QPushButton(tr("检查更新", "Updates"))
         self.button.clicked.connect(self.open_dialog)
@@ -126,7 +128,7 @@ class UpdateController(QObject):
         self.close_timer.timeout.connect(self._close_for_update)
         if automatic:
             self.timer.start()
-            QTimer.singleShot(15000, self.auto_check)
+            QTimer.singleShot(1500, self.startup_check)
         QApplication.instance().aboutToQuit.connect(self.on_exit)
 
     def option(self, key, default=True):
@@ -164,6 +166,15 @@ class UpdateController(QObject):
                 except RuntimeError:  # QObject destroyed during normal shutdown.
                     pass
         threading.Thread(target=run, name="cowmata-update", daemon=True).start()
+
+    def startup_check(self):
+        """Each launch checks after the workspace is visible, without a network gate."""
+        if self.pending_job or self.stop.is_set():
+            return
+        if self.busy:
+            QTimer.singleShot(1000, self.startup_check)
+            return
+        self.check()
 
     def auto_check(self):
         if self.option("auto_check") and not self.busy and not self.pending_job:
@@ -212,12 +223,12 @@ class UpdateController(QObject):
 
     def announce(self, update):
         identity = update["version"] + ":" + update["sha256"]
-        if self.settings.value("updates/announced_package", "", type=str) == identity:
+        if identity in self._announced_packages:
             return
         if self.notification is not None:
             self.notification.close()
             self.notification.deleteLater()
-        self.settings.setValue("updates/announced_package", identity)
+        self._announced_packages.add(identity)
         self.notification = QMessageBox(self.window)
         self.notification.setWindowTitle(tr("COWMATA Pro™ 有新版本", "COWMATA Pro™ update available"))
         self.notification.setText(tr("发现新版本：", "New version: ") + update["version"] + tr(
