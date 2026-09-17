@@ -1,4 +1,5 @@
 """One non-modal, cancellable candidate queue; human video review stays separate."""
+
 from __future__ import annotations
 
 import copy
@@ -276,15 +277,28 @@ class CandidateWindow(TaskWindow):
             if run["identity"]["cow_id"] != w.work.project.cow_id:
                 continue
             if not run["candidates"]:
-                item = QListWidgetItem(run["version"] + " · " + run["model_title"] + " · 无候选（点击看质量报告）")
+                item = QListWidgetItem(
+                    run["version"] + " · " + run["model_title"] + " · 无候选（点击看质量报告）"
+                )
                 item.setData(Qt.ItemDataRole.UserRole, (run["id"], None))
                 self.items.addItem(item)
             for candidate in run["candidates"]:
-                status = {"pending": "待复核", "unknown": "暂未知", "rejected": "已排除", "drafted": "已建草稿"}.get(candidate["review_status"], candidate["review_status"])
-                when = reference_text(w.work.clock, candidate["point_ms"], True) if w.work.clock.anchors else f"相对 {candidate['point_ms'] / 1000:.3f} 秒"
+                status = {
+                    "pending": "待复核",
+                    "unknown": "暂未知",
+                    "rejected": "已排除",
+                    "drafted": "已建草稿",
+                }.get(candidate["review_status"], candidate["review_status"])
+                when = (
+                    reference_text(w.work.clock, candidate["point_ms"], True)
+                    if w.work.clock.anchors
+                    else f"相对 {candidate['point_ms'] / 1000:.3f} 秒"
+                )
                 if candidate.get("end_ms") is not None:
-                    when += f" · 区间 {candidate['start_ms']/1000:.1f}–{candidate['end_ms']/1000:.1f}s"
+                    when += f" · 区间 {candidate['start_ms'] / 1000:.1f}–{candidate['end_ms'] / 1000:.1f}s"
                 text = f"{when} · {run['model_title']} · {candidate['score']:.3f} · {status} · {run['version']}"
+                if candidate.get("requires_video_confirmation"):
+                    text += " · 实验性候选，须回看视频"
                 item = QListWidgetItem(text)
                 item.setToolTip(text)
                 item.setData(Qt.ItemDataRole.UserRole, (run["id"], candidate["id"]))

@@ -383,7 +383,7 @@ def test_download_motion_name_uses_first_frame_acquisition_second(tmp_path, mode
         wear = SimpleNamespace(
             category="产犊", identity=SimpleNamespace(folder_name=DEVICE + "-10001-A")
         )
-        plan = SimpleNamespace(resolve=lambda *args: (wear, ""))
+        plan = SimpleNamespace(resolve_download=lambda *args: (wear, ""))
         file = csv_save(job, plan, "motion", obj)[0]
     assert file.name == "2026-08-17_00-00-01.json"
     assert file.parent.name == "ABCDEF123456-10001-A"
