@@ -22,7 +22,7 @@ def qt_window_registry():
 
 @pytest.fixture(autouse=True)
 def save_when_test_closes_window(monkeypatch, qt_window_registry):
-    module = sys.modules.get("cowmata_tailring.workspace.window")
+    from cowmata_tailring.workspace import window as module
     if module is not None:
         monkeypatch.setattr(module.MainWindow, "confirm_close", lambda self: "save")
         original_init = module.MainWindow.__init__
@@ -86,3 +86,66 @@ def save_when_test_closes_window(monkeypatch, qt_window_registry):
     for key, window in completed:
         assert not isValid(window), "Completed test window was not destroyed on the Qt thread"
         del qt_window_registry[key]
+
+
+@pytest.fixture(scope="session")
+def business_test_authority(tmp_path_factory):
+    """Issue a real temporary admin session for existing business regression tests."""
+    from cowmata_security.simple_authority import SimpleAuthority, initialize_registry, new_credential
+    directory = tmp_path_factory.mktemp("business-authority")
+    credential = new_credential("test_admin")
+    initialize_registry(directory / "authority.csv", "pro", [credential], owner="test_admin")
+    authority = SimpleAuthority(directory / "authority.csv")
+    activated = authority.redeem("test_admin", credential["code"], "pro", password=credential["password"])
+    return authority, directory / "authority.csv", activated
+
+
+@pytest.fixture(autouse=True)
+def authorized_business_regression(request, monkeypatch):
+    """Use the real role policy locally; authorization tests supply their own identities."""
+    from pathlib import Path
+    if request.node.path.name.startswith("test_security"):
+        yield
+        return
+    from cowmata_security import client
+    from cowmata_security.authority import Denied
+    from cowmata_security.protocol import dispatch
+    authority, csv_path, activated = request.getfixturevalue("business_test_authority")
+    def transport(values):
+        try:
+            return dispatch(authority, values)
+        except Denied as error:
+            raise client.AccessDenied(str(error)) from error
+    session = client.Session(transport, "pro")
+    session._accept(authority.refresh(activated["session"], "pro"))
+    session.token = activated["session"]
+    previous = client._current
+    client.install_session(session)
+    wrapper = str(Path(__file__).with_name("authorized_worker.py"))
+    worker_files = {"dataset_worker.py", "event_worker.py", "worker.py"}
+    def routed(command):
+        command = list(command)
+        for position, item in enumerate(command[1:], 1):
+            path = Path(str(item))
+            if path.name in worker_files and "cowmata_tailring" in path.parts:
+                return command[:position] + [wrapper, str(csv_path)] + command[position:]
+        return command
+    import importlib
+    for name in ("cowmata_tailring.algorithms.runner", "cowmata_tailring.workspace.event_models"):
+        # Patch even when the test imports its worker runner inside the test body.
+        module = importlib.import_module(name)
+        if module is not None:
+            original = module.run_cancellable
+            def invoke(command, *args, _original=original, **kwargs):
+                return _original(routed(command), *args, **kwargs)
+            monkeypatch.setattr(module, "run_cancellable", invoke)
+    module = importlib.import_module("cowmata_tailring.workspace.dataset_build_ui")
+    if module is not None:
+        original_process = module.QProcess
+        class AuthorizedTestProcess(original_process):
+            def start(self, program, arguments, *args):
+                command = routed([program, *arguments])
+                return super().start(command[0], command[1:], *args)
+        monkeypatch.setattr(module, "QProcess", AuthorizedTestProcess)
+    yield
+    client.install_session(previous)

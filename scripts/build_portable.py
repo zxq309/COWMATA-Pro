@@ -56,7 +56,7 @@ def portable_ignore(directory, names):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
-    parser.add_argument("--no-zip", action="store_true")
+    parser.add_argument("--no-zip", action="store_true", help="Assemble staging folder without a portable archive")
     parser.add_argument("--components", type=Path, help="Existing matching offline package supplying the runtime, media tools and OCR resources")
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[1]
@@ -91,7 +91,7 @@ def main():
             if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
                 raise SystemExit("Portable model hash mismatch: " + item["name"])
     destination.mkdir(parents=True, exist_ok=False)
-    for name in ("cowmata_tailring", "runtime", "vendor", "assets"):
+    for name in ("cowmata_tailring", "cowmata_security", "server-upgrade", "runtime", "vendor", "assets"):
         # Exclude upstream test corpora and C++ build objects, not runtime DLLs
         # or our reviewed event algorithms. This also avoids NSIS/MAX_PATH
         # failures on deeply nested sklearn test fixtures and Qt object files.
@@ -99,13 +99,14 @@ def main():
                         ignore=portable_ignore)
         if name in {"assets", "vendor"} and components != source and (source / name).is_dir():
             shutil.copytree(source / name, destination / name, dirs_exist_ok=True, ignore=portable_ignore)
-    for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "修复旧版更新.cmd", "portable_start.py", "使用说明.txt", "README.md", "README.zh-CN.md", "CHANGELOG.md", "CITATION.cff", "CONTRIBUTING.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
+    for name in ("cowmata-security.json", "upload_key.pub", "COWMATA.exe", "START_ANNOTATOR.bat", "修复旧版更新.cmd", "portable_start.py", "使用说明.txt", "README.md", "README.zh-CN.md", "CHANGELOG.md", "CITATION.cff", "CONTRIBUTING.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md'):
+    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'operator-guide-395.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'release-395.md', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md'):
         shutil.copy2(source/'docs'/name, destination/'docs'/name)
     shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
     shutil.copytree(source/'docs/images/guide390', destination/'docs/images/guide390')
+    shutil.copytree(source/'docs/operator-guide-395-assets', destination/'docs/operator-guide-395-assets')
     shutil.copytree(source/'docs/project', destination/'docs/project')
     (destination/'scripts').mkdir()
     for name in ('recover_update.py','portable_startup_self_test.py','portable_self_test.py','verify_label_history.py','verify_event_models.py','verify_candidate_ui.py','register_event_pack.py','verify_evidence_archive.py','train_mother_dataset.py'):

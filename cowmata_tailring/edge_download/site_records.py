@@ -145,7 +145,8 @@ def read_csv(content, sheet):
 
 def default_key():
     local = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
-    candidates = [local / "Programs/COWMATA 现场台账/auth/upload_key"]
+    from cowmata_security.profile import profile_path
+    candidates = [profile_path(), local / "Programs/COWMATA 现场台账/auth/upload_key"]
     if os.environ.get("COWMATA_LEDGER_AUTH"):
         candidates.insert(0, Path(os.environ["COWMATA_LEDGER_AUTH"]) / "upload_key")
     return str(next((p for p in candidates if p.is_file()), candidates[0]))
@@ -199,22 +200,21 @@ class LedgerClient:
                        changes=[], known_ids=[], session_token=self.values.get('session_token', ''))
         return decode_reply(self.request(request), sheet, target)
 
-    def login(self, username, password):
-        if not username.strip() or not password:
-            raise DownloadError('请填写上传器账号和密码')
-        reply = json.loads(self.request(dict(version=2, action='login', username=username.strip(), password=password)))
-        if (reply.get('ok') is not True or reply.get('version') != 2
-                or not isinstance(reply.get('token'), str) or not reply['token']
-                or reply.get('user', {}).get('role') not in ('admin', 'operator')
-                or not isinstance(reply.get('expires_at'), (int, float))
-                or reply['expires_at'] <= time.time()):
-            raise DownloadError('台账登录未完成，请核对上传器账号')
-        return {key: reply[key] for key in ('token', 'user', 'expires_at')}
+    def login(self, username='', password=''):
+        from cowmata_security.client import current_session
+        session=current_session();session.require('prepare');session.refresh()
+        identity=session.identity
+        return {'token':session.token,'expires_at':identity['expires_at'],
+                'user':{'username':identity['account'],'role':identity['role']}}
 
     def request(self, request):
+        from cowmata_security.client import current_session
+        session=current_session();session.require('prepare')
+        request={**request,'session_token':session.token,'security_product':'pro'}
         if self.cancel.is_set():
             raise Cancelled()
         key = Path(self.values["ledger_key"])
+        if not key.is_file():key=Path(default_key())
         executable = self.app_root / "vendor/ledger-ssh/usr/bin/ssh.exe"
         hosts = Path(__file__).with_name("ledger_known_hosts")
         for p in (key, executable, hosts):

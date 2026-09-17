@@ -14,6 +14,8 @@ _LOCK = threading.Lock()
 
 
 def run_job(request, *, cancelled=lambda: False, progress_path=None):
+    from cowmata_security.client import require
+    require('behavior')
     if not _LOCK.acquire(blocking=False):
         raise RuntimeError("算法后台已有任务运行，请完成或取消后再试。")
     try:
@@ -24,7 +26,8 @@ def run_job(request, *, cancelled=lambda: False, progress_path=None):
             atomic_json(folder / "request.json", request)
             process = run_cancellable(
                 [sys.executable, "-B", str(Path(__file__).with_name("worker.py")), str(folder / "request.json")],
-                timeout=86400, cancelled=cancelled, cwd=folder)
+                timeout=86400, cancelled=cancelled, cwd=folder,
+                input_data=__import__('cowmata_security.worker',fromlist=['pipe_credentials']).pipe_credentials('behavior'))
             if process.returncode:
                 raise RuntimeError(process.stderr.decode("utf-8", "replace")[-3000:] or "Algorithm worker failed")
             if cancelled():

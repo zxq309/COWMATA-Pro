@@ -1,0 +1,8 @@
+{
+  "transport": "ssh",
+  "host": "61.177.77.222",
+  "port": 8022,
+  "user": "cowmata_upload",
+  "ssh": "vendor/ledger-ssh/usr/bin/ssh.exe",
+  "known_hosts": "cowmata_tailring/edge_download/ledger_known_hosts"
+}

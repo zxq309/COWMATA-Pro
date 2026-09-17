@@ -79,6 +79,13 @@ def main(argv: list[str] | None = None) -> int:
     if icon_path.is_file():
         application.setWindowIcon(QIcon(str(icon_path)))
     application.setStyle("Fusion")
+    from cowmata_security.qt_ui import authenticate, install_window
+    security_root = Path(__file__).resolve().parents[2]
+    session = authenticate(security_root, 'pro')
+    if session is None:
+        return 0
+    if session.identity['role'] == 'operator' and args.mode == 'model-assist':
+        args.mode = 'basic' if (args.json or args.video) else 'workspace'
     canvas = QPixmap(520, 130)
     canvas.fill(QColor('#e8f4dc'))
     splash = QSplashScreen(canvas)
@@ -94,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         window = HistoryWindow(args.annotations, args.project)
         from cowmata_tailring.app.update_ui import UpdateController
         window.updater = UpdateController(window)
+        install_window(window, security_root, "pro")
         window.show()
         splash.finish(window)
         return application.exec()
@@ -111,6 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     window = MainWindow()
     from cowmata_tailring.app.update_ui import UpdateController
     window.updater = UpdateController(window)
+    install_window(window, security_root, "pro")
     window.show()
     splash.finish(window)
 

@@ -6,7 +6,7 @@
 
 项目把设备、牛只、采集时间、录像、人工标签和模型版本连接起来。操作者可以核对一条识别或风险结果来自哪份原始记录、哪个模型，以及哪些指标缺失。
 
-[新手图文教程](docs/quick-start-390.md) · [完整操作页](docs/operator-guide-390.html) · [发布下载](https://github.com/zxq309/COWMATA-Pro/releases) · [数据格式](docs/data-contract-390.md) · [验证记录](docs/validation-390.md)
+[新手图文教程](docs/operator-guide-395.html) · [简要操作](docs/quick-start-390.md) · [发布下载](https://github.com/zxq309/COWMATA-Pro/releases) · [数据格式](docs/data-contract-390.md) · [验证记录](docs/validation-390.md)
 
 > 产品名称为 **COWMATA Pro**。代码包保留 `cowmata_tailring` 名称，兼容已有工程和接口。三个历史仓库的介绍、实现说明与研究约束已归纳进本页，来源见[项目资料整合](docs/project/repository-consolidation.md)。
 
@@ -57,7 +57,7 @@ flowchart LR
 
 ### 普通使用者
 
-从 [GitHub Releases](https://github.com/zxq309/COWMATA-Pro/releases) 选择同一版本：
+从 [GitHub Releases](https://github.com/zxq309/COWMATA-Pro/releases) 下载安装包；便携包与纯净源码包由本地交付目录提供。三种包保持同一版本：
 
 | 文件 | 用途 |
 |---|---|
@@ -106,7 +106,7 @@ flowchart LR
 
 ### 连接方式
 
-原始数据默认连接 `http://device.cowmata.com:8010`，获取 Motion、PPG 和 Temp。台账同步沿用上传器 1.1.0 的独立 SSH 读取通道，使用本机已有上传器授权。程序包不包含私人密钥。
+原始数据默认连接 `http://device.cowmata.com:8010`，获取 Motion、PPG 和 Temp。台账同步通过固定服务连接读取。3.9.5 启动需要联网登录：管理员使用账号、密码；操作员首次另需授权码。“保存密码”和“自动登录”默认关闭，由用户按需勾选。程序包包含只能访问限定服务的连接身份，不能用于系统登录；不包含真实账号表或管理员密码。
 
 本地路径与服务器协议目标分别配置。服务器目标沿用上传器已约定的目录；改变本地保存位置不等于重命名服务器目录。可先“测试连接”和“仅刷新三个 CSV”，确认后开始下载。
 
@@ -249,7 +249,7 @@ py -3.13 -m venv .venv
 | VLC 3.x x64 | 保留 DLL 与 plugins，配置 `VLC_HOME` 或播放器路径 |
 | FFmpeg / FFprobe | 同版本的两个工具，配置 `FFMPEG_HOME` 或使用已验证的 `vendor/ffmpeg/bin` |
 | OCR | 安装 `.[ocr]`，准备离线资源；来源见[便携组件](docs/portable-components.md) |
-| 台账同步 | 指向上传器已授予的连接与本机密钥，源码库不提供私人授权 |
+| 台账同步 | 使用包内限定服务连接与已授予的应用账号；连接本身不赋予业务权限 |
 | 行为与决策 | GUI 训练并导入外部模型，不向源码仓库复制训练权重 |
 
 例如：

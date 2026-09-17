@@ -30,6 +30,7 @@ def model(root):
         algorithm="random_forest",
         feature_names=list(FEATURES),
         temperature_contract=CONTRACT,
+        timing_policy="server-receipt-v1",
         median=[0] * len(FEATURES),
         model_file="forest.json",
         sha256=hashlib.sha256(blob).hexdigest(),

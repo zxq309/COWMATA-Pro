@@ -22,7 +22,7 @@ from PIL import Image
 
 from cowmata_tailring.media.timeline import MediaTimelineIndex
 
-from .catalog import assert_not_being_written, file_stamp
+from .catalog import META_DIR, assert_not_being_written, file_stamp
 from .clocks import ClockMap, VideoTimeline, intervals_from_rows
 from .probe import extract_frame
 
@@ -147,8 +147,17 @@ def read_image(root, item):
     if item.get("status") != "captured" or not re.fullmatch(r"[0-9a-f]{64}", item.get("sha256", "")):
         raise ValueError("Invalid evidence image identity")
     path = safe_relative(root, item["path"])
-    with path.open("rb") as stream:
-        payload = stream.read(MAX_IMAGE_BYTES + 1)
+    try:
+        with path.open("rb") as stream:
+            payload = stream.read(MAX_IMAGE_BYTES + 1)
+    except FileNotFoundError:
+        # Working annotations are nested by modality/date/cow; capture stores
+        # immutable images at the shared project metadata root. Explicit exports
+        # still prefer their adjacent images, and corrupt images never fall back.
+        shared = next((p for p in Path(root).resolve().parents if p.name == META_DIR), None)
+        if shared is None:
+            raise
+        return read_image(shared, item)
     if len(payload) != item["bytes"] or len(payload) > MAX_IMAGE_BYTES or hashlib.sha256(payload).hexdigest() != item["sha256"]:
         raise ValueError("证据图完整性校验失败")
     with Image.open(io.BytesIO(payload)) as image:

@@ -53,7 +53,7 @@ def create_about(parent=None):
                                          for name in ("LICENSE", "NOTICE") if (root / name).is_file()))
     license_text.setAccessibleName(t("许可证与版权声明"))
     layout.addWidget(license_text)
-    tutorial_path = root / "docs" / "operator-guide-380.html"
+    tutorial_path = root / "docs" / "operator-guide-395.html"
     tutorial = QPushButton(t("新手图文教程…"))
     tutorial.setEnabled(tutorial_path.is_file())
     tutorial.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(tutorial_path))))

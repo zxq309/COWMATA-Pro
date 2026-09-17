@@ -76,7 +76,7 @@ class DecisionWindow(JobWindow):
         self.folder_summary = QLabel("文件夹预测已关闭，等待手动开启。")
         self.folder_summary.setWordWrap(True)
         sl.addWidget(self.folder_summary)
-        self.folder_table = table(["牛耳标", "数据时刻（北京时间）", "关注窗口截至", "风险分数", "建议", "信号覆盖率", "温度 °C", "缺失指标 / 参考历史", "模型版本"])
+        self.folder_table = table(["牛耳标", "采样窗口截至", "预测可用时刻", "关注窗口截至", "风险分数", "建议", "信号覆盖率", "温度 °C", "缺失指标 / 参考历史", "模型版本"])
         sl.addWidget(self.folder_table, 3)
         self.coverage_table = table(["牛耳标", "数据跨度/小时", "有效信号/小时", "最大缺口/小时", "预测窗口数"])
         self.alert_table = table(["牛耳标", "首次预警", "最后预警", "关注窗口截至", "最高风险分数", "连续窗口数"])
@@ -84,7 +84,7 @@ class DecisionWindow(JobWindow):
         details.addTab(self.coverage_table, "数据覆盖与缺口")
         details.addTab(self.alert_table, "连续预警时段")
         sl.addWidget(details, 1)
-        folder_limits = QLabel("预测提前量由导入的模型决定。每个时段只使用此前参考数据；高风险表示未来窗口需关注，不等于已确认产犊。没有新数据时结果不会更新，点击开始可重新分析目录。")
+        folder_limits = QLabel("预测提前量由导入的模型决定。采样时间与预测可用时间分开显示，整包收到后才预测；每个时段只使用当时已收到的参考数据；高风险表示未来窗口需关注，不等于已确认产犊。没有新数据时结果不会更新，点击开始可重新分析目录。")
         folder_limits.setWordWrap(True)
         sl.addWidget(folder_limits)
         self.tabs.addTab(self.folder_page, "文件夹滚动预警")
@@ -438,7 +438,7 @@ class DecisionWindow(JobWindow):
                 + json.dumps(model["metrics"], ensure_ascii=False, indent=2)
             )
             if action == "folder_predict393":
-                fill(self.folder_table, [[r["cow_id"] or "未提供", self.at(r["end_epoch_ms"]),
+                fill(self.folder_table, [[r["cow_id"] or "未提供", self.at(r["end_epoch_ms"]), self.at(r["decision_epoch_ms"]),
                     self.at(r["forecast_end_ms"]), r["risk_score"], r["warning_level"], max(r.get("motion_coverage") or 0, r.get("ppg_coverage") or 0),
                     r.get("temperature_c"), ",".join(r["missing_features"]) + " / " + r["history_status"], r["decision_model"]] for r in result["rows"]])
                 info = result["input"]
