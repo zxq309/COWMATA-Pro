@@ -404,7 +404,9 @@ class MainWindow(ControllerWindow):
 
     def open_behavior_390(self):
         from cowmata_security.qt_ui import guard_action
-        if not guard_action(self, 'behavior'): return
+
+        if not guard_action(self, "behavior"):
+            return
         from cowmata_tailring.algorithms.behavior_ui import BehaviorWindow
         if getattr(self, '_behavior_390', None) is None:
             self._behavior_390 = BehaviorWindow(self)
@@ -413,7 +415,9 @@ class MainWindow(ControllerWindow):
 
     def open_model_library(self):
         from cowmata_security.qt_ui import guard_action
-        if not guard_action(self, 'behavior'): return
+
+        if not guard_action(self, "behavior"):
+            return
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
 
@@ -424,12 +428,16 @@ class MainWindow(ControllerWindow):
 
     def open_algorithm_workbench(self):
         from cowmata_security.qt_ui import guard_action
-        if not guard_action(self, 'behavior'): return
+
+        if not guard_action(self, "behavior"):
+            return
         self.open_behavior_390()
 
     def open_calving_evidence(self):
         from cowmata_security.qt_ui import guard_action
-        if not guard_action(self, 'health'): return
+
+        if not guard_action(self, "health"):
+            return
         from cowmata_tailring.algorithms.decision_ui import DecisionWindow as CalvingEvidenceWindow
         if getattr(self, "_calving_evidence", None) is None:
             self._calving_evidence = CalvingEvidenceWindow(self)
@@ -438,7 +446,9 @@ class MainWindow(ControllerWindow):
 
     def open_algorithm(self, spec):
         from cowmata_security.qt_ui import guard_action
-        if not guard_action(self, 'behavior'): return
+
+        if not guard_action(self, "behavior"):
+            return
         if spec.code == "CALVING":
             self.algorithm_actions[spec.code].setChecked(False)
             self.open_calving_evidence()
@@ -494,7 +504,9 @@ class MainWindow(ControllerWindow):
 
     def open_candidates(self):
         from cowmata_security.qt_ui import guard_action
-        if not guard_action(self, 'behavior'): return
+
+        if not guard_action(self, "behavior"):
+            return
         if self.algorithm_panel.running:
             self.tell("请先结束或取消独立算法运行，再打开候选标注。")
             return
