@@ -1638,18 +1638,20 @@ class OrganizationWindow(TaskWindow):
             )
             self.pregnancy_stage.setCurrentIndex(max(0, self.pregnancy_stage.findData(code)))
             self.note.setText(plan.get("note", ""))
-            self.sources.setRowCount(0)
-            for spec in plan["sources"]:
-                if spec.get("kind") in {"imu", "video", "auto"}:
-                    self.add_source(
-                        spec["kind"],
-                        spec["path"],
-                        spec.get("camera", VIEWS[0]),
-                        exclude=spec.get("exclude", []),
-                        notify=False,
-                    )
+            if self.source_specs() != plan["sources"]:
+                self.sources.setRowCount(0)
+                for spec in plan["sources"]:
+                    if spec.get("kind") in {"imu", "video", "auto"}:
+                        self.add_source(
+                            spec["kind"],
+                            spec["path"],
+                            spec.get("camera", VIEWS[0]),
+                            exclude=spec.get("exclude", []),
+                            notify=False,
+                        )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             self.status.setText(str(exc))
+            self._loading_task = False
             self.invalidate_plan()
             return
         finally:
@@ -1871,7 +1873,7 @@ class OrganizationWindow(TaskWindow):
             or not busy
             and bool(self.source_specs())
             and bool(self.target.text().strip())
-            and (not self.plan or self.plan.get("streaming"))
+            and (not self.plan or bool(self.plan.get("streaming")))
         )
         selected = [
             r

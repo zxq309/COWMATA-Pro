@@ -172,3 +172,20 @@ def test_resume_rejects_changed_category_and_foreign_targets(tmp_path):
     plan['rows'] = [dict(target=str(tmp_path / 'other' / 'a.mp4'))]
     with pytest.raises(ValueError, match='目录以外'):
         validate_resume(plan, dict(target=root, category='calving', sources=[]))
+
+
+def test_pause_restore_reuses_unchanged_view_controls(organizer, tmp_path):  # noqa: F811
+    import json
+
+    for view in range(20):
+        organizer.add_source('video', tmp_path / f'view{view}', camera=f'视角{view+1:02d}', notify=False)
+    original = organizer.sources.cellWidget(0, 2)
+    plan = dict(mode='import', streaming=True, target=str(tmp_path / 'farm' / '产犊'),
+                resource_root=str(tmp_path / 'farm'), category='calving',
+                sources=organizer.source_specs(), rows=[])
+    job = tmp_path / 'job'
+    job.mkdir()
+    (job / 'plan.json').write_text(json.dumps(plan), encoding='utf-8')
+    organizer.load_task(job)
+    assert organizer.sources.cellWidget(0, 2) is original
+    assert organizer.sources.rowCount() == 20

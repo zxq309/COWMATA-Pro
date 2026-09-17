@@ -2370,8 +2370,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/organization_ui.py",
-      "size": 86541,
-      "sha256": "b5512b2a3c4ddee7b8bcd02e11d3f822204afb97a81dbf8574569ed7a74e649f"
+      "size": 86681,
+      "sha256": "e59281ae8985eb1f85649f6be92d7129d420b600281a914af664deb224e68e7f"
     },
     {
       "path": "cowmata_tailring/workspace/organization_worker.py",
@@ -3915,8 +3915,8 @@
     },
     {
       "path": "tests/test_multiroot_395.py",
-      "size": 6443,
-      "sha256": "5734e921d754f25a24a4dad248af65806af5c7007b174457d59d304f660d631f"
+      "size": 7206,
+      "sha256": "8d4d23e766ad60ab6d69b92ea4d67000ffc264cb1bd2f4d455eb4d731e5b3250"
     },
     {
       "path": "tests/test_multisensor_393.py",
