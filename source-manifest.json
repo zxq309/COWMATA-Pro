@@ -2365,13 +2365,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/organization_live.py",
-      "size": 2035,
-      "sha256": "6ba90ab74e2e33a71879b3b9d3eb0481c5ce4820d59f9cbcec4661e77ce8698d"
+      "size": 4013,
+      "sha256": "fd5727341f776ba340ca80fe46be09d8e96faae60a54629f65fd00eb4ab447c2"
     },
     {
       "path": "cowmata_tailring/workspace/organization_ui.py",
-      "size": 86437,
-      "sha256": "44b4b65ed5e46d4f449c236526c5fbc6498bfc2867274074d17bbbe71754b919"
+      "size": 86541,
+      "sha256": "b5512b2a3c4ddee7b8bcd02e11d3f822204afb97a81dbf8574569ed7a74e649f"
     },
     {
       "path": "cowmata_tailring/workspace/organization_worker.py",
@@ -2480,8 +2480,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/video_intake.py",
-      "size": 48289,
-      "sha256": "f29117a474439414eb9018c3d001f3c997fe9cc73679786c909ff681f4cd5aa6"
+      "size": 48457,
+      "sha256": "a5afbae38d4c33cff5340dee3b99197f12d45b82b49d35e28ffe6640a71d08b2"
     },
     {
       "path": "cowmata_tailring/workspace/video_names.py",
@@ -3915,8 +3915,8 @@
     },
     {
       "path": "tests/test_multiroot_395.py",
-      "size": 4313,
-      "sha256": "a67bc629cdb2776be16eace55d8e403f1e70f8e581803b5d17b6df50dc92c1db"
+      "size": 6443,
+      "sha256": "5734e921d754f25a24a4dad248af65806af5c7007b174457d59d304f660d631f"
     },
     {
       "path": "tests/test_multisensor_393.py",
