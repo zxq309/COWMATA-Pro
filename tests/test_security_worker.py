@@ -1,4 +1,5 @@
 """Long jobs renew expired sessions without bypassing device revocation."""
+
 import io
 import json
 import os
@@ -6,37 +7,51 @@ import types
 
 import pytest
 
+import cowmata_security.worker as worker
 from cowmata_security.authority import Denied
-from cowmata_security.simple_authority import SimpleAuthority, initialize_registry, new_credential, encode_registry
 from cowmata_security.client import AccessDenied, Session
 from cowmata_security.device_store import DeviceStore
 from cowmata_security.protocol import dispatch
-import cowmata_security.worker as worker
+from cowmata_security.simple_authority import (
+    SimpleAuthority,
+    encode_registry,
+    initialize_registry,
+    new_credential,
+)
 
 
 @pytest.fixture
 def activated_worker(tmp_path, monkeypatch, request):
     if os.name != "nt":
         pytest.skip("DeviceStore is bound to Windows DPAPI")
-    clock = [10000.]
+    clock = [10000.0]
     credential = new_credential("admin")
     initialize_registry(tmp_path / "authority.csv", "pro", [credential])
     authority = SimpleAuthority(tmp_path / "authority.csv", clock=lambda: clock[0])
-    code = credential["code"]
+
     def transport(request):
         try:
             return dispatch(authority, request)
         except Denied as error:
             raise AccessDenied(str(error)) from error
+
     store = DeviceStore("pro", tmp_path / "device.bin")
     parent = Session(transport, "pro", device_store=store)
-    parent.login_admin("admin", credential["password"], remember_device=getattr(request, "param", True))
+    parent.login_admin(
+        "admin", credential["password"], remember_device=getattr(request, "param", True)
+    )
     monkeypatch.setattr(worker, "read_config", lambda root: transport)
     monkeypatch.setattr(worker, "DeviceStore", lambda product: store, raising=False)
     monkeypatch.setattr(worker.threading.Thread, "start", lambda self: None)
-    monkeypatch.setattr(worker.sys, "stdin", types.SimpleNamespace(buffer=io.BytesIO(
-        json.dumps({"session": parent.token}).encode() + b"\n")))
+    monkeypatch.setattr(
+        worker.sys,
+        "stdin",
+        types.SimpleNamespace(
+            buffer=io.BytesIO(json.dumps({"session": parent.token}).encode() + b"\n")
+        ),
+    )
     from cowmata_security import client
+
     previous = client._current
     yield authority, parent, store, clock
     client.install_session(previous)

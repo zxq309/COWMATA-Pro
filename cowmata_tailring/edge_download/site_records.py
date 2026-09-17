@@ -202,19 +202,25 @@ class LedgerClient:
 
     def login(self, username='', password=''):
         from cowmata_security.client import current_session
-        session=current_session();session.require('prepare');session.refresh()
+
+        session = current_session()
+        session.require("prepare")
+        session.refresh()
         identity=session.identity
         return {'token':session.token,'expires_at':identity['expires_at'],
                 'user':{'username':identity['account'],'role':identity['role']}}
 
     def request(self, request):
         from cowmata_security.client import current_session
-        session=current_session();session.require('prepare')
+
+        session = current_session()
+        session.require("prepare")
         request={**request,'session_token':session.token,'security_product':'pro'}
         if self.cancel.is_set():
             raise Cancelled()
         key = Path(self.values["ledger_key"])
-        if not key.is_file():key=Path(default_key())
+        if not key.is_file():
+            key = Path(default_key())
         executable = self.app_root / "vendor/ledger-ssh/usr/bin/ssh.exe"
         hosts = Path(__file__).with_name("ledger_known_hosts")
         for p in (key, executable, hosts):
