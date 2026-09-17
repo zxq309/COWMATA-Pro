@@ -38,27 +38,41 @@ class ProSettings(SettingsStore):
             "raw_remote_port": 8031,
             **self.value,
         }
-        self.value['start_on_login'] = False
-        if self.value.get('schema_390') != 1:
-            self.value.update(schema_390=1,
-                              server='http://device.cowmata.com:8010', raw_connection='http',
-                              kinds=['motion','pulse','temp'], start_time='2026-08-01T00:00:00+08:00')
-        if self.value.get('schema_391') != 1:
-            if Path(self.value['data_root']) == LEGACY_DATA_ROOT:
-                self.value['data_root'] = str(DEFAULT_DATA_ROOT)
-                self.notice = '已修正 3.9 的默认下载位置；旧目录文件保留，请核对后合并。'
-            self.value['schema_391'] = 1
-        if self.value.get('download_rules_391') != 1:
-            self.value.update(download_rules_391=1, download_mode='', auto_enabled=False,
-                              kinds=['motion', 'pulse'], next_run=None)
+        self.value["start_on_login"] = False
+        if self.value.get("schema_390") != 1:
+            self.value.update(
+                schema_390=1,
+                server="http://device.cowmata.com:8010",
+                raw_connection="http",
+                kinds=["motion", "pulse", "temp"],
+                start_time="2026-08-01T00:00:00+08:00",
+            )
+        if self.value.get("schema_391") != 1:
+            if Path(self.value["data_root"]) == LEGACY_DATA_ROOT:
+                self.value["data_root"] = str(DEFAULT_DATA_ROOT)
+                self.notice = "已修正 3.9 的默认下载位置；旧目录文件保留，请核对后合并。"
+            self.value["schema_391"] = 1
+        if self.value.get("download_rules_391") != 1:
+            self.value.update(
+                download_rules_391=1,
+                download_mode="",
+                auto_enabled=False,
+                kinds=["motion", "pulse"],
+                next_run=None,
+            )
+        self.value.update(download_rules_395=1, kinds=["motion", "pulse", "temp"])
         legacy_records = Path(LOCAL_DIRECTORY)
         existing_records = Path(SERVER_DIRECTORY)
-        if (Path(self.value["ledger_directory"]) == legacy_records
-                and not legacy_records.exists()
-                and all((existing_records / schema["filename"]).is_file() for schema in SCHEMAS.values())):
+        if (
+            Path(self.value["ledger_directory"]) == legacy_records
+            and not legacy_records.exists()
+            and all(
+                (existing_records / schema["filename"]).is_file() for schema in SCHEMAS.values()
+            )
+        ):
             self.value["ledger_directory"] = str(existing_records)
-        self.value.setdefault('scheduled_time', '')
-        self.value.setdefault('end_time', '')
+        self.value.setdefault("scheduled_time", "")
+        self.value.setdefault("end_time", "")
 
     def save(self, **changes):
         value = {**self.value, **changes}

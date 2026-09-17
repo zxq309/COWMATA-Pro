@@ -26,11 +26,18 @@ def fixture_job(tmp_path, category="calving", purpose="产犊监测"):
         数据分类=category,
         监测目的=purpose,
         已删除="0",
+        产犊开始="2026-08-18 08:00:00",
+        产犊结束="2026-08-18 09:00:00",
+        九轴="有效",
+        脉搏="有效",
+        温度="有效",
     )
     with (ledger / "样本试验台账.csv").open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=row)
         w.writeheader()
         w.writerow(row)
+    (ledger / "扬大测试设备台账.csv").write_text("设备编码,新佩戴牛号,日期\n", encoding="utf-8-sig")
+    (ledger / "扬大产犊登记汇总.csv").write_text("牛号,生产日期\n", encoding="utf-8-sig")
     farm = tmp_path / "farm"
     farm.mkdir(exist_ok=True)
     return Job(
@@ -158,9 +165,9 @@ def test_purpose_fallback_matches_uploader_131(tmp_path, purpose, want, category
     assert CsvPlan(job.ledger_directory).wears[0].category == want
 
 
-def test_review_category_is_not_lost(tmp_path):
+def test_monitoring_purpose_controls_reclassification_of_review_row(tmp_path):
     job = fixture_job(tmp_path, "review", "正常监测")
-    assert CsvPlan(job.ledger_directory).wears[0].category == "待核对"
+    assert CsvPlan(job.ledger_directory).wears[0].category == "正常"
 
 
 def test_raw_json_does_not_gain_downloader_fields():

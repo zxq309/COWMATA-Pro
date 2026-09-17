@@ -437,23 +437,28 @@ def inspect(path, cache, cancelled=lambda: False):
 def parallel_items(items, work, *, workers=4, cancelled=lambda: False, lane_key=None):
     if lane_key is not None:
         from collections import defaultdict, deque
+
         groups = defaultdict(deque)
         for item in items:
             groups[lane_key(item)].append(item)
-        # One outstanding preparation per view. A slow camera keeps its slot;
-        # fast cameras cannot consume the remaining slots with their next files.
-        with ThreadPoolExecutor(max_workers=max(1, len(groups)), thread_name_prefix='view-prepare') as pool:
-            pending = {pool.submit(work, queue.popleft()): key for key, queue in groups.items()}
-            while pending:
+        # One outstanding file per lane, with a global cap and round-robin admission.
+        ready = deque(groups)
+        slots = max(1, min(32, int(workers)))
+        with ThreadPoolExecutor(max_workers=slots, thread_name_prefix="view-prepare") as pool:
+            pending = {}
+            while ready or pending:
                 core.check_cancel(cancelled)
-                done, _ = wait(pending, timeout=.1, return_when=FIRST_COMPLETED)
+                while ready and len(pending) < slots:
+                    key = ready.popleft()
+                    pending[pool.submit(work, groups[key].popleft())] = key
+                done, _ = wait(pending, timeout=0.1, return_when=FIRST_COMPLETED)
                 for future in done:
                     key = pending.pop(future)
                     result = future.result()
                     yield result
                     core.check_cancel(cancelled)
                     if groups[key]:
-                        pending[pool.submit(work, groups[key].popleft())] = key
+                        ready.append(key)
         return
     workers = max(1, min(32, int(workers)))
     iterator = iter(items)
@@ -544,11 +549,18 @@ def plan_import(
     )
     cache.mkdir(parents=True, exist_ok=True)
     from .classification_report import source_key
+
     skipped_keys = {source_key(p) for p in skip_sources}
     reference_days = {d for r in reference for d in r["covered_dates"]}
-    index_path = root / '资源索引.json'
-    existing_index = json.loads(index_path.read_text(encoding='utf-8')) if index_path.is_file() else {}
-    already = {os.path.normcase(str(Path(r['source']))): r for r in existing_index.get('records', []) if r.get('source')}
+    index_path = root / "资源索引.json"
+    existing_index = (
+        json.loads(index_path.read_text(encoding="utf-8")) if index_path.is_file() else {}
+    )
+    already = {
+        os.path.normcase(str(Path(r["source"]))): r
+        for r in existing_index.get("records", [])
+        if r.get("source")
+    }
     jobs = {}
     for spec in sources:
         source = core.safe_path(spec["path"])
@@ -561,7 +573,7 @@ def plan_import(
             raise ValueError("未知来源类型")
         if scenario == "attach_video" and declared == "imu":
             continue
-        excluded = [core.safe_path(p) for p in spec.get('exclude', [])]
+        excluded = [core.safe_path(p) for p in spec.get("exclude", [])]
         for path in core.walk_files(source, cancelled):
             if any(path == p or path.is_relative_to(p) for p in excluded):
                 continue
@@ -585,8 +597,15 @@ def plan_import(
             camera = spec.get("camera") or "auto"
             explicit = camera in core.VIEWS
             if not explicit:
-                aliases = {'乐橙': '视角01', '右1': '视角02', '右2': '视角03', '右3': '视角04',
-                           '左1': '视角05', '左2': '视角06', '左3': '视角07'}
+                aliases = {
+                    "乐橙": "视角01",
+                    "右1": "视角02",
+                    "右2": "视角03",
+                    "右3": "视角04",
+                    "左1": "视角05",
+                    "左2": "视角06",
+                    "左3": "视角07",
+                }
                 for parent in path.parents:
                     if parent.name in aliases:
                         camera = aliases[parent.name]
@@ -758,7 +777,6 @@ def plan_import(
                                started_at=started_at, finished_at=core.now(),
                                file_seconds=round(time.monotonic()-began, 3), message=str(exc))
 
-
     rows, reserved = [], {}
     plan = dict(
         mode="import",
@@ -786,16 +804,24 @@ def plan_import(
         streaming=streaming,
         delete_unusable=delete_unusable,
         workers=workers,
-        inventory=[dict(source=str(e['path']), kind=e['kind'], status='pending',
-                        owner=e['camera'] if e['camera'] in core.VIEWS else '', message='等待处理')
-                   for e in jobs.values()],
+        inventory=[
+            dict(
+                source=str(e["path"]),
+                kind=e["kind"],
+                status="pending",
+                owner=e["camera"] if e["camera"] in core.VIEWS else "",
+                message="等待处理",
+            )
+            for e in jobs.values()
+        ],
     )
 
     # Feed recognition fairly across cameras, not an entire folder at a time.
     from collections import defaultdict, deque
+
     groups = defaultdict(deque)
     for entry in jobs.values():
-        groups[entry['camera'] if entry['camera'] != 'auto' else str(entry['source_root'])].append(entry)
+        groups[(str(entry["source_root"]), entry["camera"])].append(entry)
     ordered = []
     while groups:
         for key in list(groups):
@@ -809,12 +835,20 @@ def plan_import(
 
     def generate_rows():
         for entry, row in parallel_items(
-            ordered, prepare, workers=max(workers, min(32, len(sources))), cancelled=cancelled,
-            lane_key=(lambda e: e['camera'] if e['camera'] != 'auto' else str(e['source_root'])) if streaming else None
+            ordered,
+            prepare,
+            workers=max(workers, min(32, len(sources))),
+            cancelled=cancelled,
+            lane_key=(lambda e: (str(e["source_root"]), e["camera"])) if streaming else None,
         ):
             if row is None:
-                row = dict(source=str(entry['path']), kind=entry['kind'], status='excluded_aux',
-                           message='非采集记录，原件保留', size=entry['path'].stat().st_size)
+                row = dict(
+                    source=str(entry["path"]),
+                    kind=entry["kind"],
+                    status="excluded_aux",
+                    message="非采集记录，原件保留",
+                    size=entry["path"].stat().st_size,
+                )
             path = entry["path"]
             if row["kind"] == "nonvideo" and row["status"] == "nonvideo":
                 if entry["delete_allowed"]:
@@ -827,17 +861,20 @@ def plan_import(
                         message="确认非录像，执行时删除：" + row["message"],
                     )
                 else:
-                    row.update(status="invalid" if streaming else "skip", message="不是视频内容，原文件保留")
+                    row.update(
+                        status="invalid" if streaming else "skip",
+                        message="不是视频内容，原文件保留",
+                    )
             elif row["kind"] == "video" and row["status"] == "ready" and not row.get("operation"):
                 day, camera = row["record_date"], entry["camera"]
                 if camera not in core.VIEWS:
                     # Preserve an unknown camera's source identity, never merge
                     # unrelated cameras into one arbitrary numbered view.
-                    camera = '来源_' + core.safe_name(path.parent.name)
+                    camera = "来源_" + core.safe_name(path.parent.name)
                 if reference and day not in reference_days:
-                    row['message'] += '；该日没有九轴记录，仍按视频实际日期归类'
+                    row["message"] += "；该日没有九轴记录，仍按视频实际日期归类"
                 if start and not start <= day <= (end or start):
-                    row['message'] += '；扩展日期范围以保留正常视频'
+                    row["message"] += "；扩展日期范围以保留正常视频"
                 base = (
                     root
                     / "Video"
@@ -850,15 +887,15 @@ def plan_import(
                 while True:
                     key = os.path.normcase(str(destination))
                     known = reserved.get(key)
-                    if isinstance(known, str) and known.startswith('pending:'):
+                    if isinstance(known, str) and known.startswith("pending:"):
                         # A prior lane may still be copying. Resolve only this
                         # collision so identical sources share its final target.
                         known = legacy.verified_source_digest(Path(known[8:]), cache, cancelled)
                         reserved[key] = known
                     if destination.exists() and known is None:
                         known = legacy.verified_source_digest(destination, cache, cancelled)
-                    if known is not None and not row.get('sha256'):
-                        row['sha256'] = legacy.verified_source_digest(path, cache, cancelled)
+                    if known is not None and not row.get("sha256"):
+                        row["sha256"] = legacy.verified_source_digest(path, cache, cancelled)
                     if known is None or known == row.get("sha256"):
                         break
                     counter += 1
@@ -887,9 +924,9 @@ def plan_import(
             if not streaming:
                 on_row(dict(row))
             yield row
-            if row.get('target') and row.get('sha256'):
-                reserved[os.path.normcase(row['target'])] = row['sha256']
-            progress(len(rows), plan['total_files'], str(path))
+            if row.get("target") and row.get("sha256"):
+                reserved[os.path.normcase(row["target"])] = row["sha256"]
+            progress(len(rows), plan["total_files"], str(path))
 
     def generate():
         nonlocal staging_pool, heavy_pool
