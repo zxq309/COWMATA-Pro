@@ -325,3 +325,25 @@ def test_archive_can_support_old_confirmed_export_but_never_new_confirmation(vie
     window.close()
     window.catalog.close()
     app.processEvents()
+
+
+def test_dated_history_finds_shared_project_evidence_without_rewriting_labels(views):
+    from cowmata_tailring.workspace.annotation_store import work_document
+    from types import SimpleNamespace
+
+    root, motion, work, rows = views
+    bundle, blobs = capture(views)
+    work.project.events[0].extras['screenshots'] = store_bundle(root / META_DIR, bundle, blobs)
+    # Ordinary saves put JSON below Motion/date/cow but keep shared images at
+    # the project metadata root; only explicit exports copy adjacent images.
+    path = root / META_DIR / 'Motion/2026-09-05/cow/record.标注.json'
+    doc = work_document(SimpleNamespace(root=root), work, motion, {'selected_cameras': ['0']})
+    doc['video']['rows'] = [row for row in rows if row['kind'] == 'video']
+    atomic_json(path, doc)
+    before = path.read_bytes()
+    loaded = load_history(path)
+    assert not any('证据图缺失' in warning for warning in loaded.warnings)
+    assert any('已校验证据图 8 张' in warning for warning in loaded.warnings)
+    assert loaded.timeline.locate('0', 10100)[1] == 100
+    assert path.read_bytes() == before
+    assert not (path.parent / '证据').exists()

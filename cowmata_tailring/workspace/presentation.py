@@ -330,5 +330,11 @@ class WorkspaceStage(QWidget):
         top = getattr(self, "pip_top", 0)
         bottom = getattr(self, "pip_bottom", 0)
         yspan = max(1, self.height() - self.video.height() - top - bottom)
+        before = self.video.geometry()
         self.pip_position = (max(0, min(1, pos.x() / xspan)), max(0, min(1, (pos.y() - top) / yspan)))
         self.arrange()
+        if self.mode == "C" and self.video.geometry() != before:
+            # Moving native video children can copy stale border pixels into
+            # the backing store. Recompose the exposed waveform from its cache;
+            # update() coalesces drag events and does not rebuild the curves.
+            self.signal_panel.wave.update()

@@ -302,3 +302,46 @@ def test_playhead_follows_restored_position_without_changing_zoom_or_samples(app
     assert np.array_equal(times, np.arange(0, 600001, 20, dtype=float))
     assert np.array_equal(values, np.sin(times / 1000))
     panel.close()
+
+
+def test_pip_drag_repaints_exposed_waveform_without_rebuilding_curves(window, app):
+    from PySide6.QtCore import QEvent, QObject
+    from PySide6.QtGui import QRegion
+
+    window.board.select(['camera'])
+    window.set_presentation('C')
+    wave = window.plot.wave
+    times = np.arange(0, 10000, 20, dtype=float)
+    wave.set_data([PlotSeries('ax', 'AX', 'g', '#159c8d', times, np.sin(times))], 10000)
+    app.processEvents()
+    cache = wave._static_cache.cacheKey()
+    handles = {key: int(tile.surface.winId()) for key, tile in window.board.tiles.items()}
+    generation = window.board.generation
+
+    class Painted(QObject):
+        def __init__(self):
+            super().__init__()
+            self.region = QRegion()
+
+        def eventFilter(self, obj, event):
+            if event.type() == QEvent.Type.Paint:
+                self.region = self.region.united(event.region())
+            return False
+
+    painted = Painted()
+    wave.installEventFilter(painted)
+    try:
+        for pos in (QPoint(300, 80), QPoint(340, 100), QPoint(400, 140)):
+            window.stage.move_pip(pos)
+        app.processEvents()
+        covering = window.stage.video.geometry()
+        covering.translate(wave.mapFrom(window.stage, QPoint(0, 0)))
+        visible = QRegion(wave.rect()).subtracted(QRegion(covering))
+        # Native video child moves can leave stale border pixels anywhere in
+        # the backing store. The exposed waveform must be repainted as a unit.
+        assert visible.subtracted(painted.region).isEmpty()
+        assert wave._static_cache.cacheKey() == cache
+        assert window.board.generation == generation
+        assert handles == {key: int(tile.surface.winId()) for key, tile in window.board.tiles.items()}
+    finally:
+        wave.removeEventFilter(painted)
