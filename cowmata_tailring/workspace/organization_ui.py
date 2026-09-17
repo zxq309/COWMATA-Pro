@@ -1293,12 +1293,13 @@ class OrganizationWindow(TaskWindow):
 
     def start_organize(self, request, job=None):
         paths = [request["target"], *(s["path"] for s in request["sources"])]
-        from .organization_live import pending_job
+        from .organization_live import pending_job, validate_resume
 
         try:
             pending = pending_job(paths)
             if pending and (job is None or Path(job) != pending):
-                job = pending  # Preserve the current checked sources; worker filters old rows.
+                validate_resume(json.loads((pending / "plan.json").read_text(encoding="utf-8")), request)
+                job = pending
         except (OSError, ValueError) as exc:
             self.status.setText(str(exc))
             return
@@ -1485,7 +1486,8 @@ class OrganizationWindow(TaskWindow):
                         + f" 仍有 {result['unresolved']} 项未完成；可查看归类记录了解原因并继续归类。"
                     )
                 self.bar.setValue(1000)
-                self.owner.tell(self.status.text())
+                if self.owner is not None:
+                    self.owner.tell(self.status.text())
                 self.open_button.setEnabled(result["mode"] != "quarantine")
             else:
                 self.plan, self.plan_job = result, self.job
