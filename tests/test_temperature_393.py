@@ -282,7 +282,7 @@ def test_fusion_never_uses_a_temperature_received_after_prediction_cutoff(tmp_pa
     )
 
 
-def test_fusion_marks_embedded_temperature_unavailable_before_packet_receipt(tmp_path):
+def test_fusion_defers_prediction_until_embedded_temperature_packet_arrives(tmp_path):
     from cowmata_tailring.algorithms.decision import build_fusion
 
     root = tmp_path / "farm"
@@ -297,8 +297,9 @@ def test_fusion_marks_embedded_temperature_unavailable_before_packet_receipt(tmp
     ).decode()
     raw.write_text(json.dumps(doc))
     result = build_fusion(root, [], tmp_path / "out", tmp_path / "cache")
-    assert result["rows"] and result["rows"][0]["temperature_c"] is None
-    assert result["rows"][0]["temperature_samples"] == 0
+    assert result["rows"][0]["decision_epoch_ms"] == START + 600000
+    assert result["rows"][0]["temperature_c"] == pytest.approx(18.25)
+    assert result["rows"][0]["temperature_samples"] == 2
 
 
 def test_combined_cow_code_matches_same_ear_tag_and_field_mark(tmp_path):

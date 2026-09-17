@@ -173,7 +173,7 @@ def predict_folder(folder, model_path, output, cache, model_home, *, progress=la
         sensor_records=len(index['records']),temperature_records=len(temperatures),
         elapsed_seconds=round(time.monotonic()-started,3),recommended_history_hours=72,
         reference_history_hours=24,horizon_hours=model['horizon_hours'],
-        interpretation='按文件内采集时间回放；各窗口只使用此前基线。预警窗口不是已确认产犊时刻。')
+        interpretation='按采样窗口回放，在服务器收包后预测；各窗口只使用当时已收到的历史基线。预警窗口不是已确认产犊时刻。')
     atomic_json(output/'综合决策结果.json',result)
     write_table(output/'综合决策结果.csv',result['rows'])
     write_table(output/'数据覆盖.csv',coverage)
