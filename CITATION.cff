@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use COWMATA Pro™ in research, please cite this software."
+title: "COWMATA Pro™"
+type: software
+version: 3.9.4
+date-released: 2026-09-17
+license: MIT
+repository-code: "https://github.com/zxq309/COWMATA-Pro"
+url: "https://github.com/zxq309/COWMATA-Pro"
+authors:
+  - family-names: Zhang
+    given-names: Xiangqing
+    affiliation: "Yangling Yuanshangyuan Intelligent Technology Co., Ltd.; Yan'an University"
+  - family-names: Zhang
+    given-names: Yalong
+    affiliation: "Yangling Yuanshangyuan Intelligent Technology Co., Ltd."
+  - family-names: Jiao
+    given-names: Tengyu
+    affiliation: "Yan'an University"
+  - family-names: Zhao
+    given-names: Yachen
+    affiliation: "Yan'an University"
+keywords:
+  - cattle behaviour
+  - calving
+  - annotation
+  - inertial measurement unit
+  - video

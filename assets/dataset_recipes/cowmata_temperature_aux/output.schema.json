@@ -1,0 +1,297 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "COWMATA temperature auxiliary evidence v6",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "algorithm_version",
+    "cow_id",
+    "device_id",
+    "binding_id",
+    "phase",
+    "evaluated_at_ms",
+    "evidence_score",
+    "temperature_risk_level",
+    "score_meaning",
+    "quality_status",
+    "fusion_weight",
+    "usable_for_fusion",
+    "features",
+    "reason_codes",
+    "ingest_status",
+    "eta_hours",
+    "horizon_probabilities",
+    "base_evidence_score",
+    "new_cooling_supplement",
+    "cooling_supplement"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "6.0"
+    },
+    "algorithm_version": {
+      "const": "temperature-aux-0.6.0"
+    },
+    "cow_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "binding_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "phase": {
+      "enum": [
+        "prepartum",
+        "calving",
+        "postpartum",
+        "inactive"
+      ]
+    },
+    "evaluated_at_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "evidence_as_of_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "evidence_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "temperature_risk_level": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ]
+    },
+    "score_meaning": {
+      "const": "temperature_evidence_not_calibrated_calving_probability"
+    },
+    "quality_status": {
+      "enum": [
+        "REAL_UPDATED",
+        "ESTIMATE_UPDATED",
+        "INITIAL_PRIOR",
+        "FORECAST_CONTINUES",
+        "NOT_APPLICABLE"
+      ]
+    },
+    "fusion_weight": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "usable_for_fusion": {
+      "type": "boolean"
+    },
+    "config_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "model_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "baseline_source": {
+      "enum": [
+        "SAME_CLOCK",
+        "NEAR_SAME_CLOCK",
+        "LOCAL_3_TO_12H",
+        "LOCAL_1_TO_6H",
+        "LOCAL_0_5_TO_3H",
+        "FIRST_PACKET"
+      ]
+    },
+    "latest_sample_ms": {
+      "type": "number",
+      "minimum": 1
+    },
+    "latest_actual_temperature_ms": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "data_age_minutes": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "estimated_temperature_c": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "estimation_sd_c": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "features": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "B_selected_reference_drop",
+          "B_relative_rmssd_gain",
+          "B_relative_width_gain",
+          "B_absolute_variability_support"
+        ]
+      },
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 4
+      }
+    },
+    "feature_details": {
+      "type": "object"
+    },
+    "model_details": {
+      "type": "object"
+    },
+    "confirmation": {
+      "type": "object"
+    },
+    "last_packet": {
+      "type": "object",
+      "required": [
+        "uid",
+        "received_at_ms",
+        "receive_time_source",
+        "source_points",
+        "accepted_points",
+        "new_real_evidence"
+      ],
+      "properties": {
+        "uid": {
+          "type": "string"
+        },
+        "received_at_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "receive_time_source": {
+          "enum": [
+            "server_received",
+            "json_update_proxy"
+          ]
+        },
+        "source_points": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "accepted_points": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "new_real_evidence": {
+          "type": "boolean"
+        }
+      }
+    },
+    "reason_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ingest_status": {
+      "enum": [
+        "ACCEPTED",
+        "SNAPSHOT",
+        "DUPLICATE_IGNORED",
+        "LATE_OR_OVERLAP_IGNORED"
+      ]
+    },
+    "eta_hours": {
+      "type": "null"
+    },
+    "horizon_probabilities": {
+      "type": "null"
+    },
+    "fusion_policy": {
+      "type": "object",
+      "properties": {
+        "can_veto_other_modalities": {
+          "const": false
+        },
+        "standalone_urgent_alert": {
+          "const": false
+        },
+        "low_means_weak_temperature_evidence": {
+          "const": true
+        }
+      }
+    },
+    "base_evidence_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "new_cooling_supplement": {
+      "type": "boolean"
+    },
+    "cooling_supplement": {
+      "type": "object",
+      "required": [
+        "rule_id",
+        "qualified",
+        "consecutive_packets",
+        "episode_consumed"
+      ],
+      "properties": {
+        "rule_id": {
+          "const": "cool05_run2_once"
+        },
+        "qualified": {
+          "type": "boolean"
+        },
+        "consecutive_packets": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "span_minutes": {
+          "type": "number",
+          "minimum": 0
+        },
+        "episode_consumed": {
+          "type": "boolean"
+        },
+        "last_trigger_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "last_trigger_packet_uid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_score_lifted_ms": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,287 @@
+{
+  "version": "3.3.1",
+  "date": "2026-09-10",
+  "screenshots": [
+    {
+      "file": "03-sources.png",
+      "widget": "OrganizationWindow",
+      "operation": "Actual source selectors; folder naming and date/category controls"
+    },
+    {
+      "file": "04-seven-categories.png",
+      "widget": "QFrame",
+      "operation": "Actual seven-category popup"
+    },
+    {
+      "file": "05-audit.png",
+      "widget": "OrganizationWindow",
+      "operation": "Read-only audit completed against synthetic input files"
+    },
+    {
+      "file": "06-report.png",
+      "widget": "OrganizationWindow",
+      "operation": "Actual audit result and report/resume controls"
+    },
+    {
+      "file": "07-preview.png",
+      "widget": "OrganizationWindow",
+      "operation": "Actual validated import preview, no files moved yet"
+    },
+    {
+      "file": "08-organized.png",
+      "widget": "OrganizationWindow",
+      "operation": "QProcess performed actual same-volume moves and indexing"
+    },
+    {
+      "file": "04-naming-errors.png",
+      "widget": "OrganizationWindow",
+      "operation": "Swapped cow/field directory blocked; original preserved and advice visible"
+    },
+    {
+      "file": "09-workspace.png",
+      "widget": "MainWindow",
+      "operation": "Actual organized project opened with decoded original video excerpt"
+    },
+    {
+      "file": "10-index.png",
+      "widget": "QDialog",
+      "operation": "Actual indexed IMU/video table with translated index states"
+    },
+    {
+      "file": "10-status.png",
+      "widget": "QDialog",
+      "operation": "Actual full loading status log"
+    },
+    {
+      "file": "11-time-roi.png",
+      "widget": "SourceTimeDialog",
+      "operation": "Actual video source timestamp/ROI dialog loading a decoded frame"
+    },
+    {
+      "file": "12-single-view.png",
+      "widget": "MainWindow",
+      "operation": "Actual single view with its progress bar and hover transport"
+    },
+    {
+      "file": "13-multiview.png",
+      "widget": "MainWindow",
+      "operation": "Actual two-view grid and shared reference timestamps"
+    },
+    {
+      "file": "14-waveform.png",
+      "widget": "MainWindow",
+      "operation": "Actual waveform layout with movable picture-in-picture"
+    },
+    {
+      "file": "15-alignment.png",
+      "widget": "MappingDialog",
+      "operation": "Actual two manually pinned demo correspondences"
+    },
+    {
+      "file": "16-active-action.png",
+      "widget": "MainWindow",
+      "operation": "Actual active action, start timestamp and explicit end/cancel controls"
+    },
+    {
+      "file": "16-drafts.png",
+      "widget": "MainWindow",
+      "operation": "Actual action-start/action-end buttons produced a saved video draft"
+    },
+    {
+      "file": "16-imu-refine.png",
+      "widget": "MainWindow",
+      "operation": "Selected video draft projected onto the IMU for independent boundary adjustment"
+    },
+    {
+      "file": "16-boundary-editor.png",
+      "widget": "QDialog",
+      "operation": "Actual independent start/end timestamp controls; cancel retains boundaries"
+    },
+    {
+      "file": "17-evidence.png",
+      "widget": "CaptureDialog",
+      "operation": "Actual FFmpeg extraction from both demo videos, reviewed and saved"
+    },
+    {
+      "file": "18-edit-label.png",
+      "widget": "QDialog",
+      "operation": "Actual edit dialog; cancelling preserves confirmed boundaries"
+    },
+    {
+      "file": "19-finish.png",
+      "widget": "QMessageBox",
+      "operation": "Actual per-record save/completion choices; no automatic completion"
+    },
+    {
+      "file": "20-export-result.png",
+      "widget": "MainWindow",
+      "operation": "Actual training export completion message and retained labels"
+    },
+    {
+      "file": "20-export.png",
+      "widget": "QMenu",
+      "operation": "Actual full/snippet/training export menu; output files verified"
+    },
+    {
+      "file": "21-history.png",
+      "widget": "HistoryWindow",
+      "operation": "Actual exported file reopened read-only with saved evidence images"
+    },
+    {
+      "file": "22-team.png",
+      "widget": "QDialog",
+      "operation": "Actual team inbox settings; conflict policy visible"
+    },
+    {
+      "file": "23-algorithm.png",
+      "widget": "MainWindow",
+      "operation": "Actual registered behavior model run; results remain separate from labels"
+    },
+    {
+      "file": "24-candidates.png",
+      "widget": "CandidateWindow",
+      "operation": "Actual candidate scan against demo IMU; no inference treated as truth"
+    },
+    {
+      "file": "25-health-boundary.png",
+      "widget": "MainWindow",
+      "operation": "Actual pregnancy algorithm entry is disabled/unconnected"
+    },
+    {
+      "file": "26-settings.png",
+      "widget": "QDialog",
+      "operation": "Actual view, playback, strict review and compatibility settings"
+    },
+    {
+      "file": "26-diagnostics.png",
+      "widget": "QMessageBox",
+      "operation": "Actual decoder timing and cache diagnostics after playback"
+    },
+    {
+      "file": "27-archive.png",
+      "widget": "ArchiveDialog",
+      "operation": "Actual archive verification UI; originals are not removed"
+    },
+    {
+      "file": "28-about.png",
+      "widget": "QDialog",
+      "operation": "Current version/build and tutorial/update entries"
+    },
+    {
+      "file": "28-updates.png",
+      "widget": "QDialog",
+      "operation": "Actual startup/background update policy and manual controls"
+    },
+    {
+      "file": "29-help.png",
+      "widget": "QMessageBox",
+      "operation": "Actual F1 quick-start help aligned with organize-label-export"
+    },
+    {
+      "file": "02-startup.png",
+      "widget": "StartupUpdateDialog",
+      "operation": "Actual startup latest-release check against configured GitHub endpoint"
+    },
+    {
+      "file": "19-close.png",
+      "widget": "QMessageBox",
+      "operation": "Actual save/discard/cancel close prompt; cancelled to preserve work"
+    },
+    {
+      "file": "30-legacy.png",
+      "widget": "QMenu",
+      "operation": "Actual legacy import/window compatibility menu"
+    },
+    {
+      "file": "30-index-tools.png",
+      "widget": "QMenu",
+      "operation": "Actual pause/expand/bulk scan, recheck, copy-batch and archive controls"
+    }
+  ],
+  "operations": [
+    {
+      "operation": "read-only audit",
+      "result": 6
+    },
+    {
+      "operation": "organize executed",
+      "result": "整理完成：6 项，1.31 秒；文件身份校验与任务记录已保存。"
+    },
+    {
+      "operation": "malformed naming blocked, source unchanged",
+      "result": true
+    },
+    {
+      "operation": "opened organized project",
+      "result": {
+        "records": 3,
+        "cameras": 2,
+        "cow": "00123",
+        "category": "pregnancy_late"
+      }
+    },
+    {
+      "operation": "single-view playback speeds exercised",
+      "result": [
+        1,
+        2,
+        4
+      ]
+    },
+    {
+      "operation": "manual sync anchors",
+      "result": 2
+    },
+    {
+      "operation": "draft confirmed with actual evidence files",
+      "result": 2
+    },
+    {
+      "operation": "switch/auto-save/resume",
+      "result": true
+    },
+    {
+      "operation": "full / snippet / training export files",
+      "result": [
+        "演示.标注.json",
+        "演示.片段.标注.json",
+        "BORIS.csv",
+        "全部人工成果.json",
+        "兼容单视频工程.json",
+        "参考时间与视频证据.csv",
+        "已确认事件.csv",
+        "训练元数据.json",
+        "逐样本标签.csv",
+        "43f372dc89a2fea07b770c69d3f29d17cc3cc1a8eaf86d4ea5086ab3613e433c.jpg",
+        "5cc00bd0b7344c9041d1d74fe085540bab6c79ae443623988248a3ddce3f120d.jpg",
+        "43f372dc89a2fea07b770c69d3f29d17cc3cc1a8eaf86d4ea5086ab3613e433c.jpg",
+        "5cc00bd0b7344c9041d1d74fe085540bab6c79ae443623988248a3ddce3f120d.jpg"
+      ]
+    },
+    {
+      "operation": "history reopens exported results",
+      "result": 1
+    },
+    {
+      "operation": "algorithm inspection",
+      "result": "算法完成；双击结果定位。无结果不等于无事件，分数不等于概率。"
+    },
+    {
+      "operation": "candidate scan",
+      "result": "扫描完成；无候选或质量拒绝均不代表无事件。"
+    },
+    {
+      "operation": "normal close after save",
+      "result": true
+    },
+    {
+      "operation": "supplementary real menus and close prompt",
+      "result": true
+    }
+  ],
+  "scope": "Actual Qt operations in an isolated synthetic-IMU/demo-video project; not behavioral ground truth",
+  "not_recaptured": [
+    "01-install.png",
+    "01-install-directory.png"
+  ]
+}

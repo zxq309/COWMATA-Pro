@@ -1,0 +1,25 @@
+{
+  "qt_modules": [
+    "QtCore",
+    "QtGui",
+    "QtWidgets",
+    "QtSvg",
+    "QtSvgWidgets"
+  ],
+  "qt_dlls": [
+    "Qt6Core.dll",
+    "Qt6Gui.dll",
+    "Qt6Network.dll",
+    "Qt6Pdf.dll",
+    "Qt6Svg.dll",
+    "Qt6SvgWidgets.dll",
+    "Qt6Widgets.dll"
+  ],
+  "plugin_families": [
+    "platforms",
+    "imageformats",
+    "iconengines",
+    "styles"
+  ],
+  "qt_version": "6.11.2"
+}

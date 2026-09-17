@@ -1,0 +1,3 @@
+Copyright (c) 2026 Yangling Yuanshangyuan Intelligent Technology Co., Ltd. All rights reserved.
+
+COWMATA brand assets, tail-sensor product imagery, algorithm source code, model artifacts, and project data in this repository are proprietary company materials. No public-use license is granted by this notice. Third-party dependencies and referenced projects remain subject to their respective licenses.

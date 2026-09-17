@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "version": "20260906",
+  "adapter": "csv-points-v1",
+  "runtime": "model_runtime_20260906",
+  "trusted_local_pack": true,
+  "models": [
+    {
+      "id": "stand_up",
+      "title": "起立",
+      "code": "STANDING_UP",
+      "entry": "起立/predict.py",
+      "files": {
+        "起立/algorithm/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "起立/algorithm/detector.py": "dcec36b482f042f8b0f0f5ff617a321167f02f037ce96c6a6ebe4d3d0a3ccaa8",
+        "起立/algorithm/features.py": "4374785e0e1680ea7b474a212b30cfcf4fe8a6556f4400fd79938a17ae639fd3",
+        "起立/algorithm/raw_io.py": "7ce053f3b4d9b88fcc333de5bb22a45956b7737b00f9574490b0361d2b7821dc",
+        "起立/algorithm/train.py": "a6becff60455922bb5f110db9793833d17bab539b6040bd59e66d554b39fec3b",
+        "起立/models/model.joblib": "aba932a441fe6878bf8a27ec58ba8bfb9f2b65788002ac7a732728d0ff838ce9",
+        "起立/predict.py": "0f353b259c0f31046023a97f7862e5f4254e463641ac1f32ca2c4024233b9958",
+        "起立/train.py": "c331bef88c1ffa10a029842c3cb20a698d32f4b73cec4593aef73c7b8e2aca71",
+        "起立/training_config.json": "b049e98a84b0db9fb9895d52e2c9459dd3c3af46e698f8ae5225f0ab4af0aebd"
+      },
+      "input_arg": "--raw",
+      "cow_arg": "--cow",
+      "time_column": "spot_s",
+      "score_column": "score",
+      "output": "result.csv",
+      "output_directory": false,
+      "extra_args": []
+    },
+    {
+      "id": "lie_down",
+      "title": "卧倒",
+      "code": "LYING_DOWN",
+      "entry": "卧倒/predict.py",
+      "files": {
+        "卧倒/core.py": "8147ec59b09f78b6d40a1e19095fbd0f10e06a34163f901ecc041257b0592223",
+        "卧倒/learner.py": "b12a7f1f779d6fcd5fff9b8fafd02d0ab0c3af3d52cc3f8e80958eff9a76434d",
+        "卧倒/models/model.joblib": "8b0231a7659085a2fdcbc176c0a939dd84721bbd5048c52418843d7932c26cf4",
+        "卧倒/point_features.py": "074d00d6bc1c02016163b7c810b0e249691985f295e2a538feb83d0148ae8a04",
+        "卧倒/predict.py": "e1c5055fa7a07ac89a6a2c4da8877bc6ec229df6cb78cf1677d7460018150e8d",
+        "卧倒/predict_events.py": "a63b5b83ce5a3bbd79a108df1dc22329aa1169e2189dfced744dea4cb4c8cf8c",
+        "卧倒/signal_features.py": "b40129f72af169d07189d72f8040b6799eea09cd80bc61b83af5efd82d62eb46",
+        "卧倒/source_v2_io.py": "7ce053f3b4d9b88fcc333de5bb22a45956b7737b00f9574490b0361d2b7821dc",
+        "卧倒/train.py": "4b2e4399f89f1933f41488d8d134e8cd453f2cce7c735f1ea7d5373d6f745fa2",
+        "卧倒/training_config.json": "320b44b4c78973e633eefdea5d60a6a588557f52d15cc173de82188bf8d266bc"
+      },
+      "input_arg": "--input",
+      "cow_arg": null,
+      "time_column": "around_s",
+      "score_column": "ranking_score",
+      "output": "result.csv",
+      "output_directory": false,
+      "extra_args": []
+    },
+    {
+      "id": "urination",
+      "title": "排尿",
+      "code": "URINATION",
+      "entry": "排尿/predict.py",
+      "files": {
+        "排尿/alerts.py": "4dad8ac08fe354d9a64caddd009dcd43f0c4aba3f9ee5c616036c044c182fc09",
+        "排尿/decoder.py": "316ba9204daebfb84d6150615bc95be72769853a342a7f7d6d517f1fe03634e2",
+        "排尿/detector.py": "adf9f8ff0ed68577f8ec4bd419c9cf14a90f2409fbb418dc16ea2310dd31f2e0",
+        "排尿/feature_columns.json": "62c7af66790ed49a2198b2a2668d118aba704c030926034099baaa842ca86ea7",
+        "排尿/features.py": "acfd8de4c8522ce897fa0b1bf82a7b7fe856edde336dfdd88feec39fb73d7761",
+        "排尿/models/model.pkl": "897de09fb8f91aa0da9814c7d860efbb158543e38b0fb81c06e208e8eabc166b",
+        "排尿/predict.py": "811fd4a2e96f6123ce3297f96822651089ae8d6a57ce149b80e9c6a469aac745",
+        "排尿/quality.py": "f855934424d1ff76159ccf78c3adf79c04ce1de082fb42c8de88204d9ce07ff6",
+        "排尿/train.py": "2c1426182930b07692bd301a7ab25f47b44c62cf8a6fd35eb70baa66552e6c15",
+        "排尿/training_config.json": "7d1616e21debe024ab2d392491015d38845457c709fa71b830d7e2c3b15bbe50",
+        "排尿/windows.py": "b2200c340e4453128a856311c56ba72d9a90c62d7125e45a8615cb725a073463"
+      },
+      "input_arg": "--input",
+      "cow_arg": "--cow-id",
+      "time_column": "event_time_s",
+      "score_column": "score",
+      "output": "result.csv",
+      "output_directory": false,
+      "extra_args": [
+        "--threads",
+        "2"
+      ]
+    },
+    {
+      "id": "tail_raise",
+      "title": "抬尾",
+      "code": "TAIL_RAISED",
+      "entry": "抬尾/predict.py",
+      "files": {
+        "抬尾/models/model.pkl": "2b6f5dba86b146669eb09cdacb1197843040c0c59d3a6d1dc37f9ce013fbdf60",
+        "抬尾/predict.py": "6be525d404cdc3f89460f431bd04e0f07defe44a79172828be395850a69d0047",
+        "抬尾/tailspot/__init__.py": "0565105ff662b6899e388901e55ea28d6cb5a3d97e9785be9c145ce93ec10b2b",
+        "抬尾/tailspot/decoder.py": "316ba9204daebfb84d6150615bc95be72769853a342a7f7d6d517f1fe03634e2",
+        "抬尾/tailspot/model.py": "8f9dae3a5b17f84f7201dad80c29bd50fb05f68b8a7694c9b5c8620589d70ef6",
+        "抬尾/tailspot/signal.py": "6a1efeab6253dc9e479f75fc59c005dc96f0fef4dc890e87250da1db7d6a152f",
+        "抬尾/tailspot/training.py": "5945189ad1b40c8e9823e7a3b4495c1eff746fa7123a2476da37211047fecf9b",
+        "抬尾/train.py": "61c80d4f62841bb396742a5d583aa3febba75aca820f4dd046b5f9a9262d258d"
+      },
+      "input_arg": "--json",
+      "cow_arg": "--cow",
+      "time_column": "spot_s",
+      "score_column": "score",
+      "output": "event_hints.csv",
+      "output_directory": true,
+      "extra_args": []
+    },
+    {
+      "id": "tail_wag",
+      "title": "甩尾",
+      "code": "TAIL_WAGGING",
+      "entry": "甩尾/predict.py",
+      "files": {
+        "甩尾/algorithm/__init__.py": "5a68f9372fb505af47e6760aaaedab657ff26dadd1355b61227f5015656e5d09",
+        "甩尾/algorithm/decoder.py": "316ba9204daebfb84d6150615bc95be72769853a342a7f7d6d517f1fe03634e2",
+        "甩尾/algorithm/feature_columns.json": "4710e61ffa7bdfd411c7294fc9df2afcafff8d9ae19513b18d64f9ba27f9f269",
+        "甩尾/algorithm/features.py": "7cc013c32b7200c1e9dde0b8e89bdc3680f23f1cd0b176474437499ca3b5d703",
+        "甩尾/algorithm/predict.py": "15c20a13189f1cadc1a0ceb336822e4d7ef9eb9f25a2467a8f6b81bb3dedfb23",
+        "甩尾/algorithm/quality.py": "e203bf60aa9cdb955da06703fd2b0a19c21453ce575171b0a36233225fd93a23",
+        "甩尾/algorithm/signal_math.py": "262d47b3beefbc0d2fc6bd35e49802bd609804844bc48a6ec7be9b56545829cf",
+        "甩尾/algorithm/train.py": "ffbb34220a527ebb987dc36bc5dfd98e5cd078d2d05530c1a3b437f786504dc1",
+        "甩尾/models/model.pkl": "2399b06393b58fdf53de645c23811dab00b9d47a521b5e8308e5953f169f7dd1",
+        "甩尾/predict.py": "302d9da599e352476688176160484a78bb300bb84c44661d90b68de3583f1908",
+        "甩尾/train.py": "3a18174c408e7100ebc324b1171bdaf4a83db6ff5172044ddee7830b51e8905e"
+      },
+      "input_arg": "--json",
+      "cow_arg": "--cow-id",
+      "time_column": "center_s",
+      "score_column": "score",
+      "output": "candidates.csv",
+      "output_directory": true,
+      "extra_args": []
+    }
+  ]
+}

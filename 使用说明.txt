@@ -1,0 +1,6 @@
+COWMATA Pro 3.9.4
+
+解压后运行 COWMATA.exe。说明见 docs/release-393.md 和 docs/temperature-contract-393.md。
+下载器使用纯时间戳文件名；v2 Motion 采用首帧采集时刻。
+数据集自动附带独立摄氏温度 Temp，保留原始 Raw/Label。
+训练模型单独存放，识别前手动导入。本目录不含现场资料、账号或已训练业务模型。

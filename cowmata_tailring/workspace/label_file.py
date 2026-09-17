@@ -1,0 +1,412 @@
+"""One movable annotation JSON; coordinates always belong to the parent IMU.
+
+Full exports embed the original JSON bytes; snippets embed original frames,
+not resampled plotted values. Source
+names and server timestamps are hints, never identities or alignment anchors.
+Loading history is read-only, including the project's SQLite index.
+"""
+from __future__ import annotations
+
+import base64
+import copy
+import hashlib
+import json
+import math
+import sqlite3
+from contextlib import closing
+from dataclasses import dataclass, replace
+from pathlib import Path
+
+import numpy as np
+
+from cowmata_tailring.annotation.core import Project
+
+from .annotation_store import FORMAT
+from .catalog import (
+    META_DIR,
+    assert_not_being_written,
+    bind_location_metadata,
+    digest_file,
+    file_stamp,
+)
+from .clocks import ClockMap, VideoTimeline, intervals_from_rows
+from .storage import atomic_json
+from .work import SessionWork
+
+
+def contained(root, relative):
+    path = (Path(root) / relative).resolve()
+    if not path.is_relative_to(Path(root).resolve()):
+        raise ValueError("Source path escapes the selected project")
+    return path
+
+
+def _overlap(start, end, lo, hi):
+    return start <= hi and (end if end is not None else start) >= lo
+
+
+def build_label_file(work, motion, root, rows, settings, *, selection=None, include_record=True):
+    root = Path(root).resolve()
+    from .shared_labels import CONTRACT
+    snapshot = copy.deepcopy(work.to_dict())
+    snapshot["project"]["shared_label_contract"] = copy.deepcopy(CONTRACT)
+    lo, hi = 0.0, motion.duration_ms
+    embedded = None
+    content = None
+    if selection is not None or include_record:
+        assert_not_being_written(motion.source_path)
+        before = file_stamp(motion.source_path)
+        content = motion.source_path.read_bytes()
+        if hashlib.sha256(content).hexdigest() != work.asset_id or before != file_stamp(motion.source_path):
+            raise ValueError("IMU source changed; refresh and verify before export")
+    if selection is None and include_record:
+        # One payload, byte-for-byte original including all auxiliary channels
+        # and unknown metadata. Never duplicate it as both parsed JSON and blob.
+        embedded = {"kind": "original_json", "original_json_base64": base64.b64encode(content).decode("ascii"),
+                    "sha256": work.asset_id, "parent_start_ms": 0,
+                    "sample_start": 0, "sample_stop": motion.sample_count, "acc_scale": motion.acc_scale}
+    if selection is not None:
+        lo, hi = sorted(map(float, selection))
+        if not math.isfinite(lo + hi) or lo < 0 or hi > motion.duration_ms or hi <= lo:
+            raise ValueError("Invalid snippet range")
+        first, stop = np.searchsorted(motion.times_ms, [lo, hi], side="left")
+        stop = int(np.searchsorted(motion.times_ms, hi, side="right"))
+        first = int(first)
+        if stop - first < 2:
+            raise ValueError("Select at least two actual IMU samples")
+        obj = json.loads(content.decode("utf-8-sig"))
+        raw = base64.b64decode("".join(obj["imu"].split()), validate=True)
+        if len(raw) != motion.sample_count * motion.frame_bytes:
+            raise ValueError("IMU source and loaded sample count disagree")
+        frames = raw[first * motion.frame_bytes:stop * motion.frame_bytes]
+        # Auxiliary buckets have a separate time base; do not stretch them over
+        # the snippet or pretend they were sampled at the nine-axis rate.
+        obj.pop("temperature", None)
+        obj.pop("motion", None)
+        obj["imu"] = base64.b64encode(frames).decode("ascii")
+        obj["version"] = motion.version
+        lo, hi = float(motion.times_ms[first]), float(motion.times_ms[stop - 1])
+        embedded = {"record": obj, "frames_sha256": hashlib.sha256(frames).hexdigest(),
+                    "parent_start_ms": lo, "sample_start": first, "sample_stop": stop,
+                    "acc_scale": motion.acc_scale, "auxiliary_channels": "not_included"}
+        snapshot["project"]["events"] = [e for e in snapshot["project"]["events"]
+                                                if _overlap(e["t0"], e.get("t1"), lo, hi)]
+        if work.clock.anchors:
+            snapshot["drafts"] = [d for d in snapshot["drafts"] if _overlap(
+                work.clock.map(d["reference_start"], inverse=True),
+                work.clock.map(d["reference_end"], inverse=True) if d.get("reference_end") is not None else None,
+                lo, hi)]
+    maps = {k: ClockMap.from_dict(v) for k, v in settings.get("camera_maps", {}).items()}
+    timeline = VideoTimeline(intervals_from_rows(rows, settings.get("camera_overrides")), maps)
+    video_ids = {e.get("asset_id") for d in work.drafts for e in d.get("video_evidence", [])}
+    video_ids.update(e.get("asset_id") for event in work.project.events for e in event.extras.get("video_evidence", []))
+    if work.clock.anchors:
+        start, end = work.clock.map(lo), work.clock.map(hi)
+        video_ids.update(s.asset_id for s in timeline.intervals if _overlap(
+            timeline.reference_time(s.camera, s.wall_start), timeline.reference_time(s.camera, s.wall_end), start, end))
+    return {"format": FORMAT, "version": 2 if embedded and embedded.get("kind") == "original_json" else 1,
+            "coordinates": "parent_imu_ms", **work.category_fields(), **work.identity_fields(),
+            "work": snapshot, "view": {"start_ms": lo, "end_ms": hi},
+            "source": {"asset_id": work.asset_id, "path": motion.source_path.resolve().relative_to(root).as_posix(),
+                       "project_root_hint": str(root), "acc_scale": motion.acc_scale,
+                       "capture_timing": motion.capture_timing()},
+            "video": {"rows": [copy.deepcopy(r) for r in rows if r["kind"] == "video" and r["asset_id"] in video_ids],
+                      "archive": copy.deepcopy(settings.get("video_archive", {})),
+                      "camera_maps": copy.deepcopy(settings.get("camera_maps", {})),
+                      "camera_overrides": copy.deepcopy(settings.get("camera_overrides", {})),
+                      "selected_cameras": list(settings.get("selected_cameras", []))},
+            "embedded_imu": embedded}
+
+
+def save_label_file(path, document, *, protected=(), evidence_root=None):
+    path = Path(path).resolve()
+    if path in {Path(p).resolve() for p in protected}:
+        raise ValueError("Cannot overwrite an original source or working annotation")
+    if path.suffix.lower() != ".json":
+        raise ValueError("Annotation output must be a JSON file")
+    if path.exists():
+        existing = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(existing, dict) or existing.get("format") != FORMAT or existing.get("source", {}).get("asset_id") != document["source"]["asset_id"]:
+            raise ValueError("Refusing to overwrite raw data or another recording's annotation")
+    from .evidence import copy_evidence
+    document = copy.deepcopy(document)
+    copy_evidence(document, evidence_root, path.parent)
+    atomic_json(path, document)
+
+
+def read_label_file(path):
+    path = Path(path)
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(data, dict):
+        raise ValueError("Not an annotation document")
+    if data.get("format") == FORMAT:
+        annotation_only = (data.get("version") == 3 and data.get("coordinates") == "unix_epoch_ms"
+                           and data.get("source", {}).get("kind") == "annotation_only")
+        if not annotation_only and (data.get("version") not in {1, 2} or data.get("coordinates") != "parent_imu_ms"):
+            raise ValueError("Unsupported annotation version or coordinates")
+        work = SessionWork.from_dict(data["work"])
+        if data["source"]["asset_id"] != work.asset_id:
+            raise ValueError("Annotation source identities disagree")
+        if annotation_only:
+            original = data.get("embedded_labels", {})
+            digest = hashlib.sha256(base64.b64decode(original.get("original_base64", ""), validate=True)).hexdigest()
+            if digest != original.get("sha256") or digest != work.asset_id:
+                raise ValueError("Legacy label source failed integrity validation")
+        lo, hi = (float(data["view"][key]) for key in ("start_ms", "end_ms"))
+        if not math.isfinite(lo + hi) or lo < 0 or hi < lo:
+            raise ValueError("Invalid annotation view range")
+        return data
+    # Previous workspace exports and old single-video project JSON remain
+    # readable. Missing identity/alignment is explicit, not filled from names.
+    if "project" in data and "asset_id" in data:
+        work = SessionWork.from_dict(data)
+    elif "labels" in data and "events" in data and "imu" not in data:
+        project = Project.from_dict(data)
+        work = SessionWork(str(project.source.get("asset_id", "")), project,
+                           ClockMap.from_dict(project.align.get("workspaceClock", {})))
+    else:
+        raise ValueError("Not an annotation document; open raw IMU through a data project")
+    end = max([float(work.project.source.get("durationMs") or 0)] +
+              [e.t1 if e.t1 is not None else e.t0 for e in work.project.events])
+    return {"format": FORMAT, "version": 1, "coordinates": "parent_imu_ms", "legacy": True,
+            "work": work.to_dict(), "source": {**work.project.source,"asset_id": work.asset_id, "path": work.project.source.get("path", "")},
+            "view": {"start_ms": 0, "end_ms": end}, "video": copy.deepcopy(work.history_video), "embedded_imu": None}
+
+
+def read_index(root):
+    path = Path(root) / META_DIR / "index.sqlite"
+    rows=[]
+    if path.is_file():
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
+            db.row_factory = sqlite3.Row
+            rows = [{**dict(r), "metadata": json.loads(r["metadata"] or "{}")} for r in db.execute(
+                "SELECT l.*,a.metadata FROM locations l LEFT JOIN assets a ON l.asset_id=a.id ORDER BY l.path")]
+    registry=Path(root)/'资源索引.json'
+    if registry.is_file():
+        by_path={r['path']:r for r in rows}
+        for record in json.loads(registry.read_text(encoding='utf-8')).get('records',[]):
+            if record.get('kind') not in {'imu','video'} or not record.get('sha256'):
+                continue
+            current=by_path.get(record['path'])
+            if current and current.get('asset_id')==record['sha256'] and current['state'] in {'ready','review'}:
+                continue
+            try:
+                source=contained(root,record['path'])
+                if not source.is_file() or source.stat().st_size!=record.get('size'):
+                    continue
+            except (OSError,ValueError):
+                continue
+            metadata=record.get('metadata',{})
+            by_path[record['path']]={'path':record['path'],'kind':record['kind'],'asset_id':record['sha256'],
+                'state':'review' if metadata.get('needs_review') else 'ready','stamp':record.get('verified_stamp') or 'archive_requires_sha256',
+                'registry_verified_stamp':bool(record.get('verified_stamp')), 'metadata':metadata}
+        rows=list(by_path.values())
+    settings_file = path.parent / "project.json"
+    settings = json.loads(settings_file.read_text(encoding="utf-8-sig")) if settings_file.is_file() else {}
+    return rows, settings
+
+
+def _history_index(root):
+    rows, settings = read_index(root)
+    result = []
+    for row in rows:
+        metadata = row.get('metadata') or {}
+        archive = metadata.get('archive_time') or {}
+        start, duration = archive.get('start_ms'), metadata.get('duration_ms')
+        if row.get('kind') == 'video' and not metadata.get('intervals') and isinstance(start, int | float) and isinstance(duration, int | float) and duration > 0 and math.isfinite(start + duration):
+            metadata = copy.deepcopy(metadata)
+            metadata['intervals'] = [dict(wall_start=start, wall_end=start+duration,
+                media_start=0, media_end=duration, verified=False,
+                warnings=['按归类时间浏览，尚未确认相机同步'])]
+            metadata['review_nominal_time'] = True
+            row = {**row, 'metadata':metadata}
+        result.append(row)
+    return result, settings
+
+
+@dataclass
+class HistoryData:
+    document: dict
+    work: SessionWork
+    motion: object
+    root: Path | None
+    rows: list
+    timeline: VideoTimeline
+    warnings: list[str]
+
+    def source_path(self,relative):
+        row=next((r for r in self.rows if r['path']==relative),{})
+        if row.get('resolved_source'):
+            return Path(row['resolved_source'])
+        local=contained(self.root,relative)
+        if local.is_file():
+            return local
+        return Path(row['external_source']).resolve() if row.get('external_source') else local
+
+
+def load_history(path, root=None, *, cancelled=lambda: False):
+    explicit_root=root is not None
+    from cowmata_tailring.annotation.taxonomy import upgrade_document
+
+    from .paired_dataset import category_for
+    from .review_store import local_source_root, resolve_label_path
+    path = resolve_label_path(path)
+    revision = digest_file(path)
+    doc = read_label_file(path)
+    doc = upgrade_document(doc, category=category_for(path, doc))
+    doc['_review_path'] = str(path)
+    doc['_review_sha256'] = revision
+    work = SessionWork.from_dict(doc["work"])
+    if doc.get("coordinates") == "unix_epoch_ms":
+        unknown = len(doc.get("legacy_import", {}).get("unresolved", []))
+        return HistoryData(doc, work, None, None, [], VideoTimeline([]),
+            [f"旧人工标签：绝对时间记录；未连接九轴，不生成虚构波形。另有 {unknown} 条记录待核，原行随文件保留。"])
+    hint = doc["source"].get("project_root_hint", "")
+    local_root = local_source_root(path, doc)
+    requested_root = Path(root).resolve() if root else None
+    root = local_root or requested_root or (Path(hint).resolve() if hint and Path(hint).is_dir() else None)
+    if root is None and not explicit_root:
+        root=next((p for p in Path(path).resolve().parents if
+            all((p/name).is_dir() for name in ('Motion','Video','PPG','标注工程'))),None)
+    warnings = []
+    from .evidence import evidence_summary
+    stills = evidence_summary(doc, Path(path).parent)
+    if stills["saved"]:
+        warnings.append(f"已校验证据图 {stills['saved']} 张（仅供人工回看，不参与算法）")
+    if stills["missing"]:
+        warnings.append(f"{stills['missing']} 张证据图缺失或损坏；请把标注 JSON 与“证据”文件夹一起复制")
+    try:
+        rows, settings = _history_index(root) if root else ([], {})
+    except (OSError, ValueError, sqlite3.Error):
+        rows, settings = [], {}
+        warnings.append("当前索引无法读取；改用历史快照核验，原索引不会被修改。")
+    motion = None
+    embedded = doc.get("embedded_imu")
+    if embedded:
+        if embedded.get("kind") == "original_json":
+            content = base64.b64decode(embedded["original_json_base64"], validate=True)
+            if hashlib.sha256(content).hexdigest() != work.asset_id or embedded["sha256"] != work.asset_id:
+                raise ValueError("Embedded original JSON failed source identity validation")
+            record = json.loads(content.decode("utf-8-sig"))
+        else:
+            record = embedded["record"]
+            frames = base64.b64decode(record["imu"], validate=True)
+            if hashlib.sha256(frames).hexdigest() != embedded["frames_sha256"]:
+                raise ValueError("Embedded IMU frames failed checksum validation")
+        from .sensor_records import parse_sensor_object
+        motion = parse_sensor_object(record, Path(path), kind=doc["source"].get("kind"), acc_scale=embedded.get("acc_scale", 4096))
+        offset = float(embedded["parent_start_ms"])
+        if offset != doc["view"]["start_ms"] or abs(offset + motion.duration_ms - doc["view"]["end_ms"]) > .001:
+            raise ValueError("Snippet offset does not match its parent view range")
+        # Snippet counters retain their original absolute elapsed values. Shift
+        # only the label coordinate system, not the device epoch a second time.
+        timing = doc["source"].get("capture_timing", {})
+        if timing:
+            motion = replace(motion, first_frame_elapsed_ms=float(timing.get("first_frame_elapsed_ms", 0))
+                             + offset - float(timing.get("coordinate_offset_ms", 0)))
+        if getattr(motion, "kind", "imu") == "ppg":
+            motion = replace(motion, times_ms=motion.times_ms + offset, coordinate_offset_ms=offset)
+        else:
+            motion = replace(motion, times_ms=motion.times_ms + offset, duration_ms=offset + motion.duration_ms,
+                             coordinate_offset_ms=offset)
+    elif root and len(work.asset_id) == 64:
+        paths = [r["path"] for r in rows if r["kind"] == "imu" and r["asset_id"] == work.asset_id]
+        paths.append(doc["source"].get("path", ""))
+        for relative in dict.fromkeys(paths):
+            if cancelled():
+                raise InterruptedError("History load cancelled")
+            try:
+                source = contained(root, relative)
+                before = file_stamp(source)
+                assert_not_being_written(source)
+                if digest_file(source) != work.asset_id:
+                    continue
+                from .sensor_records import load_sensor_json
+                motion = load_sensor_json(source, kind=doc["source"].get("kind"), acc_scale=doc["source"].get("acc_scale", 4096))
+                if before != file_stamp(source):
+                    motion = None
+                    continue
+                break
+            except (OSError, ValueError) as exc:
+                warnings.append(str(exc))
+                continue
+    if motion is not None and doc["view"].get("auto_full_record"):
+        doc["view"].update(start_ms=0, end_ms=motion.duration_ms)
+    if motion is None:
+        warnings.append("未找到身份匹配的九轴原件；仍可查看标签，请重新选择数据工程。")
+    if not work.clock.anchors and motion is not None:
+        try:
+            work.clock = ClockMap.from_capture(motion, settings.get("timezone_offset_minutes", 480))
+        except ValueError as exc:
+            warnings.append(str(exc))
+    if work.clock.basis != "manual":
+        warnings.append("按设备采集时间定位候选录像；未替代人工相机校准，历史标签保持原状。")
+    elif not work.clock.anchors:
+        warnings.append("没有可用九轴采集时间或校准锚点；不会用文件名或服务器收包时间对齐视频。")
+    if requested_root and requested_root != root:
+        root = requested_root
+        rows, settings = _history_index(root)
+    saved = doc.get("video", {})
+    video_root_hint=saved.get('archive',{}).get('archive_root_hint') or hint
+    saved_ids={r['asset_id'] for r in saved.get('rows',[])}
+    local_match=any(r['kind']=='video' and r.get('asset_id') in saved_ids for r in rows)
+    has_local_video=any(r['kind']=='video' for r in rows)
+    if not explicit_root and not local_match and (saved.get('rows') or not has_local_video and saved.get('archive')) and video_root_hint and Path(video_root_hint).is_dir():
+        root=Path(video_root_hint).resolve()
+        try:
+            rows,settings=_history_index(root)
+        except (OSError,ValueError,sqlite3.Error):
+            rows,settings=[],{}
+    elif local_match:
+        video_root_hint=hint
+    maps = {k: ClockMap.from_dict(v) for k, v in {**settings.get("camera_maps", {}), **saved.get("camera_maps", {})}.items()}
+    overrides = {**settings.get("camera_overrides", {}), **saved.get("camera_overrides", {})}
+    saved_rows = saved.get("rows", [])
+    if saved_rows:
+        candidates = []
+        for old in saved_rows:
+            # Keep the archived clock/OCR mapping. Only relocate by content ID.
+            matches = [r for r in rows if r["kind"] == "video" and r["asset_id"] == old["asset_id"]]
+            archive_matches = [r for r in saved.get("archive", {}).get("files", [])
+                               if r.get("asset_id") == old["asset_id"] and r.get("status") == "verified"]
+            candidates.extend([{**old, "path": r["path"], "stamp": r["stamp"]} for r in matches] or [old])
+            candidates.extend({**old, "path": r["archive_path"], "stamp": "archive_requires_sha256"} for r in archive_matches)
+        if saved.get("camera_maps", {}) != settings.get("camera_maps", {}):
+            warnings.append("回看使用标注文件保存的相机校准版本，不会静默迁移历史标签。")
+    else:
+        # Old exports lack a media snapshot; use only indexed matching time.
+        tl = VideoTimeline(intervals_from_rows(rows, overrides), maps)
+        ids = set()
+        if work.clock.anchors:
+            lo, hi = (work.clock.map(doc["view"][key]) for key in ("start_ms", "end_ms"))
+            ids = {s.asset_id for s in tl.intervals if _overlap(tl.reference_time(s.camera, s.wall_start), tl.reference_time(s.camera, s.wall_end), lo, hi)}
+        candidates = [r for r in rows if r["kind"] == "video" and r["asset_id"] in ids]
+    usable, seen = [], set()
+    for row in candidates if root else []:
+        if cancelled():
+            raise InterruptedError("History load cancelled")
+        if row["path"] in seen:
+            continue
+        seen.add(row["path"])
+        try:
+            source = contained(root, row["path"])
+            if row.get('external_source') and (not source.is_file() or not explicit_root and Path(row['external_source']).is_file()):
+                source=Path(row['external_source']).resolve(strict=True)
+            before = file_stamp(source)
+            assert_not_being_written(source)
+            # Stored stamps are only a fast path at the original root. A moved
+            # project is checked against SHA-256 before archived timing is used.
+            if before != row["stamp"] or root != Path(video_root_hint) and not row.get("registry_verified_stamp"):
+                if digest_file(source) != row["asset_id"]:
+                    raise OSError("Different video content")
+            if before != file_stamp(source):
+                raise OSError("Changing video")
+            usable.append({**row, "stamp": before,"resolved_source":str(source), "metadata": bind_location_metadata(row["metadata"], before)})
+        except OSError:
+            warnings.append("录像缺失或已变化：" + row["path"])
+    timeline = VideoTimeline(intervals_from_rows(usable, overrides), maps)
+    if any(r["metadata"].get("review_nominal_time") for r in usable):
+        warnings.append("按归类时间浏览，尚未确认相机同步")
+    if not timeline.intervals:
+        warnings.append("原录像当前不在本机或不可用；可回看标签和已保存证据图，不能仅凭截图重新确认整段动作。")
+    return HistoryData(doc, work, motion, root, usable, timeline, warnings)

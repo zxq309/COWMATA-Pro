@@ -1,0 +1,24 @@
+{
+  "date": "2026-09-15",
+  "destination": "zxq309/COWMATA-Pro",
+  "repositories": [
+    {
+      "repository": "cowmata-tailring",
+      "commit": "00e5660fbcbdbea01e79eb5f9f589ae52374ab2b",
+      "tag": "legacy/cowmata-tailring/latest",
+      "files": 83
+    },
+    {
+      "repository": "cowmata",
+      "commit": "468737081316e616780275836d0ae0448bc95438",
+      "tag": "legacy/cowmata/latest",
+      "files": 52
+    },
+    {
+      "repository": "cowmata-risk",
+      "commit": "7983ff237541683b66ffb8c54b53548a49ff9c90",
+      "tag": "legacy/cowmata-risk/latest",
+      "files": 61
+    }
+  ]
+}

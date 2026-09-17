@@ -1,0 +1,42 @@
+COWMATA Pro™
+Copyright (c) 2026 COWMATA contributors
+
+The source code is licensed under the MIT License in LICENSE.
+
+The COWMATA name, company name, marks, and logo artwork under assets/brand/
+are proprietary brand assets of Yangling Yuanshangyuan Intelligent Technology
+Co., Ltd. They are included for this authorized project and are not relicensed
+under the MIT License. Reuse outside an authorized COWMATA context requires
+permission from the rights holder.
+
+Third-party dependencies retain their own licenses. In particular, PySide6 is
+distributed by The Qt Company under its applicable LGPL/GPL/commercial terms,
+and VLC is distributed by VideoLAN under GPL terms. Review those licenses when
+redistributing packaged binaries.
+
+The five SVG interface icons in assets/fluent/ are from Microsoft's Fluent UI
+System Icons, revision 5bae3fb7771054c252a54b1d9210e9c03439fa1b, under the MIT
+License. The original license and per-file provenance/hashes are included in
+assets/fluent/LICENSE.txt and assets/fluent/provenance.json. Icons are local;
+the annotation application never downloads them at runtime.
+
+COWMATA Pro™ is the product trademark designation used by Yangling
+Yuanshangyuan Intelligent Technology Co., Ltd. The ™ symbol states a trademark
+claim; it is not a claim of registered trademark status. The product wordmark,
+Windows icon and installer graphics derive from the official COWMATA vector
+glyph, with Pro and TM identification. See assets/app-icon/provenance.json.
+
+Historical research materials retained from cowmata, cowmata-tailring and
+cowmata-risk keep their original notices and proprietary terms. They are not
+relicensed under the annotation application's MIT License. See
+docs/project/repository-consolidation.md for provenance and component locations.
+
+Edge download 3.8.4 incorporates the user-supplied COWMATA standalone downloader
+and the physical-interface SSH bridge from COWMATA Ledger 1.1.0.
+Bundled Ledger SSH transport is copied unchanged; its component notices are in
+vendor/ledger-ssh/licenses. Public known_hosts data accompanies the client;
+private keys and user CSV data are not distributed.
+
+The clean 3.9 portable runtime includes XGBoost 3.4.1 under Apache-2.0.
+Its upstream license is retained in runtime/Lib/site-packages/xgboost-3.4.1.dist-info/licenses/.
+No trained behavior or calving decision models are bundled.
