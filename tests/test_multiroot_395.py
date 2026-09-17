@@ -120,3 +120,55 @@ def test_many_view_progress_uses_source_identity_and_stays_bounded(organizer, tm
     assert time.monotonic() - start < .5
     assert '5 / 5' in organizer.sources.item(0, 3).text()
     assert '5 / 5' in organizer.sources.item(399, 3).text()
+
+
+def test_resume_rejects_changed_destination_before_writing(tmp_path):
+    import json
+
+    import pytest
+
+    from cowmata_tailring.workspace.video_intake import organize
+
+    job = tmp_path / 'job'
+    job.mkdir()
+    original = dict(streaming=True, resource_root=str(tmp_path / 'old'),
+                    target=str(tmp_path / 'old' / '产犊'), category='calving',
+                    sources=[], rows=[])
+    saved = json.dumps(original)
+    (job / 'plan.json').write_text(saved)
+    with pytest.raises(ValueError, match='输出目录'):
+        organize(tmp_path / 'new', [], job=job, category='calving')
+    assert (job / 'plan.json').read_text() == saved
+    assert not (tmp_path / 'new').exists()
+
+
+def test_resume_allows_added_roots_but_rejects_changed_view(tmp_path):
+    import pytest
+
+    from cowmata_tailring.workspace.organization_live import validate_resume
+
+    root = str(tmp_path / 'farm')
+    source = dict(path=str(tmp_path / 'input'), camera='视角01')
+    plan = dict(resource_root=root, target=str(tmp_path / 'farm' / '产犊'),
+                category='calving', sources=[source], rows=[])
+    request = dict(target=root, category='calving', sources=[source,
+                   dict(path=str(tmp_path / 'input2'), camera='视角20')])
+    validate_resume(plan, request)
+    request['sources'][0] = dict(source, camera='视角02')
+    with pytest.raises(ValueError, match='视角'):
+        validate_resume(plan, request)
+
+
+def test_resume_rejects_changed_category_and_foreign_targets(tmp_path):
+    import pytest
+
+    from cowmata_tailring.workspace.organization_live import validate_resume
+
+    root = str(tmp_path / 'farm')
+    plan = dict(resource_root=root, target=str(tmp_path / 'farm' / '产犊'),
+                category='calving', sources=[], rows=[])
+    with pytest.raises(ValueError, match='类别'):
+        validate_resume(plan, dict(target=root, category='estrus', sources=[]))
+    plan['rows'] = [dict(target=str(tmp_path / 'other' / 'a.mp4'))]
+    with pytest.raises(ValueError, match='目录以外'):
+        validate_resume(plan, dict(target=root, category='calving', sources=[]))
