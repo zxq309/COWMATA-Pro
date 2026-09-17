@@ -120,6 +120,8 @@ def build_behavior_dataset(
     progress=lambda *_: None,
     cancelled=lambda: False,
 ):
+    from cowmata_security.client import require
+    require('dataset')
     selected = list(BEHAVIORS) if behaviors is None else list(dict.fromkeys(behaviors))
     if not selected or any(code not in BEHAVIORS for code in selected):
         raise ValueError("请选择需要构建的行为")
@@ -266,6 +268,8 @@ def build_behavior_dataset(
 
 
 def build_decision_dataset(sources, target, *, progress=lambda *_: None, cancelled=lambda: False):
+    from cowmata_security.client import require
+    require('dataset')
     from .decision_dataset import export_decision
 
     result = export_dataset(sources, target, progress=progress, cancelled=cancelled)

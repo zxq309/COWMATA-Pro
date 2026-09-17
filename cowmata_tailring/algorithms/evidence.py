@@ -84,7 +84,9 @@ def add_baselines(rows):
         identity = row["cow_id"] or ("unidentified", row["asset_id"])
         prior = [r for r in history[identity] if now is not None
                  and r["end_epoch_ms"] is not None
-                 and now-86400000 <= r["end_epoch_ms"] <= now]
+                 and now-86400000 <= r["end_epoch_ms"] <= now
+                 and r.get("decision_epoch_ms", r["end_epoch_ms"])
+                 <= row.get("decision_epoch_ms", now)]
         for key in ("activity_index", "temperature_c"):
             values = [r[key] for r in prior if r[key] is not None]
             baseline = float(np.median(values)) if len(values) >= 6 else None

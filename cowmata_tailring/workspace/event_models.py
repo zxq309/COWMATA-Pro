@@ -124,6 +124,8 @@ def normalize_output(folder, model, duration_ms):
 
 
 def predict_one(pack, model, source, asset_id, cow_id, duration_ms, cache_dir, *, cancelled=lambda: False, force=False):
+    from cowmata_security.client import require
+    require('behavior')
     if pack.get("adapter") == "numeric-event-intervals-1":
         from cowmata_tailring.algorithms.adapter import predict_one as numeric_predict
         with inference_load():
@@ -159,7 +161,7 @@ def predict_one(pack, model, source, asset_id, cow_id, duration_ms, cache_dir, *
         command += model.get("extra_args", [])
         env = dict(os.environ, NUMBA_CACHE_DIR=str(folder / "numba"), PYTHONIOENCODING="utf-8")
         with inference_load():
-            process = run_cancellable(command, timeout=1800, cancelled=cancelled, env=env, cwd=folder)
+            process = run_cancellable(command, timeout=1800, cancelled=cancelled, env=env, cwd=folder, input_data=__import__('cowmata_security.worker',fromlist=['pipe_credentials']).pipe_credentials('behavior'))
         if process.returncode:
             error = (process.stderr or process.stdout).decode("utf-8", "replace")[-3000:]
             raise RuntimeError("Event model failed (unknown, not a negative recording): " + error)

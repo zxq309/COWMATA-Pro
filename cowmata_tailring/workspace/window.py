@@ -901,6 +901,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.tell(str(exc))
 
     def open_dataset_workflow(self, tab=0):
+        from cowmata_security.qt_ui import guard_action
+        if not guard_action(self, 'dataset'): return
         from .dataset_build_ui import DatasetBuildWindow
         single=bool(self.catalog and getattr(self.catalog,'standalone',False))
         if single and (not getattr(self,'_standalone_saved_path','') or self.standalone_unsaved()) and not self.save_user_annotations():

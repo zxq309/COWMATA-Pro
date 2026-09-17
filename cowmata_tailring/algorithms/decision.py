@@ -128,12 +128,13 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
                     row["straining_onsets"] = None
                     row["straining_seconds"] = None
                 row["behavior_versions"] = versions
-                row["decision_epoch_ms"] = row["end_epoch_ms"] + 20000
+                # A complete upload is unavailable until the server receives it.
+                # Keep sampling coordinates unchanged; move only the prediction cutoff.
                 available = f.get("update_time_ms")
-                if available is not None and available > row["decision_epoch_ms"]:
-                    row["temperature_c"] = None
-                    row["temperature_samples"] = 0
-                    row["temperature_availability"] = "packet_not_yet_received"
+                row["packet_received_epoch_ms"] = available
+                row["decision_epoch_ms"] = max(row["end_epoch_ms"] + 20000,
+                                                available if available is not None else 0)
+                row["receipt_time_known"] = available is not None
                 row["heart_rate_bpm"] = None
                 row["spo2_percent"] = None
                 row["prediction_probability"] = None
@@ -182,6 +183,7 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
             and r["field_mark"] == row["field_mark"]
             and r["start_epoch_ms"] >= row["start_epoch_ms"]
             and r["end_epoch_ms"] <= row["end_epoch_ms"]
+            and r["decision_epoch_ms"] <= row["decision_epoch_ms"]
         ]
         if matches:
             row["ppg_coverage"] = min(
@@ -201,6 +203,7 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
         index_fingerprint=index["fingerprint"],
         behavior_models=[dict(version=s["version"], sha256=s["hash"], codes=sorted(m["code"] for m in s["models"])) for s in selected],
         delayed_seconds=20,
+        timing_policy="server-receipt-v1",
         temperature_basis="sensor_celsius",
         temperature_contract=dict(CONTRACT),
         future_extensions=["heart_rate_bpm", "spo2_percent"],
@@ -395,6 +398,7 @@ def train_decision(
         version=output.name,
         algorithm=algorithm,
         feature_names=list(FEATURES),
+        timing_policy=evidence.get("timing_policy"),
         temperature_contract=dict(CONTRACT),
         median=median.tolist(),
         model_file=file.name,
@@ -468,6 +472,8 @@ def read_decision(folder):
 def predict_decision(evidence, model_path, output):
     folder, doc = read_decision(model_path)
     validate_contract(evidence.get("temperature_contract"))
+    if doc.get("timing_policy") != evidence.get("timing_policy"):
+        raise ValueError("决策模型与输入的时间可用性口径不同；请重新生成综合证据并重新训练决策模型")
     # Behavioral feature semantics are model-version-dependent.
     if doc.get("behavior_models") != evidence.get("behavior_models", []):
         raise ValueError("行为模型版本与决策训练时不同；请恢复对应行为模型或重新训练决策模型")

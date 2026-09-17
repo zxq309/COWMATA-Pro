@@ -13,12 +13,23 @@ def test_app_starts_without_entering_network_update_gate(tmp_path):
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
 from cowmata_tailring.app import main,update_ui
+from cowmata_security import qt_ui
+from cowmata_security.authority import Authority
+from cowmata_security.client import Session, install_session
+from cowmata_security.protocol import dispatch
+auth=Authority(Path(sys.argv[2])/"authority.csv")
+auth.bootstrap("startup_admin","temporary-startup-test-password")
+code=auth.recover_grant("startup_admin","temporary-startup-test-password","pro")["code"]
+session=Session(lambda req:dispatch(auth,req),"pro")
+session.login("startup_admin",code);install_session(session)
+qt_ui.authenticate=lambda *args,**kwargs:session
 from PySide6.QtWidgets import QWidget,QApplication
 from PySide6.QtCore import QTimer
 def gate(): raise AssertionError('Network gate was called before workspace')
 update_ui.verify_startup_update=gate
 update_ui.UpdateController=lambda window:None
-class Window(QWidget):
+from PySide6.QtWidgets import QMainWindow
+class Window(QMainWindow):
  def __init__(self):
   super().__init__();print('WORKSPACE_READY',flush=True);QTimer.singleShot(20,QApplication.instance().quit)
 m=types.ModuleType('cowmata_tailring.workspace.modern_window');m.MainWindow=Window
@@ -26,7 +37,7 @@ sys.modules[m.__name__]=m
 raise SystemExit(main.main(['--mode','workspace']))
 """
     result = subprocess.run(
-        [sys.executable, "-B", "-c", script, str(Path.cwd())], capture_output=True, timeout=30
+        [sys.executable, "-B", "-c", script, str(Path.cwd()), str(tmp_path)], capture_output=True, timeout=30
     )
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     assert b"WORKSPACE_READY" in result.stdout
