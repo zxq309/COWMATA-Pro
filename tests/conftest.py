@@ -130,14 +130,16 @@ def authorized_business_regression(request, monkeypatch):
             if path.name in worker_files and "cowmata_tailring" in path.parts:
                 return command[:position] + [wrapper, str(csv_path)] + command[position:]
         return command
+    import importlib
     for name in ("cowmata_tailring.algorithms.runner", "cowmata_tailring.workspace.event_models"):
-        module = sys.modules.get(name)
+        # Patch even when the test imports its worker runner inside the test body.
+        module = importlib.import_module(name)
         if module is not None:
             original = module.run_cancellable
             def invoke(command, *args, _original=original, **kwargs):
                 return _original(routed(command), *args, **kwargs)
             monkeypatch.setattr(module, "run_cancellable", invoke)
-    module = sys.modules.get("cowmata_tailring.workspace.dataset_build_ui")
+    module = importlib.import_module("cowmata_tailring.workspace.dataset_build_ui")
     if module is not None:
         original_process = module.QProcess
         class AuthorizedTestProcess(original_process):

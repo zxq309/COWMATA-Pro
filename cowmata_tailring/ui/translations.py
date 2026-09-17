@@ -4153,5 +4153,13 @@ ZH_TO_EN.update(
 NON_TRANSLATABLE = NON_TRANSLATABLE | {r"^视角0?([1-9]|1[0-9]|20)(?:$|[_\- ])"}
 
 
+ZH_TO_EN.update({
+    "决策模型与输入的时间可用性口径不同；请重新生成综合证据并重新训练决策模型": "The model and input use different data-availability timing. Rebuild the evidence and retrain the decision model.",
+    "按采样窗口回放，在服务器收包后预测；各窗口只使用当时已收到的历史基线。预警窗口不是已确认产犊时刻。": "Replay sampling windows and predict after server receipt, using only history received by that time. An alert window is not a confirmed calving time.",
+    "采样窗口截至": "Sampling window ends",
+    "预测可用时刻": "Prediction available at",
+    "预测提前量由导入的模型决定。采样时间与预测可用时间分开显示，整包收到后才预测；每个时段只使用当时已收到的参考数据；高风险表示未来窗口需关注，不等于已确认产犊。没有新数据时结果不会更新，点击开始可重新分析目录。": "The imported model determines the forecast horizon. Sampling time and prediction availability are shown separately; prediction waits for receipt of the full packet and uses only reference data already received. High risk calls for attention in a future window and does not confirm calving. Click Start again to analyze newly added data."
+})
+
 if __name__ == "__main__":
     _coverage()

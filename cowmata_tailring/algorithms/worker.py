@@ -4,7 +4,26 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
+
+
+def progress_writer(path, *, clock=time.monotonic, interval=0.25):
+    """Bound progress I/O while immediately reporting phase changes and completion."""
+    from cowmata_tailring.workspace.storage import atomic_json
+    previous_phase = None
+    last_write = float('-inf')
+
+    def report(done, total, message):
+        nonlocal previous_phase, last_write
+        now = clock()
+        phase = (message, total)
+        if phase == previous_phase and done != total and now - last_write < interval:
+            return
+        atomic_json(Path(path), dict(done=done, total=total, message=message), backup=False)
+        previous_phase, last_write = phase, now
+
+    return report
 
 
 def main():
@@ -39,8 +58,7 @@ def main():
     from cowmata_tailring.workspace.storage import atomic_json
     request = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 
-    def progress(done, total, message):
-        atomic_json(Path(request["progress"]), dict(done=done, total=total, message=message))
+    progress = progress_writer(request["progress"])
 
     action = request["action"]
     if action == 'inspect390':
