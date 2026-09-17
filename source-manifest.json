@@ -2075,8 +2075,8 @@
     },
     {
       "path": "cowmata_tailring/ui/translations.py",
-      "size": 401386,
-      "sha256": "b8905a8df78af8a20b6e97cf4f882916f9c72e2c015879c90cd543559e87d4a2"
+      "size": 402492,
+      "sha256": "f81670fad227b41171bd34673628b8d159e81fc9cf5c1b0d360febdf0c2c965b"
     },
     {
       "path": "cowmata_tailring/ui/video_timeline.py",
