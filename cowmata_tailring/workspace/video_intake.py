@@ -610,7 +610,7 @@ def plan_import(
                     if parent.name in aliases:
                         camera = aliases[parent.name]
                         break
-                    match = re.match(r"^视角0?([1-8])(?:$|[_\- ])", parent.name)
+                    match = re.match(r"^视角0?([1-9]|1[0-9]|20)(?:$|[_\- ])", parent.name)
                     if match:
                         camera = f"视角{int(match[1]):02d}"
                         break
@@ -995,6 +995,8 @@ def _organize(
                    and not any(source == e or source.is_relative_to(e) for e in excluded)
                    for p, excluded in selected_roots)
     if previous:
+        from .organization_live import validate_resume
+        validate_resume(previous, dict(options, target=target, sources=sources, start=start, end=end))
         previous['rows'] = [r for r in previous['rows'] if in_selection(r)]
         previous['sources'] = sources
         previous['delete_unusable'] = bool(options.get('delete_unusable'))
