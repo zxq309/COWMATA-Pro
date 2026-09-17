@@ -11,6 +11,8 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from cowmata_security.worker import authorize_worker
+    authorize_worker(Path(__file__).resolve().parents[2], 'behavior')
     for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMBA_NUM_THREADS"):
         os.environ[name] = "1"
     if os.name == "nt":

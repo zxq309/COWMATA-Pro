@@ -47,6 +47,8 @@ def build_native_features(target,*,app_root=None,selected_codes=None,behavior_fo
 
 
 def build_algorithm_datasets(sources,target,*,app_root=None,historical=None,allow_proxy=False,progress=lambda *_:None,cancelled=lambda:False):
+    from cowmata_security.client import require
+    require('dataset')
     result = export_dataset(sources,target,progress=progress,cancelled=cancelled)
     target=Path(target)
     initial=json.loads((target/'dataset-manifest.json').read_text(encoding='utf-8'))

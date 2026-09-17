@@ -10,6 +10,9 @@ Run ``python -m cowmata_tailring.ui.translations`` for a coverage report.
 from __future__ import annotations
 
 ZH_TO_EN: dict[str, str] = {
+    "当前 Pro 账号授权有效，可只读刷新 CSV": "The current Pro account is authorized for read-only CSV refresh.",
+    "直接使用当前 Pro 登录会话只读刷新服务器 CSV，无需再次输入上传器密码；使用本地 CSV 时可取消每轮刷新。": "Use the current Pro session for read-only server CSV refresh without entering an uploader password again. Disable per-cycle refresh when using local CSV files.",
+    "验证当前 Pro 账号授权": "Verify current Pro account authorization",
     "\n切换时自动保存；未完成记录会恢复上次位置。完成需点击“已完成，下一份”。": "\nSwitching saves automatically; unfinished records resume at the last position. Use Complete and next to finish.",
     " · 上次位置 ": " · Last position ",
     " · 未完成 ": " · Unfinished ",

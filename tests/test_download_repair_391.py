@@ -388,33 +388,31 @@ def test_bad_equipment_end_cannot_look_like_normal_wear(tmp_path):
 
 
 def test_login_session_never_enters_settings_or_cycle_history(tmp_path, qt_application):
-    import time
+    from cowmata_security.client import current_session
 
     from cowmata_tailring.edge_download.site_records import LedgerClient, settings_defaults
 
     client = LedgerClient(settings_defaults(), threading.Event())
     requests = []
-    session = dict(
-        token="only-in-memory",
-        user={"role": "operator", "username": "tester"},
-        expires_at=time.time() + 3600,
-    )
+    active = current_session()
+    token = active.token
 
     def request(payload):
         requests.append(payload)
-        return json.dumps(dict(version=2, ok=True, **session)).encode()
+        raise AssertionError("Ledger must reuse the current Pro authorization")
 
     client.request = request
-    assert client.login("tester", "test-password") == session
-    assert requests[0]["action"] == "login"
-    assert "changes" not in requests[0]
+    session = client.login()
+    assert session["token"] == token
+    assert session["user"]["username"] == active.identity["account"]
+    assert requests == []
     dialog = make_dialog(tmp_path)
     try:
         report = dict(errors=[], motion=None, ledger=None, canceled=False, session=session)
         dialog.cycle_completed(report)
-        assert dialog.session["token"] == "only-in-memory"
+        assert dialog.session["token"] == token
         text = dialog.store.path.read_text("utf-8")
-        assert "only-in-memory" not in text and "test-password" not in text
+        assert token not in text
     finally:
         dialog.stop_task()
         dialog.deleteLater()
