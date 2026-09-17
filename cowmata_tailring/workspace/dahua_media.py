@@ -136,6 +136,83 @@ def segments(start, end, requested_start=None, requested_end=None, split_midnigh
 
 
 def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
+    """Keep compatible H.264 video packets; exact middle cuts use the encoder."""
+    import os
+    import uuid
+    from pathlib import Path
+
+    target = Path(target)
+    if target.exists():
+        raise FileExistsError("目标 MP4 已存在，未覆盖：" + str(target))
+    if offset_ms < 0 or duration_ms <= 0:
+        raise ValueError("转码时间范围无效")
+    if offset_ms == 0:
+        stage = target.with_name(target.stem + ".remux-" + uuid.uuid4().hex + ".mp4")
+        try:
+            video = probe(source, cancelled, dav=True)["video"]
+            if (
+                video.get("codec_name") == "h264"
+                and video.get("pix_fmt") == "yuv420p"
+                and video.get("color_range") != "pc"
+            ):
+                ffmpeg, _ = find_ffmpeg()
+                result = run(
+                    [
+                        ffmpeg,
+                        "-nostdin",
+                        "-hide_banner",
+                        "-v",
+                        "warning",
+                        "-xerror",
+                        "-copyts",
+                        "-start_at_zero",
+                        "-f",
+                        "dhav",
+                        "-i",
+                        source,
+                        "-t",
+                        f"{duration_ms / 1000:.6f}",
+                        "-map",
+                        "0:v:0",
+                        "-map",
+                        "0:a:0?",
+                        "-map_metadata",
+                        "-1",
+                        "-c:v",
+                        "copy",
+                        "-c:a",
+                        "aac",
+                        "-ar",
+                        "48000",
+                        "-b:a",
+                        "96k",
+                        "-movflags",
+                        "+faststart",
+                        "-n",
+                        stage,
+                    ],
+                    cancelled,
+                    max(300, duration_ms / 1000 * 5),
+                )
+                verified = _validate_output(stage, duration_ms, result, "stream_copy", cancelled)
+                check(cancelled)
+                if os.name == "nt":
+                    os.rename(stage, target)
+                else:
+                    os.link(stage, target)
+                    stage.unlink()
+                verified["info"].setdefault("format", {})["filename"] = str(target)
+                return verified
+        except (ValueError, OSError):
+            check(cancelled)
+            if target.exists():
+                raise
+        finally:
+            stage.unlink(missing_ok=True)
+    return _encode(source, target, offset_ms, duration_ms, cancelled)
+
+
+def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
     ffmpeg, _ = find_ffmpeg()
     # No guessed frame rate: VFR keeps input timestamps, dropping duplicates.
     args = [
@@ -193,6 +270,11 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
         target,
     ]
     result = run(args, cancelled, max(300, duration_ms / 1000 * 10))
+    return _validate_output(target, duration_ms, result, "encoded", cancelled)
+
+
+def _validate_output(target, duration_ms, result, processing, cancelled):
+    ffmpeg, _ = find_ffmpeg()
     info = probe(target, cancelled)
     video = info["video"]
     if video["codec_name"] != "h264" or video.get("pix_fmt") != "yuv420p":
@@ -235,7 +317,8 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
             pixel_format="yuv420p",
             audio="aac",
             pts="vfr",
-            crf=23,
+            crf=23 if processing == "encoded" else None,
+            video_processing=processing,
             original_resolution=True,
         ),
     )

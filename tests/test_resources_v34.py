@@ -63,7 +63,7 @@ def test_copy_and_repeat_resume_cross_midnight(tmp_path):
     scope = Path(result['target'])
     assert (scope/'PPG/2026-08-04').is_dir()
     assert not list((scope/'PPG').rglob('*.txt'))
-    assert len(list((scope/'Video/2026-08-04').iterdir())) == 8
+    assert len(list((scope/'Video/2026-08-04').iterdir())) == 20
     from cowmata_tailring.workspace.catalog import Catalog
     cat = Catalog(scope/'Motion/2026-08-04', stability_seconds=0)
     try:

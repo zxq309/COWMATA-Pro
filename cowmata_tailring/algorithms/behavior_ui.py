@@ -115,6 +115,13 @@ class BehaviorWindow(JobWindow):
         )
         note.setWordWrap(True)
         outer.addWidget(note)
+        self.birth_candidate_note = QLabel(
+            "9、A 为实验性候选定位：传感器分数不能确认胎儿可见或完全娩出，须回看视频确认时间点。"
+        )
+        self.birth_candidate_note.setWordWrap(True)
+        outer.addWidget(self.birth_candidate_note)
+        self.algorithm.currentIndexChanged.connect(self.update_birth_note)
+        self.update_birth_note()
         self.tabs = QTabWidget()
         outer.addWidget(self.tabs, 1)
         train = QWidget()
@@ -215,6 +222,11 @@ class BehaviorWindow(JobWindow):
         self.algorithm.currentIndexChanged.connect(lambda *_: self.model.clear())
         self.modality.currentIndexChanged.connect(lambda *_: self.model.clear())
         self.refresh_history()
+
+    def update_birth_note(self):
+        from . import POINT_EVENT_CODES
+
+        self.birth_candidate_note.setVisible(self.algorithm.currentData() in POINT_EVENT_CODES)
 
     def open_library(self):
         self.home.mkdir(parents=True, exist_ok=True)

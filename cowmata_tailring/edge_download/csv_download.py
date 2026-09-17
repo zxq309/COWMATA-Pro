@@ -33,14 +33,18 @@ from .settings import atomic_json
 def save_record(job, plan, kind, data):
     validate_payload(data, kind)
     stamp = record_datetime(data, kind)
-    wear, reason = plan.resolve(data["device"], stamp, data.get("cow_id", ""))
-    category = wear.category if wear else "待核对"
+    wear, reason = plan.resolve_download(data["device"], stamp, data.get("cow_id", ""))
+    if wear is None:
+        raise DownloadError("台账未授权下载：" + reason)
+    category = wear.category
     owner = wear.identity.folder_name if wear else data["device"].upper() + "-待核对"
     folder = checked_path(
         job.farm, Path(category) / MODALITIES[kind] / stamp.strftime("%Y-%m-%d") / owner
     )
     validate_payload(data, kind)
-    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode(
+        "utf-8"
+    )
     file = checked_path(job.farm, folder / (stamp.strftime("%Y-%m-%d_%H-%M-%S") + ".json"))
     folder.mkdir(parents=True, exist_ok=True)
     if file.exists():
@@ -55,24 +59,26 @@ def save_record(job, plan, kind, data):
             if fingerprint(old, kind) == fingerprint(data, kind):
                 return file, False, wear, reason
             raise DownloadError("同秒时间戳文件冲突，原件保留，未另建重复名称：" + str(file))
-        backup = checked_path(job.farm, Path('.edge-download/recovery') / (file.name + '.' + uuid.uuid4().hex))
+        backup = checked_path(
+            job.farm, Path(".edge-download/recovery") / (file.name + "." + uuid.uuid4().hex)
+        )
         backup.parent.mkdir(parents=True, exist_ok=True)
         backup.write_bytes(previous)
         # Only replace an invalid file after preserving its exact bytes.
         repair = True
     else:
         repair = False
-    fd, temporary = tempfile.mkstemp(prefix='.edge-', suffix='.partial', dir=folder)
+    fd, temporary = tempfile.mkstemp(prefix=".edge-", suffix=".partial", dir=folder)
     try:
-        with os.fdopen(fd, 'wb') as stream:
+        with os.fdopen(fd, "wb") as stream:
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
         if repair:
             if file.read_bytes() != previous:
-                raise DownloadError('目标文件在核对后发生变化，已停止替换')
+                raise DownloadError("目标文件在核对后发生变化，已停止替换")
             os.replace(temporary, file)
-        elif os.name == 'nt':
+        elif os.name == "nt":
             os.rename(temporary, file)
         else:
             os.link(temporary, file)
@@ -85,8 +91,8 @@ def run_csv_job(
     job, cancel, log=lambda message: None, progress=lambda done, total: None, client_factory=Client
 ):
     plan = CsvPlan(job.ledger_directory)
-    if not plan.wears:
-        raise DownloadError("未能从现场 CSV 读取有效佩戴记录；请先刷新 CSV 并查看台账核对清单")
+    if not plan.ready:
+        raise DownloadError("必须先完整核对三份现场 CSV；本轮未开始下载")
     result = Result()
     root = Path(job.farm)
     root.mkdir(parents=True, exist_ok=True)
@@ -104,12 +110,16 @@ def run_csv_job(
         )
         for issue in plan.issues:
             log(f"台账待核对 {issue['source']} 第 {issue['row']} 行：{issue['message']}")
+        ranges = list(plan.bounds(job.start, job.end))
+        if not ranges:
+            result.pending = sum(r["eligibility"] == "pending" for r in plan.preview())
+            log("本轮没有符合条件的样本；未请求原始数据。缺项补全后下轮重新核对。")
+            return result
         client = client_factory(job.base_url, cancel, log)
         db = sqlite3.connect(checked_path(root, state / "csv-completed.sqlite3"))
         db.execute(
             "CREATE TABLE IF NOT EXISTS files (key TEXT PRIMARY KEY,path TEXT,sha TEXT,ledger TEXT)"
         )
-        ranges = list(plan.bounds(job.start, job.end))
         log(
             f"已自动配置 {len(plan.by_device)} 台设备、{len(plan.wears)} 段佩戴记录；本轮 {len(ranges)} 个查询时段"
         )
@@ -122,7 +132,7 @@ def run_csv_job(
                     client.check()
                     end = min(hi, lo + timedelta(days=1))
                     try:
-                        items = client.listing(Target(device), lo, end, job.kinds)
+                        items = client.listing(Target(device), lo, end, ("motion", "pulse", "temp"))
                         for kind, uid, actual_device, history_cow in items:
                             client.check()
                             key = json.dumps([job.base_url.rstrip("/"), kind, uid, actual_device])
@@ -133,8 +143,12 @@ def run_csv_job(
                                 existing = local.find_uid(kind, actual_device, uid, lo, end)
                                 if existing is not None:
                                     result.skipped += 1
-                                    log("已存在，跳过下载：" + existing.relative_to(root).as_posix())
-                                    progress(result.saved + result.skipped + result.failed, len(seen))
+                                    log(
+                                        "已存在，跳过下载：" + existing.relative_to(root).as_posix()
+                                    )
+                                    progress(
+                                        result.saved + result.skipped + result.failed, len(seen)
+                                    )
                                     continue
                                 cached = db.execute(
                                     "SELECT path,sha,ledger FROM files WHERE key=?", (key,)
@@ -156,10 +170,22 @@ def run_csv_job(
                                 )
                                 if not lo <= actual < end:
                                     raise DownloadError("详情采集时间不在请求时段")
+                                wear, reason = plan.resolve_download(
+                                    actual_device,
+                                    actual,
+                                    data.get("cow_id")
+                                    or data.get("animal_number")
+                                    or data.get("animalNumber")
+                                    or "",
+                                )
+                                if wear is None:
+                                    raise DownloadError("台账未授权保存：" + reason)
                                 existing = local.find_data(kind, data)
                                 if existing is not None:
                                     file, saved = existing, False
-                                    wear, reason = plan.resolve(actual_device, actual, data.get("cow_id", ""))
+                                    wear, reason = plan.resolve_download(
+                                        actual_device, actual, data.get("cow_id", "")
+                                    )
                                 else:
                                     file, saved, wear, reason = save_record(job, plan, kind, data)
                                 local.remember(file, kind)
