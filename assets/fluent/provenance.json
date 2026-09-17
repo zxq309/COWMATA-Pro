@@ -1,0 +1,27 @@
+{
+  "project": "https://github.com/microsoft/fluentui-system-icons",
+  "revision": "5bae3fb7771054c252a54b1d9210e9c03439fa1b",
+  "license": "MIT",
+  "files": {
+    "folder_open.svg": {
+      "path": "assets/Folder Open/SVG/ic_fluent_folder_open_20_regular.svg",
+      "sha256": "c5f8b2db9af20a454c1f05ce6eda4b21c99f1b8677b14b6d7d07d5817140a487"
+    },
+    "panel_left.svg": {
+      "path": "assets/Panel Left/SVG/ic_fluent_panel_left_20_regular.svg",
+      "sha256": "be665db4761d910a85eddf2c55dbcaffb816bbc46d2c1c1e68377220c776009f"
+    },
+    "pin.svg": {
+      "path": "assets/Pin/SVG/ic_fluent_pin_20_regular.svg",
+      "sha256": "5d394e4adf3454f007dd928eaa91ebcb5fd9c5487736b700654e037310ddfba4"
+    },
+    "text_bullet_list.svg": {
+      "path": "assets/Text Bullet List/SVG/ic_fluent_text_bullet_list_20_regular.svg",
+      "sha256": "4b57105ae98074d41fea28c7cee11670c78d2c739c97e31c344c89deaddc5304"
+    },
+    "save.svg": {
+      "path": "assets/Save/SVG/ic_fluent_save_20_regular.svg",
+      "sha256": "fdfbcf9c469ff958782a3f8ab4659c7f1c48062752bb6324b07e5bbb70f52969"
+    }
+  }
+}

@@ -1,0 +1,134 @@
+"""Assemble verified local runtime/vendor inputs without touching user data.
+
+Run using the development Python. End users only extract the resulting folder.
+This builder never fetches packages, mutates a system environment or overwrites
+an existing distribution. Embedded dependencies are pinned in requirements-portable.txt.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import re
+import shutil
+import zipfile
+from pathlib import Path
+
+
+def write_checksum(archive, digest):
+    # Distribution names may contain Chinese characters on Windows.
+    with archive.with_suffix(".zip.sha256").open("x", encoding="utf-8") as stream:
+        stream.write(digest + "  " + archive.name + "\n")
+
+
+def portable_ignore(directory, names):
+    """Exclude only audited unused developer/browser tools, not media codecs.
+
+    The app uses Qt Widgets/SVG, VLC and FFmpeg/ffprobe, never Qt WebEngine or
+    ffplay. Keep Qt platform/image/style plugins and the private runtime.
+    """
+    path = Path(directory)
+    if path.name == "cowmata_temperature_aux":
+        return {"model.json", "__pycache__"}
+    if path.name == "assets":
+        return {"algorithms", "event_models"}
+    ignored = {name for name in names if name == "__pycache__" or name.endswith((".pyc", ".pyi", ".pdb", ".lib", ".exp"))
+               or name in {".pytest_cache", ".ruff_cache"}}
+    if "site-packages" in path.parts and "PySide6" in path.parts:
+        ignored.update(name for name in names if (
+            "webengine" in name.lower() or name in {"include", "typesystems", "glue", "doc", "examples"}
+            or name.startswith("objects-") or name.endswith((".lib", ".exp", ".pdb"))))
+    if "PySide6" in path.parts:
+        profile = json.loads((Path(__file__).resolve().parents[1]/'packaging/portable-profile.json').read_text(encoding='utf-8'))
+        if path.name == 'PySide6':
+            ignored.add('qml')
+            ignored.update(name for name in names if name.endswith('.pyd') and Path(name).stem not in profile['qt_modules'])
+            ignored.update(name for name in names if name.startswith('Qt6') and name.endswith('.dll') and name not in profile['qt_dlls'])
+        elif path.name == 'plugins':
+            ignored.update(name for name in names if name not in profile['plugin_families'])
+    if path.name == "bin" and path.parent.name == "ffmpeg":
+        ignored.add("ffplay.exe")
+    if any(p in {"runtime", "model_runtime_20260906"} for p in path.parts):
+        ignored.add("tests")
+    return ignored
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--no-zip", action="store_true")
+    parser.add_argument("--components", type=Path, help="Existing matching offline package supplying the runtime, media tools and OCR resources")
+    args = parser.parse_args()
+    source = Path(__file__).resolve().parents[1]
+    components = args.components.resolve() if args.components else source
+
+    def input_path(relative):
+        candidate = source / relative
+        return candidate if candidate.exists() else components / relative
+    destination = Path(args.out).resolve()
+    if destination.exists():
+        raise SystemExit("Output already exists; choose a fresh distribution directory.")
+    archive = destination.with_name(destination.name + ".zip")
+    if not args.no_zip and (archive.exists() or archive.with_suffix(".zip.sha256").exists()):
+        raise SystemExit("Archive already exists; choose a fresh distribution name.")
+    required = ["COWMATA.exe", "runtime/python.exe", "runtime/pythonw.exe", "runtime/Lib/site-packages/PySide6/QtWidgets.pyd",
+                "runtime/Lib/site-packages/rapidocr/__init__.py",
+                "runtime/Lib/site-packages/xgboost/__init__.py",
+                "assets/ocr/ppocrv6_medium/models.json",
+                "assets/ocr/ppocrv6_medium/PP-OCRv6_det_medium.onnx",
+                "assets/ocr/ppocrv6_medium/PP-OCRv6_rec_medium.onnx",
+                "assets/ocr/ppocrv6_medium/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+                "runtime/Lib/site-packages/rapidocr_onnxruntime/models/ch_PP-OCRv4_rec_infer.onnx",
+                "vendor/vlc/libvlc.dll", "vendor/ffmpeg/bin/ffmpeg.exe", "vendor/ffmpeg/bin/ffprobe.exe"]
+
+    for relative in required:
+        if not input_path(relative).is_file():
+            raise SystemExit("Missing portable input: " + relative)
+    model_root = source / "assets" / "ocr" / "ppocrv6_medium"
+    registry = json.loads((model_root / "models.json").read_text(encoding="utf-8"))
+    for item in registry["files"].values():
+        with input_path("assets/ocr/ppocrv6_medium/" + item["name"]).open("rb") as stream:
+            if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
+                raise SystemExit("Portable model hash mismatch: " + item["name"])
+    destination.mkdir(parents=True, exist_ok=False)
+    for name in ("cowmata_tailring", "runtime", "vendor", "assets"):
+        # Exclude upstream test corpora and C++ build objects, not runtime DLLs
+        # or our reviewed event algorithms. This also avoids NSIS/MAX_PATH
+        # failures on deeply nested sklearn test fixtures and Qt object files.
+        shutil.copytree(components / name if name in {"assets", "vendor"} else input_path(name), destination / name,
+                        ignore=portable_ignore)
+        if name in {"assets", "vendor"} and components != source and (source / name).is_dir():
+            shutil.copytree(source / name, destination / name, dirs_exist_ok=True, ignore=portable_ignore)
+    for name in ("COWMATA.exe", "START_ANNOTATOR.bat", "修复旧版更新.cmd", "portable_start.py", "使用说明.txt", "README.md", "README.zh-CN.md", "CHANGELOG.md", "CITATION.cff", "CONTRIBUTING.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
+        shutil.copy2(input_path(name), destination / name)
+    (destination / "docs").mkdir()
+    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md'):
+        shutil.copy2(source/'docs'/name, destination/'docs'/name)
+    shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
+    shutil.copytree(source/'docs/images/guide390', destination/'docs/images/guide390')
+    shutil.copytree(source/'docs/project', destination/'docs/project')
+    (destination/'scripts').mkdir()
+    for name in ('recover_update.py','portable_startup_self_test.py','portable_self_test.py','verify_label_history.py','verify_event_models.py','verify_candidate_ui.py','register_event_pack.py','verify_evidence_archive.py','train_mother_dataset.py'):
+        shutil.copy2(source/'scripts'/name, destination/'scripts'/name)
+    inventory = []
+    for path in sorted(destination.rglob("*")):
+        if path.is_file():
+            with path.open("rb") as stream:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            inventory.append({"path": path.relative_to(destination).as_posix(), "size": path.stat().st_size, "sha256": digest})
+    version = re.search(r'__version__ = "([^"]+)"', (source/'cowmata_tailring/__init__.py').read_text(encoding='utf-8')).group(1)
+    (destination / "package-manifest.json").write_text(json.dumps({"version": version, "files": inventory}, indent=2), encoding="utf-8")
+    print(json.dumps({"directory": str(destination), "files": len(inventory), "bytes": sum(x["size"] for x in inventory)}), flush=True)
+    if not args.no_zip:
+        with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=3) as bundle:
+            for path in sorted(destination.rglob("*")):
+                if path.is_file():
+                    bundle.write(path, str(Path(destination.name) / path.relative_to(destination)))
+        with archive.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        write_checksum(archive, digest)
+        print(json.dumps({"zip": str(archive), "bytes": archive.stat().st_size, "sha256": digest}), flush=True)
+
+
+if __name__ == "__main__":
+    main()

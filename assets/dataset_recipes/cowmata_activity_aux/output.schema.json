@@ -1,0 +1,455 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "COWMATA activity auxiliary evidence v1.0.0",
+  "type": "object",
+  "properties": {
+    "module": {
+      "const": "cowmata_activity_aux"
+    },
+    "version": {
+      "const": "1.0.0"
+    },
+    "cow_id": {
+      "type": "string"
+    },
+    "device_id": {
+      "type": "string"
+    },
+    "binding_id": {
+      "type": "string"
+    },
+    "phase": {
+      "enum": [
+        "prepartum",
+        "calving",
+        "postpartum"
+      ]
+    },
+    "evaluated_at_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "input_status": {
+      "enum": [
+        "ACCEPTED",
+        "DUPLICATE_IGNORED",
+        "LATE_OR_OVERLAP_IGNORED",
+        "SNAPSHOT",
+        "PHASE_CHANGED"
+      ]
+    },
+    "input_uid": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "quality_status": {
+      "enum": [
+        "NO_DATA",
+        "PHASE_INACTIVE",
+        "STALE_DATA",
+        "LOW_COVERAGE",
+        "INSUFFICIENT_HISTORY",
+        "BASELINE_TOO_LOW",
+        "VALID",
+        "PROVISIONAL"
+      ]
+    },
+    "usable_for_fusion": {
+      "type": "boolean"
+    },
+    "activity_ratio": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "activity_excess_ratio": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "activity_evidence_level": {
+      "enum": [
+        "UNAVAILABLE",
+        "LOW",
+        "ELEVATED",
+        "STRONG"
+      ]
+    },
+    "new_activity_evidence": {
+      "type": "boolean"
+    },
+    "new_strong_activity_evidence": {
+      "type": "boolean"
+    },
+    "activity_event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "strong_activity_event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "data_through_ms": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "observation_age_seconds": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "maximum_observation_age_minutes": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "features": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "activity_1h_g": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "activity_3h_g": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "activity_6h_g": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "coverage_1h": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "coverage_3h": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "coverage_6h": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "history_baseline_g": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "same_clock_baseline_g": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "baseline_g": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "activity_ratio": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "activity_excess_ratio": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "activity_ratio_3h": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference_valid_hours": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference_elapsed_hours": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference_valid_minutes": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference_days": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "same_clock_weight": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reference_quality": {
+          "enum": [
+            "INSUFFICIENT_HISTORY",
+            "SAME_CLOCK_BLEND",
+            "PROVISIONAL_SAME_DAY"
+          ]
+        }
+      },
+      "required": [
+        "activity_1h_g",
+        "activity_3h_g",
+        "activity_6h_g",
+        "coverage_1h",
+        "coverage_3h",
+        "coverage_6h",
+        "history_baseline_g",
+        "same_clock_baseline_g",
+        "baseline_g",
+        "activity_ratio",
+        "activity_excess_ratio",
+        "activity_ratio_3h",
+        "reference_valid_hours",
+        "reference_elapsed_hours",
+        "reference_valid_minutes",
+        "reference_days",
+        "same_clock_weight",
+        "reference_quality"
+      ],
+      "additionalProperties": false
+    },
+    "last_update": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "received_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sampling_start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "data_through_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "feature_window_end_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "raw_frames": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "internal_gap_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "saturated_acceleration_frames": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uid": {
+          "type": "string"
+        },
+        "receive_time_source": {
+          "enum": [
+            "server_received",
+            "json_update_proxy"
+          ]
+        },
+        "observed_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "valid_seconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "received_at_ms",
+        "sampling_start_ms",
+        "data_through_ms",
+        "feature_window_end_ms",
+        "raw_frames",
+        "internal_gap_count",
+        "saturated_acceleration_frames",
+        "uid",
+        "receive_time_source",
+        "observed_seconds",
+        "valid_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "episodes": {
+      "type": "object",
+      "properties": {
+        "elevated": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "active",
+            "last_valid_ms",
+            "last_event_ms",
+            "last_event_id"
+          ],
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "last_valid_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "last_event_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "last_event_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "strong": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "active",
+            "last_valid_ms",
+            "last_event_ms",
+            "last_event_id"
+          ],
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "last_valid_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "last_event_ms": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "last_event_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "required": [
+        "elevated",
+        "strong"
+      ],
+      "additionalProperties": false
+    },
+    "thresholds": {
+      "type": "object",
+      "properties": {
+        "elevated": {
+          "type": "number"
+        },
+        "strong": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "elevated",
+        "strong"
+      ],
+      "additionalProperties": false
+    },
+    "calving_probability": {
+      "type": "null"
+    },
+    "eta_hours": {
+      "type": "null"
+    }
+  },
+  "required": [
+    "module",
+    "version",
+    "cow_id",
+    "device_id",
+    "binding_id",
+    "phase",
+    "evaluated_at_ms",
+    "input_status",
+    "input_uid",
+    "quality_status",
+    "usable_for_fusion",
+    "activity_ratio",
+    "activity_excess_ratio",
+    "activity_evidence_level",
+    "new_activity_evidence",
+    "new_strong_activity_evidence",
+    "activity_event_id",
+    "strong_activity_event_id",
+    "data_through_ms",
+    "observation_age_seconds",
+    "maximum_observation_age_minutes",
+    "features",
+    "last_update",
+    "episodes",
+    "thresholds",
+    "calving_probability",
+    "eta_hours"
+  ],
+  "additionalProperties": false
+}

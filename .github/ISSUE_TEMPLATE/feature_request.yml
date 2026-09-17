@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a scoped improvement to annotation or review
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Research or annotation use case
+      description: Explain the workflow problem, not only the proposed control.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe inputs, user interaction, and expected outputs.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Data compatibility
+      description: Note any effect on timestamps, label codes, project JSON, CSV exports, or model packages.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: This request does not require uploading private data or large recordings.
+          required: true

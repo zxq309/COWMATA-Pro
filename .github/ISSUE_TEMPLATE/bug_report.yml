@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible problem in the annotator
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not upload private farm recordings, raw data, credentials, or model files."
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: "1. Launch with ...\n2. Open ...\n3. Click ..."
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows version, Python version, VLC version, and annotator version
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Safe log excerpt
+      description: Remove local paths, personal information, and confidential data.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues.
+          required: true
+        - label: I removed private data and credentials.
+          required: true

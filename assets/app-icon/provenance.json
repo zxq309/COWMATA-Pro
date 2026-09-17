@@ -1,0 +1,13 @@
+{
+  "source": "assets/brand/pro-icon.svg",
+  "created": "2026-09-15",
+  "source_sha256": "e7e366c478ba90c7864af0d671b6a8a1c641f6c026ab206c48598069ed2c6a58",
+  "license": "Corporate trademark, rights retained by COWMATA; see NOTICE",
+  "adaptation": "Official COWMATA vector glyph with Pro and TM product identification; rendered locally.",
+  "sha256": {
+    "cowmata.png": "4ae894f3afce706733711e2f6ada4d0c50c55bec9dafd3af647eb3cf5584ee44",
+    "cowmata.ico": "933f5604afcd78b0a81b80c04521472aa2ef887cff5a4cf7d3fe0e2772b654e8",
+    "installer.bmp": "6592704657cbec7b5d5a96d0b677b0830db603ba772fa31b5f3722344cc2e991",
+    "installer-header.bmp": "377a2abcbbfdceb24b732a6479baacf18ffafb60ddaac9794f686f2bafbebe47"
+  }
+}
