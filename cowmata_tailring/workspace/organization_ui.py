@@ -99,7 +99,7 @@ class VideoDirectoriesDialog(QDialog):
         layout.addWidget(QLabel("每个视角填写一个录像目录；可同时添加多个视角，空白行不添加。"))
         form = QFormLayout()
         self.paths = {}
-        for view in VIEWS:
+        for view in VIEWS[:8]:
             row = QHBoxLayout()
             edit = QLineEdit()
             edit.setPlaceholderText("粘贴完整目录路径，或点击浏览")
@@ -602,7 +602,9 @@ class OrganizationWindow(TaskWindow):
         heading = QLabel("数据归类")
         heading.setStyleSheet("font-size:20px; font-weight:700;")
         outer.addWidget(heading)
-        outer.addWidget(QLabel("先选牧场，再选视频总目录；只处理勾选视角，暂停后可继续。"))
+        outer.addWidget(
+            QLabel("先选牧场，可添加多个视频总目录；勾选视角后自动安排归类，暂停后可继续。")
+        )
 
         def add(layout, widget, stretch=0):
             widget.setParent(self)
@@ -635,9 +637,20 @@ class OrganizationWindow(TaskWindow):
         self.video_root.setReadOnly(True)
         self.video_root.setPlaceholderText("选择包含多个视角的大目录")
         row.addWidget(self.video_root, 1)
-        self.video_root_browse = QPushButton("选择总目录…")
+        self.video_root_browse = QPushButton("添加总目录…")
         self.video_root_browse.clicked.connect(self.choose_video_root)
         row.addWidget(self.video_root_browse)
+        self.video_roots_paste = QPushButton("粘贴多个目录…")
+        self.video_roots_paste.clicked.connect(self.paste_video_roots)
+        row.addWidget(self.video_roots_paste)
+        self.video_roots_clear = QPushButton("清空目录")
+        self.video_roots_clear.clicked.connect(self.clear_video_roots)
+        row.addWidget(self.video_roots_clear)
+        from collections import deque
+
+        self._video_roots = []
+        self._video_root_queue = deque()
+        self._video_root_errors = []
         outer.addLayout(row)
         self.sources.setColumnCount(4)
         self.sources.setHorizontalHeaderLabels(
@@ -790,7 +803,7 @@ class OrganizationWindow(TaskWindow):
         return self._active_task
 
     def invalidate_plan(self, *_):
-        if self.running:
+        if self.running or getattr(self, "_loading_task", False):
             return
         self.plan = self.plan_job = None
         self.report = None
@@ -901,9 +914,42 @@ class OrganizationWindow(TaskWindow):
             QFileDialog.Option.DontUseNativeDialog,
         )
         if path:
-            self.set_video_root(path)
+            self.add_video_roots([path])
+
+    def paste_video_roots(self):
+        from PySide6.QtWidgets import QInputDialog
+
+        text, accepted = QInputDialog.getMultiLineText(
+            self, "添加多个视频总目录", "每行一个目录，重复或相互包含的目录自动跳过："
+        )
+        if accepted:
+            self.add_video_roots(text.splitlines())
+
+    def clear_video_roots(self):
+        if self.running:
+            return
+        if hasattr(self, "_directory_scanner"):
+            self._directory_scanner.cancel()
+            self._directory_render_timer.stop()
+        self._video_roots.clear()
+        self._video_root_queue.clear()
+        self._video_root_errors.clear()
+        self._discovering = self._discovery_incomplete = False
+        self._discovery_rows = {}
+        self.reset_source_session()
+        for row in range(self.sources.rowCount() - 1, -1, -1):
+            if self.sources.item(row, 0).data(Qt.ItemDataRole.UserRole) != "imu":
+                self.sources.removeRow(row)
+        self.video_root.clear()
+        self.invalidate_plan()
 
     def set_video_root(self, root):
+        if self.running:
+            return
+        self.clear_video_roots()
+        self.add_video_roots([root])
+
+    def add_video_roots(self, roots):
         if self.running:
             return
         from .video_discovery import VideoDirectoryScanner
@@ -914,17 +960,54 @@ class OrganizationWindow(TaskWindow):
             self._directory_render_timer = QTimer(self)
             self._directory_render_timer.setInterval(0)
             self._directory_render_timer.timeout.connect(self._render_directory_rows)
-        self._directory_scanner.cancel()
-        self._directory_render_timer.stop()
-        self.reset_source_session()
-        for row in range(self.sources.rowCount() - 1, -1, -1):
-            if self.sources.item(row, 0).data(Qt.ItemDataRole.UserRole) != "imu":
-                self.sources.removeRow(row)
-        self.video_root.setText(str(root))
-        self._discovery_rows = {}
-        self._discovering = True
-        self._discovery_incomplete = True
-        self.status.setText("正在后台发现视角，文件数量将逐步更新；可以取消或重新选择目录。")
+        added = []
+        for value in roots:
+            value = str(value).strip().strip('"')
+            if not value:
+                continue
+            path = Path(os.path.abspath(value))
+            if any(
+                path == old or path.is_relative_to(old) or old.is_relative_to(path)
+                for old in self._video_roots
+            ):
+                continue
+            self._video_roots.append(path)
+            added.append(path)
+        if not added:
+            return
+        self._video_root_queue.extend(added)
+        self.video_root.setText(
+            str(self._video_roots[0])
+            if len(self._video_roots) == 1
+            else f"已添加 {len(self._video_roots)} 个视频总目录"
+        )
+        self.video_root.setToolTip("\n".join(map(str, self._video_roots)))
+        if not getattr(self, "_discovering", False):
+            self.reset_source_session()
+            self._start_next_video_root()
+
+    def _start_next_video_root(self):
+        if not self._video_root_queue:
+            self._discovering = False
+            self._discovery_incomplete = bool(self._video_root_errors)
+            self.bar.setRange(0, 1000)
+            self.bar.setValue(0)
+            self.status.setText(
+                "全部目录已扫描，可勾选视角开始归类。"
+                if not self._video_root_errors
+                else "部分目录未完成：" + "；".join(self._video_root_errors)
+            )
+            self.invalidate_plan()
+            return
+        root = self._video_root_queue.popleft()
+        self._discovery_rows = {
+            str(self.sources.item(row, 1).data(Qt.ItemDataRole.UserRole)): row
+            for row in range(self.sources.rowCount())
+        }
+        self._discovering = self._discovery_incomplete = True
+        self.status.setText(
+            f"正在后台发现视角：{root}；其余 {len(self._video_root_queue)} 个目录排队。"
+        )
         self.bar.setRange(0, 0)
         self.render()
         self._directory_scanner.start(str(root))
@@ -944,6 +1027,7 @@ class OrganizationWindow(TaskWindow):
         value = self._directory_snapshot
         root = Path(value["root"])
         self.sources.setUpdatesEnabled(False)
+        blocked = self.sources.blockSignals(True)
         try:
             for _ in range(24):
                 if not self._directory_pending_rows:
@@ -957,11 +1041,10 @@ class OrganizationWindow(TaskWindow):
                     )
                     row = self.sources.rowCount() - 1
                     self._discovery_rows[folder] = row
-                    self.sources.item(row, 1).setText(
-                        str(path.relative_to(root)) if path != root else "本目录"
-                    )
+                    self.sources.item(row, 1).setText(str(path))
                 self.sources.item(row, 0).setText(path.name + f"（{count}）")
         finally:
+            self.sources.blockSignals(blocked)
             self.sources.setUpdatesEnabled(True)
         if self._directory_pending_rows:
             return
@@ -975,19 +1058,16 @@ class OrganizationWindow(TaskWindow):
             for folder, row in sorted(
                 self._discovery_rows.items(), key=lambda p: p[1], reverse=True
             ):
-                if folder not in value["counts"]:
+                if Path(folder).is_relative_to(root) and folder not in value["counts"]:
                     self.sources.removeRow(row)
-            self._discovering = False
-            self._discovery_incomplete = bool(value["error"])
-            self.bar.setRange(0, 1000)
-            self.bar.setValue(0)
             if value["error"]:
-                self.status.setText("目录扫描未完成：" + value["error"])
-            self.invalidate_plan()
+                self._video_root_errors.append(str(root) + ": " + value["error"])
+            self._start_next_video_root()
         else:
             self.render()
 
     def cancel_directory_scan(self):
+        self._video_root_queue.clear()
         if hasattr(self, "_directory_scanner"):
             self._directory_scanner.cancel()
             self._directory_render_timer.stop()
@@ -999,14 +1079,28 @@ class OrganizationWindow(TaskWindow):
         self.render()
 
     def check_views(self, checked):
-        for row in range(self.sources.rowCount()):
-            item = self.sources.item(row, 0)
-            if item.data(Qt.ItemDataRole.UserRole) == "video":
-                item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        blocked = self.sources.blockSignals(True)
+        try:
+            for row in range(self.sources.rowCount()):
+                item = self.sources.item(row, 0)
+                if item.data(Qt.ItemDataRole.UserRole) == "video":
+                    item.setCheckState(
+                        Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+                    )
+        finally:
+            self.sources.blockSignals(blocked)
         self.invalidate_plan()
 
     def refresh_view_progress(self, rows):
-        indexed = [(os.path.normcase(os.path.normpath(r["source"])), r) for r in rows]
+        indexed = {}
+        for record in rows:
+            path = os.path.normcase(os.path.normpath(record["source"]))
+            while path:
+                indexed.setdefault(path, []).append(record)
+                parent = os.path.dirname(path)
+                if parent == path:
+                    break
+                path = parent
         self.sources.blockSignals(True)
         try:
             for i in range(self.sources.rowCount()):
@@ -1020,8 +1114,7 @@ class OrganizationWindow(TaskWindow):
                 base = os.path.normcase(
                     os.path.normpath(location.data(Qt.ItemDataRole.UserRole) or location.text())
                 )
-                prefix = base.rstrip("\\/") + os.sep
-                relevant = [r for path, r in indexed if path == base or path.startswith(prefix)]
+                relevant = indexed.get(base, [])
                 finished = sum(r.get("status") == "done" for r in relevant)
                 deleted = sum(r.get("status") == "deleted" for r in relevant)
                 active = sum(r.get("status") == "processing" for r in relevant)
@@ -1140,6 +1233,11 @@ class OrganizationWindow(TaskWindow):
             else None
             for i in range(self.sources.rowCount())
         ]
+        descendants = {p: [] for p in locations if p is not None}
+        for path in descendants:
+            for parent in path.parents:
+                if parent in descendants:
+                    descendants[parent].append(str(path))
         return [
             {
                 "kind": self.sources.item(i, 0).data(Qt.ItemDataRole.UserRole),
@@ -1148,11 +1246,7 @@ class OrganizationWindow(TaskWindow):
                 "exclude": list(
                     dict.fromkeys(
                         (self.sources.item(i, 1).data(Qt.ItemDataRole.UserRole + 1) or [])
-                        + [
-                            str(p)
-                            for p in locations
-                            if p and p != locations[i] and p.is_relative_to(locations[i])
-                        ]
+                        + descendants.get(locations[i], [])
                     )
                 ),
                 "camera": self.sources.cellWidget(i, 2).currentData()
@@ -1517,6 +1611,9 @@ class OrganizationWindow(TaskWindow):
             self.load_task(Path(path).parent)
 
     def load_task(self, job):
+        self._loading_task = True
+        blocked = self.sources.blockSignals(True)
+        self.sources.setUpdatesEnabled(False)
         try:
             plan = json.loads((job / "plan.json").read_text(encoding="utf-8"))
             if plan.get("mode") not in {"import", "normalize", "quarantine"} or not isinstance(
@@ -1547,11 +1644,16 @@ class OrganizationWindow(TaskWindow):
                         spec["path"],
                         spec.get("camera", VIEWS[0]),
                         exclude=spec.get("exclude", []),
+                        notify=False,
                     )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             self.status.setText(str(exc))
             self.invalidate_plan()
             return
+        finally:
+            self._loading_task = False
+            self.sources.blockSignals(blocked)
+            self.sources.setUpdatesEnabled(True)
         self.plan = plan
         self.plan_job = job
         self.job = job
@@ -1710,7 +1812,14 @@ class OrganizationWindow(TaskWindow):
 
     def render(self):
         busy = self.running or self.pause_pending
-        for name in ("video_root_browse", "select_views", "clear_views", "json_sources"):
+        for name in (
+            "video_root_browse",
+            "video_roots_paste",
+            "video_roots_clear",
+            "select_views",
+            "clear_views",
+            "json_sources",
+        ):
             if hasattr(self, name):
                 getattr(self, name).setEnabled(not busy)
         if hasattr(self, "json_sources"):

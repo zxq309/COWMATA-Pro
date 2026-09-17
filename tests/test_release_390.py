@@ -43,6 +43,12 @@ def ledgers(root):
                 牛号="21314D2",
                 设备号="546C50CA07E5",
                 数据分类="calving",
+                监测目的="产犊监测",
+                产犊开始="2026-08-04 08:00:00",
+                产犊结束="2026-08-04 09:00:00",
+                九轴="有效",
+                脉搏="有效",
+                温度="有效",
                 已删除="0",
             )
         ],
@@ -315,15 +321,28 @@ def test_pro_settings_save_three_modalities_and_ui_preview(tmp_path, monkeypatch
 
     monkeypatch.setenv("COWMATA_ALGORITHM_HOME", str(tmp_path / "models"))
     store = ProSettings(tmp_path / "settings")
-    store.save(auto_enabled=False, kinds=["motion", "pulse", "temp"], data_root=str(tmp_path / "farm"), ledger_directory=str(ledgers(tmp_path / "ledger")))
+    store.save(
+        auto_enabled=False,
+        kinds=["motion", "pulse", "temp"],
+        data_root=str(tmp_path / "farm"),
+        ledger_directory=str(ledgers(tmp_path / "ledger")),
+    )
     reloaded = ProSettings(tmp_path / "settings")
     assert reloaded.value["kinds"] == ["motion", "pulse", "temp"]
     window = ProDownloadDialog(store=reloaded, launch_automatically=False)
-    assert window.plan_table.rowCount() == 2
+    import time
+
+    from PySide6.QtWidgets import QApplication
+
+    deadline = time.monotonic() + 3
+    while window.plan_worker and time.monotonic() < deadline:
+        QApplication.processEvents()
+        time.sleep(0.01)
+    assert window.plan_table.rowCount() == 1
     behavior = BehaviorWindow()
-    assert behavior.algorithm.count() == 6 and behavior.tabs.count() == 2
+    assert behavior.algorithm.count() == 8 and behavior.tabs.count() == 2
     decision = DecisionWindow()
-    assert decision.tabs.count() == 4 and decision.behavior.count() == 7
+    assert decision.tabs.count() == 4 and decision.behavior.count() == 9
     assert decision.tabs.tabText(0) == "文件夹滚动预警"
     assert not decision.folder_enabled.isChecked()
     for widget in (window, behavior, decision):

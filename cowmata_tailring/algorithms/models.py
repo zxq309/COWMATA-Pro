@@ -1,7 +1,10 @@
 """Numeric-only forests and interval proposals; no executable pickle at inference."""
+
 from __future__ import annotations
 
 import numpy as np
+
+from . import POINT_EVENT_CODES
 
 
 def export_forest(model, feature_names, median):
@@ -56,31 +59,43 @@ def predict_forest(model, x):
 def score_events(scores, valid, *, code, threshold, duration_ms):
     scores, valid = np.asarray(scores), np.asarray(valid, dtype=bool)
     if scores.shape != valid.shape or not 0 < threshold <= 1:
-        raise ValueError('Invalid event score grid')
+        raise ValueError("Invalid event score grid")
     active = valid & np.isfinite(scores) & (scores >= threshold)
     # Fill only short, observed holes; a sensor gap always breaks a bout.
-    for i in range(1, len(active)-1):
-        if valid[i] and active[i-1] and active[i+1]:
+    for i in range(1, len(active) - 1):
+        if valid[i] and active[i - 1] and active[i + 1]:
             active[i] = True
     changes = np.diff(np.r_[False, active, False].astype(int))
     events = []
     for start, stop in zip(np.flatnonzero(changes == 1), np.flatnonzero(changes == -1)):
-        if code == 'STRAINING_BOUT' and stop-start < 2:
+        if code == "STRAINING_BOUT" and stop - start < 2:
             continue
-        if code != 'STRAINING_BOUT' and stop-start > 40:
+        if code != "STRAINING_BOUT" and stop - start > 40:
             # Long elevated runs are candidate regions; split at score peaks,
             # never present a minutes-long posture transition as a precise event.
             from scipy.signal import find_peaks
-            peaks = find_peaks(scores[start:stop], distance=8, prominence=.05)[0]+start
+
+            peaks = find_peaks(scores[start:stop], distance=8, prominence=0.05)[0] + start
             if not len(peaks):
-                peaks = [start+int(np.argmax(scores[start:stop]))]
-            parts = [(max(start, p-3), min(stop, p+4)) for p in peaks]
+                peaks = [start + int(np.argmax(scores[start:stop]))]
+            parts = [(max(start, p - 3), min(stop, p + 4)) for p in peaks]
         else:
             parts = [(start, stop)]
         for lo, hi in parts:
-            peak = lo+int(np.argmax(scores[lo:hi]))
-            events.append(dict(code=code, start_ms=float(lo*1000), end_ms=min(float(hi*1000), duration_ms),
-                point_ms=min((float(peak)+.5)*1000, duration_ms), score=float(scores[peak]),
-                time_semantics='proposed_interval', available_ms=min(float(hi*1000)+20000, duration_ms),
-                review_status='pending'))
+            peak = lo + int(np.argmax(scores[lo:hi]))
+            events.append(
+                dict(
+                    code=code,
+                    start_ms=float(lo * 1000),
+                    end_ms=min(float(hi * 1000), duration_ms),
+                    point_ms=min((float(peak) + 0.5) * 1000, duration_ms),
+                    score=float(scores[peak]),
+                    time_semantics="approximate_point"
+                    if code in POINT_EVENT_CODES
+                    else "proposed_interval",
+                    requires_video_confirmation=code in POINT_EVENT_CODES,
+                    available_ms=min(float(hi * 1000) + 20000, duration_ms),
+                    review_status="pending",
+                )
+            )
     return events

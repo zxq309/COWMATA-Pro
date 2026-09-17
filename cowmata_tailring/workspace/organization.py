@@ -19,7 +19,7 @@ from .dataset_access import DatasetLease, overlaps
 from .device_identity import resolve_device_identity, source_device_folder
 from .storage import ProjectLock
 
-VIEWS = tuple(f"视角{i:02d}" for i in range(1, 9))
+VIEWS = tuple(f"视角{i:02d}" for i in range(1, 21))
 PROTECTED = EXCLUDE_DIRS | {"标注成果", "整理隔离", "整理记录", "assets", "vendor", "model_runtime_20260906"}
 PROTECTED_NAMES = {"绑定.csv", "实验佩戴记录.csv", "整理清单.csv", CONTEXT_FILE, "package-manifest.json"}
 MANIFEST_FIELDS = "source_path,target_relative_path,kind,device_or_camera,batch,size,sha256,status,at".split(",")

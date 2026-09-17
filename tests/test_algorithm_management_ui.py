@@ -22,18 +22,25 @@ def test_management_loads_manually_imported_models_and_can_switch_versions(tmp_p
     from test_algorithm_registry import suite
 
     from cowmata_tailring.algorithms.registry import install_suite
-    source=suite(tmp_path / "source", "manual-test-1")
+
+    source = suite(tmp_path / "source", "manual-test-1")
     import json
 
     from cowmata_tailring.algorithms import EVENT_CODES
-    (source/"评估报告.json").write_text(json.dumps(dict(models=[dict(code=code,validation_unit="record") for code in EVENT_CODES])),encoding="utf-8")
-    install_suite(source,tmp_path)
+
+    (source / "评估报告.json").write_text(
+        json.dumps(
+            dict(models=[dict(code=code, validation_unit="record") for code in EVENT_CODES])
+        ),
+        encoding="utf-8",
+    )
+    install_suite(source, tmp_path)
     owner = QWidget()
     window = AlgorithmWorkbench(owner)
-    assert window.metrics.rowCount() == 6
+    assert window.metrics.rowCount() == len(EVENT_CODES)
     assert "manual-test-1" in window.active.text()
     window.use_version()
-    assert (tmp_path/"active.json").is_file()
+    assert (tmp_path / "active.json").is_file()
     assert window.metrics.item(0, 7).text() == "—"
     window.close()
     window.deleteLater()

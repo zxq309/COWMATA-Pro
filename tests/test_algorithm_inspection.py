@@ -28,9 +28,17 @@ def window():
 
 
 def test_menu_order_and_one_to_one_codes(window, tmp_path, monkeypatch):
-    monkeypatch.setenv("COWMATA_ALGORITHM_HOME",str(tmp_path/"models"))
+    monkeypatch.setenv("COWMATA_ALGORITHM_HOME", str(tmp_path / "models"))
     titles = [a.text().split("(")[0] for a in window.menuBar().actions()]
-    assert titles == ["文件", "数据准备", "标注与复核", "数据集构建", "行为识别", "健康与繁殖", "帮助"]
+    assert titles == [
+        "文件",
+        "数据准备",
+        "标注与复核",
+        "数据集构建",
+        "行为识别",
+        "健康与繁殖",
+        "帮助",
+    ]
     assert len({s.code for s in BEHAVIORS}) == 15
     labels = {label["code"] for label in DEFAULT_LABELS}
     assert {s.code for s in BEHAVIORS} <= labels
@@ -40,8 +48,9 @@ def test_menu_order_and_one_to_one_codes(window, tmp_path, monkeypatch):
     from test_algorithm_registry import suite
 
     from cowmata_tailring.algorithms.registry import install_suite
-    install_suite(suite(tmp_path/"suite"))
-    assert sum(bool(bindings(s, available_packs())) for s in BEHAVIORS) == 8
+
+    install_suite(suite(tmp_path / "suite"))
+    assert sum(bool(bindings(s, available_packs())) for s in BEHAVIORS) == 10
 
 
 @pytest.mark.parametrize("spec", BEHAVIORS + HEALTH)
