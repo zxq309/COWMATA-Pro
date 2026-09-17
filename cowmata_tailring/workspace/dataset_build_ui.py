@@ -242,7 +242,9 @@ class DatasetBuildWindow(TaskWindow):
             self.target.setText(path)
     def submit(self,*_):
         from cowmata_security.qt_ui import guard_action
-        if not guard_action(self, 'dataset'): return
+
+        if not guard_action(self, "dataset"):
+            return
         sources=[p.strip().strip('"') for p in self.sources.toPlainText().splitlines() if p.strip()]
         if not sources or not self.target.text().strip():
             self.status.setText('请先选择来源和数据集总目录。')
@@ -263,7 +265,9 @@ class DatasetBuildWindow(TaskWindow):
         self.start_job()
     def start_job(self):
         from cowmata_security.qt_ui import guard_action
-        if not guard_action(self, 'dataset'): return
+
+        if not guard_action(self, "dataset"):
+            return
         if self.running:
             return
         (self.job/'cancel').unlink(missing_ok=True)

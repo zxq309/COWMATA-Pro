@@ -37,39 +37,59 @@ def views(source):  # noqa: F811 - pytest fixture injection
         path.parent.mkdir()
         path.write_bytes(b"SYNTHETIC-VIDEO-" + str(index).encode())
         row = copy.deepcopy(video)
-        row.update(path=path.relative_to(root).as_posix(), asset_id=digest_file(path), stamp=file_stamp(path))
+        row.update(
+            path=path.relative_to(root).as_posix(),
+            asset_id=digest_file(path),
+            stamp=file_stamp(path),
+        )
         row["metadata"]["camera"] = str(index)
         rows.append(row)
     event = work.project.events[0]
-    event.extras.update(confirmation="confirmed", mapping_revision=work.clock.revision,
-                        video_evidence=[{"frame_ready": True, "verified_interval": True}])
+    event.extras.update(
+        confirmation="confirmed",
+        mapping_revision=work.clock.revision,
+        video_evidence=[{"frame_ready": True, "verified_interval": True}],
+    )
     return root, motion, work, rows
 
 
 def fake_frame(path, target, timeline, **kwargs):
     assert kwargs["image_codec"] == "bmp" and "preview_width" not in kwargs
-    return Image.new("RGB", (320, 180), (int(Path(path).parent.name[-1:]) * 30, 100, 150)), target + 10
+    return Image.new(
+        "RGB", (320, 180), (int(Path(path).parent.name[-1:]) * 30, 100, 150)
+    ), target + 10
 
 
 def capture(views, **kwargs):
     root, motion, work, rows = views
-    return capture_frames(root, rows, {}, work.clock, event_context(work, work.project.events[0]),
-                          100, list(map(str, range(8))), extractor=kwargs.pop("extractor", fake_frame), **kwargs)
+    return capture_frames(
+        root,
+        rows,
+        {},
+        work.clock,
+        event_context(work, work.project.events[0]),
+        100,
+        list(map(str, range(8))),
+        extractor=kwargs.pop("extractor", fake_frame),
+        **kwargs,
+    )
 
 
 def test_one_per_camera_same_reference_original_frames_and_bounded_decoding(views):
     active = maximum = 0
     lock = threading.Lock()
+
     def extractor(*args, **kwargs):
         nonlocal active, maximum
         with lock:
             active += 1
             maximum = max(active, maximum)
-        time.sleep(.01)
+        time.sleep(0.01)
         result = fake_frame(*args, **kwargs)
         with lock:
             active -= 1
         return result
+
     bundle, blobs = capture(views, extractor=extractor)
     assert len(bundle["items"]) == 8 and len(blobs) == 8
     assert {i["requested_reference_ms"] for i in bundle["items"]} == {10100}
@@ -90,9 +110,13 @@ def test_unavailable_view_never_gets_a_fabricated_picture(views, failure):
         row["metadata"]["intervals"][0]["verified"] = False
     elif failure == "gap":
         row["metadata"]["intervals"] = []
+
     def extractor(path, target, timeline, **kw):
         frame, actual = fake_frame(path, target, timeline, **kw)
-        return frame, actual + (1000 if failure == "far_frame" and path.parent.name == "camera3" else 0)
+        return frame, actual + (
+            1000 if failure == "far_frame" and path.parent.name == "camera3" else 0
+        )
+
     bundle, blobs = capture(views, extractor=extractor)
     assert bundle["items"][3]["status"] == "unavailable"
     assert len(blobs) == 7 and "path" not in bundle["items"][3]
@@ -107,8 +131,16 @@ def test_individual_camera_clock_is_applied(views):
             for interval in row["metadata"]["intervals"]:
                 interval["wall_start"] -= 1000
                 interval["wall_end"] -= 1000
-    bundle, _ = capture_frames(root, shifted, {"camera_maps": {"0": camera.to_dict()}}, work.clock,
-                                event_context(work, work.project.events[0]), 100, ["0"], extractor=fake_frame)
+    bundle, _ = capture_frames(
+        root,
+        shifted,
+        {"camera_maps": {"0": camera.to_dict()}},
+        work.clock,
+        event_context(work, work.project.events[0]),
+        100,
+        ["0"],
+        extractor=fake_frame,
+    )
     assert bundle["items"][0]["requested_media_ms"] == 100
     assert bundle["items"][0]["reference_ms"] == 10110
 
@@ -123,8 +155,17 @@ def test_capture_requires_real_review_context(views, kind):
     if kind == "cow":
         context["cow_id"] = ""
     with pytest.raises((ValueError, InterruptedError)):
-        capture_frames(root, rows, {}, work.clock, context, when, ["0"], extractor=fake_frame,
-                       cancelled=lambda: kind == "cancel")
+        capture_frames(
+            root,
+            rows,
+            {},
+            work.clock,
+            context,
+            when,
+            ["0"],
+            extractor=fake_frame,
+            cancelled=lambda: kind == "cancel",
+        )
 
 
 def test_move_labels_images_then_offline_history_and_training_isolation(views, tmp_path):
@@ -146,7 +187,11 @@ def test_move_labels_images_then_offline_history_and_training_isolation(views, t
     assert loaded.root is None and not loaded.timeline.intervals
     assert loaded.motion.sample_count == motion.sample_count
     assert evidence_summary(doc, elsewhere)["saved"] == 8
-    assert context_matches(loaded.work.project.events[0].extras["screenshots"], loaded.work, loaded.work.project.events[0])
+    assert context_matches(
+        loaded.work.project.events[0].extras["screenshots"],
+        loaded.work,
+        loaded.work.project.events[0],
+    )
     assert "screenshots" not in work.training_project().events[0].extras
     assert "screenshots" in work.project.events[0].extras
     assert original == motion.source_path.read_bytes()
@@ -172,7 +217,9 @@ def test_corrupt_or_missing_images_do_not_destroy_labels_and_export_is_atomic(vi
         save_label_file(output, doc, evidence_root=root / META_DIR)
 
 
-@pytest.mark.parametrize("relative", ["../outside.jpg", "C:/temp/x.jpg", "/tmp/x.jpg", "dir/../x.jpg", "x:stream.jpg"])
+@pytest.mark.parametrize(
+    "relative", ["../outside.jpg", "C:/temp/x.jpg", "/tmp/x.jpg", "dir/../x.jpg", "x:stream.jpg"]
+)
 def test_evidence_path_cannot_escape(tmp_path, relative):
     with pytest.raises(ValueError):
         safe_relative(tmp_path, relative)
@@ -245,6 +292,7 @@ def test_hash_is_content_not_name(views):
 
 def wait_gui(app, ready, timeout=8):
     from PySide6.QtTest import QTest
+
     deadline = time.monotonic() + timeout
     while not ready() and time.monotonic() < deadline:
         app.processEvents()
@@ -252,7 +300,9 @@ def wait_gui(app, ready, timeout=8):
     assert ready()
 
 
-def test_capture_dialog_save_then_offline_gallery_and_no_qt_exceptions(views, tmp_path, monkeypatch):
+def test_capture_dialog_save_then_offline_gallery_and_no_qt_exceptions(
+    views, tmp_path, monkeypatch
+):
     import sys
 
     from PySide6.QtWidgets import QApplication
@@ -266,7 +316,11 @@ def test_capture_dialog_save_then_offline_gallery_and_no_qt_exceptions(views, tm
     app = QApplication.instance() or QApplication([])
     errors = []
     monkeypatch.setattr(sys, "excepthook", lambda *args: errors.append(args))
-    monkeypatch.setattr(evidence_ui, "capture_frames", lambda *a, **kw: capture_frames(*a, **kw, extractor=fake_frame))
+    monkeypatch.setattr(
+        evidence_ui,
+        "capture_frames",
+        lambda *a, **kw: capture_frames(*a, **kw, extractor=fake_frame),
+    )
     owner = MainWindow()
     owner.catalog = Catalog(root)
     owner.work, owner.motion, owner.rows = work, motion, rows
@@ -294,6 +348,7 @@ def test_capture_dialog_save_then_offline_gallery_and_no_qt_exceptions(views, tm
     assert history.media_mode.currentIndex() == 1 and not history.play_button.isEnabled()
     history.review_event(work.project.events[0].id)
     from PySide6.QtWidgets import QPushButton
+
     assert len(history.evidence_gallery.findChildren(QPushButton)) == 8
     assert history.data.motion.sample_count == motion.sample_count
     history.close()
@@ -314,9 +369,17 @@ def test_archive_can_support_old_confirmed_export_but_never_new_confirmation(vie
     window.catalog = Catalog(root)
     window.work, window.motion, window.rows = work, motion, rows
     row = next(r for r in rows if r["kind"] == "video")
-    item = {"camera": "0", "asset_id": row["asset_id"], "frame_ready": True, "verified_interval": True,
-            "video_revision": window.video_revision(row), "camera_mapping_revision": "uncalibrated"}
-    window.settings["video_archive"] = {"files": [{"asset_id": row["asset_id"], "status": "verified"}]}
+    item = {
+        "camera": "0",
+        "asset_id": row["asset_id"],
+        "frame_ready": True,
+        "verified_interval": True,
+        "video_revision": window.video_revision(row),
+        "camera_mapping_revision": "uncalibrated",
+    }
+    window.settings["video_archive"] = {
+        "files": [{"asset_id": row["asset_id"], "status": "verified"}]
+    }
     (root / row["path"]).unlink()
     assert not window.validate_evidence([item])
     assert window.validate_evidence([item], allow_archived=True)
@@ -328,22 +391,23 @@ def test_archive_can_support_old_confirmed_export_but_never_new_confirmation(vie
 
 
 def test_dated_history_finds_shared_project_evidence_without_rewriting_labels(views):
-    from cowmata_tailring.workspace.annotation_store import work_document
     from types import SimpleNamespace
+
+    from cowmata_tailring.workspace.annotation_store import work_document
 
     root, motion, work, rows = views
     bundle, blobs = capture(views)
-    work.project.events[0].extras['screenshots'] = store_bundle(root / META_DIR, bundle, blobs)
+    work.project.events[0].extras["screenshots"] = store_bundle(root / META_DIR, bundle, blobs)
     # Ordinary saves put JSON below Motion/date/cow but keep shared images at
     # the project metadata root; only explicit exports copy adjacent images.
-    path = root / META_DIR / 'Motion/2026-09-05/cow/record.标注.json'
-    doc = work_document(SimpleNamespace(root=root), work, motion, {'selected_cameras': ['0']})
-    doc['video']['rows'] = [row for row in rows if row['kind'] == 'video']
+    path = root / META_DIR / "Motion/2026-09-05/cow/record.标注.json"
+    doc = work_document(SimpleNamespace(root=root), work, motion, {"selected_cameras": ["0"]})
+    doc["video"]["rows"] = [row for row in rows if row["kind"] == "video"]
     atomic_json(path, doc)
     before = path.read_bytes()
     loaded = load_history(path)
-    assert not any('证据图缺失' in warning for warning in loaded.warnings)
-    assert any('已校验证据图 8 张' in warning for warning in loaded.warnings)
-    assert loaded.timeline.locate('0', 10100)[1] == 100
+    assert not any("证据图缺失" in warning for warning in loaded.warnings)
+    assert any("已校验证据图 8 张" in warning for warning in loaded.warnings)
+    assert loaded.timeline.locate("0", 10100)[1] == 100
     assert path.read_bytes() == before
-    assert not (path.parent / '证据').exists()
+    assert not (path.parent / "证据").exists()

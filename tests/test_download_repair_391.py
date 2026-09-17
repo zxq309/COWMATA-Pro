@@ -214,7 +214,12 @@ def test_scheduled_waits_for_explicit_start_and_pause_disarms(tmp_path, qt_appli
     dialog = make_dialog(tmp_path)
     try:
         dialog.mode.setCurrentIndex(dialog.mode.findData("scheduled"))
-        dialog.scheduled_at.setDateTime(QDateTime.fromString((datetime.now(CHINA) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"), "yyyy-MM-dd HH:mm:ss"))
+        dialog.scheduled_at.setDateTime(
+            QDateTime.fromString(
+                (datetime.now(CHINA) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
+                "yyyy-MM-dd HH:mm:ss",
+            )
+        )
         assert not dialog.timer.isActive()
         dialog.start_selected()
         assert dialog.timer.isActive() and not dialog.running
@@ -341,7 +346,12 @@ def test_scheduled_deadline_while_other_task_runs_is_not_lost(tmp_path, qt_appli
     dialog = make_dialog(tmp_path)
     try:
         dialog.mode.setCurrentIndex(dialog.mode.findData("scheduled"))
-        dialog.scheduled_at.setDateTime(QDateTime.fromString((datetime.now(CHINA) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"), "yyyy-MM-dd HH:mm:ss"))
+        dialog.scheduled_at.setDateTime(
+            QDateTime.fromString(
+                (datetime.now(CHINA) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
+                "yyyy-MM-dd HH:mm:ss",
+            )
+        )
         dialog.start_selected()
         dialog.store.value["scheduled_time"] = (
             datetime.now(CHINA) - timedelta(seconds=1)
@@ -389,7 +399,6 @@ def test_bad_equipment_end_cannot_look_like_normal_wear(tmp_path):
 
 def test_login_session_never_enters_settings_or_cycle_history(tmp_path, qt_application):
     from cowmata_security.client import current_session
-
     from cowmata_tailring.edge_download.site_records import LedgerClient, settings_defaults
 
     client = LedgerClient(settings_defaults(), threading.Event())
