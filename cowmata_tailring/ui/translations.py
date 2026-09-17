@@ -4133,9 +4133,21 @@ ZH_TO_EN.update(
         "部分目录未完成：": "Some folders are incomplete: ",
         "；其余 ": "; remaining ",
         "CSV 缺少必要列：": "CSV missing required columns: ",
+        "与当前选择不同，请先继续原任务": " differs from the current selection; resume the original task first",
+        "复制或移动方式": "Copy or move mode",
+        "开始日期": "Start date",
+        "结束日期": "End date",
+        "旧任务包含当前输出目录以外的归类记录，停止复用：": "The previous task contains records outside the current output folder; reuse stopped: ",
+        "未完成任务的": "The unfinished task's ",
+        "未完成任务的视角映射已改变，请先按原映射继续任务：": "The unfinished task's view mapping changed; resume with the original mapping first: ",
+        "未完成任务的输出目录与当前选择不同，请先继续原任务：": "The unfinished task's output folder differs from the current selection; resume the original task first: ",
+        "未完成任务的输出目录（牧场）已改变，请先继续原任务": "The unfinished task's output farm changed; resume the original task first",
         " · 实验性候选，须回看视频": " · Experimental candidate; verify in video",
     }
 )
+
+
+NON_TRANSLATABLE = NON_TRANSLATABLE | {r"^视角0?([1-9]|1[0-9]|20)(?:$|[_\- ])"}
 
 
 if __name__ == "__main__":
