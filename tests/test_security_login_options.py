@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 import unittest
@@ -42,18 +43,21 @@ class LoginOptionsTests(unittest.TestCase):
         s.login_admin("admin", self.admin["password"])
         self.assertFalse(self.store.path.exists())
 
+    @unittest.skipUnless(os.name == "nt", "Requires real Windows DPAPI")
     def test_admin_explicit_auto_login_can_persist_device(self):
         s = self.session()
         s.login_admin("admin", self.admin["password"], remember_device=True)
         self.assertTrue(self.store.path.exists())
         self.assertTrue(self.session().resume())
 
+    @unittest.skipUnless(os.name == "nt", "Requires real Windows DPAPI")
     def test_manual_admin_login_removes_old_automatic_device(self):
         s = self.session()
         s.login_admin("admin", self.admin["password"], remember_device=True)
         s.login_admin("admin", self.admin["password"])
         self.assertFalse(self.store.path.exists())
 
+    @unittest.skipUnless(os.name == "nt", "Requires real Windows DPAPI")
     def test_operator_manual_reopen_uses_password_and_existing_activation(self):
         s = self.session()
         s.login("operator01", self.op["code"], password=self.op["password"])
@@ -67,12 +71,14 @@ class LoginOptionsTests(unittest.TestCase):
         with self.assertRaises(AccessDenied):
             self.session().login("operator01", "", password=self.op["password"])
 
+    @unittest.skipUnless(os.name == "nt", "Requires real Windows DPAPI")
     def test_saved_device_cannot_be_used_as_other_account(self):
         s = self.session()
         s.login("operator01", self.op["code"], password=self.op["password"])
         with self.assertRaises(AccessDenied):
             self.session().login("admin", "", password=self.admin["password"])
 
+    @unittest.skipUnless(os.name == "nt", "Requires real Windows DPAPI")
     def test_manual_operator_still_respects_revocation(self):
         s = self.session()
         s.login("operator01", self.op["code"], password=self.op["password"])
@@ -98,6 +104,7 @@ class LoginOptionsTests(unittest.TestCase):
         with self.assertRaises(AccessDenied):
             s.refresh()
 
+    @unittest.skipUnless(os.name == "nt", "Requires real Windows DPAPI")
     def test_saved_password_is_dpapi_encrypted_and_cleared(self):
         from cowmata_security.login_preferences import LoginPreferences
 
@@ -117,6 +124,7 @@ class LoginOptionsTests(unittest.TestCase):
         prefs.save({**prefs.load(), "remember_password": False, "auto_login": False})
         self.assertEqual(prefs.load()["password"], "")
 
+    @unittest.skipUnless(os.name == "nt", "Requires real Windows DPAPI")
     def test_auto_login_cannot_be_saved_without_password_consent(self):
         from cowmata_security.login_preferences import LoginPreferences
 
