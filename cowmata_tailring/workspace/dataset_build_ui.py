@@ -241,6 +241,8 @@ class DatasetBuildWindow(TaskWindow):
         if path:
             self.target.setText(path)
     def submit(self,*_):
+        from cowmata_security.qt_ui import guard_action
+        if not guard_action(self, 'dataset'): return
         sources=[p.strip().strip('"') for p in self.sources.toPlainText().splitlines() if p.strip()]
         if not sources or not self.target.text().strip():
             self.status.setText('请先选择来源和数据集总目录。')
@@ -260,6 +262,8 @@ class DatasetBuildWindow(TaskWindow):
         self.output=''
         self.start_job()
     def start_job(self):
+        from cowmata_security.qt_ui import guard_action
+        if not guard_action(self, 'dataset'): return
         if self.running:
             return
         (self.job/'cancel').unlink(missing_ok=True)
@@ -276,6 +280,9 @@ class DatasetBuildWindow(TaskWindow):
         self.process.readyReadStandardOutput.connect(self.read_progress)
         self.process.finished.connect(self.job_finished)
         self.process.errorOccurred.connect(self.process_error)
+        from cowmata_security.worker import pipe_credentials
+        credentials=pipe_credentials('dataset')
+        self.process.started.connect(lambda: (self.process.write(credentials),self.process.closeWriteChannel()))
         self.process.start(sys.executable,['-I','-B',str(Path(__file__).with_name('dataset_worker.py')),str(self.job)])
     def read_progress(self):
         self.buffer+=bytes(self.process.readAllStandardOutput())

@@ -277,6 +277,8 @@ def _label_document(item, focus, raw_sha, raw_target, root, metadata):
 
 
 def build_dataset(sources, target, task='behavior', *, job, layout='current', cancelled=lambda: False, on_report=lambda *_: None):
+    from cowmata_security.client import require
+    require('dataset')
     job = Path(job).resolve()
     job.mkdir(parents=True, exist_ok=True)
     lock = ProjectLock(job/'build.lock')

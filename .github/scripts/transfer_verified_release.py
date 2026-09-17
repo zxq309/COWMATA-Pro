@@ -73,8 +73,8 @@ def main():
                 release["target_commitish"] != manifest["commit"] or
                 not re.fullmatch(r"v[0-9]+[.][0-9]+[.][0-9]+", manifest["base_tag"])):
             raise ValueError("Release differs from the tested patch target")
-        allowed = {f"COWMATA-Pro-{tag[1:]}-Portable.zip", f"COWMATA-Pro-{tag[1:]}-Setup.exe"}
-        if {f["name"] for f in manifest["files"]} != allowed or len(manifest["files"]) != 2:
+        allowed = {f"COWMATA-Pro-{tag[1:]}-Setup.exe"}
+        if {f["name"] for f in manifest["files"]} != allowed or len(manifest["files"]) != 1:
             raise ValueError("Unexpected target assets")
         base_release = api(f"repos/{repo}/releases/tags/{manifest['base_tag']}")
         if base_release["draft"]:

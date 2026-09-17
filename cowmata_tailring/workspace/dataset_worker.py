@@ -12,6 +12,8 @@ from cowmata_tailring.workspace.storage import atomic_json
 
 
 def main():
+    from cowmata_security.worker import authorize_worker
+    authorize_worker(Path(__file__).resolve().parents[2], 'dataset')
     job = Path(sys.argv[1]).resolve(strict=True)
     request = json.loads((job/'request.json').read_text(encoding='utf-8'))
     from cowmata_tailring.workspace.classification_resources import limit_worker

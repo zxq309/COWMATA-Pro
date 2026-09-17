@@ -74,10 +74,8 @@ class SyncWorker(QThread):
             if self.operation == "login":
                 client = self.client_factory(values, self.cancel, self.message.emit)
                 try:
-                    report["session"] = client.login(
-                        values.get("ledger_username", ""), values.get("ledger_password", "")
-                    )
-                    self.status.emit("ledger", "已登录上传器账号，可刷新 CSV")
+                    report["session"] = client.login(values.get("ledger_username", ""), values.get("ledger_password", ""))
+                    self.status.emit("ledger", "当前 Pro 账号授权有效，可只读刷新 CSV")
                 finally:
                     self.values.pop("ledger_password", None)
             elif self.operation == "probe":
@@ -437,14 +435,11 @@ class ProDownloadDialog(TaskWindow):
         self.ledger_username = QLineEdit()
         self.ledger_password = QLineEdit()
         self.ledger_password.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addRow("上传器 1.3.1 账号", self.ledger_username)
-        form.addRow("上传器账号密码（仅本次登录）", self.ledger_password)
-        self.login_button = QPushButton("登录台账服务器")
-        self.login_button.clicked.connect(lambda: self.start_task("login"))
+        self.ledger_username.hide();self.ledger_password.hide()
+        self.login_button = QPushButton('验证当前 Pro 账号授权')
+        self.login_button.clicked.connect(lambda: self.start_task('login'))
         form.addRow(self.login_button)
-        login_hint = QLabel(
-            "刷新服务器 CSV 使用与上传器相同的账号。会话仅在内存中保存；使用本地 CSV 时可取消每轮刷新。"
-        )
+        login_hint = QLabel('直接使用当前 Pro 登录会话只读刷新服务器 CSV，无需再次输入上传器密码；使用本地 CSV 时可取消每轮刷新。')
         login_hint.setWordWrap(True)
         form.addRow(login_hint)
         self.ledger_status = QLabel("现场记录：尚未检测")
