@@ -515,8 +515,11 @@ class DahuaPanel(QWidget):
         if self.running:
             return
         self.operation = action
-        if action == "organize":
+        if action in {"organize", "scan"}:
             self.run_tables.begin()
+            if action == "scan":
+                self.run_tables.finish()
+                self.run_tables.setCurrentWidget(self.table)
         self.operation_job = (
             Path(job) if job else tasks.task_root() / ("devices-" + uuid.uuid4().hex)
         )
