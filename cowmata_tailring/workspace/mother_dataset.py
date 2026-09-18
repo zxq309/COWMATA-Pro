@@ -61,15 +61,17 @@ def _documents(source):
             if not work.project.events:
                 continue
             relative = locations.get(work.asset_id) or work.project.source.get('path','')
-            raw = (source/relative).resolve()
-            if not relative or not raw.is_relative_to(source) or not raw.is_file():
+            from .farm_layout import storage_root
+            base = storage_root(source)
+            raw = (base/relative).resolve()
+            if not relative or not raw.is_relative_to(base) or not raw.is_file():
                 raise ValueError('当前标注的母九轴缺失，不能回退到过期导出：'+str(saved))
-            doc = build_label_file(work,load_motion_json(raw),source,rows,settings)
+            doc = build_label_file(work,load_motion_json(raw),base,rows,settings)
             current_assets.add(work.asset_id)
             yield saved, doc
     paths = sorted(source.rglob('*.json')) if source.is_dir() else [source]
     for path in paths:
-        if any(p in {'旧标签原件','待核原始','迁移记录','datasets','runtime','assets'} for p in path.relative_to(source if source.is_dir() else source.parent).parts):
+        if any(p in {'科牧特_协作标注','录像','旧标签原件','待核原始','迁移记录','datasets','runtime','assets'} for p in path.relative_to(source if source.is_dir() else source.parent).parts):
             continue
         # Never mistake sensor JSON or metadata for a mother label.
         with path.open('rb') as stream:
@@ -86,7 +88,7 @@ def _source_scopes(sources):
     result = []
     for source in sources:
         source = Path(source).resolve(strict=True)
-        nested = sorted({p.parent for p in source.rglob('标注工程') if p.is_dir()}) if source.is_dir() and not (source/'标注工程').is_dir() else []
+        nested = sorted({p.parent for p in source.rglob('标注工程') if p.is_dir() and '科牧特_协作标注' not in p.relative_to(source).parts}) if source.is_dir() and not (source/'标注工程').is_dir() else []
         result.extend(nested or [source])
     return list(dict.fromkeys(result))
 
@@ -122,7 +124,8 @@ def export_dataset(source, target, *, split_map=None, views=True, progress=lambd
             content = base64.b64decode(embedded['original_json_base64'], validate=True)
         if content is None and doc['coordinates'] == 'parent_imu_ms':
             hint = doc.get('source', {}).get('project_root_hint')
-            roots = [root for root in source_roots if root.is_dir()]
+            from .farm_layout import storage_root
+            roots = [storage_root(root) for root in source_roots if root.is_dir()]
             if hint:
                 roots.append(Path(hint).resolve())
             for root in roots:

@@ -151,6 +151,16 @@ def preserve_annotation_work(root, selected, job):
     """Relink human work by SHA; retain conflicting snapshots in the task log."""
     import hashlib
     import re
+
+    from .farm_layout import category_scope, shared_farm
+    if shared_farm(root) == root:
+        groups = {}
+        for row in selected:
+            scope = category_scope(Path(row["target"]))
+            if scope is not None:
+                groups.setdefault(scope, []).append(row)
+        results = [preserve_annotation_work(scope, rows, job) for scope, rows in groups.items()]
+        return {"preserved": sum(r["preserved"] for r in results), "conflicts": [v for r in results for v in r["conflicts"]]}
     assets = {r["sha256"] for r in selected}
     parents = {p for r in selected for p in Path(r["source"]).parents if (p / "标注工程").is_dir()}
     preserved, conflicts = 0, []
@@ -160,7 +170,7 @@ def preserve_annotation_work(root, selected, job):
             source = Path(row["source"])
             if not source.is_relative_to(parent):
                 continue
-            relative = Path(row["target"]).relative_to(root).as_posix()
+            relative = Path(row["target"]).relative_to(shared_farm(root) or root).as_posix()
             replacements.extend([(str(source), str(Path(row["target"]))), (source.relative_to(parent).as_posix(), relative)])
             if row["kind"] == "video":
                 replacements.extend((part, row["owner"]) for part in source.parts if re.match(r"^视角\d", part))
@@ -449,7 +459,8 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
                     if kind == "video":
                         if not complete_clock:
                             row["timeline_review_required"] = True
-                    destination = root / modality / day / owner / filename
+                    from .farm_layout import video_root
+                    destination = (video_root(root) if modality == "Video" else root / modality) / day / owner / filename
                     key = os.path.normcase(str(destination))
                     row.update(target=str(destination), owner=owner, batch=day, record_date=day,
                                record_start_ms=lo, record_end_ms=hi, covered_dates=days,
@@ -484,19 +495,23 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
             progress(len(rows), 0, str(path))
     core.check_identity_ambiguity(rows)
     dated = [r for r in rows if r.get("covered_dates")]
-    return {"mode": "import", "schema": "cowmata-resources-3.4", "id": token,
+    from .farm_layout import adapt_import_plan
+    return adapt_import_plan({"mode": "import", "schema": "cowmata-resources-3.4", "id": token,
             "target": str(root), "resource_root": str(resource_root), "farm": farm,
             "sources": sources, "category": category, "note": note, "created_at": core.now(),
             "scenario":scenario,"reference_records":reference,"ignored_files":ignored,
             "transfer": transfer, "requested_start": start, "requested_end": end or '',
             "farm_path": str(farm_path) if farm_path else str(root.parent.parent if root.parent.name == '怀孕' else root.parent),
             "start": min((r["record_date"] for r in dated), default=start),
-            "end": max((r["covered_dates"][-1] for r in dated), default=end or start), "rows": rows}
+            "end": max((r["covered_dates"][-1] for r in dated), default=end or start), "rows": rows})
 
 
 def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_row=lambda *_: None, row_stream=None, _lease=None):
     started = time.monotonic()
+    from .farm_layout import adapt_import_plan, video_root
+    plan = adapt_import_plan(plan)
     root, job = core.safe_path(plan["target"]), core.safe_path(job)
+    scope = core.safe_path(plan.get("category_scope") or plan["target"])
     selected = [r for r in plan["rows"] if r["status"] in {"ready", "existing"}]
     unresolved = [r for r in plan["rows"] if r["status"] in {"blocked", "invalid"}]
     if (not selected and row_stream is None) or unresolved and not plan.get("allow_partial"):
@@ -520,7 +535,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
             if core.identity(Path(reference['reference_path']))!=reference['identity']:
                 raise ValueError('作为归类基准的九轴已变化，请重新预览')
         # Also honor installed 3.3 clients which only hold writer.lock.
-        parents = {p for value in [root, *sources, *(Path(r["source"]) for r in selected)] for p in (value, *value.parents)}
+        parents = {p for value in [root, scope, *sources, *(Path(r["source"]) for r in selected)] for p in (value, *value.parents)}
         for parent in parents:
             if (parent / "标注工程").is_dir():
                 lock = core.ProjectLock(parent / "标注工程/writer.lock")
@@ -733,9 +748,9 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
         all_days = sorted({day for r in indexed.values() for day in r["covered_dates"]})
         for day in all_days:
             for modality in (('Video','PPG') if plan.get('scenario')=='attach_video' else MODALITIES):
-                (root / modality / day).mkdir(parents=True, exist_ok=True)
+                ((video_root(scope) if modality == "Video" else scope / modality) / day).mkdir(parents=True, exist_ok=True)
             for view in (tuple(f"视角{i:02}" for i in range(1, 21)) if dahua else core.VIEWS):
-                (root / "Video" / day / view).mkdir(exist_ok=True)
+                (video_root(scope) / day / view).mkdir(exist_ok=True)
 
         index.update(records=list(indexed.values()), dates=all_days, farm=plan["farm"],
                      **category_fields(plan["category"]), updated_at=core.now(),
@@ -771,7 +786,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
             writer.writeheader()
             writer.writerows(r for r in indexed.values() if r["kind"] == "video" and r["metadata"].get("needs_review"))
         from .organization_live import clean_modalities
-        clean_modalities(root, job, cancelled)
+        clean_modalities(scope, job, cancelled)
         lease.complete(plan["id"])
     return {**plan, "completed": True, "moved": moved+copied, "same_volume_moved": moved, "copied": copied,
             "existing": len(selected_materials)-copied-moved, "deleted": deleted, "unresolved": len(unresolved),

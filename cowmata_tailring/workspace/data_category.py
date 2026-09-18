@@ -56,6 +56,14 @@ def read_context(root, relative):
                 if row.get("target_relative_path") == name:
                     category_fields(row.get("dataset_category"))
                     return row
+    from .farm_layout import category_scope, shared_farm
+    scope = category_scope(source)
+    farm = shared_farm(source)
+    if scope is not None and farm is not None:
+        relative_category = scope.relative_to(farm).parts
+        code = next((code for code in CATEGORIES if category_parts(code) == relative_category), None)
+        if code:
+            return {**category_fields(code), "identity_provenance": "shared_farm_category_folder"}
     return {}
 
 

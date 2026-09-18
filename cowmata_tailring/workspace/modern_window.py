@@ -517,7 +517,7 @@ class MainWindow(ControllerWindow):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         path = Path(__file__).resolve().parents[2] / "docs/quick-start-illustrated.pdf"
-        current = Path(__file__).resolve().parents[2] / 'docs/operator-guide-395.html'
+        current = Path(__file__).resolve().parents[2] / 'docs/operator-guide-396.html'
         if current.is_file():
             path = current
         if path.is_file():
@@ -572,6 +572,11 @@ class MainWindow(ControllerWindow):
                 if short:
                     action.setText(short)
             menu.setToolTipsVisible(True)
+        from .collaboration_ui import open_dialog
+        for mode, title in (("dispatch", "派发原始数据包"), ("returns", "生成标注数据包"), ("receive", "接收标注数据包")):
+            self._action(collaboration, title, lambda checked=False, m=mode: open_dialog(self, m))
+        self._action(files, "打开协作原始数据包…", lambda: open_dialog(self, "open"))
+        self._action(tools, "统一牧场录像目录…", lambda: open_dialog(self, "layout"))
         files.addMenu(legacy)
         edit.addMenu(collaboration)
         edit.addMenu(evidence)

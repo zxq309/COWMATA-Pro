@@ -1745,8 +1745,8 @@
     },
     {
       "path": "cowmata_tailring/edge_download/csv_download.py",
-      "size": 10844,
-      "sha256": "b4d114d77304ece2c79cd1fc4624f3cebfd2cdc9f0dfb6993129d987394f2400"
+      "size": 11698,
+      "sha256": "d170463216f3bb1e7a6037b1ec6e071a26a887dcb784297655159839c9b3e293"
     },
     {
       "path": "cowmata_tailring/edge_download/csv_targets.py",
@@ -1762,6 +1762,11 @@
       "path": "cowmata_tailring/edge_download/dialog.py",
       "size": 20293,
       "sha256": "83e8d705d2e22deb499d58271f428fe9a0683cce2f5584d0406b950efb09f687"
+    },
+    {
+      "path": "cowmata_tailring/edge_download/download_cycle.py",
+      "size": 2365,
+      "sha256": "7cf3101508dbad8962278b6fc8b3fa39ca7e12b4e294ed82b143192b195c087f"
     },
     {
       "path": "cowmata_tailring/edge_download/integration.py",
@@ -2170,8 +2175,8 @@
     },
     {
       "path": "cowmata_tailring/ui/translations.py",
-      "size": 406021,
-      "sha256": "afa358d5b45538424007a6c18829e1cf93b0718913d0d0d5c69bf274f15a1822"
+      "size": 422503,
+      "sha256": "86004e9e3efebc97322a75901c63313336f9caaae84341d135ce3dca1f2cdee6"
     },
     {
       "path": "cowmata_tailring/ui/video_timeline.py",
@@ -2215,8 +2220,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/annotation_store.py",
-      "size": 2484,
-      "sha256": "2d021899bf8fa9f94885736f4b0adc3c0c2847bdc2875b1f9174954cbcc9ecee"
+      "size": 2730,
+      "sha256": "a6ed7d2cdfc1237d418278f4e48210af4bac6ad31f547df6e741e4cb6ef04624"
     },
     {
       "path": "cowmata_tailring/workspace/archive.py",
@@ -2240,8 +2245,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/catalog.py",
-      "size": 34701,
-      "sha256": "dfbac0c650ea971a98327fd65b38ed3bf57af1900883dd5ecf7380d1ad58b5a8"
+      "size": 35459,
+      "sha256": "6289180381fbc40427d1823a9f733e97ba32aa2ec482d43b9b01657444483a7c"
     },
     {
       "path": "cowmata_tailring/workspace/classification_report.py",
@@ -2262,6 +2267,16 @@
       "path": "cowmata_tailring/workspace/clocks.py",
       "size": 14641,
       "sha256": "c99c512e7131a92710bc8a797377b127f0a96fdc307251c304d28fc17fd597d9"
+    },
+    {
+      "path": "cowmata_tailring/workspace/collaboration_packages.py",
+      "size": 39047,
+      "sha256": "1c9b1ea4e4e10e9773d9df6af45e736aaa4507dc5af7c0ad07d0492cfba10b4b"
+    },
+    {
+      "path": "cowmata_tailring/workspace/collaboration_ui.py",
+      "size": 19229,
+      "sha256": "0d4a076acdb4a586e38d6c201bb2b99f2fe981d35c3824f5e8fc1686893644d7"
     },
     {
       "path": "cowmata_tailring/workspace/compatibility.py",
@@ -2285,8 +2300,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_tasks.py",
-      "size": 24273,
-      "sha256": "6b19522c2cc562c2056e025ffdefd45a5192eba424bfee871c29aa5b74362c5b"
+      "size": 24371,
+      "sha256": "96d2f646fc0e3b2eba2c55ad77be23251413db3ce5a4a98c26c5983970725cc3"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_ui.py",
@@ -2300,8 +2315,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/data_category.py",
-      "size": 4202,
-      "sha256": "2a4b31fecffa56b9c284d22371f63ef642980695befe3cf9f2a29d0f9a3b6791"
+      "size": 4648,
+      "sha256": "90d112be94549b4e6c50311f94bdad5f912ac5f1e5a176e75012a8a1b273d5e7"
     },
     {
       "path": "cowmata_tailring/workspace/dataset_access.py",
@@ -2374,6 +2389,16 @@
       "sha256": "6eac58f62e5de947e7c7b43938f35059853b3a06fa224da35f3e3554d0b00bdb"
     },
     {
+      "path": "cowmata_tailring/workspace/farm_layout.py",
+      "size": 2765,
+      "sha256": "48e2e1bfecb3420982ecee31ff4a995d5d5c07c8f287627aefd81ced082c0ba2"
+    },
+    {
+      "path": "cowmata_tailring/workspace/farm_migration.py",
+      "size": 13022,
+      "sha256": "e6724c5a1dbdf7262d383202971d1ecde1a80cd2b08fa442316e279f3d51413a"
+    },
+    {
       "path": "cowmata_tailring/workspace/fast_transfer.py",
       "size": 7153,
       "sha256": "9547a56a81cb13a0d21b391b458b141abc1a8f36bcc3a4ee29561a521e26b92e"
@@ -2435,13 +2460,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/modern_window.py",
-      "size": 46480,
-      "sha256": "99038fa36b18797c8eb64ac1e1b720f1a462f37db32f66c63ac1af0d6cd95cfc"
+      "size": 46089,
+      "sha256": "d8e42bf0b68c9041b6c90f6768fdd7538d60061b4c5172c39f972ab3fbbb27c2"
     },
     {
       "path": "cowmata_tailring/workspace/mother_dataset.py",
-      "size": 20031,
-      "sha256": "a1ad5aee6f376b1672756826eaa52fcbb02d0ac57580916d62c00f66438908ee"
+      "size": 20277,
+      "sha256": "1b6998cad70ddfc0c2641043224083b6865b75b78c5e94b093c963ff4b9d8a1f"
     },
     {
       "path": "cowmata_tailring/workspace/multi_sensor.py",
@@ -2479,9 +2504,19 @@
       "sha256": "3bee000c8db687b69a7651208729219953fc7600e8884a711bdcfd88a844fbb1"
     },
     {
+      "path": "cowmata_tailring/workspace/package_paths.py",
+      "size": 1228,
+      "sha256": "f403c73c811d6798e3febac905ae052f63f7ac314673323397dce2c35224a1c9"
+    },
+    {
+      "path": "cowmata_tailring/workspace/package_readiness.py",
+      "size": 7888,
+      "sha256": "7accc93ec38c722aac75337788debba9e684029d1cc70f95a6a71208a7e8c41c"
+    },
+    {
       "path": "cowmata_tailring/workspace/paired_dataset.py",
-      "size": 31022,
-      "sha256": "32e9032ef8ad749878538550e10cca5bac945e65c4249f2ae2541f52afb83033"
+      "size": 30498,
+      "sha256": "dc5190ede95d6e8c6750b1464e465324e396da5867b119d2bd3b05e9474471b5"
     },
     {
       "path": "cowmata_tailring/workspace/playback.py",
@@ -2505,8 +2540,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/project_picker.py",
-      "size": 5087,
-      "sha256": "45bdf854a97d1953838306ad55eecdf1ca2f16fbe29803de5a07bee8d78b5db1"
+      "size": 5131,
+      "sha256": "7d7d6f060a82f19cabb3a3309e2f5f28df03081cee4266e1533a653e939730a7"
     },
     {
       "path": "cowmata_tailring/workspace/rapid_backend.py",
@@ -2515,13 +2550,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/resource_import.py",
-      "size": 48631,
-      "sha256": "6bb0609b1c77bffe1cbf85d23a6932a34dc6b91912b1a84c1129cf858d5b117c"
+      "size": 49559,
+      "sha256": "24f34793c7be4592bbce785a40b5871ef6c252d526edc511a8e9496e768ddaaf"
     },
     {
       "path": "cowmata_tailring/workspace/resource_layout.py",
-      "size": 2717,
-      "sha256": "fc61f2e2584e9c3e810c00f40eca3a9c9c7bed857ebbe7df26d6dd82480b7a03"
+      "size": 2842,
+      "sha256": "fbb75ad38d365e5bf355eeb8b12b6ce18ecbd90b473a51250c298e68f6e5381f"
     },
     {
       "path": "cowmata_tailring/workspace/review_store.py",
@@ -2545,8 +2580,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/standalone.py",
-      "size": 9273,
-      "sha256": "8a577563a1454e600f99f7f560ec8a68beef97f61199f84cf4e41d81c4b6db10"
+      "size": 9483,
+      "sha256": "4b04d37332d6a7cfcced4083288fa340c7007ece22ce004e650081344cc7d178"
     },
     {
       "path": "cowmata_tailring/workspace/storage.py",
@@ -2580,8 +2615,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/video_intake.py",
-      "size": 48457,
-      "sha256": "a5afbae38d4c33cff5340dee3b99197f12d45b82b49d35e28ffe6640a71d08b2"
+      "size": 48669,
+      "sha256": "2c8aa264120e3dcccfaa75ecb5b341a57776705c53a6ac9766fc42affc8eac17"
     },
     {
       "path": "cowmata_tailring/workspace/video_names.py",
@@ -2590,8 +2625,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/window.py",
-      "size": 166721,
-      "sha256": "aa4f52e015d4994338f3b3b4d2813733f657917b4bdecdc6dac2bdb5682cb1af"
+      "size": 166777,
+      "sha256": "66cfb4ea90047cd10bf4a395aa0f544a5aac862ea93582c220a07a094d8dd614"
     },
     {
       "path": "cowmata_tailring/workspace/work.py",
@@ -2772,6 +2807,11 @@
       "path": "docs/evidence-archive.md",
       "size": 4498,
       "sha256": "a6af5873d8432a195de2225c49d49d3db8d619ac141f3a6ae2fb423212ed5bc1"
+    },
+    {
+      "path": "docs/images/collaboration-dispatch-396.jpg",
+      "size": 129876,
+      "sha256": "8f2ce6a48d3d79b1be1db9e60c6a8488ebfda4985b3e7119d12d3cefb047adf0"
     },
     {
       "path": "docs/images/daily-picker.png",
@@ -3194,6 +3234,11 @@
       "sha256": "f81688ed1f0e304b5ec9d1971fa5724020b94a09fe1ee08d376e83cd097a047f"
     },
     {
+      "path": "docs/operator-guide-396.html",
+      "size": 64201,
+      "sha256": "abf6a4916d25abba90db52e582c39c022c144c8fb10f701fe9f2c8f64d341fbf"
+    },
+    {
       "path": "docs/playback-annotation-fix-20260910.md",
       "size": 5192,
       "sha256": "5bf8bd3082d5c72e6a41e56fab558409bf0e54129e185c0a7c102ab764cdf477"
@@ -3450,8 +3495,8 @@
     },
     {
       "path": "docs/release-396.md",
-      "size": 1990,
-      "sha256": "210bd9f14e2e8d266ee9a23ab6081ac137a5ea8d56e01259d4c1c958b21dceed"
+      "size": 3064,
+      "sha256": "ec70c3518df660453e7cff9a51a38511ecb2a178145bdb1a6e5d8ca13b752b6b"
     },
     {
       "path": "docs/release-notes-v2.2.0.md",
@@ -3510,8 +3555,8 @@
     },
     {
       "path": "docs/validation-396.md",
-      "size": 1954,
-      "sha256": "627f9a5618731c2023e50c9e0973c65f27d2abcd0fef6492739c29e964226e8d"
+      "size": 3487,
+      "sha256": "f768ae4d77bf4ad9804953f8eeceb0de4b32ca74a00e969269e47c8395ef0793"
     },
     {
       "path": "docs/version-update-notes.md",
@@ -4014,6 +4059,11 @@
       "sha256": "4a1f650bbf4b3eb53ef21c00255850932ddb5ff0ee69a87547b8d66019d6d998"
     },
     {
+      "path": "tests/test_collaboration_packages_396.py",
+      "size": 16229,
+      "sha256": "b66278b6e7cb791d635d14981497d4443f4cf3a58a950aca0d62dc84040c4aa7"
+    },
+    {
       "path": "tests/test_compatibility_audio.py",
       "size": 4869,
       "sha256": "4fe9520f71adc71343ae245f7b2a5c38e92e8e39851b62f641f43b241223ba3a"
@@ -4070,8 +4120,8 @@
     },
     {
       "path": "tests/test_download_eligibility_395.py",
-      "size": 6078,
-      "sha256": "e042ddd7b179a1651576d597027292f81571751f9a9c81d35b22aebcc51cf30c"
+      "size": 8633,
+      "sha256": "8d8a3c5a776d973c66483ae1c0a4a47e0ca59377d671513f5d53ef510fc0ecc7"
     },
     {
       "path": "tests/test_download_layout_392.py",
@@ -4122,6 +4172,16 @@
       "path": "tests/test_external_video_history.py",
       "size": 4319,
       "sha256": "b90f972c797074afd54fff976b7df9698b258fefde47e4c6bb4eb731dfc3259d"
+    },
+    {
+      "path": "tests/test_farm_layout_396.py",
+      "size": 3223,
+      "sha256": "2ca0ecc7dc7de2625e12adceb9321e54756bde213ba10816a25fb9909a0ce1f8"
+    },
+    {
+      "path": "tests/test_farm_migration_396.py",
+      "size": 3754,
+      "sha256": "c38b293590df2cb3b14c25c6f92bfd060561e71a70383bdcd8430a8d38d34149"
     },
     {
       "path": "tests/test_fast_organization_v352.py",

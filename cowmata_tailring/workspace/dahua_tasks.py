@@ -227,7 +227,8 @@ def video_row(prepared, view, root, reserved, cancelled=lambda: False):
     root = Path(root)
     begin = prepared["start_ms"]
     end = begin + prepared["duration_ms"]
-    target = root / "Video" / day_at(begin) / view / (start_stamp(begin) + ".mp4")
+    from .farm_layout import video_root
+    target = video_root(root) / day_at(begin) / view / (start_stamp(begin) + ".mp4")
     initial = target
     index = 0
     while True:
@@ -401,6 +402,7 @@ def prepare_record(row, index, request, job, cancelled):
 def organize(
     request, job, cancelled=lambda: False, progress=lambda *_: None, on_row=lambda *_: None
 ):
+    from .farm_layout import storage_root
     from .resource_import import execute
 
     index = read_json(Path(job) / "dahua-index.json")
@@ -457,7 +459,7 @@ def organize(
     atomic_json(job / "dahua-plan.json", plan, backup=False)
     with ExitStack() as stack:
         lease = stack.enter_context(
-            DatasetLease([root, job / "records", *sources], "organize", owner=token)
+            DatasetLease([storage_root(root), job / "records", *sources], "organize", owner=token)
         )
         if index["mode"] == "disk":
             disk = fresh_disk(index["disk"])
