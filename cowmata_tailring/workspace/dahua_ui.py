@@ -756,7 +756,11 @@ class DahuaPanel(QWidget):
 
     def open_report(self):
         if self.job and self.job.is_dir():
+            from .dahua_report_ui import DahuaReportDialog
             self.run_tables.flush()
-            self.run_tables.setCurrentWidget(self.run_tables.results)
-            self.status.setText("记录自动保存于：" + str(self.job / "视频任务记录.csv")
-                                + "；双击归档结果可打开成品。")
+            if not getattr(self, "report_dialog", None):
+                self.report_dialog = DahuaReportDialog(self.run_tables, self)
+            self.report_dialog.refresh()
+            self.report_dialog.show()
+            self.report_dialog.raise_()
+            self.report_dialog.activateWindow()
