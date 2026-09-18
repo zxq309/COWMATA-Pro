@@ -4459,5 +4459,27 @@ ZH_TO_EN.update({
     "此牧场有未完成的视频任务，当前来源、范围或映射不同；请点击“恢复上次视频任务”继续原任务：": "This farm has an unfinished video task with a different source, range or mapping; click Restore last video task to continue it: ",
 })
 
+
+ZH_TO_EN.update({
+    " 个视角\n": " views\n",
+    " 个视角 · 共 ": " active views · Total: ",
+    "已处理": "Processed",
+    "已归档/复用": "Archived/reused",
+    "当前录像开始时间": "Current recording start",
+    "当前阶段": "Current stage",
+    "录像机发生校时；连续播放计时已恢复，日期时间与传感器同步需核对": "Recorder clock adjustment detected; continuous playback timing recovered. Verify calendar time and sensor synchronization.",
+    "总段数": "Total segments",
+    "总览": "Overview",
+    "总览显示每个视角的实际运行状态；点击视角 sheet 查看记录。排队中的片段尚未开始处理。": "Overview shows actual activity for each view. Select a view tab for details. Queued segments have not started.",
+    "排队": "Queued",
+    "未分配视角": "Unassigned view",
+    "正在处理 ": "Processing: ",
+    "累计耗时 / 秒": "Cumulative time / s",
+    "视频任务记录 · 各视角运行状态": "Video task records · Per-view status",
+    "转码后帧数不一致（预期 ": "Output frame count mismatch (expected ",
+    "），已停止归档": "); archiving stopped",
+    "，实际 ": ", actual "
+})
+
 if __name__ == "__main__":
     _coverage()
