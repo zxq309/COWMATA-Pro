@@ -243,3 +243,23 @@ def test_legacy_cache_migrates_verified_and_preview_keeps_prepared(incremental):
     release_media(job, source_id, normalized_only=True)
     assert (adopted / "prepared.mp4").read_bytes() == b"completed encode"
     assert all(source.is_file() for source in sources)
+
+
+def test_new_scan_clears_old_results_and_shows_channels(tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    from cowmata_tailring.workspace.dahua_ui import DahuaPanel, QProcess
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    monkeypatch.setattr(QProcess, "start", lambda *a: None)
+    panel = DahuaPanel()
+    try:
+        panel.run_tables.accept(dict(event_kind="archive_record", status="done",
+                                     target="old.mp4", source="old.dav"))
+        panel.run_tables.flush()
+        assert panel.run_tables.results.rowCount() == 1
+        panel.start("scan", {}, tmp_path / "job")
+        assert panel.run_tables.results.rowCount() == 0
+        assert panel.run_tables.currentWidget() is panel.table
+    finally:
+        panel.active = False
+        panel.close()
