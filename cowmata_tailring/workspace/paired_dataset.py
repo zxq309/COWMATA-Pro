@@ -36,7 +36,7 @@ TASKS = {
                   ('pregnancy', 'pregnancy_early', 'pregnancy_mid', 'pregnancy_late'), tuple(FOLDERS)),
     'disease': ('疫病监测数据集', 'COWMATA_DiseaseMonitor_Dataset', ('disease', 'illness'), tuple(FOLDERS)),
 }
-SKIP_DIRS = {'录像', '科牧特_协作标注', 'Video', '.git', '.归类缓存', '归类附属文件', '.label-history', '.dataset-history', '.build', '__pycache__'}
+SKIP_DIRS = {'.edge-download', '录像', '科牧特_协作标注', 'Video', '.git', '.归类缓存', '归类附属文件', '.label-history', '.dataset-history', '.build', '__pycache__'}
 
 
 def category_for(path, document=None):
