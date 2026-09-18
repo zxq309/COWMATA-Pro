@@ -637,11 +637,11 @@ class OrganizationWindow(TaskWindow):
         self.video_root.setReadOnly(True)
         self.video_root.setPlaceholderText("选择包含多个视角的大目录")
         row.addWidget(self.video_root, 1)
-        self.video_root_browse = QPushButton("添加总目录…")
+        self.video_root_browse = QPushButton("重新选择目录…")
         self.video_root_browse.clicked.connect(self.choose_video_root)
         row.addWidget(self.video_root_browse)
-        self.video_roots_paste = QPushButton("粘贴多个目录…")
-        self.video_roots_paste.clicked.connect(self.paste_video_roots)
+        self.video_roots_paste = QPushButton("追加目录…")
+        self.video_roots_paste.clicked.connect(self.append_video_roots)
         row.addWidget(self.video_roots_paste)
         self.video_roots_clear = QPushButton("清空目录")
         self.video_roots_clear.clicked.connect(self.clear_video_roots)
@@ -907,23 +907,25 @@ class OrganizationWindow(TaskWindow):
             self._report_window.refresh()
 
     def choose_video_root(self):
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "选择包含所有视角的视频总目录",
-            self.video_root.text(),
-            QFileDialog.Option.DontUseNativeDialog,
-        )
-        if path:
-            self.add_video_roots([path])
+        self._choose_video_roots(replace=True)
 
-    def paste_video_roots(self):
-        from PySide6.QtWidgets import QInputDialog
+    def append_video_roots(self):
+        self._choose_video_roots(replace=False)
 
-        text, accepted = QInputDialog.getMultiLineText(
-            self, "添加多个视频总目录", "每行一个目录，重复或相互包含的目录自动跳过："
-        )
-        if accepted:
-            self.add_video_roots(text.splitlines())
+    def _choose_video_roots(self, *, replace):
+        if self.running:
+            return
+        from .native_folders import choose_folders
+        initial = str(self._video_roots[-1].parent) if self._video_roots else str(Path.home())
+        try:
+            paths = choose_folders(self, "选择视频总目录（Ctrl / Shift 可多选）", initial, multiple=True)
+        except OSError as exc:
+            self.status.setText(str(exc))
+            return
+        if paths:
+            if replace:
+                self.clear_video_roots()
+            self.add_video_roots(paths)
 
     def clear_video_roots(self):
         if self.running:
@@ -941,6 +943,7 @@ class OrganizationWindow(TaskWindow):
             if self.sources.item(row, 0).data(Qt.ItemDataRole.UserRole) != "imu":
                 self.sources.removeRow(row)
         self.video_root.clear()
+        self.video_root.setToolTip("")
         self.invalidate_plan()
 
     def set_video_root(self, root):
@@ -1043,6 +1046,7 @@ class OrganizationWindow(TaskWindow):
                     self._discovery_rows[folder] = row
                     self.sources.item(row, 1).setText(str(path))
                 self.sources.item(row, 0).setText(path.name + f"（{count}）")
+                self.sources.item(row, 0).setData(Qt.ItemDataRole.UserRole + 2, count)
         finally:
             self.sources.blockSignals(blocked)
             self.sources.setUpdatesEnabled(True)
@@ -1135,6 +1139,8 @@ class OrganizationWindow(TaskWindow):
                         if self.sources.item(i, 0).checkState() == Qt.CheckState.Checked
                         else "未勾选"
                     )
+                if not relevant and self.sources.item(i, 0).data(Qt.ItemDataRole.UserRole + 2) == 0:
+                    value = "目录内无待处理视频（可能已移动归档）"
                 self.sources.item(i, 3).setText(value)
         finally:
             self.sources.blockSignals(False)
@@ -1638,7 +1644,8 @@ class OrganizationWindow(TaskWindow):
             )
             self.pregnancy_stage.setCurrentIndex(max(0, self.pregnancy_stage.findData(code)))
             self.note.setText(plan.get("note", ""))
-            if self.source_specs() != plan["sources"]:
+            same_session = self.job == job and self.sources.rowCount() > 0
+            if not same_session and self.source_specs() != plan["sources"]:
                 self.sources.setRowCount(0)
                 for spec in plan["sources"]:
                     if spec.get("kind") in {"imu", "video", "auto"}:
@@ -1649,6 +1656,10 @@ class OrganizationWindow(TaskWindow):
                             exclude=spec.get("exclude", []),
                             notify=False,
                         )
+                self._video_roots = list(dict.fromkeys(Path(spec["path"]) for spec in plan["sources"] if spec.get("kind") == "video"))
+                self._video_root_queue.clear()
+                self.video_root.setText(str(self._video_roots[0]) if len(self._video_roots) == 1 else f"已恢复 {len(self._video_roots)} 个视频来源")
+                self.video_root.setToolTip("\n".join(map(str, self._video_roots)))
         except (OSError, ValueError, KeyError, TypeError) as exc:
             self.status.setText(str(exc))
             self._loading_task = False
@@ -1914,13 +1925,33 @@ class OrganizationWindow(TaskWindow):
         self.pause_project.setEnabled(not busy and bool(getattr(self.owner, "catalog", None)))
         self.export_button.setEnabled(bool(self.job and (self.job / "report-state.json").is_file()))
 
+    def reset_idle_form(self):
+        self.clear_video_roots()
+        self.sources.setRowCount(0)
+        self.target.clear()
+        self.farm.clear()
+        self.start_date.clear()
+        self.end_date.clear()
+        self.note.clear()
+        self.category.setCurrentIndex(0)
+        self.pregnancy_stage.setCurrentIndex(0)
+        self.scenario.setCurrentIndex(0)
+        self.transfer_mode.setCurrentIndex(0)
+        self.report = None
+        self.last_error = ""
+        self.status.setText("请选择牧场和视频总目录。")
+        self.dahua_panel.reset_idle_form()
+        self.render()
+
     def closeEvent(self, event):
-        self._close_requested = True
-        if not self.request_shutdown():
+        # Closing the subwindow keeps active jobs alive. Application exit uses
+        # request_shutdown separately and still waits for durable checkpoints.
+        if self.running or self.pause_pending or self.dahua_panel.running:
             self.hide()
             event.ignore()
-        else:
-            event.accept()
+            return
+        self.reset_idle_form()
+        event.accept()
 
     def request_shutdown(self):
         if getattr(self, "_discovering", False):

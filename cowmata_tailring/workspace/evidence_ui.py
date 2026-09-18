@@ -29,6 +29,7 @@ from .evidence import (
     capture_frames,
     context_matches,
     event_context,
+    evidence_event,
     read_image,
     store_bundle,
     suggest_time,
@@ -114,10 +115,31 @@ class EvidenceGallery(QScrollArea):
         dialog.exec()
 
 
+class SavedEvidenceDialog(QDialog):
+    """Read stored evidence without requiring a current time calibration."""
+
+    def __init__(self, owner, bundle):
+        super().__init__(owner)
+        self.future = None
+        self.setWindowTitle("已保存的证据图")
+        self.resize(1020, 780)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("尚未对齐；可以查看已有图片。重新提取图片需先完成对齐。"))
+        self.gallery = EvidenceGallery()
+        self.gallery.set_bundle(bundle, root=owner.catalog.meta)
+        layout.addWidget(self.gallery, 1)
+        close = QPushButton("关闭")
+        close.clicked.connect(self.reject)
+        layout.addWidget(close)
+
+
 class CaptureDialog(QDialog):
     def __init__(self, owner, event):
         super().__init__(owner)
-        self.owner, self.label_event = owner, event
+        self.owner, self.record = owner, event
+        self.is_draft = isinstance(event, dict)
+        event = evidence_event(owner.work, event)
+        self.label_event = event
         self.context = event_context(owner.work, event)
         self.clock = ClockMap.from_dict(copy.deepcopy(owner.work.clock.to_dict()))
         self.settings = copy.deepcopy(owner.settings)
@@ -180,7 +202,12 @@ class CaptureDialog(QDialog):
         self.timer.timeout.connect(self.poll)
         self.timer.start()
         owner.board.play(False)
-        QTimer.singleShot(0, self.begin_capture)
+        existing = event.extras.get("screenshots")
+        if existing:
+            self.gallery.set_bundle(existing, root=self.meta)
+            self.status.setText("已显示保存的证据图；可先查看，再复核真值。更新图片不会自动确认标签。")
+        else:
+            QTimer.singleShot(0, self.begin_capture)
 
     def invalidate(self):
         self.bundle, self.blobs = None, None
@@ -236,14 +263,16 @@ class CaptureDialog(QDialog):
                 self.status.setText(f"已提取 {count}/{len(self.cameras)} 个视角；请检查画面，缺失视角不会伪造截图。")
             else:
                 owner = self.owner
-                if (not owner.work or self.label_event not in owner.work.project.events or not context_matches(result, owner.work, self.label_event)
+                if (not owner.work or self.record not in (owner.work.drafts if self.is_draft else owner.work.project.events)
+                        or not context_matches(result, owner.work, evidence_event(owner.work, self.record))
                         or self.settings.get("camera_maps", {}) != owner.settings.get("camera_maps", {})):
                     raise ValueError("标签、牛号或同步关系已变化，证据未绑定，请重新提取")
                 if any(i.get("status") == "captured" and not owner.catalog.source_path(i["video_path"]).is_file()
                        for i in result["items"]):
                     raise ValueError("核对期间录像已离开本机，请刷新后重新提取")
                 owner.work.checkpoint()
-                self.label_event.extras["screenshots"] = result
+                storage = self.record if self.is_draft else self.record.extras
+                storage["screenshots"] = result
                 owner.dirty = True
                 owner.save_current()
                 if owner.dirty:

@@ -1885,7 +1885,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.tell("请先选择九轴记录，再记录视频动作。")
             return
         index = next((i for i, label in enumerate(self.work.project.labels) if label.code == code), None)
-        if index is None:
+        if index is None or self.work.project.labels[index].extras.get("historical"):
             self.tell("当前标签配置中没有该事件类型，请先核对标签配置。")
             return
         self.labels.setCurrentIndex(index)
@@ -2038,7 +2038,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
         from cowmata_tailring.annotation.label_keys import current_labels
 
         old = self.work.project.labels
-        labels, mapping = current_labels([x.to_dict() for x in old])
+        labels, mapping = current_labels([x.to_dict() for x in old], self.work.project.extras.get('dataset_category'))
         normalized = [Label.from_dict(x) for x in labels]
         if [x.to_dict() for x in normalized] != [x.to_dict() for x in old]:
             for event in self.work.project.events:
@@ -2078,7 +2078,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             return
         self.sync_label_keys()
         # Remap event indices by stable code before exposing current shortcuts.
-        titles = [f"[{label.key}] {label.name}" if label.key else label.name for label in self.work.project.labels]
+        titles = [f"[{label.key}] {label.name}" for label in self.work.project.labels if not label.extras.get("historical")]
         if titles != [self.labels.itemText(i) for i in range(self.labels.count())]:
             selected_label = self.labels.currentText()
             self.labels.blockSignals(True)
@@ -2273,6 +2273,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
         labels = QComboBox()
         for label in self.work.project.labels:
             labels.addItem(label.name)
+            if label.extras.get("historical"):
+                labels.model().item(labels.count() - 1).setEnabled(False)
         labels.setCurrentIndex(index)
         layout.addWidget(labels)
         if imu_edit:
@@ -2368,21 +2370,30 @@ class MainWindow(AlignmentMixin, QMainWindow):
             return
         if event is None:
             selected = self.selected_entry()
-            if not selected or selected[0] != "event":
-                self.tell("请先选择一条已确认标注；视频草稿需先核对同步并确认。")
+            if not selected:
+                self.tell("请先选择一条标签或视频草稿。")
                 return
-            event = next(e for e in self.work.project.events if e.id == selected[1])
-        if event.extras.get("confirmation") != "confirmed":
-            self.tell("该标签尚未确认或需要复核；请先完成视频真值核对。")
-            return
-        from .evidence_ui import CaptureDialog
+            event = (next(d for d in self.work.drafts if d["id"] == selected[1]) if selected[0] == "draft"
+                     else next(e for e in self.work.project.events if e.id == selected[1]))
+        from .evidence import evidence_event
+        from .evidence_ui import CaptureDialog, SavedEvidenceDialog
+        saved_only = False
+        try:
+            evidence_event(self.work, event)
+        except ValueError as exc:
+            if isinstance(event, dict) and event.get("screenshots"):
+                saved_only = True
+            else:
+                self.tell(str(exc))
+                return
         if self._capture_dialog is not None:
             if self._capture_dialog.future is not None and not self._capture_dialog.future.done():
                 self.tell("上一组截图还在处理，请等待完成。")
                 return
             self._capture_dialog.close()
             self._capture_dialog.deleteLater()
-        self._capture_dialog = CaptureDialog(self, event)
+        self._capture_dialog = (SavedEvidenceDialog(self, event["screenshots"]) if saved_only
+                                else CaptureDialog(self, event))
         self._capture_dialog.show()
 
     def verify_video_archive(self):
@@ -2453,12 +2464,13 @@ class MainWindow(AlignmentMixin, QMainWindow):
         selected = self.selected_entries()
         if not self.writable_work() or not selected:
             return
-        names = [label.name for label in self.work.project.labels]
+        choices = [(i, label.name) for i, label in enumerate(self.work.project.labels) if not label.extras.get("historical")]
+        names = [name for _, name in choices]
         name, ok = QInputDialog.getItem(self, '批量修改标签', f'将所选 {len(selected)} 条记录改为：', names, 0, False)
         if not ok:
             return
         try:
-            self.work.relabel_entries(selected, names.index(name))
+            self.work.relabel_entries(selected, choices[names.index(name)][0])
         except ValueError as exc:
             self.tell(str(exc))
             return
