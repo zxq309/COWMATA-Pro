@@ -132,7 +132,7 @@ def validate_complete(root, units, videos, *, views=None, cancelled=lambda: Fals
             if day.isoformat() not in days:
                 extra_days.add(day.isoformat())
             day += timedelta(days=1)
-    for day in extra_days:
+    for day in extra_days | (days if views is None else set()):
         for path in (root / '录像' / day).rglob('*.mp4'):
             if views is None or path.parent.name in views:
                 videos.add(path.relative_to(root).as_posix())

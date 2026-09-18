@@ -102,7 +102,8 @@ def main():
                                          "status", "phase", "message", "size", "method", "record_start_ms",
                                          "started_at", "finished_at", "file_seconds", "read_seconds",
                                          "convert_seconds", "verify_seconds", "archive_seconds",
-                                         "existing_verified", "transfer_seconds"}
+                                         "existing_verified", "transfer_seconds", "media_percent", "frames",
+                                         "fps", "media_speed", "output_bytes"}
                             },
                         )
                     ),

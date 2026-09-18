@@ -22,7 +22,7 @@ def setup_media(monkeypatch, tmp_path, fail_copy=False):
         lambda *a, **k: SimpleNamespace(duration_ms=1000, to_dict=lambda: dict(duration_ms=1000)),
     )
 
-    def run(args, *a):
+    def run(args, *a, progress=None):
         args = list(map(str, args))
         commands.append(args)
         if args[-1].endswith(".mp4"):
