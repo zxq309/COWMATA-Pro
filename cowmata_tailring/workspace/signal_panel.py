@@ -91,6 +91,9 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
 
     def set_group(self, group):
         self.group = group
+        # Keep each axis readable even when the video leaves little vertical room.
+        lanes = len(self.visible_groups())
+        self.setMinimumHeight(max(92, self.TOP + self.BOTTOM + lanes * max(32, self.fontMetrics().height() + 16)))
         self._invalidate_static()
 
     def visible_groups(self):
@@ -427,6 +430,9 @@ class SignalPanel(QWidget):
         self.toolbar.addWidget(self.full_button)
         self.sheets = QTabBar()
         self.sheets.setExpanding(False)
+        self.sheets.setStyleSheet("QTabBar::tab {background:#edf5e7; border:1px solid #bfd4af; padding:7px 18px; margin-right:4px; color:#315225;}"
+            "QTabBar::tab:selected {background:#8add66; border:2px solid #436d25; color:#20351c; font-weight:700;}"
+            "QTabBar::tab:hover {background:#dff3d1;}")
         for name in ("九轴 Motion", "PPG", "温度 Temp"):
             self.sheets.addTab(name)
         self.sheets.setAccessibleName("传感器曲线页签")
@@ -440,7 +446,12 @@ class SignalPanel(QWidget):
         self.sensor_status.setStyleSheet("color:#5f777b; padding:2px 10px; font-size:11px")
         layout.addWidget(self.sensor_status)
         layout.addLayout(self.toolbar)
-        layout.addWidget(self.wave, 1)
+        self.wave_scroll = QScrollArea()
+        self.wave_scroll.setWidgetResizable(True)
+        self.wave_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.wave_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.wave_scroll.setWidget(self.wave)
+        layout.addWidget(self.wave_scroll, 1)
         self.track = EventStrip(self.wave)
         self.track.setToolTip(self.track.toolTip() + "；虚线轮廓表示待复核，不代表已确认真值")
         self.scroll = QScrollArea()
@@ -503,7 +514,7 @@ class SignalPanel(QWidget):
         group = ('all','a','g','m')[min(self.group.currentIndex(),3)] if key == 'motion' else key
         self.wave.empty_text = '当前时段无匹配的' + {'motion':'九轴','ppg':'PPG','temp':'温度'}[key] + '数据'
         note = self.sensor_messages.get(key, '')
-        self.sensor_status.setText(('' if self.wave._series else self.wave.empty_text + '；') + note +
+        self.sensor_status.setText("当前：" + {"motion":"九轴 Motion", "ppg":"PPG", "temp":"温度 Temp"}[key] + " · " + ('' if self.wave._series else self.wave.empty_text + '；') + note +
             ' · 共用标签；无样本的区间不代表负样本')
         self.sensor_status.setToolTip(self.sensor_status.text())
         self.wave.set_group(group)
