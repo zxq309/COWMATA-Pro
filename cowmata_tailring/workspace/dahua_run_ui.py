@@ -34,7 +34,7 @@ class DahuaRunTables(QTabWidget):
         self.summary = QLabel("等待开始 · 每段完成后即归档")
         self.live = self.make_table(["状态", "开始时间", "视角", "原始来源", "归档目标", "耗时 / 秒", "当前阶段 / 说明"])
         self.timing = self.make_table(["视角", "原始来源", "读取 / 秒", "转换 / 秒", "校验 / 秒",
-                                      "归档 / 秒", "总耗时 / 秒", "大小 / MiB", "处理方式"])
+                                      "归档 / 秒", "总耗时 / 秒", "大小 / MiB", "处理方式", "当前阶段 / 进度"])
         self.results = self.make_table(["结果", "视角", "录像开始时间", "归档文件", "大小 / MiB", "耗时 / 秒", "说明"])
         self.addTab(self.live, "运行记录")
         self.addTab(self.timing, "耗时明细")
@@ -153,9 +153,12 @@ class DahuaRunTables(QTabWidget):
             " | ".join(row.get("targets", [])), seconds,
             (PHASES.get(row.get("phase"), "") + " · " + row.get("message", "")).strip(" ·")])
         method = METHODS.get(row.get("method"), row.get("method", ""))
+        amount = round(row.get("size", 0)/1048576, 2)
+        if not row.get("size") and row.get("output_bytes") and row["status"] == "processing":
+            amount = "暂存 " + str(round(row["output_bytes"]/1048576, 2))
         self.put(self.timing, pos, [row.get("owner", ""), row.get("source", ""),
             *[round(row.get(name+"_seconds", 0), 2) for name in ("read", "convert", "verify", "archive")],
-            seconds, round(row.get("size", 0)/1048576, 2), method])
+            seconds, amount, method, row.get("message", "")])
 
     def finish(self):
         if self.started:
