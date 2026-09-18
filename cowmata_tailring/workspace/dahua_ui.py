@@ -405,7 +405,6 @@ class DahuaPanel(QWidget):
             request = dict(mode="files", files=self.files)
         self.job = tasks.task_root() / uuid.uuid4().hex
         self.index = None
-        self.settings.setValue("dahua/last_job", str(self.job))
         self.start("scan", request, self.job)
 
     def selected_mapping(self):
@@ -453,12 +452,12 @@ class DahuaPanel(QWidget):
 
     def restore(self):
         saved = str(self.settings.value("dahua/last_job", "")).strip()
-        if not saved or not Path(saved).is_absolute():
+        target = self.target.text().strip()
+        job = Path(saved) if saved and Path(saved).is_absolute() else None
+        if job is None and not target:
             self.status.setText("没有可恢复的视频任务")
             return
-        job = Path(saved)
-        self.job = job
-        self.start("restore", {}, job)
+        self.start("restore", dict(target=target), job)
 
     def apply_restored_options(self, options):
         if not options:
@@ -575,6 +574,9 @@ class DahuaPanel(QWidget):
                     self.result_path = value["path"]
                 elif event == "preview":
                     self.apply_preview(value["row"])
+                elif event == "resume":
+                    self.job = Path(value["job"])
+                    self.settings.setValue("dahua/last_job", str(self.job))
                 elif event == "row":
                     self.run_tables.accept(value["row"])
                     if value["row"].get("status") != "waiting":
@@ -612,6 +614,8 @@ class DahuaPanel(QWidget):
                 elif self.operation in {"scan", "restore"}:
                     self.apply_index(result)
                     if self.operation == "restore":
+                        self.job = Path(result["job"])
+                        self.settings.setValue("dahua/last_job", str(self.job))
                         self.apply_restored_options(result.get("options", {}))
                         if result.get("run"):
                             self.run_tables.restore(result["run"])

@@ -51,9 +51,11 @@ def main():
             elif action == "scan":
                 result = tasks.index_summary(tasks.scan(request, job, cancelled, progress))
             elif action == "restore":
-                result = tasks.index_summary(tasks.read_json(job / "dahua-index.json"))
-                result["options"] = tasks.read_json(job / "dahua-plan.json", {}).get("request", {})
-                result["run"] = tasks.read_json(job / "dahua-run.json", {})
+                restored = tasks.pending_video_job(request.get("target")) or job
+                result = tasks.index_summary(tasks.read_json(restored / "dahua-index.json"))
+                result["job"] = str(restored)
+                result["options"] = tasks.read_json(restored / "dahua-plan.json", {}).get("request", {})
+                result["run"] = tasks.read_json(restored / "dahua-run.json", {})
             elif action == "previews":
                 from cowmata_tailring.workspace.dahua_run import configure_storage, release_media
                 from cowmata_tailring.workspace.data_category import category_root
@@ -90,7 +92,8 @@ def main():
                     cancelled,
                     progress,
                     on_row=lambda row: emit(
-                        dict(
+                        dict(event="resume", job=row["job"])
+                        if row.get("event_kind") == "task_resume" else dict(
                             event="row",
                             row={
                                 k: v
