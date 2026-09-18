@@ -1680,8 +1680,8 @@
     },
     {
       "path": "cowmata_tailring/app/update_core.py",
-      "size": 18624,
-      "sha256": "c0d8b610aacb97a5bb5c03e6dcb9dd97e1055c2b0c4e2063b3074d0d0b3dfbe8"
+      "size": 18927,
+      "sha256": "80dc2c8614f3000417d0e6a00121b7a261c10f353638f21761cb614c153f221d"
     },
     {
       "path": "cowmata_tailring/app/update_ui.py",
@@ -2175,8 +2175,8 @@
     },
     {
       "path": "cowmata_tailring/ui/translations.py",
-      "size": 423224,
-      "sha256": "3e071c6e7156256ff0f4db22e3be7e17407e2f84c19265bdd21bd3e85b27bd2a"
+      "size": 423396,
+      "sha256": "9d4dac6c8cf6720f664ba62db0592e5b4a5d86fd8733f69be0106702f5b916a1"
     },
     {
       "path": "cowmata_tailring/ui/video_timeline.py",
@@ -3495,8 +3495,8 @@
     },
     {
       "path": "docs/release-396.md",
-      "size": 3374,
-      "sha256": "c0b36f99cc1be2c3a720c09a6916688351b011d840022113195656f52edb0e34"
+      "size": 3610,
+      "sha256": "07b8b00bab0e5ee2570c66dcab7869e3707d24fa185df51806735e89a8d08138"
     },
     {
       "path": "docs/release-notes-v2.2.0.md",
@@ -3555,8 +3555,8 @@
     },
     {
       "path": "docs/validation-396.md",
-      "size": 4726,
-      "sha256": "7745cb26b9cb61421bd7c58b6d3c869b87c54caf56501d2340dfe6c319be4f33"
+      "size": 5020,
+      "sha256": "98dc94654872b9698fe8e9a9a45b4fde3b0ab46c8316aa50a677348c39c5bd76"
     },
     {
       "path": "docs/version-update-notes.md",
@@ -4360,8 +4360,8 @@
     },
     {
       "path": "tests/test_portable_updates_390.py",
-      "size": 10653,
-      "sha256": "060f64cf7945d1c6f6b4511569954ecfac77ca4ed6031dc5676fbcbadba72fee"
+      "size": 12229,
+      "sha256": "06973f306eb9430d6c366403c3aec12dd5c38a6f416fdf8561b7ba3d1138087b"
     },
     {
       "path": "tests/test_prediction_receipt395.py",
