@@ -114,6 +114,7 @@ class RunLog:
         self.phase_started = self.started
         self.record_started = self.started
         self.last_emit = 0.0
+        self.last_save = self.started
         self.status = "running"
         self.outputs = []
         for row in self.rows.values():
@@ -133,6 +134,8 @@ class RunLog:
         if self.current and time.monotonic() - self.last_emit >= 0.5:
             self.emit(dict(self.snapshot(), event_kind="task_record"))
             self.last_emit = time.monotonic()
+            if self.last_emit - self.last_save >= 5:
+                self.save(json_only=True)
 
     def begin(self, source_id):
         self.current = self.rows[source_id]
@@ -149,6 +152,8 @@ class RunLog:
             key = prior + "_seconds"
             self.current[key] = round(self.current.get(key, 0) + now - self.phase_started, 3)
         self.phase_started = now
+        if phase != prior:
+            self.current.update(media_percent=0, frames=0, fps=0, media_speed="")
         self.current.update(phase=phase, message=message or PHASES.get(phase, phase), **details)
         self.last_emit = 0
         self.pulse()
@@ -173,7 +178,7 @@ class RunLog:
         self.save()
         self.current = None
 
-    def save(self, status=None):
+    def save(self, status=None, *, json_only=False):
         if status:
             self.status = status
         records = [self.snapshot() if self.current and r["source_id"] == self.current["source_id"]
@@ -181,6 +186,9 @@ class RunLog:
         report = dict(status=self.status, elapsed_seconds=round(time.monotonic()-self.started, 3),
                       records=records, outputs=self.outputs, updated_at=core.now())
         atomic_json(self.job / "dahua-run.json", report, backup=False)
+        self.last_save = time.monotonic()
+        if json_only:
+            return report
         fields = [("状态","status"),("开始时间","started_at"),("视角","owner"),("来源","source"),
                   ("归档目标","targets"),("大小_MiB","size"),("读取_秒","read_seconds"),
                   ("转换_秒","convert_seconds"),("校验_秒","verify_seconds"),("归档_秒","archive_seconds"),

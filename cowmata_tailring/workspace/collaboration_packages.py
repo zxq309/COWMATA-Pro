@@ -113,6 +113,21 @@ def plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', can
         return _plan_dispatch(root, units, count=count, views=views, purpose=purpose, cancelled=cancelled)
 
 
+def plan_dispatch_groups(root, groups, *, purpose='annotation', cancelled=lambda: False):
+    """Honor explicit per-package dates; every package includes all video views."""
+    from .package_readiness import download_guard
+    groups = [list(group) for group in groups]
+    if not groups or any(not group for group in groups):
+        raise ValueError('每个包都需要选择资料；存在未选择日期的空包')
+    units = [unit for group in groups for unit in group]
+    if len({u['key'] for u in units}) != len(units):
+        raise ValueError('同一设备日期被重复选择到多个包')
+    if any(len({u['category'] for u in group}) != 1 for group in groups):
+        raise ValueError('每个包请选择一个健康类别')
+    with DatasetLease([root], 'annotation'), download_guard(root):
+        return _plan_dispatch(root, units, count=len(groups), purpose=purpose, cancelled=cancelled, groups=groups)
+
+
 def _check_unit_files(root, units):
     for unit in units:
         current = set()
@@ -124,7 +139,7 @@ def _check_unit_files(root, units):
             raise ValueError('所选资料已有新增或删除，请重新扫描：' + unit['key'])
 
 
-def _plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', cancelled=lambda: False):
+def _plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', cancelled=lambda: False, groups=None):
     from .package_readiness import validate_complete
     root = Path(root).resolve(strict=True)
     identity = farm_identity(root)
@@ -142,11 +157,12 @@ def _plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', ca
         raise ValueError('请至少选择一个录像视角；没有录像不能派包')
     _check_unit_files(root, units)
     task_id = uuid4().hex
-    buckets = [[] for _ in range(count)]
-    # Distribute indivisible device-days evenly, then balance record volume.
-    for unit in sorted(units, key=lambda u: (-len(u['paths']), u['day'], u['owner'])):
-        group = min(buckets, key=lambda b: (len(b), sum(len(u['paths']) for u in b), sum(u['bytes'] for u in b)))
-        group.append(unit)
+    buckets = groups if groups is not None else [[] for _ in range(count)]
+    if groups is None:
+        # Legacy automatic plans distribute indivisible device-days.
+        for unit in sorted(units, key=lambda u: (-len(u['paths']), u['day'], u['owner'])):
+            group = min(buckets, key=lambda b: (len(b), sum(len(u['paths']) for u in b), sum(u['bytes'] for u in b)))
+            group.append(unit)
     plans, probe_cache = [], {}
     for part, group in enumerate(buckets, 1):
         days = sorted({u['day'] for u in group})
