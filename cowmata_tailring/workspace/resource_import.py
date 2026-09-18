@@ -735,6 +735,9 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
         with ExitStack() as transfers:
             for row in stream:
                 core.check_cancel(cancelled)
+                if dahua and plan.get('incremental_dahua'):
+                    process_row(row)
+                    continue
                 key = row.get('owner') or str(Path(row['source']).parent)
                 if key not in lanes:
                     lanes[key] = transfers.enter_context(ThreadPoolExecutor(max_workers=1, thread_name_prefix='view-transfer'))
