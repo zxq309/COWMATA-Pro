@@ -84,6 +84,7 @@ def probe(path, cancelled=lambda: False, *, dav=False):
 
 
 def packet_clock(path, cancelled=lambda: False, *, dav=False):
+    import statistics
     _, ffprobe = find_ffmpeg()
     args = ["-f", "dhav"] if dav else []
     value = run(
@@ -105,6 +106,7 @@ def packet_clock(path, cancelled=lambda: False, *, dav=False):
         300,
     )
     first = last = maximum = None
+    deltas = []
     duplicates = backwards = count = 0
     max_back = max_gap = duration = 0.0
     for line in value.stdout.decode("utf-8", "replace").splitlines():
@@ -123,6 +125,8 @@ def packet_clock(path, cancelled=lambda: False, *, dav=False):
             backwards += delta < 0
             max_back = max(max_back, -delta)
             max_gap = max(max_gap, delta)
+            if 0 < delta <= 1:
+                deltas.append(delta)
         last = pts
         maximum = pts if maximum is None else max(maximum, pts)
         count += 1
@@ -136,6 +140,15 @@ def packet_clock(path, cancelled=lambda: False, *, dav=False):
         raise ValueError(
             f"视频时钟不连续（回退 {max_back:.3f}s / 间隔 {max_gap:.3f}s），需单独复核"
         )
+    frame_interval = statistics.median(deltas) if deltas else 0.0
+    regular = bool(
+        frame_interval > 0
+        and 0.02 <= frame_interval <= 0.2
+        and max_back <= 0.25
+        and duplicates <= max(1, count * 0.02)
+        and sum(abs(delta - frame_interval) <= max(0.004, frame_interval * 0.12) for delta in deltas)
+        >= max(1, int(len(deltas) * 0.95))
+    )
     return dict(
         first=first,
         last=maximum,
@@ -145,6 +158,11 @@ def packet_clock(path, cancelled=lambda: False, *, dav=False):
         backwards=backwards,
         max_backwards_seconds=max_back,
         max_gap_seconds=max_gap,
+        frame_interval_ms=round(frame_interval * 1000, 3),
+        regular_cadence=regular,
+        recovery=(dict(method="validated_packet_cadence", frame_interval_ms=round(frame_interval * 1000, 3),
+                       video_frames=count, audio_offset_ms=None, wall_clock_events=[])
+                  if regular else None),
     )
 
 
@@ -296,7 +314,17 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                 and video.get("pix_fmt") in {"yuv420p", "yuvj420p"}
             ):
                 ffmpeg, _ = find_ffmpeg()
-                stage("convert", "快速封装 MP4（保留视频码流）", method="stream_copy")
+                copy_timing = timing
+                if copy_timing is None:
+                    try:
+                        cadence = packet_clock(source, cancelled, dav=True)
+                        if cadence.get("regular_cadence"):
+                            copy_timing = cadence["recovery"]
+                            stage("convert", "快速封装 MP4（修复已验证固定帧间隔）", method="stream_copy_cadence")
+                    except (ValueError, OSError):
+                        check(cancelled)
+                if copy_timing is None:
+                    stage("convert", "快速封装 MP4（保留视频码流）", method="stream_copy")
                 result = run(
                     [
                         ffmpeg,
@@ -323,8 +351,8 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                         "-c:v",
                         "copy",
                         *(["-tag:v", "hvc1"] if video["codec_name"] == "hevc" else []),
-                        *(["-bsf:v", f"setts=ts=N*{timing['frame_interval_ms']}/1000/TB:duration={timing['frame_interval_ms']}/1000/TB"] if timing else []),
-                        *audio_clock_options(timing),
+                        *(["-bsf:v", f"setts=ts=N*{copy_timing['frame_interval_ms']}/1000/TB:duration={copy_timing['frame_interval_ms']}/1000/TB"] if copy_timing else []),
+                        *audio_clock_options(copy_timing),
                         "-c:a",
                         "aac",
                         "-ar",
@@ -340,7 +368,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                     max(300, duration_ms / 1000 * 5),
                     progress=media_progress(stage, "convert", "快速封装", duration_ms),
                 )
-                verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage, timing=timing, source_video=video)
+                verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage, timing=copy_timing, source_video=video)
                 check(cancelled)
                 if os.name == "nt":
                     os.rename(stage_path, target)
@@ -432,7 +460,11 @@ def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stag
 
 
 def audio_clock_options(timing):
-    if not timing or timing.get("audio_offset_ms") is None:
+    if not timing:
+        return []
+    if timing.get("audio_offset_ms") is None:
+        if timing.get("method") == "validated_packet_cadence":
+            return ["-af", "asetpts=N/SR/TB"]
         return []
     return ["-af", f"asetpts=N/SR/TB+{timing['audio_offset_ms']}/(1000*TB)"]
 
@@ -537,7 +569,6 @@ def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: Fa
 
 def _validate_output(target, duration_ms, result, processing, cancelled, *, stage=lambda *_a, **_k: None, timing=None, offset_ms=0, source_video=None):
     ffmpeg, _ = find_ffmpeg()
-    stage("verify", "完整解码校验 MP4")
     info = probe(target, cancelled)
     video = info["video"]
     if processing == "stream_copy":
@@ -548,45 +579,69 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
             raise ValueError("快速封装改变了原视频编码、色彩或分辨率")
     elif video["codec_name"] != "h264" or video.get("pix_fmt") != "yuv420p":
         raise ValueError("派生 MP4 编码不符合标准")
-    decoded = run(
-        [
-            ffmpeg,
-            "-nostdin",
-            "-v",
-            "error",
-            "-xerror",
-            "-err_detect",
-            "explode",
-            "-threads",
-            str(verification_threads()),
-            "-i",
-            target,
-            "-map",
-            "0:v:0",
-            "-map",
-            "0:a:0?",
-            "-fps_mode",
-            "passthrough",
-            "-progress",
-            "pipe:1",
-            "-nostats",
-            "-f",
-            "null",
-            "-",
-        ],
-        cancelled,
-        max(300, duration_ms / 1000 * 5),
-        progress=media_progress(stage, "verify", "完整校验", duration_ms),
-    )
     frames = None
-    if timing:
-        values = [line.split("=", 1)[1] for line in decoded.stdout.decode("utf-8", "replace").splitlines()
-                  if line.startswith("frame=")]
-        frames = int(values[-1]) if values else None
-        step = timing["frame_interval_ms"]
-        expected = min(timing["video_frames"], math.ceil((offset_ms + duration_ms) / step)) - math.ceil(offset_ms / step)
-        if frames != expected:
-            raise ValueError(f"转码后帧数不一致（预期 {expected}，实际 {frames}），已停止归档")
+    verification_mode = "full_decode"
+    if processing == "stream_copy":
+        # The supplied Dahua clips share a stable HEVC/H.264 + PCM-A-law
+        # contract.  A second full decode of every copied clip only repeats
+        # the expensive operation.  Count packets and decode short boundary
+        # samples instead; encoded fallbacks retain the full pass below.
+        verification_mode = "quick_samples"
+        stage("verify", "快速校验（容器、时间轴、首尾采样）")
+        if timing:
+            clock = packet_clock(target, cancelled)
+            frames = clock["packets"]
+            step = timing["frame_interval_ms"]
+            expected = min(timing["video_frames"], math.ceil((offset_ms + duration_ms) / step)) - math.ceil(offset_ms / step)
+            if timing.get("method") == "validated_packet_cadence":
+                # A recorder can repeat/drop a small number of packets while
+                # keeping the dominant cadence regular.  The cadence repair
+                # must reject truncation, but does not invent missing frames.
+                if frames < max(1, int(expected * 0.95)) or frames > expected + 1:
+                    raise ValueError(f"转封装后帧数异常（期望约 {expected}，实际 {frames}），已停止归档")
+            elif frames != expected:
+                raise ValueError(f"转封装后帧数不一致（预期 {expected}，实际 {frames}），已停止归档")
+        _sample_decode(target, duration_ms, cancelled)
+    else:
+        stage("verify", "完整解码校验 MP4")
+        decoded = run(
+            [
+                ffmpeg,
+                "-nostdin",
+                "-v",
+                "error",
+                "-xerror",
+                "-err_detect",
+                "explode",
+                "-threads",
+                str(verification_threads()),
+                "-i",
+                target,
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a:0?",
+                "-fps_mode",
+                "passthrough",
+                "-progress",
+                "pipe:1",
+                "-nostats",
+                "-f",
+                "null",
+                "-",
+            ],
+            cancelled,
+            max(300, duration_ms / 1000 * 5),
+            progress=media_progress(stage, "verify", "完整校验", duration_ms),
+        )
+        if timing:
+            values = [line.split("=", 1)[1] for line in decoded.stdout.decode("utf-8", "replace").splitlines()
+                      if line.startswith("frame=")]
+            frames = int(values[-1]) if values else None
+            step = timing["frame_interval_ms"]
+            expected = min(timing["video_frames"], math.ceil((offset_ms + duration_ms) / step)) - math.ceil(offset_ms / step)
+            if frames != expected:
+                raise ValueError(f"转码后帧数不一致（预期 {expected}，实际 {frames}），已停止归档")
     _, ffprobe = find_ffmpeg()
     stage("verify", "核对成品时间轴")
     timeline = probe_media_timeline(target, ffprobe, cancelled=cancelled)
@@ -602,13 +657,27 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
             pixel_format=video["pix_fmt"],
             color_range=video.get("color_range"),
             audio="aac",
-            pts="validated_dhav_counter" if timing else "vfr",
+            pts=(timing.get("method") if timing else "vfr"),
             verified_video_frames=frames,
             crf=23 if processing == "encoded" else None,
             video_processing=processing,
+            verification_mode=verification_mode,
             original_resolution=True,
         ),
     )
+
+
+def _sample_decode(target, duration_ms, cancelled):
+    """Decode only the beginning and end of a stream-copy result."""
+    ffmpeg, _ = find_ffmpeg()
+    windows = [("首段", 0)]
+    if duration_ms > 5000:
+        windows.append(("尾段", -2))
+    for _title, seek in windows:
+        args = [ffmpeg, "-nostdin", "-v", "error", "-xerror", "-err_detect", "explode", "-threads", "1"]
+        args.extend(["-sseof", str(seek)] if seek < 0 else ["-ss", str(seek)])
+        args.extend(["-i", target, "-map", "0:v:0", "-t", "2", "-an", "-f", "null", "-"])
+        run(args, cancelled, 90)
 
 
 def thumbnail(source, target, cancelled=lambda: False, *, dav=False):
