@@ -8,6 +8,8 @@ def setup_media(monkeypatch, tmp_path, fail_copy=False):
     from cowmata_tailring.workspace import dahua_media as media
 
     commands = []
+    # These cases isolate the CPU fallback and remux policy; hardware has separate coverage.
+    monkeypatch.setattr(media, "available_encoder", lambda *args: "libx264")
     monkeypatch.setattr(media, "find_ffmpeg", lambda: ("ffmpeg", "ffprobe"))
     monkeypatch.setattr(
         media,

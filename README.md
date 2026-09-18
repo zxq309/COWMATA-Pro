@@ -1,4 +1,4 @@
-> **3.9.6**：统一当前标签与历史记录读取，修复草稿证据查看、九轴分轴显示及登录编码；视频总目录使用 Windows 多选与清空重置。见 [发布说明](docs/release-396.md)。
+> **3.9.7**：原始录像逐段校验并归档到共享“录像”，临时视频使用目标盘；新增运行记录、耗时明细与归档结果，支持硬件转码和安全续跑。见 [发布说明](docs/release-397.md)。
 
 # COWMATA Pro™ 3.9
 
@@ -61,9 +61,9 @@ flowchart LR
 
 | 文件 | 用途 |
 |---|---|
-| `COWMATA-Pro-3.9.6-Setup.exe` | Windows 安装版，按向导安装 |
-| `COWMATA-Pro-3.9.6-Portable.zip` | 完整解压到独立目录，运行其中的 `COWMATA.exe` |
-| `COWMATA-Pro-3.9.6-Source.zip` | 开发、审查与修改源码；环境配置见第 8 节 |
+| `COWMATA-Pro-3.9.7-Setup.exe` | Windows 安装版，按向导安装 |
+| `COWMATA-Pro-3.9.7-Portable.zip` | 完整解压到独立目录，运行其中的 `COWMATA.exe` |
+| `COWMATA-Pro-3.9.7-Source.zip` | 开发、审查与修改源码；环境配置见第 8 节 |
 
 安装版和便携版自带运行组件。保留 `runtime`、`vendor`、`assets` 与启动程序的相对位置。
 
@@ -285,8 +285,8 @@ $env:COWMATA_ALGORITHM_HOME = "F:\科牧特\_模型\行为识别"
 维护者可复用本版已验证组件，输出到新位置：
 
 ```powershell
-python scripts/build_portable.py --components "E:\zxq\3.9\COWMATA-Pro-3.9.6-Portable" --out "E:\构建输出\COWMATA-Pro-3.9.6-Portable" --no-zip
-python scripts/build_installer.py --package "E:\构建输出\COWMATA-Pro-3.9.6-Portable" --compiler "D:\Tools\NSIS\makensis.exe" --out "E:\构建输出\COWMATA-Pro-3.9.6-Setup.exe" --version 3.9.6
+python scripts/build_portable.py --components "E:\zxq\3.9\COWMATA-Pro-3.9.7-Portable" --out "E:\构建输出\COWMATA-Pro-3.9.7-Portable" --no-zip
+python scripts/build_installer.py --package "E:\构建输出\COWMATA-Pro-3.9.7-Portable" --compiler "D:\Tools\NSIS\makensis.exe" --out "E:\构建输出\COWMATA-Pro-3.9.7-Setup.exe" --version 3.9.7
 ```
 
 构建拒绝覆盖已有输出，并核验文件清单。组件版本与许可见[便携组件说明](docs/portable-components.md)。
