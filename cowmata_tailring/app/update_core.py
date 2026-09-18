@@ -290,7 +290,12 @@ def public_releases(current, channel, opener, package_kind="portable"):
         if channel == "stable" and re.search(r">\s*Pre-release\s*<", page, re.I):
             continue
         listing = read_bytes(PAGE + "/expanded_assets/" + urllib.parse.quote(tag, safe=""), 2*1024**2, opener).decode("utf-8")
-        suffix = "Setup.exe" if package_kind == "installer" and f"-{tag.removeprefix('v')}-Setup.exe" in listing else "Portable.zip"
+        version = tag.removeprefix('v')
+        has_setup = f"-{version}-Setup.exe" in listing
+        has_portable = f"-{version}-Portable.zip" in listing
+        # Installer-only releases also upgrade portable copies. Keep the same
+        # preference as REST, including when GitHub limits anonymous API calls.
+        suffix = "Setup.exe" if has_setup and (package_kind == "installer" or not has_portable) else "Portable.zip"
         expected = {f"COWMATA-{brand}-{tag.removeprefix('v')}-{suffix}" for brand in ("Pro","Annotator")}
         found = []
         for row in re.findall(r"<li\b[^>]*>(.*?)</li>", listing, re.S):
@@ -319,7 +324,7 @@ def public_releases(current, channel, opener, package_kind="portable"):
                         raise ValueError("Unexpected public asset response")
                 found.append(dict(name=name,size=size,digest="sha256:"+hashes.pop(),state="uploaded",browser_download_url=url))
         if len(found) != 1:
-            raise ValueError("最新版尚未提供可校验的完整便携 ZIP，请查看发布附件")
+            raise ValueError("最新版尚未提供可校验的安装包或便携 ZIP，请查看发布附件")
         notes = html.unescape(re.sub(r"<[^>]+>", " ", body))
         result = (installer_info if suffix == "Setup.exe" else portable_info)(tag, found[0], notes)
         result["metadata_source"] = "github_public_release"
