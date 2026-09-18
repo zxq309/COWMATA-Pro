@@ -277,7 +277,6 @@ def execute_migration(plan, *, progress=lambda *_: None, cancelled=lambda: False
                 (root/name/day).mkdir(parents=True, exist_ok=True)
             for view in range(1,9):
                 (root/'Video'/day/f'视角{view:02d}').mkdir(exist_ok=True)
-            (root/'PPG'/day/'占位说明.txt').write_text('PPG 原始通道与标注预留；当前没有可解析 PPG 数据。\n', encoding='utf-8')
         atomic_json(index_path, {**previous,'schema':'cowmata-resources-3.4','records':list(by_path.values()),'dates':days,
                                 **category_fields(plan['category'])})
         update_context(root, {'mode':'import','category':plan['category'],'start':days[0] if days else '',
