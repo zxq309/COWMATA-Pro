@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import sqlite3
+from collections import Counter
 from contextlib import ExitStack, closing
 from pathlib import Path
 from uuid import uuid4
@@ -20,10 +21,16 @@ from .storage import ProjectLock, atomic_json, read_json
 def audit(root):
     root = Path(root).resolve(strict=True)
     moves, files, collisions = [], [], []
+    directories = Counter()
+    video_roots = []
     def collect(source, target):
         safe_path(root, source.relative_to(root).as_posix())
         safe_path(root, target.relative_to(root).as_posix())
-        if target.exists():
+        shared = directories[target.relative_to(root).as_posix().casefold()] > 1
+        if shared and source.is_dir() and not target.exists():
+            for child in sorted(source.iterdir()):
+                collect(child, target / child.name)
+        elif target.exists():
             if source.is_dir() and target.is_dir():
                 for child in sorted(source.iterdir()):
                     collect(child, target / child.name)
@@ -36,10 +43,13 @@ def audit(root):
         video = root / category / 'Video'
         if not video.is_dir():
             continue
+        video_roots.append(video)
         safe_path(root, category + '/Video')
         for path in video.rglob('*'):
             relative = path.relative_to(root).as_posix()
             safe_path(root, relative)
+            if path.is_dir():
+                directories[(Path('录像') / path.relative_to(video)).as_posix().casefold()] += 1
             if path.is_file():
                 target = (Path('录像') / path.relative_to(video)).as_posix()
                 key = target.casefold()
@@ -47,6 +57,9 @@ def audit(root):
                     collisions.append(target)
                 reserved.add(key)
                 files.append(dict(source=relative, target=target, stamp=file_stamp(path)))
+    # Shared dates/views must be expanded before scheduling any directory rename.
+    # A target absent on disk may still be produced by another category's move.
+    for video in video_roots:
         for child in sorted(video.iterdir()):
             collect(child, root / '录像' / child.name)
     return dict(root=str(root), moves=moves, assets=files, files=len(files),
