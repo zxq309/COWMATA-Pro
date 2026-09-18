@@ -4353,5 +4353,20 @@ ZH_TO_EN.update({
   "：缺少 ": ": missing "
 })
 
+ZH_TO_EN.update({
+    " · 共 ": " · Total ",
+    " · 更新 ": " · Updated ",
+    " · 移除 ": " · Removed ",
+    " 条；本地旧表格式不兼容，未计变更": " records; old local format was incompatible, change counts unavailable",
+    "CSV 刷新完成 · ": "CSV refresh complete · ",
+    "已核验，共 ": "Verified; total ",
+    "已重建 ": "Rebuilt ",
+    "新增 ": "Added ",
+    "未发现新增或更新，共 ": "No additions or updates; total ",
+    "本轮 CSV 刷新未完成：": "This CSV refresh did not complete: ",
+    "正在从服务器读取并核验三个 CSV…": "Reading and validating all three CSV files from the server…",
+    "首次读取；": "First retrieval; ",
+})
+
 if __name__ == "__main__":
     _coverage()

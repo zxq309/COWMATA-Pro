@@ -1805,8 +1805,8 @@
     },
     {
       "path": "cowmata_tailring/edge_download/pro_dialog.py",
-      "size": 43145,
-      "sha256": "af1b3a632687667ad9e7297a39f8d3929053f05cc8820fac2667d6f60751f32b"
+      "size": 45667,
+      "sha256": "6e73555334c795240fb5385c5c089fbc96788f8fd79791685d0e27284e42d9f5"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_settings.py",
@@ -1825,8 +1825,8 @@
     },
     {
       "path": "cowmata_tailring/edge_download/site_records.py",
-      "size": 16948,
-      "sha256": "c40271724b985cb1a9a05c4a8366f45e39fe8a4d603dddd52df5c3f9b5c23adc"
+      "size": 17759,
+      "sha256": "228eff8467ef99257d075eb8ddf8e89d525d73d13d868334fb9178bcf20e72de"
     },
     {
       "path": "cowmata_tailring/edge_download/transport.py",
@@ -2175,8 +2175,8 @@
     },
     {
       "path": "cowmata_tailring/ui/translations.py",
-      "size": 422503,
-      "sha256": "86004e9e3efebc97322a75901c63313336f9caaae84341d135ce3dca1f2cdee6"
+      "size": 423224,
+      "sha256": "3e071c6e7156256ff0f4db22e3be7e17407e2f84c19265bdd21bd3e85b27bd2a"
     },
     {
       "path": "cowmata_tailring/ui/video_timeline.py",
@@ -2430,8 +2430,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/label_file.py",
-      "size": 23157,
-      "sha256": "63837510042111f2286f901315434c7de7b9345d252e59b1311b36f7462b95c7"
+      "size": 25893,
+      "sha256": "8404e8e33b1f666e9f97dcfbb7a9936b4a33986d4f910f57967c83f87043f8ad"
     },
     {
       "path": "cowmata_tailring/workspace/label_migration.py",
@@ -3235,8 +3235,8 @@
     },
     {
       "path": "docs/operator-guide-396.html",
-      "size": 64201,
-      "sha256": "abf6a4916d25abba90db52e582c39c022c144c8fb10f701fe9f2c8f64d341fbf"
+      "size": 64783,
+      "sha256": "94381de2dfcec3e4fa1d51274a0e1c10f7aae8b290d61e7a2bc7462aebf2faa7"
     },
     {
       "path": "docs/playback-annotation-fix-20260910.md",
@@ -3495,8 +3495,8 @@
     },
     {
       "path": "docs/release-396.md",
-      "size": 3064,
-      "sha256": "ec70c3518df660453e7cff9a51a38511ecb2a178145bdb1a6e5d8ca13b752b6b"
+      "size": 3374,
+      "sha256": "c0b36f99cc1be2c3a720c09a6916688351b011d840022113195656f52edb0e34"
     },
     {
       "path": "docs/release-notes-v2.2.0.md",
@@ -3555,8 +3555,8 @@
     },
     {
       "path": "docs/validation-396.md",
-      "size": 4053,
-      "sha256": "d4e089487af551e4c703ef12c9b2f0417eafa232ed81e88bc7486eda208228a8"
+      "size": 4726,
+      "sha256": "7745cb26b9cb61421bd7c58b6d3c869b87c54caf56501d2340dfe6c319be4f33"
     },
     {
       "path": "docs/version-update-notes.md",
@@ -4155,8 +4155,8 @@
     },
     {
       "path": "tests/test_edge_download_384.py",
-      "size": 20566,
-      "sha256": "416dece3caff6732c02d127efe0d7c93eaf7e1caec1775086792c1df98e75849"
+      "size": 23718,
+      "sha256": "d6e0d6d4b54f51a654f421411c413edefbdc65246fb35d0cc4162e199fadd5c9"
     },
     {
       "path": "tests/test_event_models.py",
@@ -4175,8 +4175,8 @@
     },
     {
       "path": "tests/test_farm_layout_396.py",
-      "size": 3223,
-      "sha256": "2ca0ecc7dc7de2625e12adceb9321e54756bde213ba10816a25fb9909a0ce1f8"
+      "size": 5767,
+      "sha256": "d21a9fc2ea57e3ad35ac084300357ee9c1ae1c1219854edd12250d37f406284d"
     },
     {
       "path": "tests/test_farm_migration_396.py",
