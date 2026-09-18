@@ -13,7 +13,15 @@ from pathlib import Path
 
 from . import organization as core
 from .catalog import digest_file
-from .dahua_media import packet_clock, probe, segments, thumbnail, time_ms, transcode
+from .dahua_media import (
+    packet_clock,
+    probe,
+    recorded_clock,
+    segments,
+    thumbnail,
+    time_ms,
+    transcode,
+)
 from .dahua_source import DHFSReader, check, disks, normalize_file
 from .data_category import category_fields, category_root
 from .dataset_access import DatasetLease, overlaps
@@ -308,8 +316,10 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
     stage("read", "读取与核对原始录像")
     source, source_info = normalized(row, index, job, cancelled)
     stage("verify", "核对码流时钟")
-    clock = packet_clock(source, cancelled, dav=True)
-    input_video = probe(source, cancelled, dav=True)["video"]
+    input_info = probe(source, cancelled, dav=True)
+    clock = recorded_clock(source, input_info, cancelled) or packet_clock(source, cancelled, dav=True)
+    timing = clock.get("recovery")
+    input_video = input_info["video"]
     started = source_info["start_ms"]
     ended = started + round(clock["duration"] * 1000)
     bounds = segments(
@@ -326,7 +336,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
             source_sha256=source_info["sha256"],
             lo=lo,
             hi=hi,
-            profile="h264-vfr-crf23-v2",
+            profile="h264-counter-verified-v3" if timing else "h264-vfr-crf23-v2",
         )
         key = hashlib.sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()
         directory = source.parent / key[:16]
@@ -347,7 +357,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
         temporary = directory / (uuid.uuid4().hex + ".mp4")
         try:
             stage("convert", "转换 MP4")
-            converted = transcode(source, temporary, lo - started, hi - lo, cancelled, stage=stage)
+            converted = transcode(source, temporary, lo - started, hi - lo, cancelled, stage=stage, timing=timing)
             video = converted["info"]["video"]
             if (video["width"], video["height"]) != (input_video["width"], input_video["height"]):
                 raise ValueError("转码改变了原视频分辨率")
@@ -403,6 +413,10 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
                 query_end=request.get("end"),
             ),
         )
+        if timing and timing.get("wall_clock_events"):
+            metadata["warnings"].append("录像机发生校时；连续播放计时已恢复，日期时间与传感器同步需核对")
+            for interval in metadata["intervals"]:
+                interval["warnings"].append(metadata["warnings"][-1])
         value = dict(
             path=str(target),
             sha256=sha,

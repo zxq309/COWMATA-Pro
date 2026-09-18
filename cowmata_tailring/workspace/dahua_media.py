@@ -106,6 +106,104 @@ def packet_clock(path, cancelled=lambda: False, *, dav=False):
     )
 
 
+def recorded_clock(path, info, cancelled=lambda: False):
+    """Recover only a proved continuous DHAV counter; never infer a frame rate.
+
+    The packed calendar can jump while the recorder's 16-bit millisecond
+    counter and frame sequence stay continuous. Keep calendar steps as evidence.
+    Nonuniform, missing, reordered or unproved audio frames use strict probing.
+    """
+    import mmap
+    import struct
+
+    from .dahua_source import MAX_PACKET, packed_ms
+
+    if info.get("video", {}).get("has_b_frames") != 0:
+        return None
+    audio = next((s for s in info.get("streams", []) if s.get("codec_type") == "audio"), None)
+    audio_width = {"pcm_alaw": 1, "pcm_mulaw": 1, "pcm_s8": 1, "pcm_s16le": 2}
+    if audio and audio.get("codec_name") not in audio_width:
+        return None
+    rate = int(audio.get("sample_rate", 0)) if audio else 0
+    width = audio_width.get(audio.get("codec_name"), 0) * int(audio.get("channels", 0)) if audio else 0
+    if audio and (rate <= 0 or width <= 0):
+        return None
+    previous = {}
+    video_count = audio_count = 0
+    first_tick = first_wall = previous_wall = step = None
+    elapsed = audio_elapsed = samples = 0
+    audio_first = None
+    events = []
+    with open(path, "rb") as stream:
+        if not stream.seek(0, 2):
+            return None
+        with mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            pos = 0
+            while pos < len(data):
+                if (video_count + audio_count) % 256 == 0:
+                    check(cancelled)
+                if pos + 32 > len(data) or data[pos:pos+4] != b"DHAV":
+                    return None
+                frame, size, date, tick = struct.unpack_from("<IIIH", data, pos + 8)
+                if not 32 <= size <= MAX_PACKET or pos + size > len(data):
+                    return None
+                if data[pos+size-8:pos+size-4] != b"dhav" or struct.unpack_from("<I", data, pos+size-4)[0] != size:
+                    return None
+                kind = data[pos+4]
+                if kind in (0xfc, 0xfd, 0xf0):
+                    key = "audio" if kind == 0xf0 else "video"
+                    last = previous.get(key)
+                    delta = (tick-last[1]) % 65536 if last else 0
+                    if last and ((frame-last[0]) % 4294967296 != 1 or not 0 < delta <= 1000):
+                        return None
+                    previous[key] = (frame, tick)
+                    wall = packed_ms(date)
+                    if key == "video":
+                        if first_tick is None:
+                            first_tick, first_wall = tick, wall
+                        else:
+                            step = delta if step is None else step
+                            if delta != step:
+                                return None
+                            elapsed += delta
+                            if abs(wall - (first_wall + elapsed)) > 5000:
+                                return None
+                            if wall < previous_wall or wall - previous_wall > 1000:
+                                events.append(dict(media_ms=elapsed, wall_ms=wall,
+                                                   calendar_step_ms=wall-previous_wall))
+                        previous_wall = wall
+                        video_count += 1
+                    else:
+                        if not audio or first_tick is None:
+                            return None
+                        payload = size - 32 - data[pos+22]
+                        if payload <= 0 or payload % width:
+                            return None
+                        if audio_first is None:
+                            audio_first = ((tick-first_tick+32768) % 65536)-32768
+                            if abs(audio_first) > 2000 or abs(wall-first_wall) > 2000:
+                                return None
+                        else:
+                            audio_elapsed += delta
+                            if abs(audio_elapsed - samples * 1000 / rate) > 40:
+                                return None
+                        samples += payload / width
+                        audio_count += 1
+                pos += size
+    if video_count < 2 or step is None or audio and not audio_count:
+        return None
+    duration = video_count * step
+    if audio and abs(audio_first + samples * 1000 / rate - duration) > max(80, step * 2):
+        return None
+    return dict(first=0, last=elapsed/1000, duration=duration/1000,
+                packets=video_count, duplicates=0, backwards=0,
+                max_backwards_seconds=0, max_gap_seconds=step/1000,
+                recovery=dict(method="validated_dhav_counter", frame_interval_ms=step,
+                              video_frames=video_count, audio_offset_ms=audio_first,
+                              wall_clock_events=events, first_wall_ms=first_wall,
+                              wall_precision_ms=1000))
+
+
 def time_ms(value):
     if value in (None, ""):
         return None
@@ -135,7 +233,7 @@ def segments(start, end, requested_start=None, requested_end=None, split_midnigh
     return result
 
 
-def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, stage=lambda *_a, **_k: None):
+def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, stage=lambda *_a, **_k: None, timing=None):
     """Keep compatible H.264 video packets; exact middle cuts use the encoder."""
     import os
     import uuid
@@ -181,6 +279,8 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                         "-1",
                         "-c:v",
                         "copy",
+                        *(["-bsf:v", f"setts=ts=N*{timing['frame_interval_ms']}/1000/TB:duration={timing['frame_interval_ms']}/1000/TB"] if timing else []),
+                        *audio_clock_options(timing),
                         "-c:a",
                         "aac",
                         "-ar",
@@ -195,7 +295,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                     cancelled,
                     max(300, duration_ms / 1000 * 5),
                 )
-                verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage)
+                verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage, timing=timing)
                 check(cancelled)
                 if os.name == "nt":
                     os.rename(stage_path, target)
@@ -210,7 +310,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                 raise
         finally:
             stage_path.unlink(missing_ok=True)
-    return encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage)
+    return encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, timing=timing)
 
 
 _encoder_cache = {}
@@ -248,7 +348,7 @@ def available_encoder(cancelled=lambda: False):
     return _encoder_cache[key]
 
 
-def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage):
+def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, *, timing=None):
     import os
     import uuid
     from pathlib import Path
@@ -258,7 +358,7 @@ def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stag
         temporary = target.with_name(target.stem + ".hardware-" + uuid.uuid4().hex + ".mp4")
         try:
             result = _encode(source, temporary, offset_ms, duration_ms, cancelled,
-                             encoder=encoder, stage=stage)
+                             encoder=encoder, stage=stage, **({"timing": timing} if timing else {}))
             check(cancelled)
             if os.name == "nt":
                 os.rename(temporary, target)
@@ -277,13 +377,20 @@ def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stag
             stage("convert", "硬件加速不可用，自动回退 CPU 编码", method="libx264")
         finally:
             temporary.unlink(missing_ok=True)
-    return _encode(source, target, offset_ms, duration_ms, cancelled, stage=stage)
+    return _encode(source, target, offset_ms, duration_ms, cancelled, stage=stage, **({"timing": timing} if timing else {}))
 
 
-def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None):
+def audio_clock_options(timing):
+    if not timing or timing.get("audio_offset_ms") is None:
+        return []
+    return ["-af", f"asetpts=N/SR/TB+{timing['audio_offset_ms']}/(1000*TB)"]
+
+
+def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None, timing=None):
     ffmpeg, _ = find_ffmpeg()
     stage("convert", "硬件编码 H.264" if encoder != "libx264" else "CPU 编码 H.264", method=encoder)
-    # No guessed frame rate: VFR keeps input timestamps, dropping duplicates.
+    # Only proved continuous counters permit timestamps from frame/sample counts.
+    # Other formats retain their measured presentation timestamps.
     args = [
         ffmpeg,
         "-nostdin",
@@ -312,7 +419,8 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, 
         "-map_metadata",
         "-1",
         "-vf",
-        "scale=in_range=auto:out_range=tv",
+        (f"setpts=N*{timing['frame_interval_ms']}/(1000*TB)," if timing else "") + "scale=in_range=auto:out_range=tv",
+        *audio_clock_options(timing),
         "-c:v",
         encoder,
         *encoder_options(encoder),
@@ -321,7 +429,7 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, 
         "-threads",
         "2",
         "-fps_mode",
-        "vfr",
+        "passthrough" if timing else "vfr",
         "-enc_time_base",
         "1:1000",
         "-c:a",
@@ -336,21 +444,21 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, 
         target,
     ]
     result = run(args, cancelled, max(300, duration_ms / 1000 * 10))
-    verified = _validate_output(target, duration_ms, result, "encoded", cancelled, stage=stage)
+    verified = _validate_output(target, duration_ms, result, "encoded", cancelled, stage=stage, timing=timing, offset_ms=offset_ms)
     verified["settings"].update(encoder=encoder, hardware_accelerated=encoder != "libx264",
                                 crf=23 if encoder == "libx264" else None,
                                 hardware_quality=23 if encoder != "libx264" else None)
     return verified
 
 
-def _validate_output(target, duration_ms, result, processing, cancelled, *, stage=lambda *_a, **_k: None):
+def _validate_output(target, duration_ms, result, processing, cancelled, *, stage=lambda *_a, **_k: None, timing=None, offset_ms=0):
     ffmpeg, _ = find_ffmpeg()
     stage("verify", "完整解码校验 MP4")
     info = probe(target, cancelled)
     video = info["video"]
     if video["codec_name"] != "h264" or video.get("pix_fmt") != "yuv420p":
         raise ValueError("派生 MP4 编码不符合标准")
-    run(
+    decoded = run(
         [
             ffmpeg,
             "-nostdin",
@@ -367,6 +475,11 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
             "0:v:0",
             "-map",
             "0:a:0?",
+            "-fps_mode",
+            "passthrough",
+            "-progress",
+            "pipe:1",
+            "-nostats",
             "-f",
             "null",
             "-",
@@ -374,6 +487,15 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
         cancelled,
         max(300, duration_ms / 1000 * 5),
     )
+    frames = None
+    if timing:
+        values = [line.split("=", 1)[1] for line in decoded.stdout.decode("utf-8", "replace").splitlines()
+                  if line.startswith("frame=")]
+        frames = int(values[-1]) if values else None
+        step = timing["frame_interval_ms"]
+        expected = min(timing["video_frames"], math.ceil((offset_ms + duration_ms) / step)) - math.ceil(offset_ms / step)
+        if frames != expected:
+            raise ValueError(f"转码后帧数不一致（预期 {expected}，实际 {frames}），已停止归档")
     _, ffprobe = find_ffmpeg()
     stage("verify", "核对成品时间轴")
     timeline = probe_media_timeline(target, ffprobe, cancelled=cancelled)
@@ -388,7 +510,8 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
             video="h264",
             pixel_format="yuv420p",
             audio="aac",
-            pts="vfr",
+            pts="validated_dhav_counter" if timing else "vfr",
+            verified_video_frames=frames,
             crf=23 if processing == "encoded" else None,
             video_processing=processing,
             original_resolution=True,
