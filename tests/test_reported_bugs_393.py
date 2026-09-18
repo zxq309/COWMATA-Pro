@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QToolTip
 from test_annotation_pipeline_v330 import case, window  # noqa: F401
 
 from cowmata_tailring.annotation.core import Label
-from cowmata_tailring.annotation.defaults import LEGACY_DEFAULT_LABELS
+from cowmata_tailring.annotation.defaults import DEFAULT_LABELS, LEGACY_DEFAULT_LABELS
 from cowmata_tailring.ui.widgets import PlotSeries
 
 
@@ -114,44 +114,21 @@ LEGACY = [
 
 
 @pytest.mark.parametrize("code,key", LEGACY)
-def test_legacy_label_keyboard_and_button_both_record_without_changing_old_events(
-    window, monkeypatch, code, key
-):
+def test_legacy_events_remain_but_do_not_create_new_labels(window, monkeypatch, code, key):
     window.work.project.labels = [Label.from_dict(x) for x in LEGACY_DEFAULT_LABELS]
-    window.work.project.cow_id = "20071"
     index = next(i for i, label in enumerate(window.work.project.labels) if label.code == code)
     old = window.work.project.add_event(index, 10, None if code == "STRAINING_ONSET" else 20)
     identity = old.id
-    window.board.main_camera = "A"
-    position = [window.work.clock.map(100)]
-    monkeypatch.setattr(
-        window,
-        "evidence",
-        lambda: [{"camera": "A", "frame_ready": True, "reference_ms": position[0]}],
-    )
     window.refresh_events()
-    index = next(i for i, label in enumerate(window.work.project.labels) if label.code == code)
-    assert window.work.project.labels[index].key == key
-    assert window.work.project.labels[window.work.project.event_by_id(identity).li].code == code
-    window.show()
-    window.activateWindow()
-    window.labels.setFocus()
-    QTest.qWait(30)
-    QTest.keyClick(window.labels, ord(key))
-    QApplication.processEvents()
-    if not window.work.project.labels[index].is_point:
-        assert window.active_event["label"] == index
-        position[0] += 100
-        window.mark_button.click()
-    else:
-        position[0] += 100
-        window.labels.setCurrentIndex(index)
-        window.mark_button.click()
-    assert window.active_event is None
-    assert window.work.drafts
-    assert all(
-        window.work.project.labels[d["label_index"]].code == code for d in window.work.drafts
-    )
+    kept = window.work.project.event_by_id(identity)
+    label = window.work.project.labels[kept.li]
+    assert label.code == code and label.key == "" and not label.trainable
+    assert kept.t0 == 10
+    assert window.labels.count() == len(DEFAULT_LABELS)
+    called=[]
+    monkeypatch.setattr(window, "mark", called.append)
+    window.mark_code(code)
+    assert called == []
 
 
 def test_empty_candidate_window_explains_model_setup_and_refreshes_after_import(

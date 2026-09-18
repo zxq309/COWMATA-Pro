@@ -62,6 +62,10 @@ def handle(request,target=DEFAULT_TARGET,schema=None,allow_delete=True):
         if not allow_delete and change["record"]["已删除"]=="1":
             from ledger_accounts import AccessError
             raise AccessError("操作员不能删除台账","FORBIDDEN")
+        baseline=change.get('base_record')
+        if baseline is not None:
+            validate_record(baseline,fields)
+            if baseline['记录ID']!=change['record']['记录ID'] or baseline['版本']!=change['base']:raise ValueError('单元格基线与记录版本不符')
         key=change["record"]["记录ID"]
         if key in seen: raise ValueError("重复记录ID")
         seen.add(key)
@@ -79,7 +83,7 @@ def handle(request,target=DEFAULT_TARGET,schema=None,allow_delete=True):
             return {"version":2,"ok":True,"target":str(target),"inventory":[
                 {"id":r["记录ID"],"version":r["版本"],"fingerprint":fingerprint(r),"event":identity(r)} for r in records]}
         conflicts=[];accepted=[];modified=False;aliases={}
-        inserted=updated=unchanged=0
+        inserted=updated=unchanged=merged_cells=overwritten_cells=0
         fingerprints={};events={}
         def index(row):
             key=row["记录ID"]
@@ -104,7 +108,13 @@ def handle(request,target=DEFAULT_TARGET,schema=None,allow_delete=True):
             if not old and change["base"]:
                 raise ValueError("服务器缺少已同步记录，停止写入；请管理员检查总表完整性")
             if old and change["base"]!=old["版本"]:
-                conflicts.append(key);continue
+                baseline=change.get('base_record')
+                if baseline is None:conflicts.append(key);continue
+                from ledger_merge import merge_record,DeletedRecordConflict
+                try:row,cells,overwritten=merge_record(baseline,row,old,schema)
+                except DeletedRecordConflict:conflicts.append(key);continue
+                merged_cells+=len(cells);overwritten_cells+=len(overwritten)
+                if fingerprint(old)==fingerprint(row):accepted.append(key);unchanged+=1;continue
             if old:
                 updated+=1
                 fingerprints.get(fingerprint(old),set()).discard(key)
@@ -118,7 +128,7 @@ def handle(request,target=DEFAULT_TARGET,schema=None,allow_delete=True):
             # Acknowledgement refers to bytes re-read after the atomic replacement.
             content=target.read_bytes()
         elif existed: content=target.read_bytes()
-        return {"version":2,"ok":True,"target":str(target),"sha256":sha(content),"content":base64.b64encode(content).decode("ascii"),"accepted":accepted,"conflicts":conflicts,"count":len(existing),"aliases":aliases,"delta":{"received":len(changes),"inserted":inserted,"updated":updated,"unchanged":unchanged}}
+        return {"version":2,"ok":True,"target":str(target),"sha256":sha(content),"content":base64.b64encode(content).decode("ascii"),"accepted":accepted,"conflicts":conflicts,"count":len(existing),"aliases":aliases,"delta":{"received":len(changes),"inserted":inserted,"updated":updated,"unchanged":unchanged,"merged_cells":merged_cells,"overwritten_cells":overwritten_cells}}
 def dispatch(request,config,peer="unknown"):
     from ledger_accounts import Accounts,AccessError
     if not isinstance(request,dict) or request.get("version")!=2:raise AccessError("请升级客户端并登录")

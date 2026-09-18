@@ -9,7 +9,12 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from cowmata_tailring.annotation.defaults import DEFAULT_LABELS
+from cowmata_tailring.annotation.taxonomy import canonical_code, event_code
+
 from . import INDIVIDUAL_CODES
+
+CURRENT_CODES = {label["code"] for label in DEFAULT_LABELS}
 
 
 def stamp(path):
@@ -96,7 +101,11 @@ def scan_dataset(
             row["labels"].append(str(label))
             row["label_stamps"][str(label)] = before
             for e in project.get("events", []):
-                code = e.get("label_code")
+                original, definition = event_code(e, project.get("labels", []))
+                code = canonical_code(original, doc.get("dataset_category") or project.get("dataset_category"))
+                if code and (code not in CURRENT_CODES or definition.get("trainable") is False):
+                    issues.append(dict(path=str(label), reason="historical_label_review", event_id=e.get("id"), label_code=original))
+                    continue
                 start, end = e.get("t0"), e.get("t1")
                 if (
                     not code

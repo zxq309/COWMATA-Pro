@@ -28,4 +28,4 @@ HEALTH = tuple(Algorithm(code, title, "health") for code, title in (
 def bindings(spec, packs):
     if spec.domain != "behavior":
         return []  # Future health/decision outputs require a separate contract.
-    return [(pack, model) for pack in packs for model in pack["models"] if model["code"] == TAIL_MODELS.get(spec.code, spec.code)]
+    return [(pack, model) for pack in packs for model in pack["models"] if model["code"] == spec.code]

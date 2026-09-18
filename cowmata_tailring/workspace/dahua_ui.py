@@ -655,6 +655,44 @@ class DahuaPanel(QWidget):
             (self.operation_job / "dahua-cancel").touch()
             self.status.setText("正在安全暂停，已完成的 MP4 保留用于继续…")
 
+    def reset_idle_form(self):
+        if self.running:
+            return
+        self.job = self.index = None
+        self.groups = {}
+        self.files = []
+        self.json_sources = []
+        self.source_text.clear()
+        self.target.clear()
+        self.start_time.clear()
+        self.end_time.clear()
+        self.import_json.setChecked(False)
+        self.json_toggled(False)
+        self.preview_paths = {}
+        self.output = ""
+        self.error = ""
+        self.buffer = b""
+        self.disk_choice.setCurrentIndex(-1)
+        self.category.setCurrentIndex(self.category.findData("calving"))
+        self.scenario.setCurrentIndex(0)
+        self.midnight.setChecked(True)
+        for row, combo in enumerate(self.mapping):
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem("不接入此视角", "")
+            combo.blockSignals(False)
+            self.table.item(row, 3).setText("尚未扫描")
+            preview = self.table.cellWidget(row, 2)
+            preview.setIcon(QIcon())
+            preview.setText("尚未预览")
+            preview.setEnabled(False)
+        self.bar.setRange(0, 100)
+        self.bar.setValue(0)
+        self.status.setText("请选择原始录像来源并扫描。")
+        self.run_button.setEnabled(False)
+        self.preview_button.setEnabled(False)
+        self.refresh()
+
     def request_shutdown(self):
         if self.running:
             self.pause()

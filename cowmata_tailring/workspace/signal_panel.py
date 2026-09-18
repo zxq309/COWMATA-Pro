@@ -95,14 +95,11 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
 
     def visible_groups(self):
         groups = []
-        for prefix, name in self.GROUPS:
+        for prefix, _name in self.GROUPS:
             if self.group not in {'all', prefix}:
                 continue
             series = [s for s in self._series if s.key in {prefix+axis for axis in 'xyz'}]
-            if prefix == 'g':
-                groups.extend((item.name, [item]) for item in series)
-            elif series:
-                groups.append((name, series))
+            groups.extend((item.name, [item]) for item in series)
         if self.group in {'all', 'ppg'}:
             groups.extend((s.name, [s]) for s in self._series if s.key.startswith('ppg_'))
         if self.group in {'extra', 'temp'}:
@@ -412,7 +409,7 @@ class SignalPanel(QWidget):
         self.toolbar.addWidget(self.group)
         legend = QLabel('<span style="color:#159c8d">X</span> / <span style="color:#627de5">Y</span> / <span style="color:#d59338">Z</span>')
         legend.setStyleSheet("color:#6c8385; font-size:11px")
-        legend.setToolTip("X：青绿 · Y：蓝紫 · Z：琥珀；角速度三轴分行，悬停读取原始数值与单位")
+        legend.setToolTip("X：青绿 · Y：蓝紫 · Z：琥珀；加速度、角速度、磁场均按三轴分行，悬停读取原始数值与单位")
         self.axis_legend = legend
         self.toolbar.addWidget(legend)
         hint = QLabel("标签：拖动两端改起止 · 拖动中间平移")
