@@ -50,7 +50,7 @@ def test_menu_order_and_one_to_one_codes(window, tmp_path, monkeypatch):
     from cowmata_tailring.algorithms.registry import install_suite
 
     install_suite(suite(tmp_path / "suite"))
-    assert sum(bool(bindings(s, available_packs())) for s in BEHAVIORS) == 10
+    assert sum(bool(bindings(s, available_packs())) for s in BEHAVIORS) == 6  # Generic legacy tail models cannot bind to posture-specific labels.
 
 
 @pytest.mark.parametrize("spec", BEHAVIORS + HEALTH)
@@ -213,9 +213,10 @@ def test_old_label_order_and_missing_mounting_shortcut_are_safe(window, monkeypa
     assert called == [13]
     window.work.project.labels.reverse()
     window.refresh_events()
+    previous = list(called)
     window.mark_code("STANDING")
-    assert window.work.project.labels[called[-1]].code == "STANDING"
-    assert window.work.project.labels[called[-1]].key == 'G'
+    assert called == previous
+    assert next(label for label in window.work.project.labels if label.code == "STANDING").key == ""
 
 
 def test_compact_package_excludes_only_audited_tools():

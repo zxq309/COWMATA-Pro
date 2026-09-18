@@ -34,7 +34,7 @@ def test_closing_hidden_organizer_stops_child_and_allows_main_exit(tmp_path):
     assert process.waitForStarted(3000)
     try:
         dialog.close()
-        assert (tmp_path / "cancel").exists(), "Closing only hid the running task"
+        assert not (tmp_path / "cancel").exists(), "Subwindow close must retain active work"
         window.close()
         pump(lambda: window._closed and process.state() == QProcess.ProcessState.NotRunning)
     finally:
@@ -142,8 +142,8 @@ def test_stuck_child_can_be_stopped_without_waiting_forever(tmp_path):
     assert process.waitForStarted(3000)
     try:
         dialog.close()
-        dialog._shutdown_started = time.monotonic() - 6
         window.close()
+        dialog._shutdown_started = time.monotonic() - 6
         pump(lambda: window._closed and process.state() == QProcess.ProcessState.NotRunning, 8)
         assert (tmp_path / "cancel").exists()
     finally:

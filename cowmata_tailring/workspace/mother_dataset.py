@@ -168,12 +168,12 @@ def export_dataset(source, target, *, split_map=None, views=True, progress=lambd
             reviewed = confirmation in {'confirmed','legacy_imported'} and event.ev != 'curve'
             valid_time = event.t1 is None or event.t1 > event.t0
             role = 'negative' if event.extras.get('dataset_role') == 'verified_negative' else 'positive'
-            eligible = identity_ok and reviewed and valid_time and (asset in sources or doc['coordinates'] == 'unix_epoch_ms')
+            eligible = label.trainable and identity_ok and reviewed and valid_time and (asset in sources or doc['coordinates'] == 'unix_epoch_ms')
             key = [asset, cow, label.code, event.t0, event.t1, role]
             event_id = hashlib.sha256(json.dumps(key,ensure_ascii=False).encode()).hexdigest()
             reference_start = work.clock.map(event.t0)-480*60000 if work.clock.anchors else None
             reference_end = work.clock.map(event.t1)-480*60000 if work.clock.anchors and event.t1 is not None else None
-            reason = '' if eligible else 'identity_review' if not identity_ok else 'annotation_review' if not reviewed else 'missing_source_or_invalid_interval'
+            reason = '' if eligible else 'historical_label_review' if not label.trainable else 'identity_review' if not identity_ok else 'annotation_review' if not reviewed else 'missing_source_or_invalid_interval'
             events.append({'event_id':event_id, 'source_asset_id':asset, 'cow_id':cow,
                 'device_id':identity.get('device_id') or legacy.get('device_id',''),
                 'field_mark':identity.get('field_mark') or legacy.get('field_mark',''),

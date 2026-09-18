@@ -111,7 +111,7 @@ class MainWindow(ControllerWindow):
         menus = [action.menu() for action in self.menuBar().actions()]
         files, materials, sync, edit, view = menus
         self.menuBar().clear()
-        for menu, title in ((files, "文件(&F)"),):
+        for menu, title in ((files, "文件"),):
             menu.setTitle(title)
             self.menuBar().addMenu(menu)
         files.addSeparator()
@@ -120,7 +120,7 @@ class MainWindow(ControllerWindow):
         self._action(view, "固定 / 收起素材列表", self.toggle_sources, "Ctrl+L")
         self._action(view, "显示 / 隐藏标注列表", self.toggle_events)
         self._action(view, "界面与播放设置…", self.presentation_settings)
-        tools = self.menuBar().addMenu("数据准备(&T)")
+        tools = self.menuBar().addMenu("数据准备")
         self._organize_menus(files, materials, sync, edit, view, tools)
         tools.addMenu(materials)
         self._action(tools, "数据归类…", lambda: self.open_organization(1))
@@ -136,7 +136,7 @@ class MainWindow(ControllerWindow):
         extra_preparation = tools.addMenu('更多数据准备工具')
         for action in secondary:
             extra_preparation.addAction(action)
-        edit.setTitle('标注与复核(&E)')
+        edit.setTitle('标注与复核')
         self.menuBar().addMenu(edit)
         candidate = next(a for a in edit.actions() if a.text() == '自动生成候选…')
         edit.removeAction(candidate)
@@ -147,13 +147,13 @@ class MainWindow(ControllerWindow):
         edit.addMenu(sync)
         view.setTitle('显示与播放')
         edit.addMenu(view)
-        datasets = self.menuBar().addMenu('数据集构建(&G)')
+        datasets = self.menuBar().addMenu('数据集构建')
         for index,title in enumerate(('行为识别数据集','产犊预测数据集','发情预测数据集','怀孕监测数据集','疫病监测数据集')):
             self._action(datasets,title,lambda _checked=False,tab=index:self.open_dataset_workflow(tab))
         datasets.addSeparator()
         datasets.addMenu(self._annotation_exports)
         self._build_algorithm_menus(edit)
-        help_menu = self.menuBar().addMenu("帮助(&H)")
+        help_menu = self.menuBar().addMenu("帮助")
         from cowmata_tailring.ui.about import show_about
         self._action(help_menu, "快速开始", self.quick_help, "F1")
         self._action(help_menu, "新手图文教程…", self.open_tutorial)
@@ -372,14 +372,14 @@ class MainWindow(ControllerWindow):
 
     def _build_algorithm_menus(self, annotation_menu):
         from .algorithm_catalog import BEHAVIORS, HEALTH
-        behavior_menu = self.menuBar().addMenu('行为识别(&B)')
+        behavior_menu = self.menuBar().addMenu('行为识别')
         self._action(behavior_menu, '训练与识别…', self.open_behavior_390)
         self._action(behavior_menu, '打开模型库', self.open_model_library)
         self._action(annotation_menu, "算法管理", self.open_algorithm_workbench)
         self.algorithm_actions = {}
         self.algorithm_group = QActionGroup(self)
         self.algorithm_group.setExclusive(True)
-        for title, specs in (("行为识别(&B)", BEHAVIORS), ("健康与繁殖(&R)", HEALTH)):
+        for title, specs in (("行为识别", BEHAVIORS), ("健康与繁殖", HEALTH)):
             if specs is BEHAVIORS:
                 advanced = annotation_menu.addMenu('更多标注工具')
                 menu = advanced.addMenu('逐项算法检查')
