@@ -509,9 +509,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
         try:
             root,day=run_io_task(self,'正在读取单个九轴的日期与来源…',lambda:source_context(raw))
             if video is None and video_directory is None:
-                video_directory=root/'Video'/day
+                from .farm_layout import video_root
+                video_directory=video_root(root)/day
                 if not video_directory.is_dir():
-                    selected=QFileDialog.getExistingDirectory(self,'未找到当天 Video 目录；可选择该日录像目录，取消则仅加载九轴',str(root))
+                    selected=QFileDialog.getExistingDirectory(self,'未找到当天录像目录；可选择该日录像目录，取消则仅加载九轴',str(root))
                     video_directory=Path(selected) if selected else None
             self.open_project(root,preferred_json=Path(raw),day=day,
                 standalone=dict(raw=Path(raw),video=video,video_directory=video_directory))
@@ -873,7 +874,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 if self._loading_path:
                     current.request("focus", self._loading_path)
                 self.tell("正在轻量清点文件与恢复标注进度；仅处理当前九轴及对应录像，不自动完整索引整个工程。")
-            QSettings().setValue("workspace/last_root", str(self.catalog.root))
+            QSettings().setValue("workspace/last_root", str(self.catalog.scope))
         except (OSError, ValueError, RuntimeError) as exc:
             self._retire_project()
             self.tell("无法打开工程：" + str(exc))

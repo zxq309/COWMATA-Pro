@@ -18,6 +18,7 @@ from cowmata_tailring.media.subprocess_tools import run_cancellable
 
 from . import organization as core
 from .classification_resources import resource_budget, resource_snapshot
+from .farm_layout import shared_farm, storage_root, video_root
 from .resource_layout import day_at, start_stamp
 from .storage import atomic_json
 
@@ -783,7 +784,8 @@ def plan_import(
         schema="cowmata-resources-3.4",
         id=uuid.uuid4().hex,
         fast_video=True,
-        target=str(root),
+        target=str(storage_root(root)),
+        category_scope=str(root) if shared_farm(root) else None,
         resource_root=str(resource_root),
         farm=farm_name,
         farm_path=str(farm_path or root.parent),
@@ -791,7 +793,7 @@ def plan_import(
         note=note,
         sources=sources,
         scenario=scenario,
-        reference_records=reference,
+        reference_records=[{**r, "path": (root.relative_to(storage_root(root)) / r["path"]).as_posix()} for r in reference],
         created_at=core.now(),
         transfer=transfer,
         allow_partial=True,
@@ -876,8 +878,7 @@ def plan_import(
                 if start and not start <= day <= (end or start):
                     row["message"] += "；扩展日期范围以保留正常视频"
                 base = (
-                    root
-                    / "Video"
+                    video_root(root)
                     / day
                     / camera
                     / (start_stamp(row["record_start_ms"]) + row["extension"])

@@ -45,6 +45,11 @@ def resource_context(path):
     """Return category scope even when a user chooses Motion/day or Video/day."""
     path = Path(path).resolve()
     import json
+
+    from .farm_layout import category_scope
+    scope = category_scope(path)
+    if scope is not None:
+        return scope
     for directory in (path, *path.parents):
         marker = directory / "资源迁移.json"
         if marker.is_file():
