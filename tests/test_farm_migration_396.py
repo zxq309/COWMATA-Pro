@@ -85,3 +85,30 @@ def test_interrupted_migration_recovers_before_retry(tmp_path):
     assert result['status'] == 'complete'
     assert shared_farm(scope) == root
     assert json.loads(label.read_text(encoding='utf-8'))['source']['path'].startswith('产犊/Motion/')
+
+
+@pytest.mark.parametrize('view', ['视角01', '视角02'])
+def test_shared_date_across_categories_merges_without_overwriting(tmp_path, view):
+    root = tmp_path / 'farm'
+    old_farm(root)
+    extra = root / '怀孕/孕晚期/Video/2026-09-18' / view / '2026-09-18_01-00-00.mp4'
+    extra.parent.mkdir(parents=True)
+    extra.write_bytes(b'other recording')
+    report = migrate(root)
+    assert report['files'] == 2 and report['status'] == 'complete'
+    assert (root / '录像/2026-09-18/视角01/2026-09-18_00-00-00.mp4').read_bytes() == b'content'
+    assert (root / '录像/2026-09-18' / view / extra.name).read_bytes() == b'other recording'
+
+
+def test_shared_empty_date_and_interruption_recover(tmp_path):
+    root = tmp_path / 'farm'
+    old_farm(root)
+    empty = root / '怀孕/孕晚期/Video/2026-09-18'
+    empty.mkdir(parents=True)
+    def interrupt(*_):
+        raise KeyboardInterrupt('power loss simulation')
+    with pytest.raises(KeyboardInterrupt):
+        migrate(root, progress=interrupt)
+    assert migrate(root)['status'] == 'complete'
+    assert not empty.exists()
+    assert (root / '录像/2026-09-18/视角01/2026-09-18_00-00-00.mp4').is_file()

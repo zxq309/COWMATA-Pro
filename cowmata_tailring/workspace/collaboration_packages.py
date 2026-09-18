@@ -190,7 +190,7 @@ def _plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', ca
 def _write_zip(output, manifest, entries, *, cancelled, progress, before_publish=lambda _: None):
     """One streaming pass; SHA/CRC from the exact bytes written, no media recompression."""
     output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_name(output.name + '.' + uuid4().hex + '.partial')
+    temporary = output.with_name('.' + uuid4().hex + '.partial')
     if output.exists():
         raise FileExistsError('同名包已存在，不能覆盖：' + str(output))
     total = sum(e['size'] for e in entries)
