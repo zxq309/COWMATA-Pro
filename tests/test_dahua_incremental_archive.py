@@ -263,3 +263,90 @@ def test_new_scan_clears_old_results_and_shows_channels(tmp_path, monkeypatch):
     finally:
         panel.active = False
         panel.close()
+
+
+def test_rescan_after_pause_resumes_original_job_without_duplicate(incremental, monkeypatch):
+    farm, job, index, request, sources = incremental
+    def prepare(row, *args):
+        if row["id"] == index["rows"][1]["id"]:
+            raise InterruptedError("pause")
+        return fake_prepared(row, *args)
+    monkeypatch.setattr(tasks, "prepare_record", prepare)
+    with pytest.raises(InterruptedError):
+        tasks.organize(request, job)
+    target = next((farm / "录像").rglob("*.mp4"))
+    before = target.stat().st_mtime_ns
+    new_job = job.with_name("rescanned-job")
+    tasks.scan(dict(mode="files", files=[str(p) for p in sources]), new_job)
+    def resumed(row, *args):
+        assert row["id"] != index["rows"][0]["id"]
+        return fake_prepared(row, *args)
+    monkeypatch.setattr(tasks, "prepare_record", resumed)
+    events = []
+    result = tasks.organize(request, new_job, on_row=lambda r: events.append(dict(r)))
+    assert result["status"] == "completed"
+    assert target.stat().st_mtime_ns == before
+    assert len(list((farm / "录像").rglob("*.mp4"))) == 2
+    assert not (new_job / "dahua-plan.json").exists()
+    assert any(e.get("event_kind") == "task_resume" and Path(e["job"]) == job for e in events)
+
+
+def test_rescan_changed_mapping_does_not_silently_resume_old_scope(incremental, monkeypatch):
+    farm, job, _, request, sources = incremental
+    monkeypatch.setattr(tasks, "prepare_record", lambda *a: (_ for _ in ()).throw(InterruptedError("pause")))
+    with pytest.raises(InterruptedError):
+        tasks.organize(request, job)
+    new_job = job.with_name("changed-job")
+    tasks.scan(dict(mode="files", files=[str(p) for p in sources]), new_job)
+    changed = dict(request, mapping={key: "视角03" for key in request["mapping"]})
+    before = (job / "dahua-plan.json").read_bytes()
+    with pytest.raises(ValueError, match="恢复上次视频任务"):
+        tasks.organize(changed, new_job)
+    assert (job / "dahua-plan.json").read_bytes() == before
+    assert not list((farm / "录像").rglob("*.mp4"))
+
+
+def test_restore_uses_farm_pending_job_after_last_scan_changed(incremental, monkeypatch):
+    from cowmata_tailring.workspace import classification_resources, dahua_worker
+    farm, job, _, request, sources = incremental
+    monkeypatch.setattr(tasks, "prepare_record", lambda *a: (_ for _ in ()).throw(InterruptedError("pause")))
+    with pytest.raises(InterruptedError):
+        tasks.organize(request, job)
+    new_job = job.with_name("new-scan")
+    tasks.scan(dict(mode="files", files=[str(p) for p in sources]), new_job)
+    tasks.atomic_json(new_job / "dahua-request.json", dict(action="restore", target=str(farm)), backup=False)
+    monkeypatch.setattr(dahua_worker.sys, "argv", ["worker", str(new_job)])
+    monkeypatch.setattr(classification_resources, "limit_worker", lambda: {})
+    assert dahua_worker.main() == 0
+    result = tasks.read_json(new_job / "dahua-result.json")
+    assert Path(result["job"]) == job
+    assert result["options"] == request
+    assert result["run"]["status"] == "paused"
+
+
+def test_rescan_changed_source_identity_never_reuses_old_job(incremental, monkeypatch):
+    farm, job, _, request, sources = incremental
+    monkeypatch.setattr(tasks, "prepare_record", lambda *a: (_ for _ in ()).throw(InterruptedError("pause")))
+    with pytest.raises(InterruptedError):
+        tasks.organize(request, job)
+    sources[0].write_bytes(b"new recording in the same filename")
+    new_job = job.with_name("changed-source")
+    tasks.scan(dict(mode="files", files=[str(p) for p in sources]), new_job)
+    with pytest.raises(ValueError, match="恢复上次视频任务"):
+        tasks.organize(request, new_job)
+    assert not list((farm / "录像").rglob("*.mp4"))
+
+
+def test_automatic_resume_cannot_bypass_an_active_task_lease(incremental, monkeypatch):
+    from cowmata_tailring.workspace.dataset_access import DatasetLease
+    farm, job, _, request, sources = incremental
+    monkeypatch.setattr(tasks, "prepare_record", lambda *a: (_ for _ in ()).throw(InterruptedError("pause")))
+    with pytest.raises(InterruptedError):
+        tasks.organize(request, job)
+    new_job = job.with_name("active-conflict")
+    tasks.scan(dict(mode="files", files=[str(p) for p in sources]), new_job)
+    plan = tasks.read_json(job / "dahua-plan.json")
+    with DatasetLease([farm], "organize", owner=plan["id"]):
+        with pytest.raises(OSError, match="目录正在"):
+            tasks.organize(request, new_job)
+    assert not list((farm / "录像").rglob("*.mp4"))

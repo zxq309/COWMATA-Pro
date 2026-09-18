@@ -4454,5 +4454,10 @@ ZH_TO_EN.update({
     "；双击归档结果可打开成品。": "; double-click an archive result to open the video."
 })
 
+ZH_TO_EN.update({
+    "此牧场有多个未完成的视频任务，请核对任务记录：": "This farm has multiple unfinished video tasks; check the task records: ",
+    "此牧场有未完成的视频任务，当前来源、范围或映射不同；请点击“恢复上次视频任务”继续原任务：": "This farm has an unfinished video task with a different source, range or mapping; click Restore last video task to continue it: ",
+})
+
 if __name__ == "__main__":
     _coverage()

@@ -416,6 +416,53 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
     return results
 
 
+def pending_video_job(target):
+    """Find the farm's actual pending video job, independent of the last scan."""
+    from .dataset_access import registry_root
+
+    if not target:
+        return None
+    farm = Path(target).resolve()
+    matches = []
+    for path in (registry_root() / "pending").glob("*.json"):
+        pending = read_json(path)
+        if not pending or not any(overlaps(farm, p) for p in pending["paths"]):
+            continue
+        job = Path(pending["job"]).resolve()
+        plan = read_json(job / "dahua-plan.json", {})
+        if (plan.get("adapter") == ADAPTER
+                and plan.get("id") == pending["task_id"]
+                and Path(plan["request"]["target"]).resolve() == farm):
+            matches.append(job)
+    matches = list(dict.fromkeys(matches))
+    if len(matches) > 1:
+        raise ValueError("此牧场有多个未完成的视频任务，请核对任务记录：" + "；".join(map(str, matches)))
+    return matches[0] if matches else None
+
+
+def resolve_video_job(request, job):
+    """Resume only an identical selection; leave the dataset lease checks intact."""
+    job = Path(job).resolve()
+    pending = pending_video_job(request["target"])
+    if pending is None or pending == job:
+        return job
+    saved = read_json(pending / "dahua-plan.json")
+    current = read_json(job / "dahua-index.json", {})
+    previous = read_json(pending / "dahua-index.json", {})
+    same = saved["request"] == request and current.get("mode") == previous.get("mode")
+    if same and current.get("mode") == "disk":
+        same = current["disk"]["identity"] == previous["disk"]["identity"]
+    if same:
+        fields = ("id", "source_identity", "fingerprint", "group")
+        def selected_identity(index):
+            return sorted(json.dumps({k: r.get(k) for k in fields}, sort_keys=True)
+                          for r in select_records(index, request))
+        same = selected_identity(current) == selected_identity(previous)
+    if not same:
+        raise ValueError("此牧场有未完成的视频任务，当前来源、范围或映射不同；请点击“恢复上次视频任务”继续原任务：" + str(pending))
+    return pending
+
+
 def organize(
     request, job, cancelled=lambda: False, progress=lambda *_: None, on_row=lambda *_: None
 ):
@@ -424,7 +471,7 @@ def organize(
     from .farm_layout import storage_root, video_root
     from .resource_import import execute
 
-    job = Path(job).resolve()
+    job = resolve_video_job(request, job)
     index = read_json(job / "dahua-index.json")
     if not index or index.get("adapter") != ADAPTER:
         raise ValueError("请先扫描原始录像")
@@ -479,6 +526,7 @@ def organize(
                 raise OSError("此原盘正在被另一归类任务读取，请稍后继续")
         configure_storage(job, destination_root)
         lease.mark_pending(token, job)
+        on_row(dict(event_kind="task_resume", job=str(job)))
         log = RunLog(job, selected, request["mapping"], on_row)
         reserved, provenance = {}, []
         active_outputs = []
