@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from cowmata_tailring.annotation.data import parse_motion_object
+from cowmata_tailring.annotation.defaults import DEFAULT_LABELS
 
 from .catalog import digest_file
 from .legacy_labels import normalized_cow
@@ -18,20 +19,7 @@ from .resource_layout import dataset_filename
 from .storage import atomic_json
 from .work import SessionWork
 
-BEHAVIORS = {
-    "STANDING": "站立",
-    "LYING": "躺卧",
-    "WALKING": "行走",
-    "FEEDING": "采食",
-    "STANDING_UP": "起立过程",
-    "LYING_DOWN": "卧倒过程",
-    "TAIL_RAISED": "抬尾",
-    "TAIL_WAGGING": "甩尾",
-    "URINATION": "排尿",
-    "DEFECATION": "排便",
-    "MOUNTING": "爬跨",
-    "STRAINING_BOUT": "努责",
-}
+BEHAVIORS = {item["code"]: item["name"] for item in DEFAULT_LABELS}
 CATEGORIES = {
     "estrus",
     "calving",

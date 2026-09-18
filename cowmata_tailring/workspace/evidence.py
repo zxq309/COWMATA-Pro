@@ -46,6 +46,17 @@ def safe_relative(root, relative):
     return target
 
 
+def evidence_event(work, record):
+    if not isinstance(record, dict):
+        return record
+    from cowmata_tailring.annotation.core import Event
+    if not work.clock.anchors:
+        raise ValueError("请先对齐视频与九轴后提取证据图；草稿仍保留。")
+    start = work.clock.map(record["reference_start"], inverse=True)
+    end = work.clock.map(record["reference_end"], inverse=True) if record.get("reference_end") is not None else None
+    return Event(record["id"], record["label_index"], start, end, extras=record)
+
+
 def event_context(work, event):
     return {"imu_asset_id": work.asset_id, "cow_id": work.project.cow_id,
             "event_id": event.id, "label_index": event.li, "start_ms": event.t0, "end_ms": event.t1,
@@ -206,7 +217,8 @@ def store_bundle(root, bundle, blobs):
 def copy_evidence(document, source_root, output_root):
     """Copy before committing JSON. A failed export never points to absent images."""
     copied = set()
-    for event in document["work"]["project"]["events"]:
+    records = [*document["work"]["project"]["events"], *document["work"].get("drafts", [])]
+    for event in records:
         bundle = event.get("screenshots")
         if not bundle:
             continue

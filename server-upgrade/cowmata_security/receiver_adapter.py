@@ -7,8 +7,9 @@ def authority(config,product):
     if not database:raise Denied('安全授权服务尚未初始化，请联系管理员')
     from pathlib import Path
     if not Path(database).is_file():raise Denied('管理员账号表不可用')
-    import csv
-    with Path(database).open(encoding='utf-8-sig',newline='') as stream:header=next(csv.reader(stream),[])
+    import csv,io
+    from .simple_authority import decode_registry
+    header=next(csv.reader(io.StringIO(decode_registry(Path(database).read_bytes()),newline=''),strict=True),[])
     if header==['账号','密码','授权码']:
         from .simple_authority import SimpleAuthority
         return SimpleAuthority(database,product=product)

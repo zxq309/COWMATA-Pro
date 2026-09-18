@@ -124,7 +124,8 @@ class SessionWork:
     @classmethod
     def from_dict(cls, data):
         video=data.get('video',{}) if 'work' in data else data.get('history_video',{})
-        data=data.get('work',data)
+        from cowmata_tailring.annotation.label_keys import normalize_work
+        data=normalize_work(data.get('work',data))
         result=cls(data["asset_id"], Project.from_dict(data["project"]),
                    ClockMap.from_dict(data.get("clock", {})), data.get("mapping_history", []),
                    data.get("drafts", []), data.get("progress", {}))
@@ -302,9 +303,10 @@ class SessionWork:
                               "video_evidence": copy.deepcopy(evidence), "group_id": draft["group_id"],
                               "draft_id": draft_id, "asset_id": self.asset_id,
                               "reference_start": draft["reference_start"], "reference_end": draft["reference_end"]})
-        if previous and previous.extras.get("screenshots"):
-            # Keep the original provenance, even if later edits make it stale.
-            event.extras["screenshots"] = copy.deepcopy(previous.extras["screenshots"])
+        screenshots = draft.get("screenshots") or (previous.extras.get("screenshots") if previous else None)
+        if screenshots:
+            # Keep original capture provenance; confirmation does not recreate images.
+            event.extras["screenshots"] = copy.deepcopy(screenshots)
         self.project.events = [e for e in self.project.events if e.extras.get("draft_id") != draft_id]
         self.project.events.append(event)
         if draft.get("model_candidate"):

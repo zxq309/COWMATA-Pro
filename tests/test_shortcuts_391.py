@@ -19,7 +19,8 @@ def test_old_project_shows_current_keys_without_losing_old_events(window):  # no
     saved = window.work.project.event_by_id(event_id)
     assert window.work.project.labels[saved.li].code == 'STANDING'
     assert (saved.t0, saved.t1) == (10, 20)
-    assert window.work.project.labels[saved.li].key == 'G'
+    assert window.work.project.labels[saved.li].key == ''
+    assert not window.work.project.labels[saved.li].trainable
 
 
 @pytest.mark.parametrize('key,code', [('1','STANDING_UP'),('2','LYING_DOWN'),('3','STANDING_TAIL_RAISED'),('4','STANDING_TAIL_WAGGING'),('5','LYING_TAIL_RAISED'),('6','LYING_TAIL_WAGGING'),('7','STRAINING_BOUT'),('8','AMNIOTIC_SAC_FIRST_VISIBLE'),('9','FETAL_PART_FIRST_VISIBLE'),('A','CALF_FULLY_EXPELLED'),('B','FETAL_MEMBRANES_FULLY_EXPELLED'),('C','URINATION'),('D','DEFECATION'),('E','MOUNTING'),('F','MANUAL_CALVING_ASSISTANCE')])

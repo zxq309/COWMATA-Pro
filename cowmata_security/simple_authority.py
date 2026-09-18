@@ -22,9 +22,17 @@ def admin_fingerprint(item):
     # The administrator's unused code never controls password sessions.
     return fingerprint({'account':item['account'],'password':item['password']})
 
+def decode_registry(raw):
+    if len(raw)>4*1024*1024:raise ValueError('账号表过大')
+    try:return raw.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        if raw.startswith(bytes([239,187,191])):raise ValueError('UTF-8账号表内容损坏，请重新保存') from None
+        try:return raw.decode('gb18030')
+        except UnicodeDecodeError:raise ValueError('账号表编码无效，请保存为UTF-8或中文CSV') from None
+
 def parse_registry(raw):
     if len(raw)>4*1024*1024:raise ValueError('账号表过大')
-    reader=csv.DictReader(io.StringIO(raw.decode('utf-8-sig'),newline=''))
+    reader=csv.DictReader(io.StringIO(decode_registry(raw),newline=''),strict=True)
     if reader.fieldnames!=list(COLUMNS):raise ValueError('账号表必须只有三列：账号、密码、授权码')
     result=[];names=set();codes=set()
     for row in reader:

@@ -13,8 +13,10 @@ def test_common_behaviors_cross_categories_but_specific_behaviors_are_gated():
         "disease",
         "healthy",
     ):
-        assert behavior_allowed("WALKING", category)
-        assert behavior_allowed("LYING", category)
+        assert behavior_allowed("STANDING_UP", category)
+        assert behavior_allowed("LYING_DOWN", category)
+        assert not behavior_allowed("WALKING", category)
+        assert not behavior_allowed("LYING", category)
         assert behavior_allowed("MOUNTING", category) == (category == "estrus")
         assert behavior_allowed("STRAINING_BOUT", category) == (category == "calving")
 

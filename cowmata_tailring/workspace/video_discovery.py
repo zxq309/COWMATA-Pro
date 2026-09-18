@@ -58,7 +58,6 @@ def discover(root, cancelled, publish):
                 folder = root / parts[0] if len(parts) > 1 else root
             found[folder] = found.get(folder, 0) + 1
             notify()
-        found = {p: n for p, n in found.items() if n}
         notify(True)
     except InterruptedError:
         pass
