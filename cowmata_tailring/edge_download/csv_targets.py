@@ -78,11 +78,12 @@ def sample_eligibility(row):
     if unknown:
         return "pending", "待确认有效性：" + "、".join(unknown)
     purpose = str(row.get("监测目的", "")).strip()
-    category = csv_category({"监测目的": purpose})
+    category = csv_category(row)
     if category in ("未分类", "待核对"):
-        return "pending", "监测目的未明确，待核对分类"
+        return "pending", "上传器分类尚未确认，暂不下载"
     # Postpartum and other non-calving monitoring may explicitly use '/' for both fields.
-    if "产犊" in purpose or purpose in ("难产", "死胎"):
+    confirmed_calving = str(row.get("数据分类") or "").strip() in ("calving", "产犊")
+    if confirmed_calving or "产犊" in purpose or purpose in ("难产", "死胎"):
         try:
             values = [str(row.get(k, "")).strip() for k in REQUIRED_FIELDS[:2]]
             if not all(re.search(r"[ T]\d{1,2}:\d{2}", value) for value in values):
@@ -181,11 +182,7 @@ class CsvPlan:
                         end += timedelta(days=1)
                     if end and end <= start:
                         raise ValueError("佩戴结束时间不晚于开始时间")
-                    category = (
-                        csv_category({"监测目的": row.get("监测目的", "")})
-                        if sample
-                        else csv_category(row)
-                    )
+                    category = csv_category(row)
                     if end_issue:
                         category = "待核对"
                     self.wears.append(

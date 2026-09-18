@@ -4545,5 +4545,15 @@ ZH_TO_EN.update({
     "输入日期和时间后按 Enter 或点击跳转，例如 2026-08-03 12:44:58": "Enter a date and time, then press Enter or click Jump, for example 2026-08-03 12:44:58"
 })
 
+ZH_TO_EN.update({"上传器分类尚未确认，暂不下载": "The uploader classification is not confirmed; download is deferred."})
+
+ZH_TO_EN.update({
+    "处理中 ": "Processing ",
+    " 路（": " views (",
+    "） · 总计 ": ") · Total ",
+    "任务已暂停，已校验缓存保留，可继续": "Paused; verified cache is retained for resuming",
+    "快速封装校验未通过，改用编码转换": "Stream copy validation failed; switching to encoding",
+})
+
 if __name__ == "__main__":
     _coverage()

@@ -239,3 +239,45 @@ def test_csv_modified_during_download_does_not_mark_ready(tmp_path):
     run_csv_job(job, threading.Event(), client_factory=Client)
     state = json.loads((job.farm / '.edge-download/csv-cycle.json').read_text(encoding='utf-8'))
     assert state['status'] == 'outdated' and state['verified_ranges'] == []
+
+
+def test_uploader_review_blocks_download_even_with_complete_sensor_fields(tmp_path):
+    folder = ledgers(tmp_path / 'ledger', 数据分类='review', 监测目的='孕后期监测',
+                     产犊开始='/', 产犊结束='/', 核对提示='佩戴区间需要核对')
+    plan = CsvPlan(folder)
+    sample = next(r for r in plan.preview() if r['source'] == FILES[0])
+    assert sample['category'] == '待核对'
+    assert sample['eligibility'] == 'pending'
+    assert list(plan.bounds(START, START + timedelta(days=1))) == []
+    assert plan.resolve_download(DEVICE, START, '23077-E')[0] is None
+
+
+def test_complete_calving_interval_uses_uploader_category_over_original_purpose(tmp_path):
+    from cowmata_tailring.edge_download.csv_download import save_record
+    folder = ledgers(tmp_path / 'ledger', 数据分类='calving', 监测目的='孕后期监测')
+    plan = CsvPlan(folder)
+    job = Job('http://example.test', tmp_path / 'farm', '未分类', (), ('temp',),
+              START, START + timedelta(days=1), folder)
+    data = dict(uid=1, device=DEVICE, cow_id='23077-E',
+                create_time=int(START.timestamp() * 1000), data=36.5)
+    file, saved, wear, _ = save_record(job, plan, 'temp', data)
+    assert saved and wear.category == '产犊'
+    assert file.relative_to(job.farm).as_posix() == (
+        '产犊/Temp/2026-08-18/546C50CA07FA-23077-E/2026-08-18_00-00-00.json')
+
+
+def test_review_becomes_downloadable_only_after_uploader_reclassifies(tmp_path):
+    folder = ledgers(tmp_path / 'ledger', 数据分类='review')
+    previous = CsvPlan(folder)
+    assert list(previous.bounds(START, START + timedelta(days=1))) == []
+    ledgers(folder, 数据分类='calving')
+    current = CsvPlan(folder)
+    assert current.fingerprint != previous.fingerprint
+    assert list(current.bounds(START, START + timedelta(days=1)))
+    assert current.resolve_download(DEVICE, START, '23077-E')[0].category == '产犊'
+
+
+def test_explicit_calving_category_cannot_bypass_real_birth_times(tmp_path):
+    folder = ledgers(tmp_path / 'ledger', 数据分类='calving', 监测目的='孕后期监测',
+                     产犊开始='/', 产犊结束='/')
+    assert not ranges(folder)
