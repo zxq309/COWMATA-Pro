@@ -16,7 +16,7 @@ from .storage import ProjectLock, atomic_json, read_json
 META_DIR = "标注工程"
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".avi", ".dav", ".h264", ".h265", ".ts", ".mov",
                   ".mpg", ".mpeg", ".m4v", ".webm", ".wmv", ".asf", ".flv", ".mts", ".m2ts", ".ps"}
-EXCLUDE_DIRS = {"科牧特_协作标注","归类附属文件", ".归类缓存", META_DIR, ".git", ".venv", "__pycache__", "node_modules", "runtime", "dist"}
+EXCLUDE_DIRS = {".edge-download", "科牧特_协作标注","归类附属文件", ".归类缓存", META_DIR, ".git", ".venv", "__pycache__", "node_modules", "runtime", "dist"}
 
 
 def previous_video_files(video,day):
@@ -373,7 +373,7 @@ class Catalog:
                 kind = "imu" if suffix == ".json" else "video" if suffix in VIDEO_SUFFIXES else None
                 if kind is None or path.is_symlink():
                     continue
-                if "Temp" in Path(relative).parts or path.name == "资源索引.json":
+                if "Temp" in Path(relative).parts or path.name in {"资源索引.json", ".cowmata-farm.json"}:
                     continue
                 try:
                     before = file_stamp(path)
