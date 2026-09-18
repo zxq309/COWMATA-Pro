@@ -165,7 +165,12 @@ class DahuaPanel(QWidget):
             self.table.setCellWidget(i, 2, preview)
             self.table.setItem(i, 3, QTableWidgetItem("未选择来源"))
         self.fit_table_rows()
-        outer.addWidget(self.table, 1)
+        from .dahua_run_ui import DahuaRunTables
+        self.run_tables = DahuaRunTables(self)
+        self.run_tables.insertTab(0, self.table, "通道与预览")
+        self.run_tables.setCurrentIndex(0)
+        outer.addWidget(self.run_tables, 1)
+        outer.addWidget(self.run_tables.summary)
         self.status = QLabel(
             "扫描后自动填入同号通道；未发现的通道保留空视角文件夹，可直接开始转码。"
         )
@@ -346,15 +351,24 @@ class DahuaPanel(QWidget):
             self.json_label.setText(directory)
             self.json_label.setToolTip(directory)
 
+    def output_directory(self):
+        from .data_category import category_root
+        from .farm_layout import video_root
+        text = self.target.text().strip()
+        if not text:
+            return None
+        farm = Path(text).resolve()
+        return video_root(category_root(farm, farm.name, self.category.currentData()))
+
     def update_output_hint(self, *_):
-        category = CATEGORIES.get(self.category.currentData(), "类别")
-        if self.category.currentData() in {"pregnancy_early", "pregnancy_mid", "pregnancy_late"}:
-            category = "怀孕 / " + category
-        self.output_hint.setText(
-            "保存位置：牧场目录 / "
-            + category
-            + " / Video / 日期 / 视角01–20 / 时间戳.mp4（自动建目录）"
-        )
+        try:
+            directory = self.output_directory()
+            self.output_hint.setText(
+                ("保存位置：" + str(directory) if directory else "请选择输出牧场")
+                + " / 日期 / 视角01–20 / 时间戳.mp4；逐段校验归档，临时视频使用目标盘。"
+            )
+        except (OSError, ValueError):
+            self.output_hint.setText("请核对输出牧场目录")
 
     def mapping_changed(self, row):
         group = self.mapping[row].currentData()
@@ -409,7 +423,10 @@ class DahuaPanel(QWidget):
 
     def previews(self):
         try:
-            self.start("previews", dict(groups=list(self.selected_mapping())), self.job)
+            if not self.target.text().strip():
+                raise ValueError("请先选择输出牧场，预览临时视频也将使用目标盘")
+            self.start("previews", dict(groups=list(self.selected_mapping()),
+                target=self.target.text().strip(), category=self.category.currentData()), self.job)
         except ValueError as exc:
             self.status.setText(str(exc))
 
@@ -498,6 +515,8 @@ class DahuaPanel(QWidget):
         if self.running:
             return
         self.operation = action
+        if action == "organize":
+            self.run_tables.begin()
         self.operation_job = (
             Path(job) if job else tasks.task_root() / ("devices-" + uuid.uuid4().hex)
         )
@@ -554,7 +573,9 @@ class DahuaPanel(QWidget):
                 elif event == "preview":
                     self.apply_preview(value["row"])
                 elif event == "row":
-                    self.status.setText(value["row"].get("message", ""))
+                    self.run_tables.accept(value["row"])
+                    if value["row"].get("status") != "waiting":
+                        self.status.setText(value["row"].get("message", ""))
             except (ValueError, KeyError, TypeError):
                 self.error = "任务输出无法解析，请查看视频任务记录"
 
@@ -569,8 +590,17 @@ class DahuaPanel(QWidget):
         self.read_output()
         self.read_error()
         self.active = False
-        self.bar.setRange(0, 1)
-        self.bar.setValue(1)
+        if self.operation == "organize":
+            self.run_tables.finish()
+        if self.error:
+            total = max(1, len(self.run_tables.records))
+            done = sum(row["status"] in {"done", "existing", "skipped", "blocked"}
+                       for row in self.run_tables.records.values())
+            self.bar.setRange(0, total)
+            self.bar.setValue(done)
+        else:
+            self.bar.setRange(0, 1)
+            self.bar.setValue(1)
         try:
             if self.result_path:
                 result = tasks.read_json(self.result_path)
@@ -580,6 +610,8 @@ class DahuaPanel(QWidget):
                     self.apply_index(result)
                     if self.operation == "restore":
                         self.apply_restored_options(result.get("options", {}))
+                        if result.get("run"):
+                            self.run_tables.restore(result["run"])
                 elif self.operation == "organize":
                     self.output = result.get("output", "")
                     self.status.setText(
@@ -660,6 +692,8 @@ class DahuaPanel(QWidget):
             return
         self.job = self.index = None
         self.groups = {}
+        self.run_tables.begin()
+        self.run_tables.finish()
         self.files = []
         self.json_sources = []
         self.source_text.clear()
@@ -709,10 +743,13 @@ class DahuaPanel(QWidget):
         self.report_button.setEnabled(bool(self.job))
 
     def open_output(self):
-        destination = getattr(self, "output", "") or self.target.text()
-        if Path(destination).is_dir():
+        destination = self.output_directory()
+        if destination and Path(destination).is_dir():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(destination).resolve())))
 
     def open_report(self):
         if self.job and self.job.is_dir():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.job)))
+            self.run_tables.flush()
+            self.run_tables.setCurrentWidget(self.run_tables.results)
+            self.status.setText("记录自动保存于：" + str(self.job / "视频任务记录.csv")
+                                + "；双击归档结果可打开成品。")

@@ -135,7 +135,7 @@ def segments(start, end, requested_start=None, requested_end=None, split_midnigh
     return result
 
 
-def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
+def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, stage=lambda *_a, **_k: None):
     """Keep compatible H.264 video packets; exact middle cuts use the encoder."""
     import os
     import uuid
@@ -147,7 +147,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
     if offset_ms < 0 or duration_ms <= 0:
         raise ValueError("转码时间范围无效")
     if offset_ms == 0:
-        stage = target.with_name(target.stem + ".remux-" + uuid.uuid4().hex + ".mp4")
+        stage_path = target.with_name(target.stem + ".remux-" + uuid.uuid4().hex + ".mp4")
         try:
             video = probe(source, cancelled, dav=True)["video"]
             if (
@@ -156,6 +156,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
                 and video.get("color_range") != "pc"
             ):
                 ffmpeg, _ = find_ffmpeg()
+                stage("convert", "快速封装 MP4（保留视频码流）", method="stream_copy")
                 result = run(
                     [
                         ffmpeg,
@@ -189,18 +190,18 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
                         "-movflags",
                         "+faststart",
                         "-n",
-                        stage,
+                        stage_path,
                     ],
                     cancelled,
                     max(300, duration_ms / 1000 * 5),
                 )
-                verified = _validate_output(stage, duration_ms, result, "stream_copy", cancelled)
+                verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage)
                 check(cancelled)
                 if os.name == "nt":
-                    os.rename(stage, target)
+                    os.rename(stage_path, target)
                 else:
-                    os.link(stage, target)
-                    stage.unlink()
+                    os.link(stage_path, target)
+                    stage_path.unlink()
                 verified["info"].setdefault("format", {})["filename"] = str(target)
                 return verified
         except (ValueError, OSError):
@@ -208,12 +209,80 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
             if target.exists():
                 raise
         finally:
-            stage.unlink(missing_ok=True)
-    return _encode(source, target, offset_ms, duration_ms, cancelled)
+            stage_path.unlink(missing_ok=True)
+    return encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage)
 
 
-def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
+_encoder_cache = {}
+
+
+def encoder_options(encoder):
+    if encoder == "h264_nvenc":
+        return ["-preset", "p4", "-rc", "vbr", "-cq", "23", "-b:v", "0", "-bf", "0"]
+    if encoder == "h264_qsv":
+        return ["-preset", "veryfast", "-global_quality", "23", "-bf", "0"]
+    return ["-preset", "veryfast", "-crf", "23"]
+
+
+def available_encoder(cancelled=lambda: False):
+    """Probe an actual encode, not merely the presence of a compiled codec."""
+    import os
     ffmpeg, _ = find_ffmpeg()
+    key = str(ffmpeg)
+    if os.name != "nt":
+        return "libx264"
+    if key not in _encoder_cache:
+        selected = "libx264"
+        for encoder in ("h264_qsv", "h264_nvenc"):
+            check(cancelled)
+            try:
+                run([ffmpeg, "-nostdin", "-hide_banner", "-v", "error",
+                     "-f", "lavfi", "-i", "color=c=black:s=640x360:r=25",
+                     "-frames:v", "5", "-an", "-c:v", encoder, *encoder_options(encoder),
+                     "-f", "null", "-"], cancelled, 12)
+                selected = encoder
+                break
+            except (ValueError, OSError, RuntimeError):
+                check(cancelled)
+        _encoder_cache[key] = selected
+    return _encoder_cache[key]
+
+
+def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage):
+    import os
+    import uuid
+    from pathlib import Path
+    target = Path(target)
+    encoder = available_encoder(cancelled)
+    if encoder != "libx264":
+        temporary = target.with_name(target.stem + ".hardware-" + uuid.uuid4().hex + ".mp4")
+        try:
+            result = _encode(source, temporary, offset_ms, duration_ms, cancelled,
+                             encoder=encoder, stage=stage)
+            check(cancelled)
+            if os.name == "nt":
+                os.rename(temporary, target)
+            else:
+                os.link(temporary, target)
+                temporary.unlink()
+            result["info"].setdefault("format", {})["filename"] = str(target)
+            return result
+        except (OSError, ValueError, RuntimeError):
+            check(cancelled)
+            if target.exists():
+                raise
+            # Don't repeatedly spend time on an unavailable/busy encoder.
+            ffmpeg, _ = find_ffmpeg()
+            _encoder_cache[str(ffmpeg)] = "libx264"
+            stage("convert", "硬件加速不可用，自动回退 CPU 编码", method="libx264")
+        finally:
+            temporary.unlink(missing_ok=True)
+    return _encode(source, target, offset_ms, duration_ms, cancelled, stage=stage)
+
+
+def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None):
+    ffmpeg, _ = find_ffmpeg()
+    stage("convert", "硬件编码 H.264" if encoder != "libx264" else "CPU 编码 H.264", method=encoder)
     # No guessed frame rate: VFR keeps input timestamps, dropping duplicates.
     args = [
         ffmpeg,
@@ -245,11 +314,8 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
         "-vf",
         "scale=in_range=auto:out_range=tv",
         "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "23",
+        encoder,
+        *encoder_options(encoder),
         "-pix_fmt",
         "yuv420p",
         "-threads",
@@ -270,11 +336,16 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False):
         target,
     ]
     result = run(args, cancelled, max(300, duration_ms / 1000 * 10))
-    return _validate_output(target, duration_ms, result, "encoded", cancelled)
+    verified = _validate_output(target, duration_ms, result, "encoded", cancelled, stage=stage)
+    verified["settings"].update(encoder=encoder, hardware_accelerated=encoder != "libx264",
+                                crf=23 if encoder == "libx264" else None,
+                                hardware_quality=23 if encoder != "libx264" else None)
+    return verified
 
 
-def _validate_output(target, duration_ms, result, processing, cancelled):
+def _validate_output(target, duration_ms, result, processing, cancelled, *, stage=lambda *_a, **_k: None):
     ffmpeg, _ = find_ffmpeg()
+    stage("verify", "完整解码校验 MP4")
     info = probe(target, cancelled)
     video = info["video"]
     if video["codec_name"] != "h264" or video.get("pix_fmt") != "yuv420p":
@@ -304,6 +375,7 @@ def _validate_output(target, duration_ms, result, processing, cancelled):
         max(300, duration_ms / 1000 * 5),
     )
     _, ffprobe = find_ffmpeg()
+    stage("verify", "核对成品时间轴")
     timeline = probe_media_timeline(target, ffprobe, cancelled=cancelled)
     if not 0 < timeline.duration_ms <= duration_ms + 1500:
         raise ValueError("转码后视频时长超出所选区间")

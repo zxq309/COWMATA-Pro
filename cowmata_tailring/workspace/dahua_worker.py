@@ -53,7 +53,16 @@ def main():
             elif action == "restore":
                 result = tasks.index_summary(tasks.read_json(job / "dahua-index.json"))
                 result["options"] = tasks.read_json(job / "dahua-plan.json", {}).get("request", {})
+                result["run"] = tasks.read_json(job / "dahua-run.json", {})
             elif action == "previews":
+                from cowmata_tailring.workspace.dahua_run import configure_storage, release_media
+                from cowmata_tailring.workspace.data_category import category_root
+                from cowmata_tailring.workspace.farm_layout import storage_root
+                if request.get("target"):
+                    farm = Path(request["target"]).resolve()
+                    configure_storage(job, storage_root(category_root(farm, farm.name, request["category"])))
+                elif request.get("groups"):
+                    raise ValueError("请先选择输出牧场，预览视频将使用目标盘")
                 index = tasks.read_json(job / "dahua-index.json")
                 result = dict(previews=[])
                 for position, group in enumerate(request["groups"]):
@@ -69,6 +78,8 @@ def main():
                     except (OSError, ValueError, RuntimeError) as exc:
                         tasks.check(cancelled)
                         row = dict(group=group, error=str(exc))
+                    if rows:
+                        release_media(job, rows[0]["id"], normalized_only=True)
                     result["previews"].append(row)
                     emit(dict(event="preview", row=row))
                     progress(position + 1, len(request["groups"]), "读取静态缩略图")
@@ -84,7 +95,11 @@ def main():
                             row={
                                 k: v
                                 for k, v in row.items()
-                                if k in {"source", "target", "status", "message"}
+                                if k in {"event_kind", "source_id", "source", "target", "targets", "owner",
+                                         "status", "phase", "message", "size", "method", "record_start_ms",
+                                         "started_at", "finished_at", "file_seconds", "read_seconds",
+                                         "convert_seconds", "verify_seconds", "archive_seconds",
+                                         "existing_verified", "transfer_seconds"}
                             },
                         )
                     ),
