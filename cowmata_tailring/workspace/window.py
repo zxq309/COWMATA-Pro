@@ -1182,7 +1182,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 "in_progress": ("● 未完成", "#915514", "#fff2de"),
                 "new": ("○ 未开始", "#617277", "#f5f7f8"),
             }[status])
-            item = QListWidgetItem(title + "  " + Path(row["path"]).stem)
+            modality = "PPG" if row["metadata"].get("kind") == "ppg" or any(part.casefold() == "ppg" for part in Path(row["path"]).parts) else "九轴"
+            item = QListWidgetItem(title + "  [" + modality + "] " + Path(row["path"]).stem)
             item.setForeground(QColor(color))
             item.setBackground(QColor(background))
             font = item.font()
