@@ -362,6 +362,22 @@ def records_state_directory(folder):
     return local / "COWMATA-Pro" / "site-records" / key
 
 
+def _record_changes(previous, rows, sheet):
+    if previous is None:
+        return dict(added=len(rows), updated=0, removed=0, baseline="new")
+    try:
+        old = {r["记录ID"]: r for r in read_csv(previous, sheet)}
+    except (UnicodeError, csv.Error, DownloadError):
+        return dict(added=0, updated=0, removed=0, baseline="rebuilt")
+    new = {r["记录ID"]: r for r in rows}
+    return dict(
+        added=len(new.keys() - old.keys()),
+        updated=sum(new[k] != old[k] for k in new.keys() & old.keys()),
+        removed=len(old.keys() - new.keys()),
+        baseline="compared",
+    )
+
+
 def refresh_records(values, cancel, log=lambda message: None, client_factory=LedgerClient):
     """Fetch and validate all three files before touching the local mirror. Never upload."""
     folder = Path(values["ledger_directory"])
@@ -372,7 +388,7 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
     state_root.mkdir(parents=True, exist_ok=True)
     with RootSyncLock(state_root, cancel):
         client = client_factory(values, cancel, log)
-        contents, previous = {}, {}
+        contents, previous, rows, changes = {}, {}, {}, {}
         for sheet, schema in SCHEMAS.items():
             p = folder / schema["filename"]
             if not _safe(folder, p, missing=True):
@@ -381,7 +397,8 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
             if cancel.is_set():
                 raise Cancelled()
             contents[sheet] = client.pull(sheet)
-            read_csv(contents[sheet], sheet)
+            rows[sheet] = read_csv(contents[sheet], sheet)
+            changes[sheet] = _record_changes(previous[sheet], rows[sheet], sheet)
         changed = [s for s in SCHEMAS if previous[s] != contents[s]]
         if cancel.is_set():
             raise Cancelled()
@@ -412,14 +429,16 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
                     else:
                         _write(dest, previous[sheet])
             raise
-        counts = {s: len(read_csv(contents[s], s)) for s in SCHEMAS}
+        counts = {s: len(rows[s]) for s in SCHEMAS}
+        checked_at = time.time()
         state = state_root / "last-csv-sync.json"
         if not _safe(state_root, state, missing=True):
             raise DownloadError("现场记录同步状态路径包含链接")
         atomic_json(
             state,
             dict(
-                updated_at=time.time(),
+                updated_at=checked_at,
+                changes=changes,
                 server_directory=values["ledger_server_directory"],
                 files={
                     s: dict(sha256=hashlib.sha256(contents[s]).hexdigest(), count=counts[s])
@@ -434,4 +453,4 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
             + str(len(changed))
             + " 个文件。"
         )
-        return dict(changed=len(changed), counts=counts)
+        return dict(changed=len(changed), counts=counts, changes=changes, checked_at=checked_at)
