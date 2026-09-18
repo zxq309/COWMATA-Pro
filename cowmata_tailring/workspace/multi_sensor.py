@@ -19,7 +19,7 @@ from cowmata_tailring.temperature import (
 from cowmata_tailring.ui.widgets import PlotSeries
 
 from .catalog import file_stamp
-from .device_identity import parse_device_folder, resolve_device_identity
+from .device_identity import DATE_FOLDER, DEVICE, parse_device_folder, resolve_device_identity
 
 KINDS = ("motion", "ppg", "temp")
 
@@ -77,7 +77,8 @@ def related_files(scope, kind, start, end, identity, cancelled):
         day += timedelta(days=1)
         if not folder.is_dir():
             continue
-        for owner in folder.iterdir():
+        owners = [folder] + list(folder.iterdir())
+        for owner in owners:
             if (
                 not owner.is_dir()
                 or owner.is_symlink()
@@ -87,8 +88,10 @@ def related_files(scope, kind, start, end, identity, cancelled):
             try:
                 known = parse_device_folder(owner.name)
             except ValueError:
-                continue
-            if (known.cow_id, known.device_id, known.field_mark) != (
+                known = None
+                if owner != folder and owner.name.upper() != identity["device_id"]:
+                    continue
+            if known and (known.cow_id, known.device_id, known.field_mark) != (
                 identity["cow_id"],
                 identity["device_id"],
                 identity["field_mark"],
@@ -106,16 +109,55 @@ def related_files(scope, kind, start, end, identity, cancelled):
                     yield file
 
 
+def legacy_curve_identity(primary, cow_id):
+    """Display legacy same-device samples without granting a cow/label binding."""
+    path = Path(primary.source_path)
+    owner = path.parent.name
+    if not (DEVICE.fullmatch(owner) or DATE_FOLDER.fullmatch(owner)):
+        return None
+    if not any(p.name.casefold() in KINDS for p in path.parents):
+        return None
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
+    device = str(data.get("device", "")).upper()
+    if not DEVICE.fullmatch(device) or device != str(primary.device).upper():
+        return None
+    if DEVICE.fullmatch(owner) and owner.upper() != device:
+        return None
+    declared = str(data.get("cow_id") or "").strip()
+    known = parse_device_folder(device + "-" + declared) if declared else None
+    if cow_id and (known is None or known.cow_id != str(cow_id)):
+        return None
+    return dict(status="display_only", device_id=device, cow_id=known.cow_id if known else "",
+                field_mark=known.field_mark if known else "")
+
+
+def check_related_identity(data, identity, file):
+    if str(data.get("device", "")).upper() != identity["device_id"]:
+        raise ValueError("JSON 设备与当前对象冲突")
+    declared = str(data.get("cow_id") or "").strip()
+    if identity["cow_id"]:
+        try:
+            parse_device_folder(file.parent.name)
+        except ValueError:
+            if not declared:
+                raise ValueError("旧目录 JSON 缺少牛号，不能自动关联已确认牛号") from None
+        validate_temperature_identity(data, identity["cow_id"], identity["field_mark"])
+    elif declared:
+        raise ValueError("当前牛号待核对，未合并带有其他牛号的记录")
+
+
 def load_related(primary, root, cow_id, cancelled=lambda: False):
     base = split_series([PlotSeries(**s) for s in primary.plot_series()])
     result = dict(modalities=base, messages={}, issues=[], sources=[])
     identity = identity_for(primary.source_path, primary.device)
     if not cow_id or identity.get("status") != "ready" or identity.get("cow_id") != str(cow_id):
+        identity = legacy_curve_identity(primary, cow_id) or identity
+    if identity.get("status") != "display_only" and (not cow_id or identity.get("status") != "ready" or identity.get("cow_id") != str(cow_id)):
         result["messages"] = {k: "牛号或设备绑定待核对，未自动关联其他记录" for k in KINDS}
         return result
     source_obj = json.loads(Path(primary.source_path).read_text(encoding="utf-8-sig"))
     try:
-        validate_temperature_identity(source_obj, cow_id, identity["field_mark"])
+        validate_temperature_identity(source_obj, identity["cow_id"], identity["field_mark"])
     except ValueError:
         result["messages"] = {
             k: "来源 JSON 牛号或现场记号与当前对象冲突，未关联其他记录" for k in KINDS
@@ -128,6 +170,7 @@ def load_related(primary, root, cow_id, cancelled=lambda: False):
     values = {}
     temperature = {}
     estimated = False
+    observed = {k: 0 for k in KINDS}
     for kind, directory in [("motion", "Motion"), ("ppg", "PPG"), ("temp", "Temp")]:
         if kind == own:
             continue
@@ -137,11 +180,10 @@ def load_related(primary, root, cow_id, cancelled=lambda: False):
             try:
                 before = file_stamp(file)
                 data = json.loads(file.read_text(encoding="utf-8-sig"))
-                validate_temperature_identity(data, cow_id, identity["field_mark"])
-                if str(data.get("device", "")).upper() != identity["device_id"]:
-                    raise ValueError("JSON 设备与当前对象冲突")
+                check_related_identity(data, identity, file)
                 if kind == "temp":
                     sample = read_temperature_record(data)
+                    observed[kind] += 1
                     when = sample["time"]
                     if not origin <= when <= ending:
                         continue
@@ -161,6 +203,7 @@ def load_related(primary, root, cow_id, cancelled=lambda: False):
                     from .sensor_records import parse_sensor_object
 
                     signal = parse_sensor_object(data, file, kind="ppg" if kind == "ppg" else "imu")
+                    observed[kind] += 1
                     if signal.epoch_at(signal.duration_ms) < origin or signal.epoch_at(0) > ending:
                         continue
                     if file_stamp(file) != before:
@@ -222,7 +265,12 @@ def load_related(primary, root, cow_id, cancelled=lambda: False):
     elif base["temp"]:
         result["messages"]["temp"] = "来源内附温度；时间为区间中点估计"
     for key in KINDS:
-        result["messages"].setdefault(key, "按本次设备采集时钟对齐，保留原始采样与缺口")
+        note = "按本次设备采集时钟对齐，保留原始采样与缺口"
+        if identity.get("status") == "display_only":
+            note = "旧目录：仅按同设备和重叠采样时间查看；牛号绑定待核对，不自动共享标签"
+        if not base[key] and observed[key]:
+            note = f"找到 {observed[key]} 份同设备记录，但与当前记录采样时段不重叠；保留真实缺口。" + note
+        result["messages"].setdefault(key, note)
     if result["issues"]:
         for key in KINDS:
             result["messages"][key] += f"；{len(result['issues'])} 项来源问题未强行合并"

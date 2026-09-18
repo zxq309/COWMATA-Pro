@@ -176,7 +176,7 @@ class MainWindow(ControllerWindow):
         self.source_panel = QFrame()
         self.source_panel.setObjectName("sourcePanel")
         sources = QVBoxLayout(self.source_panel)
-        sources.addWidget(self._heading("设备与九轴记录"))
+        sources.addWidget(self._heading("设备与传感器记录"))
         legend = QLabel('<span style="color:#075bb5">▶ 正在标注</span>　<span style="color:#915514">● 未完成</span><br>'
                         '<span style="color:#617277">○ 未开始</span>　<span style="color:#217044">✓ 已完成</span>')
         legend.setToolTip("切换记录自动保存并恢复上次位置；只有明确点击完成才变为已完成。")
@@ -250,6 +250,9 @@ class MainWindow(ControllerWindow):
         self.playback_policy.setCurrentIndex(2)
         transport.addWidget(self.playback_policy)
         transport.addStretch(1)
+        self.wall_input.setAccessibleName("跳转到日期时间")
+        self.wall_input.setToolTip("输入日期和时间后按 Enter 或点击跳转，例如 2026-08-03 12:44:58")
+        self.wall_input.setStyleSheet("QLineEdit {background:white; border:2px solid #638b42; border-radius:6px; padding:5px 8px; color:#20351c;} QLineEdit:focus {border-color:#238197;}")
         self.wall_input.setMaximumWidth(235)
         self.wall_input.setMinimumWidth(205)
         transport.addWidget(self.wall_input)

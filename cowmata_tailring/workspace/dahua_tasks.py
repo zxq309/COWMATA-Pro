@@ -336,7 +336,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
             source_sha256=source_info["sha256"],
             lo=lo,
             hi=hi,
-            profile="h264-counter-verified-v3" if timing else "h264-vfr-crf23-v2",
+            profile="avc-hevc-counter-verified-v4" if timing else "avc-hevc-vfr-verified-v4",
         )
         key = hashlib.sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()
         directory = source.parent / key[:16]
@@ -376,7 +376,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
         timeline["source"]["path"] = str(target.resolve())
         metadata = dict(
             camera="",
-            codec="h264",
+            codec=video["codec_name"],
             width=video["width"],
             height=video["height"],
             format=converted["info"]["format"].get("format_name"),

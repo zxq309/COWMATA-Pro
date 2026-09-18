@@ -149,7 +149,7 @@ def test_preparation_uses_validated_counter_and_preserves_clock_evidence(tmp_pat
         assert k["timing"] == timing
         target.write_bytes(b"verified output")
         return dict(
-            info=dict(video=dict(width=640, height=360), format={}),
+            info=dict(video=dict(codec_name="hevc", width=640, height=360), format={}),
             duration_ms=1000,
             timeline=dict(source={}, firstPtsMs=0),
             settings={},
@@ -164,6 +164,7 @@ def test_preparation_uses_validated_counter_and_preserves_clock_evidence(tmp_pat
         lambda: False,
     )[0]
     assert result["metadata"]["dahua"]["packet_clock"]["recovery"] == timing
+    assert result["metadata"]["codec"] == "hevc"
     assert result["metadata"]["needs_review"]
     assert any("校时" in w for w in result["metadata"]["warnings"])
     assert result["options"]["profile"] != "h264-vfr-crf23-v2"
