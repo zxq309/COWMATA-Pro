@@ -9,6 +9,7 @@ from pathlib import Path
 from .annotation_store import dated_path, work_document
 from .catalog import EXCLUDE_DIRS, VIDEO_SUFFIXES, Catalog, previous_video_files
 from .dataset_access import DatasetLease
+from .farm_layout import shared_farm, video_root
 from .resource_layout import resource_context
 from .storage import read_json
 
@@ -38,7 +39,7 @@ class StandaloneCatalog(Catalog):
         root = resource_context(self.raw.parent)
         self.only_video = Path(video).resolve(strict=True) if video else None
         self.video_directory = (
-            Path(video_directory).resolve(strict=True) if video_directory else root / "Video" / day
+            Path(video_directory).resolve(strict=True) if video_directory else video_root(root) / day
         )
         self.external_sources = {}
         self.virtual_directories = {}
@@ -65,6 +66,9 @@ class StandaloneCatalog(Catalog):
             return self.external_sources[relative]
         return super().source_path(relative)
 
+    def scope_prefixes(self):
+        return (self.raw_relative, "Video/" + self.day + "/", "录像/" + self.day + "/")
+
     def rows(self, **kwargs):
         return [
             {
@@ -87,8 +91,8 @@ class StandaloneCatalog(Catalog):
         checkpoint = self.meta / "session.json"
         if not checkpoint.is_file():
             for path in (
-                dated_path(self.root / "标注工程", self.raw_relative),
-                self.root / "标注工程/annotations" / (asset_id + ".json"),
+                dated_path(self.scope / "标注工程", self.raw_relative),
+                self.scope / "标注工程/annotations" / (asset_id + ".json"),
             ):
                 if path and path.is_file():
                     data = read_json(path, {})
@@ -98,7 +102,7 @@ class StandaloneCatalog(Catalog):
         return read_json(checkpoint, None)
 
     def default_label_path(self):
-        return dated_path(self.root / "标注工程", self.raw_relative) or self.raw.with_suffix(
+        return dated_path(self.scope / "标注工程", self.raw_relative) or self.raw.with_suffix(
             ".标注.json"
         )
 
@@ -146,7 +150,7 @@ class StandaloneCatalog(Catalog):
                     )
                     chosen.append(name)
             yield str(virtual), [], chosen
-        if self.video_directory.name == self.day and self.video_directory.parent.name == "Video":
+        if self.video_directory.name == self.day and self.video_directory.parent.name in {"Video", "录像"}:
             for actual in previous_video_files(self.video_directory.parent, self.day):
                 relative = actual.relative_to(self.video_directory.parent.parent).as_posix()
                 self.external_sources[relative] = actual
@@ -157,7 +161,7 @@ class StandaloneCatalog(Catalog):
 
     def archived_record(self, relative):
         actual = self.source_path(relative)
-        origin = resource_context(actual.parent)
+        origin = shared_farm(actual) or resource_context(actual.parent)
         if origin not in self.origin_registries:
             self.origin_registries[origin] = {
                 r["path"]: r

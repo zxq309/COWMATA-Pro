@@ -26,7 +26,7 @@ def child_directories(root):
 
 def category_choices(farm):
     return [
-        p for p in child_directories(farm) if p.name not in {"Motion", "PPG", "Video", "标注工程"}
+        p for p in child_directories(farm) if p.name not in {"Motion", "PPG", "Temp", "Video", "录像", "科牧特_协作标注", "标注工程"}
     ]
 
 
