@@ -165,9 +165,11 @@ def test_purpose_fallback_matches_uploader_131(tmp_path, purpose, want, category
     assert CsvPlan(job.ledger_directory).wears[0].category == want
 
 
-def test_monitoring_purpose_controls_reclassification_of_review_row(tmp_path):
+def test_uploader_review_is_not_reclassified_by_monitoring_purpose(tmp_path):
     job = fixture_job(tmp_path, "review", "正常监测")
-    assert CsvPlan(job.ledger_directory).wears[0].category == "正常"
+    plan = CsvPlan(job.ledger_directory)
+    assert plan.wears[0].category == "待核对"
+    assert not list(plan.bounds(START, START + timedelta(days=1)))
 
 
 def test_raw_json_does_not_gain_downloader_fields():
