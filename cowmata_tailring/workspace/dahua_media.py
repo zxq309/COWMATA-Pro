@@ -262,7 +262,7 @@ def segments(start, end, requested_start=None, requested_end=None, split_midnigh
 
 
 def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, stage=lambda *_a, **_k: None, timing=None):
-    """Keep compatible H.264 video packets; exact middle cuts use the encoder."""
+    """Keep compatible H.264/HEVC packets; exact middle cuts use the encoder."""
     import os
     import uuid
     from pathlib import Path
@@ -277,9 +277,8 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
         try:
             video = probe(source, cancelled, dav=True)["video"]
             if (
-                video.get("codec_name") == "h264"
-                and video.get("pix_fmt") == "yuv420p"
-                and video.get("color_range") != "pc"
+                video.get("codec_name") in {"h264", "hevc"}
+                and video.get("pix_fmt") in {"yuv420p", "yuvj420p"}
             ):
                 ffmpeg, _ = find_ffmpeg()
                 stage("convert", "快速封装 MP4（保留视频码流）", method="stream_copy")
@@ -308,6 +307,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                         "-1",
                         "-c:v",
                         "copy",
+                        *(["-tag:v", "hvc1"] if video["codec_name"] == "hevc" else []),
                         *(["-bsf:v", f"setts=ts=N*{timing['frame_interval_ms']}/1000/TB:duration={timing['frame_interval_ms']}/1000/TB"] if timing else []),
                         *audio_clock_options(timing),
                         "-c:a",
@@ -325,7 +325,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                     max(300, duration_ms / 1000 * 5),
                     progress=media_progress(stage, "convert", "快速封装", duration_ms),
                 )
-                verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage, timing=timing)
+                verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage, timing=timing, source_video=video)
                 check(cancelled)
                 if os.name == "nt":
                     os.rename(stage_path, target)
@@ -514,12 +514,18 @@ def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: Fa
     return verified
 
 
-def _validate_output(target, duration_ms, result, processing, cancelled, *, stage=lambda *_a, **_k: None, timing=None, offset_ms=0):
+def _validate_output(target, duration_ms, result, processing, cancelled, *, stage=lambda *_a, **_k: None, timing=None, offset_ms=0, source_video=None):
     ffmpeg, _ = find_ffmpeg()
     stage("verify", "完整解码校验 MP4")
     info = probe(target, cancelled)
     video = info["video"]
-    if video["codec_name"] != "h264" or video.get("pix_fmt") != "yuv420p":
+    if processing == "stream_copy":
+        # Container conversion must preserve the original video, including full range.
+        # A successful mux alone does not establish a valid lossless result.
+        fields = ("codec_name", "pix_fmt", "color_range", "width", "height")
+        if not source_video or any(video.get(key) != source_video.get(key) for key in fields):
+            raise ValueError("快速封装改变了原视频编码、色彩或分辨率")
+    elif video["codec_name"] != "h264" or video.get("pix_fmt") != "yuv420p":
         raise ValueError("派生 MP4 编码不符合标准")
     decoded = run(
         [
@@ -571,8 +577,9 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
         duration_ms=timeline.duration_ms,
         log=result.stderr.decode("utf-8", "replace")[-4000:],
         settings=dict(
-            video="h264",
-            pixel_format="yuv420p",
+            video=video["codec_name"],
+            pixel_format=video["pix_fmt"],
+            color_range=video.get("color_range"),
             audio="aac",
             pts="validated_dhav_counter" if timing else "vfr",
             verified_video_frames=frames,

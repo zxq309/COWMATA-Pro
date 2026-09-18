@@ -4532,5 +4532,18 @@ ZH_TO_EN.update({
     "预览派包方案": "Preview packages"
 })
 
+ZH_TO_EN.update({
+    " 份同设备记录，但与当前记录采样时段不重叠；保留真实缺口。": " records for this device were found, but their sampling periods do not overlap this record. Actual gaps are preserved.",
+    "当前牛号待核对，未合并带有其他牛号的记录": "The current cow identity requires review; records bearing another cow identity were not merged.",
+    "当前：": "Current: ",
+    "快速封装改变了原视频编码、色彩或分辨率": "Stream copy changed the original video codec, colour properties or resolution",
+    "找到 ": "Found ",
+    "旧目录 JSON 缺少牛号，不能自动关联已确认牛号": "Legacy-folder JSON has no cow identity and cannot be linked automatically to a confirmed cow.",
+    "旧目录：仅按同设备和重叠采样时间查看；牛号绑定待核对，不自动共享标签": "Legacy folder: display uses the same device and overlapping sample times only. Cow identity requires review; labels are not shared automatically.",
+    "设备与传感器记录": "Device and sensor records",
+    "跳转到日期时间": "Jump to date and time",
+    "输入日期和时间后按 Enter 或点击跳转，例如 2026-08-03 12:44:58": "Enter a date and time, then press Enter or click Jump, for example 2026-08-03 12:44:58"
+})
+
 if __name__ == "__main__":
     _coverage()
