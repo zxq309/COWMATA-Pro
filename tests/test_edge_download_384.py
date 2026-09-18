@@ -185,6 +185,72 @@ def test_user_edit_during_pull_is_kept(tmp_path):
     assert target.read_bytes() == edited
 
 
+def test_refresh_receipt_compares_record_ids_and_persists_result(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    values = values_for(tmp_path)
+    payload = {s: csv_content(s) for s in SCHEMAS}
+
+    class Client:
+        def __init__(self, *args):
+            pass
+
+        def pull(self, sheet):
+            return payload[sheet]
+
+    def refresh():
+        return refresh_records(values, threading.Event(), client_factory=Client)
+
+    first = refresh()
+    assert all(d["added"] == 1 and d["baseline"] == "new" for d in first["changes"].values())
+    row = read_csv(payload["samples"], "samples")[0]
+    row["温度"] = "有效"
+    payload["samples"] = csv_content("samples", **row)
+    updated = refresh()
+    assert updated["changes"]["samples"] == dict(added=0, updated=1, removed=0, baseline="compared")
+    assert updated["changes"]["equipment"]["updated"] == 0
+    payload["samples"] = csv_content("samples")
+    replaced = refresh()
+    assert replaced["changes"]["samples"] == dict(added=1, updated=0, removed=1, baseline="compared")
+    same = refresh()
+    assert same["changed"] == 0
+    assert all(d["added"] == d["updated"] == d["removed"] == 0 for d in same["changes"].values())
+    state = json.loads((records_state_directory(values["ledger_directory"]) / "last-csv-sync.json").read_text("utf-8"))
+    assert state["changes"] == same["changes"]
+    assert state["updated_at"] == same["checked_at"]
+    (Path(values["ledger_directory"]) / SCHEMAS["samples"]["filename"]).write_bytes(b"old-format")
+    rebuilt = refresh()
+    assert rebuilt["changes"]["samples"]["baseline"] == "rebuilt"
+    assert rebuilt["changes"]["samples"]["added"] == 0
+
+
+def test_refresh_receipt_stays_visible_and_failed_refresh_is_distinct(tmp_path, qt_application):
+    from cowmata_tailring.edge_download.pro_dialog import ProDownloadDialog
+    from cowmata_tailring.edge_download.pro_settings import ProSettings
+
+    store = ProSettings(tmp_path / "config")
+    store.value.update(values_for(tmp_path))
+    dialog = ProDownloadDialog(store=store, launch_automatically=False)
+    try:
+        report = dict(changed=1, counts={s: 7 for s in SCHEMAS}, checked_at=1800259200,
+                      changes={s: dict(added=0, updated=int(s == "samples"), removed=0,
+                                       baseline="compared") for s in SCHEMAS})
+        dialog.receive_ledger_receipt(report)
+        text = dialog.csv_receipt.text()
+        assert not dialog.csv_receipt.isHidden()
+        assert all(schema["filename"] in text for schema in SCHEMAS.values())
+        assert "更新 1" in text and "未发现新增或更新" in text
+        dialog.status.setText("正在下载")
+        assert dialog.csv_receipt.text() == text
+        dialog.cycle_completed(dict(ledger=None, motion=None, errors=["台账连接失败"],
+                                    canceled=False, ledger_attempted=True))
+        assert "刷新未完成" in dialog.csv_receipt.text()
+        assert "台账连接失败" in dialog.csv_receipt.text()
+    finally:
+        dialog.stop_task()
+        dialog.close()
+        dialog.deleteLater()
+
+
 def test_replace_failure_rolls_back_already_written_csv(tmp_path, monkeypatch):
     from cowmata_tailring.edge_download import site_records
 

@@ -70,3 +70,53 @@ def test_shared_standalone_keeps_video_and_infers_category(tmp_path):
         assert read_context(cat.root, cat.raw_relative)['dataset_category'] == 'pregnancy_late'
     finally:
         cat.close()
+
+
+def test_history_uses_category_index_with_farm_relative_recordings(tmp_path):
+    import json
+
+    from cowmata_tailring.workspace.catalog import digest_file, file_stamp
+    from cowmata_tailring.workspace.label_file import _history_index, read_index
+    farm = tmp_path / 'farm'
+    initialize_farm(farm)
+    scope = farm / '产犊'
+    scope.mkdir()
+    video = farm / '录像/2026-09-18/视角01/2026-09-18_00-00-00.mp4'
+    video.parent.mkdir(parents=True)
+    video.write_bytes(b'real identity')
+    row = dict(path=video.relative_to(farm).as_posix(), kind='video',
+               sha256=digest_file(video), size=video.stat().st_size,
+               verified_stamp=file_stamp(video), metadata=dict(duration_ms=3000,
+               camera='视角01', archive_time=dict(start_ms=1789689600000)))
+    (scope / '资源索引.json').write_text(json.dumps(dict(records=[row])), encoding='utf-8')
+    assert len(read_index(scope)[0]) == 1
+    rows, _ = _history_index(farm, scope=scope)
+    assert len(rows) == 1 and rows[0]['path'].startswith('录像/')
+    assert rows[0]['metadata']['intervals'][0]['wall_start'] == 1789689600000
+
+
+def test_history_probes_only_nearby_named_recordings_without_writing(tmp_path, monkeypatch):
+    from cowmata_tailring.workspace import probe as media_probe
+    from cowmata_tailring.workspace.label_file import _prepare_named_history
+    from cowmata_tailring.workspace.video_names import filename_wall
+    farm = tmp_path / 'farm'
+    initialize_farm(farm)
+    rows = []
+    for name in ('2026-09-17_00-00-00', '2026-09-18_00-00-00',
+                 '2026-09-18_00-10-00', '2026-09-18_00-20-00'):
+        relative = '录像/' + name[:10] + '/视角01/' + name + '.mp4'
+        p = farm / relative
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b'video')
+        rows.append(dict(path=relative, kind='video', asset_id=name, state='review', metadata={}))
+    calls = []
+    def probe(path, **_):
+        calls.append(path.name)
+        return {'streams': [{'codec_type': 'video', 'duration': 600}], 'format': {'format_name': 'mp4'}}
+    monkeypatch.setattr(media_probe, 'probe_media', probe)
+    start = filename_wall('2026-09-18_00-05-00.mp4')
+    result = _prepare_named_history(rows, farm, start, start+600000, {}, {}, lambda: False)
+    assert calls == ['2026-09-18_00-00-00.mp4', '2026-09-18_00-10-00.mp4']
+    assert sum(bool(r['metadata'].get('intervals')) for r in result) == 2
+    assert all(not r['metadata'] for r in rows)
+    assert not (farm / '标注工程').exists()

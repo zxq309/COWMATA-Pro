@@ -174,6 +174,8 @@ def read_label_file(path):
 
 
 def read_index(root):
+    from .farm_layout import storage_root
+    media_root = storage_root(root)
     path = Path(root) / META_DIR / "index.sqlite"
     rows=[]
     if path.is_file():
@@ -191,7 +193,7 @@ def read_index(root):
             if current and current.get('asset_id')==record['sha256'] and current['state'] in {'ready','review'}:
                 continue
             try:
-                source=contained(root,record['path'])
+                source=contained(media_root,record['path'])
                 if not source.is_file() or source.stat().st_size!=record.get('size'):
                     continue
             except (OSError,ValueError):
@@ -206,8 +208,10 @@ def read_index(root):
     return rows, settings
 
 
-def _history_index(root):
-    rows, settings = read_index(root)
+def _history_index(root, *, scope=None):
+    from .farm_layout import shared_farm
+    index_root = scope if scope is not None and shared_farm(scope) == Path(root).resolve() else root
+    rows, settings = read_index(index_root)
     result = []
     for row in rows:
         metadata = row.get('metadata') or {}
@@ -222,6 +226,53 @@ def _history_index(root):
             row = {**row, 'metadata':metadata}
         result.append(row)
     return result, settings
+
+
+def _prepare_named_history(rows, root, start, end, maps, overrides, cancelled):
+    """Read nearby classified clips on demand; never rewrite a historical index."""
+    from subprocess import TimeoutExpired
+    from tempfile import TemporaryDirectory
+    from types import SimpleNamespace
+
+    from cowmata_tailring.media.ffmpeg_tools import FFmpegToolError
+
+    from .demand import next_video_task, reference_window
+    from .farm_layout import shared_farm
+    from .probe import SourceInspector
+    from .video_names import filename_wall
+    if shared_farm(root) != Path(root).resolve():
+        return rows
+    pending = []
+    for row in rows:
+        metadata = row.get('metadata') or {}
+        if row['kind'] != 'video' or metadata.get('intervals') or metadata.get('manual_readings'):
+            continue
+        named = filename_wall(row['path'])
+        lo, hi = reference_window(row, start, end, maps, overrides)
+        if named is not None and lo - 86400000 <= named <= hi:
+            pending.append({**row, 'state': 'pending'})
+    prepared, attempted = {}, set()
+    while task := next_video_task(pending, {}, start, end, maps=maps, overrides=overrides,
+                                 attempted=attempted, explore=False):
+        if cancelled():
+            raise InterruptedError('History load cancelled')
+        _, row = task
+        relative = row['path']
+        attempted.add(relative)
+        try:
+            path = contained(root, relative)
+            before = file_stamp(path)
+            assert_not_being_written(path)
+            with TemporaryDirectory(prefix='cowmata-history-probe-') as cache:
+                inspector = SourceInspector(Path(root), Path(cache), stop=SimpleNamespace(is_set=cancelled))
+                metadata = inspector.video(path, row['asset_id'])
+            if before == file_stamp(path):
+                prepared[relative] = {**row, 'state': 'ready', 'metadata': metadata}
+        except InterruptedError:
+            raise
+        except (OSError, ValueError, FFmpegToolError, TimeoutExpired):
+            continue
+    return [prepared.get(r['path'], r) for r in rows]
 
 
 @dataclass
@@ -251,6 +302,8 @@ def load_history(path, root=None, *, cancelled=lambda: False):
     from .paired_dataset import category_for
     from .review_store import local_source_root, resolve_label_path
     path = resolve_label_path(path)
+    from .farm_layout import category_scope
+    index_scope = category_scope(path)
     revision = digest_file(path)
     doc = read_label_file(path)
     doc = upgrade_document(doc, category=category_for(path, doc))
@@ -276,7 +329,7 @@ def load_history(path, root=None, *, cancelled=lambda: False):
     if stills["missing"]:
         warnings.append(f"{stills['missing']} 张证据图缺失或损坏；请把标注 JSON 与“证据”文件夹一起复制")
     try:
-        rows, settings = _history_index(root) if root else ([], {})
+        rows, settings = _history_index(root, scope=index_scope) if root else ([], {})
     except (OSError, ValueError, sqlite3.Error):
         rows, settings = [], {}
         warnings.append("当前索引无法读取；改用历史快照核验，原索引不会被修改。")
@@ -345,7 +398,7 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         warnings.append("没有可用九轴采集时间或校准锚点；不会用文件名或服务器收包时间对齐视频。")
     if requested_root and requested_root != root:
         root = requested_root
-        rows, settings = _history_index(root)
+        rows, settings = _history_index(root, scope=index_scope)
     saved = doc.get("video", {})
     video_root_hint=saved.get('archive',{}).get('archive_root_hint') or hint
     saved_ids={r['asset_id'] for r in saved.get('rows',[])}
@@ -354,7 +407,7 @@ def load_history(path, root=None, *, cancelled=lambda: False):
     if not explicit_root and not local_match and (saved.get('rows') or not has_local_video and saved.get('archive')) and video_root_hint and Path(video_root_hint).is_dir():
         root=Path(video_root_hint).resolve()
         try:
-            rows,settings=_history_index(root)
+            rows,settings=_history_index(root, scope=index_scope)
         except (OSError,ValueError,sqlite3.Error):
             rows,settings=[],{}
     elif local_match:
@@ -375,6 +428,9 @@ def load_history(path, root=None, *, cancelled=lambda: False):
             warnings.append("回看使用标注文件保存的相机校准版本，不会静默迁移历史标签。")
     else:
         # Old exports lack a media snapshot; use only indexed matching time.
+        if root and work.clock.anchors:
+            lo, hi = (work.clock.map(doc['view'][key]) for key in ('start_ms', 'end_ms'))
+            rows = _prepare_named_history(rows, root, lo, hi, maps, overrides, cancelled)
         tl = VideoTimeline(intervals_from_rows(rows, overrides), maps)
         ids = set()
         if work.clock.anchors:
