@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from datetime import datetime, timedelta
 
 from cowmata_tailring.media.ffmpeg_tools import find_ffmpeg
-from cowmata_tailring.media.subprocess_tools import run_cancellable
+from cowmata_tailring.media.subprocess_tools import run_cancellable, run_progress
 from cowmata_tailring.media.timeline import probe_media_timeline
 
 from .dahua_source import TZ, check
 
 
-def run(command, cancelled, timeout=3600):
+def run(command, cancelled, timeout=3600, *, progress=None):
     try:
-        result = run_cancellable([str(v) for v in command], cancelled=cancelled, timeout=timeout)
+        if progress is None:
+            result = run_cancellable([str(v) for v in command], cancelled=cancelled, timeout=timeout)
+        else:
+            result = run_progress([str(v) for v in command], cancelled=cancelled, timeout=timeout, progress=progress)
     except RuntimeError:
         check(cancelled)
         raise
@@ -23,6 +27,30 @@ def run(command, cancelled, timeout=3600):
     if result.returncode:
         raise ValueError(result.stderr.decode("utf-8", "replace")[-2400:] or "媒体处理失败")
     return result
+
+
+def media_progress(stage, phase, title, duration_ms):
+    def update(values):
+        def number(name):
+            try:
+                value = float(values.get(name, 0))
+                return value if math.isfinite(value) else 0
+            except (ValueError, TypeError):
+                return 0
+        percent = min(100, max(0, number('out_time_us') / 1000 / duration_ms * 100))
+        fps, speed = number('fps'), values.get('speed', '')
+        frames = int(number('frame'))
+        details = dict(media_percent=round(percent, 1), frames=frames, fps=fps, media_speed=speed)
+        if number('total_size') > 0:
+            details['output_bytes'] = int(number('total_size'))
+        stage(phase, f'{title} {percent:.1f}% · {frames} 帧 · {fps:.1f} fps · {speed}', **details)
+    return update
+
+
+def verification_threads():
+    # The private worker already owns a limited CPU affinity and job budget.
+    # Bound decoding threads too; never consume every logical CPU on a desktop.
+    return max(1, min(8, (os.cpu_count() or 2) // 2))
 
 
 def probe(path, cancelled=lambda: False, *, dav=False):
@@ -263,6 +291,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                         "-v",
                         "warning",
                         "-xerror",
+                        "-progress", "pipe:1", "-stats_period", "0.5", "-nostats",
                         "-copyts",
                         "-start_at_zero",
                         "-f",
@@ -294,6 +323,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                     ],
                     cancelled,
                     max(300, duration_ms / 1000 * 5),
+                    progress=media_progress(stage, "convert", "快速封装", duration_ms),
                 )
                 verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage, timing=timing)
                 check(cancelled)
@@ -387,8 +417,40 @@ def audio_clock_options(timing):
 
 
 def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None, timing=None):
+    """Try a complete QSV decode/VPP/encode pipeline, then retain software fallback."""
+    import uuid
+    from pathlib import Path
+    if encoder == 'h264_qsv':
+        temporary = Path(target).with_name(Path(target).stem + '.decode-' + uuid.uuid4().hex + '.mp4')
+        try:
+            info = probe(source, cancelled, dav=True)['video']
+            # Full-range camera frames need the proved CPU range conversion.
+            # Some Intel drivers expose VPP range options but leave pixel levels unchanged.
+            if (info.get('codec_name') in {'hevc', 'h264'}
+                    and info.get('pix_fmt') in {'yuv420p', 'nv12'}
+                    and info.get('color_range') == 'tv'):
+                result = _encode_attempt(source, temporary, offset_ms, duration_ms, cancelled, encoder=encoder,
+                                         stage=stage, timing=timing, decoder=info['codec_name'] + '_qsv')
+                check(cancelled)
+                if os.name == 'nt':
+                    os.rename(temporary, target)
+                else:
+                    os.link(temporary, target)
+                    temporary.unlink()
+                result['info'].setdefault('format', {})['filename'] = str(target)
+                return result
+        except (OSError, ValueError, RuntimeError):
+            check(cancelled)
+            stage('convert', 'Intel 硬件解码不可用，保留硬件编码并回退软件解码', method=encoder)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return _encode_attempt(source, target, offset_ms, duration_ms, cancelled, encoder=encoder, stage=stage, timing=timing)
+
+
+def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None, timing=None, decoder=None):
     ffmpeg, _ = find_ffmpeg()
-    stage("convert", "硬件编码 H.264" if encoder != "libx264" else "CPU 编码 H.264", method=encoder)
+    title = "Intel 硬件解码＋编码" if decoder else "硬件编码 H.264" if encoder != "libx264" else "CPU 编码 H.264"
+    stage("convert", title, method=encoder)
     # Only proved continuous counters permit timestamps from frame/sample counts.
     # Other formats retain their measured presentation timestamps.
     args = [
@@ -400,8 +462,8 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, 
         "-xerror",
         "-err_detect",
         "explode",
-        "-threads",
-        "2",
+        "-progress", "pipe:1", "-stats_period", "0.5", "-nostats",
+        *(["-hwaccel", "qsv", "-hwaccel_output_format", "qsv", "-c:v", decoder] if decoder else ["-threads", str(verification_threads())]),
         "-copyts",
         "-start_at_zero",
         "-f",
@@ -419,13 +481,12 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, 
         "-map_metadata",
         "-1",
         "-vf",
-        (f"setpts=N*{timing['frame_interval_ms']}/(1000*TB)," if timing else "") + "scale=in_range=auto:out_range=tv",
+        (f"setpts=N*{timing['frame_interval_ms']}/(1000*TB)," if timing else "") + ("vpp_qsv=format=nv12:out_range=tv" if decoder else "scale=in_range=auto:out_range=tv"),
         *audio_clock_options(timing),
         "-c:v",
         encoder,
         *encoder_options(encoder),
-        "-pix_fmt",
-        "yuv420p",
+        *([] if decoder else ["-pix_fmt", "yuv420p"]),
         "-threads",
         "2",
         "-fps_mode",
@@ -443,9 +504,11 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, 
         "-n",
         target,
     ]
-    result = run(args, cancelled, max(300, duration_ms / 1000 * 10))
+    result = run(args, cancelled, max(300, duration_ms / 1000 * 10),
+                 progress=media_progress(stage, "convert", title, duration_ms))
     verified = _validate_output(target, duration_ms, result, "encoded", cancelled, stage=stage, timing=timing, offset_ms=offset_ms)
-    verified["settings"].update(encoder=encoder, hardware_accelerated=encoder != "libx264",
+    verified["settings"].update(encoder=encoder, decoder=decoder or "software",
+                                hardware_decoded=bool(decoder), hardware_accelerated=encoder != "libx264",
                                 crf=23 if encoder == "libx264" else None,
                                 hardware_quality=23 if encoder != "libx264" else None)
     return verified
@@ -468,7 +531,7 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
             "-err_detect",
             "explode",
             "-threads",
-            "2",
+            str(verification_threads()),
             "-i",
             target,
             "-map",
@@ -486,6 +549,7 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
         ],
         cancelled,
         max(300, duration_ms / 1000 * 5),
+        progress=media_progress(stage, "verify", "完整校验", duration_ms),
     )
     frames = None
     if timing:
