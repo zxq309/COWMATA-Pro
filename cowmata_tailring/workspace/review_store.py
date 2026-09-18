@@ -68,9 +68,10 @@ def save_review(path, work, *, expected_sha):
                 raise ValueError('数据集仍在构建；请先暂停或完成构建再保存复核')
         home=version or next((p for p in path.parents if p.name=='标注工程'),path.parent)
         history=home/'.label-history'
-        history.mkdir(exist_ok=True)
+        history.mkdir(parents=True, exist_ok=True)
         token=uuid.uuid4().hex
-        backup=history/(path.name+'.'+token+'.bak')
+        backup=history/(token+'.bak')
+        backup.parent.mkdir(parents=True, exist_ok=True)
         backup.write_bytes(payload)
         result=copy.deepcopy(original)
         result['work']['project']=work['project']

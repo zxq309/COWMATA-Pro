@@ -184,7 +184,7 @@ def disks():
 
 
 class DHFSReader:
-    def __init__(self, source, size, identity, cancelled=lambda: False):
+    def __init__(self, source, size, identity, cancelled=lambda: False, *, lazy_descriptors=False):
         self.source, self.size, self.identity = str(source), int(size), identity
         self.cancelled = cancelled
         self.stream = open(source, "rb", buffering=0)
@@ -224,7 +224,8 @@ class DHFSReader:
                         video=video,
                         count=count,
                         desc_offset=desc,
-                        descriptors=_read_at(self.stream, desc, count * 32),
+                        descriptors=None if lazy_descriptors else _read_at(self.stream, desc, count * 32),
+                        descriptor_blocks={},
                     )
                 )
             else:
@@ -247,7 +248,17 @@ class DHFSReader:
     def descriptor(self, part, index):
         if not 0 <= index < part["count"]:
             raise ValueError("录像链索引越界")
-        return part["descriptors"][index * 32 : (index + 1) * 32]
+        if part["descriptors"] is not None:
+            return part["descriptors"][index * 32 : (index + 1) * 32]
+        # A fresh reader rechecks each record; blocks are not cached across runs.
+        offset = index * 32
+        block = offset // 65536 * 65536
+        cache = part["descriptor_blocks"]
+        if block not in cache:
+            check(self.cancelled)
+            cache[block] = _read_at(self.stream, part["desc_offset"] + block,
+                                    min(65536, part["count"] * 32 - block))
+        return cache[block][offset - block : offset - block + 32]
 
     def chain(self, part, head):
         first = self.descriptor(part, head)

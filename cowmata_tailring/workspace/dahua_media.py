@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import math
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 
 from cowmata_tailring.media.ffmpeg_tools import find_ffmpeg
@@ -47,10 +49,22 @@ def media_progress(stage, phase, title, duration_ms):
     return update
 
 
+_decode_threads = ContextVar("dahua_decode_threads", default=None)
+
+
+@contextmanager
+def decoder_budget(threads):
+    token = _decode_threads.set(threads)
+    try:
+        yield
+    finally:
+        _decode_threads.reset(token)
+
+
 def verification_threads():
     # The private worker already owns a limited CPU affinity and job budget.
     # Bound decoding threads too; never consume every logical CPU on a desktop.
-    return max(1, min(8, (os.cpu_count() or 2) // 2))
+    return _decode_threads.get() or max(1, min(8, (os.cpu_count() or 2) // 2))
 
 
 def probe(path, cancelled=lambda: False, *, dav=False):
@@ -272,6 +286,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
         raise FileExistsError("目标 MP4 已存在，未覆盖：" + str(target))
     if offset_ms < 0 or duration_ms <= 0:
         raise ValueError("转码时间范围无效")
+    copy_failure = ""
     if offset_ms == 0:
         stage_path = target.with_name(target.stem + ".remux-" + uuid.uuid4().hex + ".mp4")
         try:
@@ -334,13 +349,19 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                     stage_path.unlink()
                 verified["info"].setdefault("format", {})["filename"] = str(target)
                 return verified
-        except (ValueError, OSError):
+        except (ValueError, OSError) as exc:
+            copy_failure = str(exc)[-2400:]
             check(cancelled)
             if target.exists():
                 raise
         finally:
             stage_path.unlink(missing_ok=True)
-    return encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, timing=timing)
+    if copy_failure:
+        stage("convert", "快速封装校验未通过，改用编码转换", method="encoded")
+    result = encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, timing=timing)
+    if copy_failure:
+        result.setdefault("settings", {})["stream_copy_fallback_reason"] = copy_failure
+    return result
 
 
 _encoder_cache = {}

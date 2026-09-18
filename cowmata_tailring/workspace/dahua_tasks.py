@@ -7,8 +7,10 @@ import json
 import os
 import re
 import shutil
+import threading
 import uuid
 from contextlib import ExitStack
+from functools import wraps
 from pathlib import Path
 
 from . import organization as core
@@ -174,6 +176,24 @@ def original_paths(index):
     return [] if index["mode"] == "disk" else [Path(p) for p in index["files"]]
 
 
+_source_read_lock = threading.RLock()
+
+
+def serial_source_read(method):
+    @wraps(method)
+    def wrapped(*args, **kwargs):
+        # Raw mechanical disks keep one reader while other clips convert/verify.
+        with _source_read_lock:
+            return method(*args, **kwargs)
+    return wrapped
+
+
+def preparation_workers():
+    from .classification_resources import resource_budget
+    return resource_budget().heavy_workers
+
+
+@serial_source_read
 def normalized(row, index, job, cancelled):
     from .dahua_run import record_folder
     folder = record_folder(job, row["id"], cancelled)
@@ -201,7 +221,7 @@ def normalized(row, index, job, cancelled):
         if index["mode"] == "file":
             return source, saved
         # Revalidate the selected chain even when the normalized bytes are cached.
-        with DHFSReader(disk["path"], disk["size"], disk["identity"], cancelled) as reader:
+        with DHFSReader(disk["path"], disk["size"], disk["identity"], cancelled, lazy_descriptors=True) as reader:
             part = reader.partitions[row["partition"]]
             chain, _ = reader.chain(part, row["descriptor"])
             fingerprint = hashlib.sha256(
@@ -213,7 +233,7 @@ def normalized(row, index, job, cancelled):
     temporary = folder / (uuid.uuid4().hex + ".dav")
     try:
         if index["mode"] == "disk":
-            with DHFSReader(disk["path"], disk["size"], disk["identity"], cancelled) as reader:
+            with DHFSReader(disk["path"], disk["size"], disk["identity"], cancelled, lazy_descriptors=True) as reader:
                 info = reader.extract(row, temporary)
         else:
             with core.prevent_writes(Path(row["source"])):
@@ -548,9 +568,11 @@ def organize(
         def checkpoint():
             atomic_json(job / "dahua-plan.json", plan, backup=False)
 
+        stopping = threading.Event()
+
         def is_cancelled():
             log.pulse()
-            return cancelled()
+            return stopping.is_set() or cancelled()
 
         def archived(value):
             if value.get("status") == "done":
@@ -569,107 +591,127 @@ def organize(
             allow_partial=True, fast_video=True, incremental_dahua=True,
             start="", end="", rows=plan["rows"], total_files=len(selected))
 
+        def prepare_one(row):
+            log.begin(row["id"])
+            if row["status"] == "invalid":
+                raise ValueError(row.get("message", "索引无效"))
+            prior = completed.get(row["id"])
+            pending_record = prepared_records.get(row["id"])
+            prepared_rows = []
+            if prior or pending_record:
+                receipt = prior or pending_record
+                if receipt.get("source_identity") != row["source_identity"] or receipt.get("fingerprint") != row.get("fingerprint"):
+                    raise ValueError("已归档记录的原始身份变化，请重新扫描")
+                if index["mode"] == "file":
+                    if core.identity(Path(row["source"])) != row["source_identity"]:
+                        raise ValueError("原始码流已变化，请重新扫描")
+                else:
+                    with _source_read_lock, DHFSReader(disk["path"], disk["size"], disk["identity"], is_cancelled, lazy_descriptors=True) as reader:
+                        part = reader.partitions[row["partition"]]
+                        chain, _ = reader.chain(part, row["descriptor"])
+                        actual = hashlib.sha256(b"".join(reader.descriptor(part, i) for i in chain)).hexdigest()
+                        if actual != row["fingerprint"]:
+                            raise ValueError("原盘录像索引已变化")
+            if prior:
+                log.stage("verify", "核对已归档成品，完整成品不重复转码", method="复用已归档")
+                for output in prior["outputs"]:
+                    target = Path(output["target"])
+                    if not target.resolve().is_relative_to(video_root(root).resolve()):
+                        raise ValueError("恢复记录的归档路径越界")
+                    if not target.is_file():
+                        raise ValueError("已归档视频缺失，请核对归档目录")
+                    if (core.identity(target) != output["archive_identity"]
+                            or digest_file(target, cancelled=is_cancelled) != output["sha256"]):
+                        raise ValueError("已归档视频发生变化，已保留文件并停止复用")
+                    value = {**output, "status": "existing", "transfer": "move",
+                             "identity": core.identity(target)}
+                    prepared_rows.append(value)
+            elif pending_record:
+                # The complete output list is durable before the first move.
+                # execute verifies target identity/hash when a move finished
+                # before its receipt; unfinished parts retain their cache.
+                prepared_rows = [dict(value, status="ready") for value in pending_record["outputs"]]
+            else:
+                values = prepare_record(row, index, request, job, is_cancelled, log.stage)
+                return prior, values, True
+
+            return prior, prepared_rows, False
+
+
         def row_stream():
-            for position, row in enumerate(selected):
-                check(is_cancelled)
-                log.begin(row["id"])
-                active_outputs.clear()
-                progress(position, len(selected), f"处理 {position+1}/{len(selected)} · {row['group']}")
-                try:
-                    if row["status"] == "invalid":
-                        raise ValueError(row.get("message", "索引无效"))
-                    prior = completed.get(row["id"])
-                    pending_record = prepared_records.get(row["id"])
-                    prepared_rows = []
-                    if prior or pending_record:
-                        receipt = prior or pending_record
-                        if receipt.get("source_identity") != row["source_identity"] or receipt.get("fingerprint") != row.get("fingerprint"):
-                            raise ValueError("已归档记录的原始身份变化，请重新扫描")
-                        if index["mode"] == "file":
-                            if core.identity(Path(row["source"])) != row["source_identity"]:
-                                raise ValueError("原始码流已变化，请重新扫描")
-                        else:
-                            with DHFSReader(disk["path"], disk["size"], disk["identity"], is_cancelled) as reader:
-                                part = reader.partitions[row["partition"]]
-                                chain, _ = reader.chain(part, row["descriptor"])
-                                actual = hashlib.sha256(b"".join(reader.descriptor(part, i) for i in chain)).hexdigest()
-                                if actual != row["fingerprint"]:
-                                    raise ValueError("原盘录像索引已变化")
-                    if prior:
-                        log.stage("verify", "核对已归档成品，完整成品不重复转码", method="复用已归档")
-                        for output in prior["outputs"]:
-                            target = Path(output["target"])
-                            if not target.resolve().is_relative_to(video_root(root).resolve()):
-                                raise ValueError("恢复记录的归档路径越界")
-                            if not target.is_file():
-                                raise ValueError("已归档视频缺失，请核对归档目录")
-                            if (core.identity(target) != output["archive_identity"]
-                                    or digest_file(target, cancelled=is_cancelled) != output["sha256"]):
-                                raise ValueError("已归档视频发生变化，已保留文件并停止复用")
-                            value = {**output, "status": "existing", "transfer": "move",
-                                     "identity": core.identity(target)}
-                            prepared_rows.append(value)
-                    elif pending_record:
-                        # The complete output list is durable before the first move.
-                        # execute verifies target identity/hash when a move finished
-                        # before its receipt; unfinished parts retain their cache.
-                        prepared_rows = [dict(value, status="ready") for value in pending_record["outputs"]]
-                    else:
-                        values = prepare_record(row, index, request, job, is_cancelled, log.stage)
-                        for value in values:
-                            result = video_row(value, request["mapping"][row["group"]], root, reserved, is_cancelled)
-                            # These are our validated, derived MP4s. Move only on the
-                            # destination volume; legacy C: preparations use verified copy.
-                            Path(result["target"]).parent.mkdir(parents=True, exist_ok=True)
-                            if Path(result["source"]).stat().st_dev == Path(result["target"]).parent.stat().st_dev:
-                                result["transfer"] = "move"
-                            result["source_id"] = row["id"]
-                            timeline_source = result["metadata"].get("timeline", {}).get("source")
-                            if isinstance(timeline_source, dict):
-                                timeline_source["path"] = result["target"]
-                            prepared_rows.append(result)
-                    if not prior:
-                        prepared_records[row["id"]] = dict(source_identity=row["source_identity"],
-                            fingerprint=row.get("fingerprint"), outputs=prepared_rows)
+            from .dahua_parallel import prepared_records as parallel_records
+            preparing = parallel_records(selected, prepare_one, preparation_workers(),
+                                         lambda: check(is_cancelled))
+            try:
+                for position, (row, future) in enumerate(preparing):
+                    check(is_cancelled)
+                    log.select(row["id"])
+                    active_outputs.clear()
+                    try:
+                        prior, values, needs_planning = future.result()
+                        prepared_rows = [] if needs_planning else values
+                        if needs_planning:
+                            for value in values:
+                                result = video_row(value, request["mapping"][row["group"]], root, reserved, is_cancelled)
+                                # These are our validated, derived MP4s. Move only on the
+                                # destination volume; legacy C: preparations use verified copy.
+                                Path(result["target"]).parent.mkdir(parents=True, exist_ok=True)
+                                if Path(result["source"]).stat().st_dev == Path(result["target"]).parent.stat().st_dev:
+                                    result["transfer"] = "move"
+                                result["source_id"] = row["id"]
+                                timeline_source = result["metadata"].get("timeline", {}).get("source")
+                                if isinstance(timeline_source, dict):
+                                    timeline_source["path"] = result["target"]
+                                prepared_rows.append(result)
+                        if not prior:
+                            prepared_records[row["id"]] = dict(source_identity=row["source_identity"],
+                                fingerprint=row.get("fingerprint"), outputs=prepared_rows)
+                            checkpoint()
+                        for result in prepared_rows:
+                            result["_file_started"] = log.record_started
+                            log.stage("archive", "逐段归档，成功后即可在录像目录查看",
+                                      method=("复用已归档" if prior else
+                                          result["metadata"].get("dahua", {}).get("settings", {}).get("encoder",
+                                          result["metadata"].get("dahua", {}).get("settings", {}).get("video_processing", "已校验 MP4"))))
+                            plan["rows"].append(result)
+                            days = result["covered_dates"]
+                            commit["start"] = min(commit["start"] or days[0], days[0])
+                            commit["end"] = max(commit["end"] or days[-1], days[-1])
+                            checkpoint()
+                            yield result
+                            if log.current["status"] == "blocked":
+                                raise ValueError(log.current["message"])
+                            provenance.append(dict(source_id=row["id"], group=row["group"],
+                                target=result["target"], sha256=result["sha256"], origin=result["metadata"].get("dahua", {})))
+                        completed[row["id"]] = dict(source_identity=row["source_identity"],
+                            fingerprint=row.get("fingerprint"), outputs=list(active_outputs))
+                        prepared_records.pop(row["id"], None)
+                        plan["progress"] = position + 1
                         checkpoint()
-                    for result in prepared_rows:
-                        result["_file_started"] = log.record_started
-                        log.stage("archive", "逐段归档，成功后即可在录像目录查看",
-                                  method=("复用已归档" if prior else
-                                      result["metadata"].get("dahua", {}).get("settings", {}).get("encoder",
-                                      result["metadata"].get("dahua", {}).get("settings", {}).get("video_processing", "已校验 MP4"))))
-                        plan["rows"].append(result)
-                        days = result["covered_dates"]
-                        commit["start"] = min(commit["start"] or days[0], days[0])
-                        commit["end"] = max(commit["end"] or days[-1], days[-1])
-                        checkpoint()
-                        yield result
-                        if log.current["status"] == "blocked":
-                            raise ValueError(log.current["message"])
-                        provenance.append(dict(source_id=row["id"], group=row["group"],
-                            target=result["target"], sha256=result["sha256"], origin=result["metadata"].get("dahua", {})))
-                    completed[row["id"]] = dict(source_identity=row["source_identity"],
-                        fingerprint=row.get("fingerprint"), outputs=list(active_outputs))
-                    prepared_records.pop(row["id"], None)
+                        release_media(job, row["id"])
+                        log.finish("existing" if prior else ("done" if prepared_rows else "skipped"))
+                    except InterruptedError:
+                        log.finish("paused", "任务已暂停，已归档成品保留，可继续")
+                        raise
+                    except (OSError, ValueError, RuntimeError) as exc:
+                        check(is_cancelled)
+                        issue = dict(source=row["id"], original_source=row["source"], status="blocked", message=str(exc))
+                        plan["issues"].append(issue)
+                        # No cache growth for invalid recordings; originals remain read-only.
+                        # Retain prepared pieces if any target commit needs recovery.
+                        if row["id"] not in prepared_records:
+                            release_media(job, row["id"])
+                        log.finish("blocked", str(exc))
                     plan["progress"] = position + 1
                     checkpoint()
-                    release_media(job, row["id"])
-                    log.finish("existing" if prior else ("done" if prepared_rows else "skipped"))
-                except InterruptedError:
-                    log.finish("paused", "任务已暂停，已归档成品保留，可继续")
-                    raise
-                except (OSError, ValueError, RuntimeError) as exc:
-                    check(is_cancelled)
-                    issue = dict(source=row["id"], original_source=row["source"], status="blocked", message=str(exc))
-                    plan["issues"].append(issue)
-                    # No cache growth for invalid recordings; originals remain read-only.
-                    # Retain prepared pieces if any target commit needs recovery.
-                    if row["id"] not in prepared_records:
-                        release_media(job, row["id"])
-                    log.finish("blocked", str(exc))
-                plan["progress"] = position + 1
-                checkpoint()
-                progress(position + 1, len(selected), f"已处理 {position+1}/{len(selected)} 段")
+                    progress(position + 1, len(selected), f"已处理 {position+1}/{len(selected)} 段")
+            finally:
+                stopping.set()
+                preparing.close()
+                for source_id in list(log.active):
+                    log.select(source_id)
+                    log.finish("paused", "任务已暂停，已校验缓存保留，可继续")
+                stopping.clear()
             if json_sources:
                 from .video_intake import plan_import
                 sensor_plan = plan_import(str(farm), [dict(kind="imu", path=str(p)) for p in json_sources],
@@ -683,8 +725,13 @@ def organize(
         try:
             def commit_progress(current, total, message):
                 log.pulse()
-            result = execute(commit, job, is_cancelled, commit_progress,
-                             on_row=archived, row_stream=row_stream(), _lease=lease)
+            stream = row_stream()
+            try:
+                result = execute(commit, job, is_cancelled, commit_progress,
+                                 on_row=archived, row_stream=stream, _lease=lease)
+            finally:
+                stopping.set()
+                stream.close()
             attachments = root / "归类附属文件" / "大华导入" / token
             attachments.mkdir(parents=True, exist_ok=True)
             atomic_json(attachments / "来源与映射.json",
