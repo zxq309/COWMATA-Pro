@@ -49,6 +49,7 @@ class SyncWorker(QThread):
     status = Signal(str, str)
     progress = Signal(int, int)
     completed = Signal(object)
+    ledger_refreshed = Signal(object)
 
     def __init__(
         self,
@@ -120,8 +121,10 @@ class SyncWorker(QThread):
                     self.status.emit("motion", str(exc))
             else:
                 if values["sync_ledger"] or self.operation == "ledger":
+                    report["ledger_attempted"] = True
                     try:
                         report["ledger"] = self.refresher(values, self.cancel, self.message.emit)
+                        self.ledger_refreshed.emit(report["ledger"])
                         self.status.emit(
                             "ledger",
                             "核验完成，更新 " + str(report["ledger"]["changed"]) + " 个 CSV",
@@ -344,6 +347,12 @@ class ProDownloadDialog(TaskWindow):
         )
         rules.setWordWrap(True)
         outer.addWidget(rules)
+        self.csv_receipt = QLabel()
+        self.csv_receipt.setTextFormat(Qt.TextFormat.PlainText)
+        self.csv_receipt.setWordWrap(True)
+        self.csv_receipt.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.csv_receipt.hide()
+        outer.addWidget(self.csv_receipt)
         self.config_dialog = QDialog(self)
         self.config_dialog.setWindowTitle("配置下载")
         self.config_dialog.resize(780, 610)
@@ -833,6 +842,7 @@ class ProDownloadDialog(TaskWindow):
         self.worker.status.connect(self.connection_status)
         self.worker.progress.connect(self.progress_changed)
         self.worker.completed.connect(self.cycle_completed)
+        self.worker.ledger_refreshed.connect(self.receive_ledger_receipt)
         self.worker.finished.connect(self.task_finished)
         self.fields.setEnabled(False)
         self.quick_fields.setEnabled(False)
@@ -840,6 +850,10 @@ class ProDownloadDialog(TaskWindow):
         for b in (self.start_button, self.ledger_button, self.probe_button):
             b.setEnabled(False)
         self.status.setText("正在同步…" if operation != "probe" else "正在分别检测台账和数据连接…")
+        if operation == "ledger" or (operation == "all" and values["sync_ledger"]):
+            self.csv_receipt.setText("正在从服务器读取并核验三个 CSV…")
+            self.csv_receipt.setStyleSheet("")
+            self.csv_receipt.show()
         self.progress_bar.setRange(0, 0)
         self.worker.start()
 
@@ -853,10 +867,38 @@ class ProDownloadDialog(TaskWindow):
         self.progress_bar.setRange(0, max(total, 1))
         self.progress_bar.setValue(done)
 
+    def receive_ledger_receipt(self, result):
+        checked = datetime.fromtimestamp(result.get("checked_at", datetime.now(CHINA).timestamp()), CHINA)
+        lines = ["CSV 刷新完成 · " + checked.strftime("%Y-%m-%d %H:%M:%S") + "（北京时间）"]
+        for sheet, schema in SCHEMAS.items():
+            diff = result.get("changes", {}).get(sheet)
+            count = result.get("counts", {}).get(sheet, 0)
+            if diff is None:
+                detail = f"已核验，共 {count} 条"
+            elif diff["baseline"] == "rebuilt":
+                detail = f"已重建 {count} 条；本地旧表格式不兼容，未计变更"
+            elif not any(diff[k] for k in ("added", "updated", "removed")):
+                detail = f"未发现新增或更新，共 {count} 条"
+            else:
+                detail = f"新增 {diff['added']} · 更新 {diff['updated']} · 移除 {diff['removed']} · 共 {count} 条"
+                if diff["baseline"] == "new":
+                    detail = "首次读取；" + detail
+            lines.append(schema["filename"] + "：" + detail)
+        self.csv_receipt.setText("\n".join(lines))
+        self.csv_receipt.setStyleSheet("background: #edf6e7; color: #294622; padding: 6px;")
+        self.csv_receipt.show()
+        self.append("\n".join(lines))
+        self.refresh_plan()
+
     def cycle_completed(self, report):
         if report.get("session"):
             self.session = report["session"]
         self.refresh_plan()
+        if report.get("ledger_attempted") and report.get("ledger") is None:
+            reason = "已停止" if report["canceled"] else "；".join(report["errors"])
+            self.csv_receipt.setText("本轮 CSV 刷新未完成：" + reason)
+            self.csv_receipt.setStyleSheet("background: #fff0e5; color: #8a321b; padding: 6px;")
+            self.csv_receipt.show()
         if report["canceled"]:
             text = "已停止，可稍后继续"
         elif report["errors"]:
