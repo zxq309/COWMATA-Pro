@@ -2,6 +2,7 @@
 
 import json
 import sys
+import threading
 import time
 from contextlib import closing, nullcontext
 from pathlib import Path
@@ -11,9 +12,12 @@ if __package__ in {None, ""}:
 from cowmata_tailring.workspace import dahua_tasks as tasks
 from cowmata_tailring.workspace.storage import atomic_json
 
+_emit_lock = threading.Lock()
+
 
 def emit(value):
-    print(json.dumps(value, ensure_ascii=True), flush=True)
+    with _emit_lock:
+        print(json.dumps(value, ensure_ascii=True), flush=True)
 
 
 def main():

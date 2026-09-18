@@ -135,7 +135,9 @@ class DahuaRunTables(QTabWidget):
         errors = sum(r["status"] == "blocked" for r in self.records.values())
         amount = sum(r.get("size", 0) for r in self.records.values() if r["status"] in {"done", "existing"})
         speed = f"{amount/1048576/elapsed:.2f} MiB/秒" if elapsed > 0 and amount else "统计中"
-        self.summary.setText(f"总计 {len(self.records)} 段 · 已归档/复用 {done} · 待核对 {errors}"
+        running = sorted({r.get("owner", "") for r in self.records.values() if r["status"] == "processing"})
+        activity = " / ".join(running) or "无"
+        self.summary.setText(f"处理中 {len(running)} 路（{activity}） · 总计 {len(self.records)} 段 · 已归档/复用 {done} · 待核对 {errors}"
                              f" · 总耗时 {int(elapsed)//60:02}:{int(elapsed)%60:02} · 平均处理速度 {speed}")
 
     def draw_record(self, key):

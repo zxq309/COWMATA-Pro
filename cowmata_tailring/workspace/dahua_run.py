@@ -4,7 +4,9 @@ from __future__ import annotations
 import csv
 import io
 import os
+import threading
 import time
+from functools import wraps
 from pathlib import Path
 
 from . import organization as core
@@ -101,6 +103,14 @@ def release_media(job, source_id, *, normalized_only=False):
             path.unlink()
 
 
+def synchronized(method):
+    @wraps(method)
+    def call(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return call
+
+
 class RunLog:
     def __init__(self, job, selected, mapping, emit):
         self.job, self.emit = Path(job), emit
@@ -110,9 +120,10 @@ class RunLog:
             status="waiting", phase="", file_seconds=0, read_seconds=0,
             convert_seconds=0, verify_seconds=0, archive_seconds=0,
             size=0, targets=[], method="", message="等待处理") for r in selected}
+        self._lock = threading.RLock()
+        self.local = threading.local()
+        self.active = {}
         self.current = None
-        self.phase_started = self.started
-        self.record_started = self.started
         self.last_emit = 0.0
         self.last_save = self.started
         self.status = "running"
@@ -121,28 +132,61 @@ class RunLog:
             self.emit(dict(row, event_kind="task_record"))
         self.save()
 
-    def snapshot(self):
-        row = dict(self.current)
-        if row["status"] in {"processing", "blocked"} and row.get("phase"):
-            row["file_seconds"] = round(time.monotonic() - self.record_started, 3)
-            if row["phase"]:
+    @property
+    def current(self):
+        return self.rows.get(getattr(self.local, "source_id", None))
+
+    @current.setter
+    def current(self, value):
+        self.local.source_id = value["source_id"] if value else None
+
+    @property
+    def record_started(self):
+        return self.active[self.current["source_id"]][0]
+
+    @property
+    def phase_started(self):
+        return self.active[self.current["source_id"]][1]
+
+    @phase_started.setter
+    def phase_started(self, value):
+        self.active[self.current["source_id"]][1] = value
+
+    @synchronized
+    def select(self, source_id):
+        self.local.source_id = source_id
+
+    @synchronized
+    def snapshot(self, source_id=None):
+        original = self.rows[source_id] if source_id is not None else self.current
+        row = dict(original, targets=list(original["targets"]))
+        timing = self.active.get(row["source_id"])
+        if timing and row["status"] in {"processing", "blocked"}:
+            row["file_seconds"] = round(time.monotonic() - timing[0], 3)
+            if row.get("phase"):
                 key = row["phase"] + "_seconds"
-                row[key] = round(row.get(key, 0) + time.monotonic() - self.phase_started, 3)
+                row[key] = round(row.get(key, 0) + time.monotonic() - timing[1], 3)
         return row
 
+    @synchronized
     def pulse(self):
-        if self.current and time.monotonic() - self.last_emit >= 0.5:
-            self.emit(dict(self.snapshot(), event_kind="task_record"))
-            self.last_emit = time.monotonic()
-            if self.last_emit - self.last_save >= 5:
+        now = time.monotonic()
+        if self.active and now - self.last_emit >= 0.5:
+            for source_id in self.active:
+                self.emit(dict(self.snapshot(source_id), event_kind="task_record"))
+            self.last_emit = now
+            if now - self.last_save >= 5:
                 self.save(json_only=True)
 
+    @synchronized
     def begin(self, source_id):
-        self.current = self.rows[source_id]
-        self.record_started = self.phase_started = time.monotonic()
+        self.select(source_id)
+        now = time.monotonic()
+        self.active[source_id] = [now, now]
         self.current.update(status="processing", started_at=core.now())
         self.stage("read", "读取与核对原始录像")
 
+    @synchronized
     def stage(self, phase, message="", **details):
         if not self.current:
             return
@@ -158,6 +202,7 @@ class RunLog:
         self.last_emit = 0
         self.pulse()
 
+    @synchronized
     def archive(self, row):
         if row.get("status") == "done":
             self.outputs.append({k: v for k, v in row.items() if not k.startswith("_")})
@@ -168,21 +213,23 @@ class RunLog:
             self.current.update(status="blocked", message=row.get("message", "归档失败"))
         self.emit(dict(row, event_kind="archive_record"))
 
+    @synchronized
     def finish(self, status, message=""):
         value = self.snapshot()
         value.update(status=status, phase="", finished_at=core.now(),
                      message=message or STATES.get(status, status))
         self.rows[value["source_id"]] = value
         self.current = value
+        self.active.pop(value["source_id"], None)
         self.emit(dict(value, event_kind="task_record"))
         self.save()
         self.current = None
 
+    @synchronized
     def save(self, status=None, *, json_only=False):
         if status:
             self.status = status
-        records = [self.snapshot() if self.current and r["source_id"] == self.current["source_id"]
-                   else r for r in self.rows.values()]
+        records = [self.snapshot(r["source_id"]) for r in self.rows.values()]
         report = dict(status=self.status, elapsed_seconds=round(time.monotonic()-self.started, 3),
                       records=records, outputs=self.outputs, updated_at=core.now())
         atomic_json(self.job / "dahua-run.json", report, backup=False)
