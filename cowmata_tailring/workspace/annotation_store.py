@@ -14,6 +14,12 @@ def dated_path(meta, relative):
     relative = Path(relative)
     if relative.is_absolute() or ".." in relative.parts:
         raise ValueError("标注关联路径越界")
+    from .farm_layout import CATEGORY_PATHS
+    for category in CATEGORY_PATHS:
+        prefix = Path(category).parts
+        if relative.parts[:len(prefix)] == prefix:
+            relative = Path(*relative.parts[len(prefix):])
+            break
     if (
         len(relative.parts) < 3
         or relative.parts[0] not in {"Motion", "PPG"}

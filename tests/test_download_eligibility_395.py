@@ -181,3 +181,61 @@ def test_malformed_reference_or_sample_file_never_authorizes_download(tmp_path, 
     plan = CsvPlan(folder)
     assert not plan.ready
     assert not list(plan.bounds(START, START + timedelta(days=1)))
+
+
+def test_download_checkpoint_records_only_completed_ranges(tmp_path):
+    import json
+
+    from cowmata_tailring.edge_download.core import Cancelled, DownloadError
+    folder = ledgers(tmp_path / 'ledger')
+    job = Job('http://example.test', tmp_path / 'farm', '产犊', (), ('motion', 'pulse', 'temp'),
+              START, START + timedelta(days=1), folder)
+    state_path = job.farm / '.edge-download/csv-cycle.json'
+    class Client:
+        error = None
+        def __init__(self, *_):
+            pass
+        def check(self):
+            if self.error == 'cancel':
+                raise Cancelled()
+        def listing(self, *_):
+            assert json.loads(state_path.read_text(encoding='utf-8'))['status'] == 'running'
+            if self.error == 'network':
+                raise DownloadError('test failure')
+            if self.error == 'fatal':
+                raise RuntimeError('unexpected test failure')
+            return []
+    run_csv_job(job, threading.Event(), client_factory=Client)
+    state = json.loads(state_path.read_text(encoding='utf-8'))
+    assert state['status'] == 'complete'
+    ranges = state['verified_ranges']
+    assert ranges == [dict(device=DEVICE, start=START.isoformat(), end=job.end.isoformat())]
+    for error, status in [('network', 'failed'), ('cancel', 'canceled'), ('fatal', 'failed')]:
+        Client.error = error
+        if error == 'fatal':
+            with pytest.raises(RuntimeError):
+                run_csv_job(job, threading.Event(), client_factory=Client)
+        else:
+            run_csv_job(job, threading.Event(), client_factory=Client)
+        state = json.loads(state_path.read_text(encoding='utf-8'))
+        assert state['status'] == status
+        assert state['verified_ranges'] == ranges
+
+
+def test_csv_modified_during_download_does_not_mark_ready(tmp_path):
+    import json
+    folder = ledgers(tmp_path / 'ledger')
+    job = Job('http://example.test', tmp_path / 'farm', '产犊', (), ('motion', 'pulse', 'temp'),
+              START, START + timedelta(days=1), folder)
+    class Client:
+        def __init__(self, *_):
+            pass
+        def check(self):
+            pass
+        def listing(self, *_):
+            with (folder / FILES[0]).open('a', encoding='utf-8') as stream:
+                stream.write('\n')
+            return []
+    run_csv_job(job, threading.Event(), client_factory=Client)
+    state = json.loads((job.farm / '.edge-download/csv-cycle.json').read_text(encoding='utf-8'))
+    assert state['status'] == 'outdated' and state['verified_ranges'] == []

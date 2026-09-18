@@ -16,7 +16,7 @@ from .storage import ProjectLock, atomic_json, read_json
 META_DIR = "标注工程"
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".avi", ".dav", ".h264", ".h265", ".ts", ".mov",
                   ".mpg", ".mpeg", ".m4v", ".webm", ".wmv", ".asf", ".flv", ".mts", ".m2ts", ".ps"}
-EXCLUDE_DIRS = {"归类附属文件", ".归类缓存", META_DIR, ".git", ".venv", "__pycache__", "node_modules", "runtime", "dist"}
+EXCLUDE_DIRS = {"科牧特_协作标注","归类附属文件", ".归类缓存", META_DIR, ".git", ".venv", "__pycache__", "node_modules", "runtime", "dist"}
 
 
 def previous_video_files(video,day):
@@ -121,22 +121,27 @@ class Catalog:
 
     def __init__(self, root: Path | str, *, stability_seconds: float = 3.0,
                  load_session: bool = False, meta_path: Path | None = None, organization_owner=None, day=None):
+        from .farm_layout import shared_farm, video_root
         from .resource_layout import resource_context
-        self.root = resource_context(Path(root).resolve(strict=True))
+        self.scope = resource_context(Path(root).resolve(strict=True))
+        self.root = shared_farm(self.scope) or self.scope
+        self.video_root = video_root(self.scope)
+        self.scope_prefix = self.scope.relative_to(self.root).as_posix()
+        self.scope_prefix = "" if self.scope_prefix == "." else self.scope_prefix + "/"
         if not self.root.is_dir():
             raise ValueError("请选择工程文件夹")
         self.day = day
         if day:
             from datetime import date
             date.fromisoformat(day)
-            if not any((self.root/kind/day).is_dir() for kind in ('Motion','PPG')):
+            if not any((self.scope/kind/day).is_dir() for kind in ('Motion','PPG')):
                 raise ValueError('所选日期没有九轴或 PPG 目录')
         self._extra_day_paths = set()
         # The full resource registry can contain large video packet indexes.
         # It is not needed to open a daily catalog or recover human work.
         self.resource_index = {}
         self._resource_records = None
-        self.meta = Path(meta_path).resolve() if meta_path else self.root / META_DIR
+        self.meta = Path(meta_path).resolve() if meta_path else self.scope / META_DIR
         self.dated_annotations=bool(day or read_json(self.meta/'annotation-layout.json',{}).get('schema')=='dated-annotations-v1')
         if self.meta.is_symlink() or getattr(self.meta, "is_junction", lambda: False)():
             raise ValueError("标注工程目录不能是指向其他位置的链接")
@@ -225,7 +230,7 @@ class Catalog:
                 parameters=()
                 if self.day:
                     query+=' AND id IN (SELECT asset_id FROM locations WHERE path LIKE ?)'
-                    parameters=('Motion/'+self.day+'/%',)
+                    parameters=(self.scope_prefix+'Motion/'+self.day+'/%',)
                 for row in self.db.execute(query,parameters).fetchall():
                     metadata = json.loads(row["metadata"])
                     if not metadata.get("ignored") and metadata.get("capture_timing", {}).get("revision") != 1:
@@ -431,24 +436,31 @@ class Catalog:
                                         (relative,))
         return result
 
-    def in_scope(self, relative):
-        return not self.day or relative.startswith(('Motion/'+self.day+'/', 'PPG/'+self.day+'/', 'Video/'+self.day+'/')) or relative in self._extra_day_paths
+    def scope_prefixes(self):
+        suffix = self.day + "/" if self.day else ""
+        return (self.scope_prefix + "Motion/" + suffix,
+                self.scope_prefix + "PPG/" + suffix,
+                self.video_root.relative_to(self.root).as_posix() + "/" + suffix)
 
-    def walk_scope(self,error):
-        if not self.day:
-            yield from os.walk(self.root,onerror=error,followlinks=False)
+    def in_scope(self, relative):
+        if not self.day and self.scope == self.root:
+            return True
+        return relative.startswith(self.scope_prefixes()) or relative in self._extra_day_paths
+
+    def walk_scope(self, error):
+        if not self.day and self.scope == self.root:
+            yield from os.walk(self.root, onerror=error, followlinks=False)
             return
-        self._extra_day_paths=set()
-        # Enumerate only the chosen day's two material subtrees.
-        for kind in ('Motion','PPG','Video'):
-            directory=self.root/kind/self.day
+        self._extra_day_paths = set()
+        for directory in (self.scope / "Motion", self.scope / "PPG", self.video_root):
+            if self.day:
+                directory /= self.day
             if directory.is_dir():
-                yield from os.walk(directory,onerror=error,followlinks=False)
-        # One last recording per camera from the nearest previous date is a
-        # search candidate, never an assumed clock or proven coverage.
-        for path in previous_video_files(self.root/'Video',self.day):
-            self._extra_day_paths.add(path.relative_to(self.root).as_posix())
-            yield str(path.parent),[],[path.name]
+                yield from os.walk(directory, onerror=error, followlinks=False)
+        if self.day:
+            for path in previous_video_files(self.video_root, self.day):
+                self._extra_day_paths.add(path.relative_to(self.root).as_posix())
+                yield str(path.parent), [], [path.name]
 
     def video_hints(self):
         with self.mutex:
@@ -469,9 +481,9 @@ class Catalog:
 
     def rows(self, *, kind: str | None = None) -> list[dict]:
         where,parameters='',[]
-        if self.day:
+        if self.day or self.scope != self.root:
             terms=['l.path LIKE ?','l.path LIKE ?','l.path LIKE ?']
-            parameters=['Motion/'+self.day+'/%','PPG/'+self.day+'/%','Video/'+self.day+'/%']
+            parameters=[prefix+'%' for prefix in self.scope_prefixes()]
             if self._extra_day_paths:
                 terms.append('l.path IN ('+','.join('?' for _ in self._extra_day_paths)+')')
                 parameters.extend(sorted(self._extra_day_paths))
@@ -611,6 +623,8 @@ class Catalog:
     def archived_record(self,relative):
         if self._resource_records is None:
             registry=read_json(self.root/'资源索引.json',{})
+            if self.scope != self.root:
+                registry = {'records': [*read_json(self.scope/'资源索引.json', {}).get('records', []), *registry.get('records', [])]}
             self._resource_records={r['path']:r for r in registry.get('records',[]) if r.get('kind')=='video' and self.in_scope(r.get('path',''))}
         return self._resource_records.get(relative,{})
 
