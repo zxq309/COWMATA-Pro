@@ -427,7 +427,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
                 packet_end_ms=ended,
                 packet_clock=clock,
                 settings=converted["settings"],
-                full_decode_verified=True,
+                full_decode_verified=converted["settings"].get("verification_mode") == "full_decode",
                 motion_calibrated=False,
                 query_start=request.get("start"),
                 query_end=request.get("end"),

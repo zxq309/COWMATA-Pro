@@ -101,6 +101,11 @@ def prepared(farm, tmp_path):
     return packages, destination, raw, label, result
 
 
+def test_inventory_accepts_category_folder_selected_in_picker(farm):
+    rows = inventory(farm / '产犊', '产犊')
+    assert rows and all(row['category'] == '产犊' for row in rows)
+
+
 def test_balanced_all_records_no_capacity_limit(farm):
     rows = inventory(farm, '产犊')
     plans = plan_dispatch(farm, rows, count=2)
