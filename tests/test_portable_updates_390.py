@@ -93,6 +93,37 @@ def test_rest_403_uses_official_feed_then_downloads_sha_verified_zip(tmp_path):
     assert any(headers == {"Range": "bytes=13-"} for _, headers in calls)
 
 
+@pytest.mark.parametrize("status", [403, 429])
+@pytest.mark.parametrize("package_kind", ["portable", "installer"])
+def test_rate_limited_clients_accept_installer_only_release(tmp_path, status, package_kind):
+    raw = b"installer-only-release-payload"
+    sha = hashlib.sha256(raw).hexdigest()
+    name = "COWMATA-Pro-3.9.6-Setup.exe"
+    asset_url = f"{core.PAGE}/download/v3.9.6/{name}"
+    feed = f'<feed xmlns="http://www.w3.org/2005/Atom"><entry><link rel="alternate" href="{core.PAGE}/tag/v3.9.6"/><content>Release</content></entry></feed>'.encode()
+    listing = f'<li><a href="{asset_url}">{name}</a><span>sha256:{sha}</span></li>'.encode()
+
+    def opener(url, headers=None):
+        if url.startswith(core.API):
+            raise urllib.error.HTTPError(url, status, "rate limit", {}, None)
+        if url.endswith(".atom"):
+            return Response(feed)
+        if "/tag/" in url:
+            return Response(b"<span>Latest</span>")
+        if "/expanded_assets/" in url:
+            return Response(listing)
+        assert url == asset_url
+        if (headers or {}).get("Range") == "bytes=0-0":
+            return Response(raw[:1], 206, {"Content-Range": f"bytes 0-0/{len(raw)}"})
+        return Response(raw, 200, {"Content-Length": str(len(raw))})
+
+    update = core.check_update("3.9.2", "stable", opener, package_kind=package_kind)
+    assert update["kind"] == "installer_exe"
+    assert update["metadata_source"] == "github_public_release"
+    assert update["sha256"] == sha
+    assert core.download(update, tmp_path, opener=opener).read_bytes() == raw
+
+
 @pytest.mark.parametrize(
     "extra",
     [

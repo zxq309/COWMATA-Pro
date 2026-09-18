@@ -4355,6 +4355,7 @@ ZH_TO_EN.update({
 
 ZH_TO_EN.update({
     " · 共 ": " · Total ",
+    "最新版尚未提供可校验的安装包或便携 ZIP，请查看发布附件": "The latest release has no verifiable installer or portable ZIP. Check its assets.",
     " · 更新 ": " · Updated ",
     " · 移除 ": " · Removed ",
     " 条；本地旧表格式不兼容，未计变更": " records; old local format was incompatible, change counts unavailable",
