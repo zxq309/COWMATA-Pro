@@ -61,3 +61,27 @@ def test_mid_record_cut_uses_exact_encode_and_never_overwrites_existing(monkeypa
     with pytest.raises(FileExistsError):
         media.transcode(source, target, 0, 1000)
     assert target.read_bytes() == b"task-owned output"
+
+
+def test_hour_boundary_cut_keeps_video_packets_and_does_not_encode_the_whole_record(monkeypatch, tmp_path):
+    media, source, commands = setup_media(monkeypatch, tmp_path)
+    timing = dict(method="validated_dhav_counter", frame_interval_ms=40,
+                  video_frames=90075, audio_offset_ms=None,
+                  video_clock_corrections=[], duration_ms=3603000)
+    monkeypatch.setattr(media, "_validate_output", lambda *a, **k: dict(info={"format": {}}))
+    media.transcode(source, tmp_path / "out.mp4", 3000, 3600000, timing=timing)
+    assert "copy" in commands[0]
+    assert "-ss" in commands[0]
+    assert "libx264" not in commands[0]
+
+
+def test_compact_profile_skips_lossless_remux_and_requests_hevc(monkeypatch, tmp_path):
+    media, source, commands = setup_media(monkeypatch, tmp_path)
+    captured = {}
+    def compact(*args, **kwargs):
+        captured.update(kwargs)
+        return {"info": {"format": {"filename": str(args[1])}}, "settings": {"video_processing": "encoded"}, "duration_ms": 1000, "timeline": {}}
+    monkeypatch.setattr(media, "encode_with_fallback", compact)
+    media.transcode(source, tmp_path / "out.mp4", 0, 1000, storage_profile="compact_hevc")
+    assert captured["storage_profile"] == "compact_hevc"
+    assert not commands
