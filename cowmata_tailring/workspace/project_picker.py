@@ -44,8 +44,9 @@ def date_choices(category, modality):
     # Dates are a property of the category, not of one preferred sensor.
     # Use the selected modality first, then union the other sensor folders so
     # a late-arriving Motion/PPG/Temp stream cannot make the picker look empty.
-    roots = [Path(category) / modality]
-    roots.extend(Path(category) / name for name in ("Motion", "PPG", "Temp") if name != modality)
+    selected = modality if modality in {"Motion", "PPG", "Temp"} else None
+    roots = ([Path(category) / selected] if selected else [])
+    roots.extend(Path(category) / name for name in ("Motion", "PPG", "Temp") if name != selected)
     result = set()
     for root in roots:
         if not root.is_dir():
@@ -59,6 +60,16 @@ def date_choices(category, modality):
                 continue
             result.add(path.name)
     return sorted(result)
+
+
+def modality_options():
+    """Stable project-opening choices shared by administrator and operator."""
+    return [
+        ("全部数据（九轴 / PPG / 温度）", "all"),
+        ("九轴数据 Motion", "Motion"),
+        ("脉诊数据 PPG", "PPG"),
+        ("温度数据 Temp", "Temp"),
+    ]
 
 
 class ProjectPicker(QDialog):
@@ -81,8 +92,8 @@ class ProjectPicker(QDialog):
         self.stage = QComboBox()
         self.modality = QComboBox()
         self.day = QComboBox()
-        self.modality.addItem("九轴数据 Motion", "Motion")
-        self.modality.addItem("脉诊数据 PPG", "PPG")
+        for label, value in modality_options():
+            self.modality.addItem(label, value)
         for folder in category_choices(self.farm):
             self.category.addItem(folder.name, str(folder))
         for title, control in (
@@ -128,14 +139,18 @@ class ProjectPicker(QDialog):
         root = self.category_root()
         dates = date_choices(root, self.modality.currentData()) if root else []
         self.day.addItems(dates)
-        ppg = self.modality.currentData() == "PPG"
+        selected = self.modality.currentData()
+        ppg = selected == "PPG"
+        temp = selected == "Temp"
         self.buttons.button(QDialogButtonBox.StandardButton.Open).setEnabled(
             bool(dates)
         )
         self.hint.setText(
             "按设备采样配置显示 PPG 波形；标签与原始 PPG 成对保存，可用于训练及识别。"
             if ppg
-            else "仅加载所选日期九轴和对应录像；前日跨午夜录像按覆盖时间补充。其他日期不扫描。"
+            else "仅加载所选日期温度和对应录像；前日跨午夜录像按覆盖时间补充。其他日期不扫描。"
+            if temp
+            else "默认加载所选日期九轴、PPG、温度和对应录像；前日跨午夜录像按覆盖时间补充。"
             if dates
             else "所选类别没有规范日期目录。请核对牧场根目录，或先在数据整理中归类。"
         )

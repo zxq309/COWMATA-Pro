@@ -489,9 +489,20 @@ class MainWindow(AlignmentMixin, QMainWindow):
             selected=dialog.selection()
             settings.setValue('workspace/last_farm',selected['farm'])
             preferred = None
-            if selected.get('modality') == 'PPG':
-                preferred = next((Path(selected['root'])/'PPG'/selected['day']).rglob('*.json'), None)
-            self.open_project(selected['root'],day=selected['day'],preferred_json=preferred)
+            modality = selected.get('modality')
+            # Catalogs use Motion/PPG records as their primary rows.  A
+            # temperature-only view therefore opens the nearest primary
+            # record, then filters the signal panel to Temp after loading.
+            preferred_dirs = ['PPG'] if modality == 'PPG' else ['Motion', 'PPG']
+            for directory in preferred_dirs:
+                candidate = Path(selected['root']) / directory / selected['day']
+                preferred = next(candidate.rglob('*.json'), None) if candidate.is_dir() else None
+                if preferred is not None:
+                    break
+            self.open_project(
+                selected['root'], day=selected['day'], preferred_json=preferred,
+                modalities=modality,
+            )
 
     def choose_record(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择任意原始九轴 JSON", str(self.catalog.root) if self.catalog else "", "JSON (*.json)")
@@ -809,7 +820,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
         catalog.close()
         self.retired = [(w, c) for w, c in self.retired if w is not worker]
 
-    def open_project(self, root, *, preferred_json=None, day=None, standalone=None):
+    def open_project(self, root, *, preferred_json=None, day=None, standalone=None, modalities=None):
         self.cancel_alignment()
         from .dataset_access import ensure_available
         if getattr(self, "_organization_pausing", False):
@@ -839,6 +850,15 @@ class MainWindow(AlignmentMixin, QMainWindow):
             else:
                 self.catalog = Catalog(root, load_session=True,day=day)
             self.settings = self.catalog.settings()
+            selected_modalities = modalities or 'all'
+            if isinstance(selected_modalities, str):
+                selected_modalities = {
+                    'all': ['motion', 'ppg', 'temp'],
+                    'Motion': ['motion'],
+                    'PPG': ['ppg'],
+                    'Temp': ['temp'],
+                }.get(selected_modalities, ['motion', 'ppg', 'temp'])
+            self.settings['open_modalities'] = list(selected_modalities)
             self._daily_auto_views=bool(day and not self.settings.get('selected_cameras'))
             if day:
                 self.settings['active_day']=day
@@ -1524,7 +1544,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.plot.set_data([PlotSeries(**series) for series in motion.plot_series()], motion.duration_ms)
         self.plot.set_view(0, motion.duration_ms)
         if hasattr(self.plot, "load_related"):
-            self.plot.load_related(motion, self.catalog.root, self.work.project.cow_id)
+            self.plot.load_related(
+                motion, self.catalog.root, self.work.project.cow_id,
+                allowed=self.settings.get("open_modalities", ["motion", "ppg", "temp"]),
+            )
         self.imu_position.setMaximum(motion.duration_ms / 1000)
         self.imu_ms = float(self.work.progress.get("imu_ms", 0))
         if follow:
@@ -1593,7 +1616,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
             if value != self.work.project.cow_id or self.work.project.extras.get("device_identity", {}).get("status") == "conflict":
                 self.work.confirm_cow(value)
                 if hasattr(self.plot, "load_related"):
-                    self.plot.load_related(self.motion, self.catalog.root, value)
+                    self.plot.load_related(
+                        self.motion, self.catalog.root, value,
+                        allowed=self.settings.get("open_modalities", ["motion", "ppg", "temp"]),
+                    )
                 self.update_identity_display()
                 self.refresh_events()
                 self.dirty = True

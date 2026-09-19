@@ -146,8 +146,12 @@ def check_related_identity(data, identity, file):
         raise ValueError("当前牛号待核对，未合并带有其他牛号的记录")
 
 
-def load_related(primary, root, cow_id, cancelled=lambda: False):
+def load_related(primary, root, cow_id, cancelled=lambda: False, allowed=None):
+    allowed = set(allowed or KINDS)
     base = split_series([PlotSeries(**s) for s in primary.plot_series()])
+    for key in KINDS:
+        if key not in allowed:
+            base[key] = []
     result = dict(modalities=base, messages={}, issues=[], sources=[])
     identity = identity_for(primary.source_path, primary.device)
     if not cow_id or identity.get("status") != "ready" or identity.get("cow_id") != str(cow_id):
@@ -172,6 +176,8 @@ def load_related(primary, root, cow_id, cancelled=lambda: False):
     estimated = False
     observed = {k: 0 for k in KINDS}
     for kind, directory in [("motion", "Motion"), ("ppg", "PPG"), ("temp", "Temp")]:
+        if kind not in allowed:
+            continue
         if kind == own:
             continue
         for file in related_files(scope, directory, origin, ending, identity, cancelled):
@@ -300,20 +306,24 @@ class RelatedSignalLoader(QObject):
         self.cancel()
         self.pool.shutdown(wait=False, cancel_futures=True)
 
-    def load(self, primary, root, cow_id):
+    def load(self, primary, root, cow_id, allowed=None):
         self.cancel()
         self.cancellation = threading.Event()
         generation = self.generation
         cancel = self.cancellation
+        allowed = set(allowed or KINDS)
 
         def read():
             try:
-                result = load_related(primary, root, cow_id, cancel.is_set)
+                result = load_related(primary, root, cow_id, cancel.is_set, allowed=allowed)
             except InterruptedError:
                 return
             except Exception as exc:
                 result = dict(
-                    modalities=split_series([PlotSeries(**s) for s in primary.plot_series()]),
+                    modalities={
+                        key: ([] if key not in allowed else values)
+                        for key, values in split_series([PlotSeries(**s) for s in primary.plot_series()]).items()
+                    },
                     messages={k: "关联数据读取失败：" + str(exc) for k in KINDS},
                     issues=[str(exc)],
                 )

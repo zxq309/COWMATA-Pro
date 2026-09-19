@@ -148,6 +148,25 @@ def test_entry_point_is_importable_without_qt() -> None:
     assert args.video == "session.mp4"
 
 
+def test_admin_starts_in_workspace_for_project_loading() -> None:
+    """Administrators and operators must use the same project workspace."""
+    sys.path.insert(0, str(PKG_ROOT.parent))
+    from cowmata_tailring.app.main import resolve_start_mode
+
+    assert resolve_start_mode("operator", "model-assist", has_single_source=False) == "workspace"
+    assert resolve_start_mode("admin", "model-assist", has_single_source=False) == "workspace"
+    assert resolve_start_mode("admin", "model-assist", has_single_source=True) == "model-assist"
+
+
+def test_project_picker_offers_all_sensor_types_by_default() -> None:
+    """The project picker must expose all sensors, including temperature."""
+    sys.path.insert(0, str(PKG_ROOT.parent))
+    from cowmata_tailring.workspace.project_picker import modality_options
+
+    assert modality_options()[0] == ("全部数据（九轴 / PPG / 温度）", "all")
+    assert {value for _, value in modality_options()} == {"all", "Motion", "PPG", "Temp"}
+
+
 def test_single_entry_point() -> None:
     """Exactly one module defines the application entry point."""
     entries = [p for p in _python_files() if p.name == "main.py" and p.parent.name == "app"]
