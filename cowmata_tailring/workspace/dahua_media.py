@@ -295,7 +295,7 @@ def segments(start, end, requested_start=None, requested_end=None, split_midnigh
     return result
 
 
-def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, stage=lambda *_a, **_k: None, timing=None):
+def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, stage=lambda *_a, **_k: None, timing=None, storage_profile="native"):
     """Keep compatible H.264/HEVC packets; exact middle cuts use the encoder."""
     import os
     import uuid
@@ -307,8 +307,22 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
     if offset_ms < 0 or duration_ms <= 0:
         raise ValueError("转码时间范围无效")
     copy_failure = ""
-    full_record = timing and duration_ms >= timing.get("duration_ms", timing["video_frames"] * timing["frame_interval_ms"])
-    if offset_ms == 0 and (not timing or full_record):
+    record_duration = timing.get("duration_ms", timing["video_frames"] * timing["frame_interval_ms"]) if timing else None
+    full_record = timing and duration_ms >= record_duration
+    # Recorder indexing commonly starts a few seconds before the public hour
+    # boundary.  The old path treated that boundary as a middle cut and
+    # re-encoded the whole hour.  A boundary cut can be seeked at the input
+    # and remuxed while preserving the original video packets; only genuinely
+    # interior cuts need an encoder.
+    boundary_copy = bool(
+        timing
+        and offset_ms > 0
+        and record_duration is not None
+        and abs((offset_ms + duration_ms) - record_duration) <= max(5000, timing.get("frame_interval_ms", 40) * 4)
+    )
+    allow_stream_copy = storage_profile != "compact_hevc"
+    can_copy = allow_stream_copy and ((not timing and offset_ms == 0) or full_record or boundary_copy)
+    if can_copy:
         stage_path = target.with_name(target.stem + ".remux-" + uuid.uuid4().hex + ".mp4")
         try:
             video = probe(source, cancelled, dav=True)["video"]
@@ -320,7 +334,9 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                 copy_timing = timing
                 if copy_timing is None:
                     stage("convert", "快速封装 MP4（保留视频码流）", method="stream_copy")
-                if copy_timing:
+                if copy_timing and boundary_copy:
+                    stage("convert", "快速封装边界片段（保留视频码流）", method="stream_copy")
+                elif copy_timing:
                     stage("convert", "快速封装 MP4（按原始计数校时，保留视频码流）", method="stream_copy")
                 result = run(
                     [
@@ -333,11 +349,12 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                         "-progress", "pipe:1", "-stats_period", "0.5", "-nostats",
                         "-copyts",
                         "-start_at_zero",
+                        *( ["-ss", f"{offset_ms / 1000:.6f}"] if boundary_copy else []),
                         "-f",
                         "dhav",
                         "-i",
                         source,
-                        *([] if full_record else ["-t", f"{duration_ms / 1000:.6f}"]),
+                        *([] if full_record and not boundary_copy else ["-t", f"{duration_ms / 1000:.6f}"]),
                         "-map",
                         "0:v:0",
                         "-map",
@@ -364,7 +381,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                     max(300, duration_ms / 1000 * 5),
                     progress=media_progress(stage, "convert", "快速封装", duration_ms),
                 )
-                verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage, timing=copy_timing, source_video=video)
+                verified = _validate_output(stage_path, duration_ms, result, "stream_copy", cancelled, stage=stage, timing=copy_timing, source_video=video, offset_ms=offset_ms if boundary_copy else 0)
                 check(cancelled)
                 if os.name == "nt":
                     os.rename(stage_path, target)
@@ -382,7 +399,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
             stage_path.unlink(missing_ok=True)
     if copy_failure:
         stage("convert", "快速封装校验未通过，改用编码转换", method="encoded")
-    result = encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, timing=timing)
+    result = encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, timing=timing, storage_profile=storage_profile)
     if copy_failure:
         result.setdefault("settings", {})["stream_copy_fallback_reason"] = copy_failure
     return result
@@ -392,6 +409,10 @@ _encoder_cache = {}
 
 
 def encoder_options(encoder):
+    if encoder == "hevc_qsv":
+        return ["-preset", "veryfast", "-global_quality", "35", "-bf", "0"]
+    if encoder == "hevc_nvenc":
+        return ["-preset", "p4", "-rc", "vbr", "-cq", "35", "-b:v", "0", "-bf", "0"]
     if encoder == "h264_nvenc":
         return ["-preset", "p4", "-rc", "vbr", "-cq", "23", "-b:v", "0", "-bf", "0"]
     if encoder == "h264_qsv":
@@ -399,16 +420,17 @@ def encoder_options(encoder):
     return ["-preset", "veryfast", "-crf", "23"]
 
 
-def available_encoder(cancelled=lambda: False):
+def available_encoder(cancelled=lambda: False, preferred=None):
     """Probe an actual encode, not merely the presence of a compiled codec."""
     import os
     ffmpeg, _ = find_ffmpeg()
-    key = str(ffmpeg)
+    key = (str(ffmpeg), preferred or "default")
     if os.name != "nt":
-        return "libx264"
+        return "libx265" if preferred == "hevc_qsv" else "libx264"
     if key not in _encoder_cache:
-        selected = "libx264"
-        for encoder in ("h264_qsv", "h264_nvenc"):
+        selected = "libx265" if preferred == "hevc_qsv" else "libx264"
+        candidates = ("hevc_qsv", "hevc_nvenc") if preferred == "hevc_qsv" else ("h264_qsv", "h264_nvenc")
+        for encoder in candidates:
             check(cancelled)
             try:
                 run([ffmpeg, "-nostdin", "-hide_banner", "-v", "error",
@@ -423,12 +445,16 @@ def available_encoder(cancelled=lambda: False):
     return _encoder_cache[key]
 
 
-def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, *, timing=None):
+def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, *, timing=None, storage_profile="native"):
+    """Encode only when the user explicitly selects the space-saving profile."""
     import os
     import uuid
     from pathlib import Path
     target = Path(target)
-    encoder = available_encoder(cancelled)
+    preferred = "hevc_qsv" if storage_profile == "compact_hevc" else None
+    encoder = available_encoder(cancelled, preferred)
+    if preferred and encoder not in {"hevc_qsv", "hevc_nvenc", "libx265"}:
+        raise ValueError("节省空间模式需要可用的 HEVC 硬件编码器；请改用快速原码流模式")
     if encoder != "libx264":
         temporary = target.with_name(target.stem + ".hardware-" + uuid.uuid4().hex + ".mp4")
         try:
@@ -448,7 +474,9 @@ def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stag
                 raise
             # Don't repeatedly spend time on an unavailable/busy encoder.
             ffmpeg, _ = find_ffmpeg()
-            _encoder_cache[str(ffmpeg)] = "libx264"
+            if preferred:
+                raise ValueError("HEVC 硬件编码失败，未生成不完整成品；请改用快速原码流模式") from None
+            _encoder_cache[(str(ffmpeg), "default")] = "libx264"
             stage("convert", "硬件加速不可用，自动回退 CPU 编码", method="libx264")
         finally:
             temporary.unlink(missing_ok=True)
@@ -483,11 +511,14 @@ def expected_video_frames(timing, offset_ms, duration_ms):
 
 
 def audio_clock_options(timing):
-    if not timing:
-        return []
-    if timing.get("audio_offset_ms") is None:
-        return []
-    return ["-af", f"asetpts=N/SR/TB+{timing['audio_offset_ms']}/(1000*TB)"]
+    if timing and timing.get("audio_offset_ms") is not None:
+        # A validated recorder clock already has an explicit audio offset;
+        # preserve that expression byte-for-byte for the alignment contract.
+        return ["-af", f"asetpts=N/SR/TB+{timing['audio_offset_ms']}/(1000*TB)"]
+    # Without a recovered clock, DHAV audio occasionally reports a short
+    # backwards DTS jump. Resampling that clock repairs the discontinuity
+    # without touching video.
+    return ["-af", "aresample=async=1:min_hard_comp=0.100"]
 
 
 def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None, timing=None):
@@ -523,7 +554,7 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, 
 
 def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None, timing=None, decoder=None):
     ffmpeg, _ = find_ffmpeg()
-    title = "Intel 硬件解码＋编码" if decoder else "硬件编码 H.264" if encoder != "libx264" else "CPU 编码 H.264"
+    title = "Intel 硬件解码＋编码" if decoder else "硬件编码 H.265" if encoder.startswith("hevc") else "硬件编码 H.264" if encoder != "libx264" else "CPU 编码 H.264"
     stage("convert", title, method=encoder)
     # Only proved continuous counters permit timestamps from frame/sample counts.
     # Other formats retain their measured presentation timestamps.
@@ -560,7 +591,8 @@ def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: Fa
         "-c:v",
         encoder,
         *encoder_options(encoder),
-        *([] if decoder else ["-pix_fmt", "yuv420p"]),
+        *([] if decoder or encoder.startswith("hevc") else ["-pix_fmt", "yuv420p"]),
+        *( ["-tag:v", "hvc1"] if encoder.startswith("hevc") else []),
         "-threads",
         "2",
         "-fps_mode",
@@ -584,7 +616,7 @@ def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: Fa
     verified["settings"].update(encoder=encoder, decoder=decoder or "software",
                                 hardware_decoded=bool(decoder), hardware_accelerated=encoder != "libx264",
                                 crf=23 if encoder == "libx264" else None,
-                                hardware_quality=23 if encoder != "libx264" else None)
+                                hardware_quality=35 if encoder.startswith("hevc") else 23 if encoder != "libx264" else None)
     return verified
 
 
@@ -598,7 +630,7 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
         fields = ("codec_name", "pix_fmt", "color_range", "width", "height")
         if not source_video or any(video.get(key) != source_video.get(key) for key in fields):
             raise ValueError("快速封装改变了原视频编码、色彩或分辨率")
-    elif video["codec_name"] != "h264" or video.get("pix_fmt") != "yuv420p":
+    elif video["codec_name"] not in {"h264", "hevc"} or video.get("pix_fmt") not in {"yuv420p", "nv12"}:
         raise ValueError("派生 MP4 编码不符合标准")
     frames = None
     verification_mode = "full_decode"

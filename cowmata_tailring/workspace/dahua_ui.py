@@ -93,6 +93,10 @@ class DahuaPanel(QWidget):
         self.scenario.addItem("按录像日期归档视频", "mixed")
         self.scenario.addItem("关联已有九轴记录（可选）", "attach_video")
         row.addWidget(self.scenario)
+        self.storage_profile = QComboBox()
+        self.storage_profile.addItem("快速原码流封装（占用接近原片）", "native")
+        self.storage_profile.addItem("H.265 节省空间（较慢，需硬件编码）", "compact_hevc")
+        row.addWidget(self.storage_profile)
         outer.addLayout(row)
         row = QHBoxLayout()
         row.addWidget(QLabel("时间范围（北京时间）"))
@@ -205,6 +209,7 @@ class DahuaPanel(QWidget):
             self.target_button,
             self.category,
             self.scenario,
+            self.storage_profile,
             self.start_time,
             self.end_time,
             self.midnight,
@@ -466,6 +471,7 @@ class DahuaPanel(QWidget):
         self.target.setText(options["target"])
         self.category.setCurrentIndex(self.category.findData(options["category"]))
         self.scenario.setCurrentIndex(self.scenario.findData(options.get("scenario", "mixed")))
+        self.storage_profile.setCurrentIndex(self.storage_profile.findData(options.get("storage_profile", "native")))
         self.start_time.setText(str(options.get("start") or ""))
         self.end_time.setText(str(options.get("end") or ""))
         self.midnight.setChecked(options.get("split_midnight", True))
