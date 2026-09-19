@@ -63,6 +63,12 @@ def file_stamp(path: Path) -> str:
     return json.dumps([stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino])
 
 
+def verified_archive_matches(path, receipt, expected_sha):
+    """Reuse the recorded content proof only while its complete file stamp matches."""
+    return bool(expected_sha and receipt.get("sha256") == expected_sha
+                and path.is_file() and receipt.get("verified_stamp") == file_stamp(path))
+
+
 def bind_location_metadata(metadata, stamp, relative=None):
     """Bind content-level timing to a SHA-validated location, not old mtime.
 

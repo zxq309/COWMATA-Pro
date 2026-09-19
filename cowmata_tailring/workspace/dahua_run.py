@@ -204,7 +204,7 @@ class RunLog:
 
     @synchronized
     def archive(self, row):
-        if row.get("status") == "done":
+        if row.get("status") in {"done", "existing"}:
             self.outputs.append({k: v for k, v in row.items() if not k.startswith("_")})
             if self.current:
                 self.current["targets"].append(row["target"])
