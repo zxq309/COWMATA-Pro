@@ -4555,5 +4555,19 @@ ZH_TO_EN.update({
     "快速封装校验未通过，改用编码转换": "Stream copy validation failed; switching to encoding",
 })
 
+ZH_TO_EN.update({
+    "MP4 已通过校验，等待归档": "MP4 validated; awaiting archive",
+    "尾段": "Final segment",
+    "已归档，来源与目标身份未变化，直接复用": "Archived source and target are unchanged; reuse directly",
+    "快速封装 MP4（按原始计数校时，保留视频码流）": "Fast MP4 remux with original counter timing and unchanged video packets",
+    "快速校验（容器、时间轴、首尾采样）": "Quick validation: container, timeline and boundary samples",
+    "恢复上次任务并继续；已完成且未变化的成品直接复用，仅处理剩余片段": "Resume the last task; reuse unchanged completed outputs and process only remaining clips",
+    "成品复用，无需传输": "Reusing completed outputs; no transfer needed",
+    "校时后成品时长与原始录像计数不一致": "Recovered output duration differs from the original recording counters",
+    "请选择牧场根目录或其中一个健康类别目录": "Select the farm root or one of its health-category folders",
+    "转封装后帧数不一致（预期 ": "Remuxed frame count mismatch (expected ",
+    "首段": "First segment"
+})
+
 if __name__ == "__main__":
     _coverage()

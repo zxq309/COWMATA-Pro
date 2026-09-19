@@ -130,7 +130,8 @@ class DahuaPanel(QWidget):
         self.preview_button = QPushButton("核对已选通道缩略图")
         self.preview_button.clicked.connect(self.previews)
         row.addWidget(self.preview_button)
-        self.resume_button = QPushButton("恢复上次视频任务")
+        self.resume_button = QPushButton("继续上次归类")
+        self.resume_button.setToolTip("恢复上次任务并继续；已完成且未变化的成品直接复用，仅处理剩余片段")
         self.resume_button.clicked.connect(self.restore)
         row.addWidget(self.resume_button)
         row.addStretch()
@@ -592,6 +593,7 @@ class DahuaPanel(QWidget):
             self.refresh()
 
     def finished(self, *_):
+        continue_task = False
         self.read_output()
         self.read_error()
         self.active = False
@@ -617,6 +619,7 @@ class DahuaPanel(QWidget):
                         self.job = Path(result["job"])
                         self.settings.setValue("dahua/last_job", str(self.job))
                         self.apply_restored_options(result.get("options", {}))
+                        continue_task = bool(result.get("options"))
                         if result.get("run"):
                             self.run_tables.restore(result["run"])
                 elif self.operation == "organize":
@@ -636,6 +639,8 @@ class DahuaPanel(QWidget):
         except (OSError, ValueError, KeyError) as exc:
             self.status.setText("读取任务结果失败：" + str(exc))
         self.refresh()
+        if continue_task and not self.error:
+            QTimer.singleShot(0, self.organize)
 
     def apply_index(self, index):
         if "rows" in index:
