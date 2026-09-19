@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from contextlib import ExitStack
 from pathlib import Path
@@ -10,6 +11,82 @@ from pathlib import Path
 from .storage import ProjectLock, atomic_json, recovery_path
 
 _projects: set[Path] = set()
+
+
+def clean_version_cache(root, meta, version):
+    """Expire recorded playback caches once per release, under an exclusive lease.
+
+    Only manifest-owned containers and validated packet-cache documents qualify.
+    The catalog, corrections, previews, evidence and resumable jobs are retained.
+    Failed or busy cleanup is retried on a later project open.
+    """
+    from .dataset_access import DatasetLease
+    from .storage import read_json
+    root, meta = Path(root).absolute(), Path(meta).absolute()
+    marker = meta / '.cache-version.json'
+    if not meta.is_dir() or not _plain(meta, root):
+        return
+    try:
+        if read_json(marker, {}).get('version') == version:
+            return
+        with DatasetLease([root], 'maintenance'):
+            lock = ProjectLock(meta / 'writer.lock')
+            try:
+                if not lock.acquired:
+                    return
+                cache = meta / 'cache'
+                if cache.exists() and not _plain(cache, meta):
+                    return
+                compat = cache / 'compatibility'
+                manifest = compat / 'manifest.json'
+                if compat.exists():
+                    if not _plain(compat, meta) or not _plain(manifest, meta):
+                        return
+                    entries = read_json(manifest, {})
+                    if not isinstance(entries, dict):
+                        return
+                    retained = dict(entries)
+                    for asset, entry in entries.items():
+                        if not re.fullmatch(r'[0-9a-f]{64}', asset) or not isinstance(entry, dict):
+                            continue
+                        path = compat / (asset + '.mkv')
+                        if not _plain(path, meta):
+                            return
+                        if path.is_file():
+                            if entry.get('method') != 'stream_copy':
+                                continue
+                            path.unlink()
+                        retained.pop(asset, None)
+                    if manifest.is_file():
+                        atomic_json(manifest, retained, backup=False)
+                for folder, suffix, parse in _timeline_cache_types():
+                    directory = cache / folder
+                    if not directory.exists():
+                        continue
+                    if not _plain(directory, meta):
+                        return
+                    for path in directory.glob('*' + suffix):
+                        if not re.fullmatch(r'[0-9a-f]{20}' + re.escape(suffix), path.name) or not _plain(path, meta):
+                            continue
+                        try:
+                            parse(json.loads(path.read_text(encoding='utf-8')))
+                        except (ValueError, TypeError, KeyError):
+                            continue
+                        path.unlink()
+                atomic_json(marker, {'version': version}, backup=False)
+            finally:
+                lock.close()
+    except (OSError, ValueError, TypeError):
+        return
+
+
+def _timeline_cache_types():
+    from cowmata_tailring.media.dahua_duration import DahuaDurationIndex
+    from cowmata_tailring.media.timeline import MediaTimelineIndex
+    return (
+        ('packet-timelines', '.timeline.json', MediaTimelineIndex.from_dict),
+        ('dahua-timelines', '.dahua-duration.json', DahuaDurationIndex.from_dict),
+    )
 
 
 def remember_project(path):
