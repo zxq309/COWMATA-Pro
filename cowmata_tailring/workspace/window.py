@@ -473,11 +473,17 @@ class MainWindow(AlignmentMixin, QMainWindow):
 
     def choose_project(self):
         from .project_picker import ProjectPicker
+        from .farm_layout import shared_farm
         settings=QSettings()
         root = QFileDialog.getExistingDirectory(self, '第一步：选择本批数据所属的牧场根目录',
             settings.value('workspace/last_farm','',type=str))
         if not root:
             return
+        # Selecting a visible category folder (for example 产犊) should still
+        # resolve to the shared farm root instead of leaving the picker empty.
+        normalized = shared_farm(root)
+        if normalized is not None:
+            root = str(normalized)
         dialog=ProjectPicker(root,self)
         if dialog.exec()==QDialog.DialogCode.Accepted:
             selected=dialog.selection()

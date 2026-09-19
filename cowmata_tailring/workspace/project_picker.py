@@ -39,20 +39,26 @@ def stage_choices(category):
 
 
 def date_choices(category, modality):
-    root = Path(category) / modality
-    if not root.is_dir():
-        return []
     from datetime import date
 
-    result = []
-    for path in child_directories(root):
-        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", path.name):
+    # Dates are a property of the category, not of one preferred sensor.
+    # Use the selected modality first, then union the other sensor folders so
+    # a late-arriving Motion/PPG/Temp stream cannot make the picker look empty.
+    roots = [Path(category) / modality]
+    roots.extend(Path(category) / name for name in ("Motion", "PPG", "Temp") if name != modality)
+    result = set()
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in child_directories(root):
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", path.name):
+                continue
             try:
                 date.fromisoformat(path.name)
             except ValueError:
                 continue
-            result.append(path.name)
-    return result
+            result.add(path.name)
+    return sorted(result)
 
 
 class ProjectPicker(QDialog):
