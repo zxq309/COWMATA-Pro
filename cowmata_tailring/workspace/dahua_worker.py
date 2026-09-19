@@ -122,6 +122,9 @@ def main():
         atomic_json(job / "dahua-error.json", result, backup=False)
         emit(dict(event="error", **result))
         return 2
+    finally:
+        from cowmata_tailring.workspace.maintenance import cleanup_session
+        cleanup_session()
 
 
 if __name__ == "__main__":

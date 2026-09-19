@@ -97,6 +97,8 @@ def main():
     finally:
         if live:
             live.finish('paused' if cancelled() else 'completed')
+        from cowmata_tailring.workspace.maintenance import cleanup_session
+        cleanup_session()
 
 
 if __name__ == "__main__":

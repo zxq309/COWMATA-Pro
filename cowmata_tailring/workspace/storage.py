@@ -65,12 +65,13 @@ def _replace_with_retry(source, target):
 
 
 def recovery_path(path):
-    if path.name.endswith(".标注.json"):
+    if path.name.endswith(".标注.json") or path.name == "资源索引.json":
         import hashlib
 
         root = (
             Path(os.environ.get("LOCALAPPDATA", str(Path.home())))
-            / "COWMATA Annotator/annotation-recovery"
+            / "COWMATA Annotator"
+            / ("index-recovery" if path.name == "资源索引.json" else "annotation-recovery")
         )
         return root / (hashlib.sha256(str(path.resolve()).encode()).hexdigest() + ".json")
     return path.with_suffix(path.suffix + ".bak")
@@ -96,6 +97,9 @@ def atomic_json(path: Path, value: Any, *, backup=True) -> None:
                 recovery.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, recovery)
         _replace_with_retry(name, path)
+        if path.name == "资源索引.json":
+            from .maintenance import remember_project
+            remember_project(path.parent)
     finally:
         if os.path.exists(name):
             os.unlink(name)
