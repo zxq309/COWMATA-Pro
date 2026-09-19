@@ -62,7 +62,24 @@ def _check(root, paths, kind, owner=None):
             # let a dead job record block the whole farm forever.
             path.unlink(missing_ok=True)
             continue
-        if kind != "review" and owner not in {pending["task_id"], pending["owner_id"]} and any(overlaps(a, b) for a in paths for b in pending["paths"]):
+        # Dahua jobs persist a resumable lease while paused. A paused worker
+        # has released its file handles, so opening the project is safe; the
+        # pending record is intentionally kept so the job can be resumed.
+        # Completed jobs used to leave this record behind because the Dahua
+        # worker did not call DatasetLease.complete(), which made every later
+        # project open look like an active write.
+        run = job / "dahua-run.json"
+        if run.is_file():
+            try:
+                state = json.loads(run.read_text(encoding="utf-8")).get("status")
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                state = None
+            if state in {"completed", "no_output"}:
+                path.unlink(missing_ok=True)
+                continue
+            if state == "paused":
+                continue
+        if kind != "review" and owner not in {pending.get("task_id"), pending.get("owner_id")} and any(overlaps(a, b) for a in paths for b in pending.get("paths", [])):
             raise OSError("此目录有未完成的整理任务，请在数据整理窗口继续原任务：" + pending["job"])
     for lease in _active(root):
         if lease["id"] == owner or kind in {"annotation", "review"} and lease["kind"] in {"annotation", "review"}:

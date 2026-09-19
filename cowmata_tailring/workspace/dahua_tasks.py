@@ -759,6 +759,10 @@ def organize(
             report = log.save(plan["status"])
             atomic_json(attachments / "视频任务记录.json", report, backup=False)
             shutil.copy2(job / "视频任务记录.csv", attachments / "视频任务记录.csv")
+            # A successful Dahua task no longer needs a resumable access guard.
+            # Without this, the pending record survived the lease context and
+            # blocked every later project open on the same farm.
+            lease.complete(token)
             return plan
         except BaseException as exc:
             plan["status"] = "paused" if isinstance(exc, InterruptedError) else "failed"
