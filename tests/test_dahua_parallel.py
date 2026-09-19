@@ -150,3 +150,7 @@ def test_progress_summary_lists_simultaneous_views():
         assert "视角01 / 视角02" in table.summary.text()
     finally:
         table.close()
+
+
+def test_default_view_scheduler_starts_all_twenty_channels():
+    assert tasks.preparation_workers() == 20
