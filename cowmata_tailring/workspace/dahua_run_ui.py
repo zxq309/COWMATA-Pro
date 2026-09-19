@@ -133,8 +133,8 @@ class DahuaRunTables(QTabWidget):
         elapsed = time.monotonic() - self.started if self.started and self.active else self.elapsed
         done = sum(r["status"] in {"done", "existing"} for r in self.records.values())
         errors = sum(r["status"] == "blocked" for r in self.records.values())
-        amount = sum(r.get("size", 0) for r in self.records.values() if r["status"] in {"done", "existing"})
-        speed = f"{amount/1048576/elapsed:.2f} MiB/秒" if elapsed > 0 and amount else "统计中"
+        amount = sum(r.get("size", 0) for r in self.records.values() if r["status"] == "done")
+        speed = f"{amount/1048576/elapsed:.2f} MiB/秒" if elapsed > 0 and amount else ("成品复用，无需传输" if done and not amount else "统计中")
         running = sorted({r.get("owner", "") for r in self.records.values() if r["status"] == "processing"})
         activity = " / ".join(running) or "无"
         self.summary.setText(f"处理中 {len(running)} 路（{activity}） · 总计 {len(self.records)} 段 · 已归档/复用 {done} · 待核对 {errors}"
