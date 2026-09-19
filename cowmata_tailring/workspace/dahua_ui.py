@@ -450,6 +450,7 @@ class DahuaPanel(QWidget):
                 end=self.end_time.text().strip(),
                 split_midnight=self.midnight.isChecked(),
                 json_sources=self.json_sources if self.import_json.isChecked() else [],
+                storage_profile=self.storage_profile.currentData(),
             )
             self.settings.setValue("dahua/target", options["target"])
             self.start("organize", dict(options=options), self.job)
