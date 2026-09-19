@@ -189,8 +189,13 @@ def serial_source_read(method):
 
 
 def preparation_workers():
-    from .classification_resources import resource_budget
-    return resource_budget().heavy_workers
+    """Queue every recorder view; raw-disk reads remain serialized, conversions overlap.
+
+    The worker count is deliberately the recorder capacity (20), while each
+    decoder is restricted to one thread. This starts all mapped views instead
+    of leaving 18 views in a hidden two-worker queue.
+    """
+    return len(VIEWS)
 
 
 @serial_source_read
@@ -357,6 +362,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
             lo=lo,
             hi=hi,
             profile="avc-hevc-native-clock-v5" if timing else "avc-hevc-vfr-verified-v5",
+            storage_profile=request.get("storage_profile", "native"),
         )
         key = hashlib.sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()
         directory = source.parent / key[:16]
@@ -377,7 +383,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
         temporary = directory / (uuid.uuid4().hex + ".mp4")
         try:
             stage("convert", "转换 MP4")
-            converted = transcode(source, temporary, lo - started, hi - lo, cancelled, stage=stage, timing=timing)
+            converted = transcode(source, temporary, lo - started, hi - lo, cancelled, stage=stage, timing=timing, storage_profile=options["storage_profile"])
             video = converted["info"]["video"]
             if (video["width"], video["height"]) != (input_video["width"], input_video["height"]):
                 raise ValueError("转码改变了原视频分辨率")
