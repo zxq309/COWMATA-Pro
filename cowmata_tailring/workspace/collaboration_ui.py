@@ -151,7 +151,21 @@ class CollaborationDialog(QDialog):
         self.planner.clear_inventory()
 
     def scan_inventory(self):
-        root = self.root.text()
+        root = self.root.text().strip()
+        if not root:
+            self.status.setText('请选择牧场根目录或其中一个健康类别目录')
+            return
+        # Accept a category folder selected from the standard Windows picker,
+        # then make the normalized farm root visible before scanning starts.
+        try:
+            normalized = shared_farm(root)
+            if normalized:
+                root = str(normalized)
+                self.root.setText(root)
+        except (OSError, ValueError) as exc:
+            self.status.setText(str(exc))
+            self.log.appendPlainText(str(exc))
+            return
         categories = {pane.category.currentText() for pane in self.planner.panes}
         def operation():
             return {category: packages.inventory(root, category, cancelled=self.stop.is_set) for category in sorted(categories)}

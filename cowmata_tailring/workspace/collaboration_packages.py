@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 
 from .catalog import assert_not_being_written, digest_file, file_stamp, previous_video_files
 from .dataset_access import DatasetLease
-from .farm_layout import CATEGORY_PATHS, COLLABORATION, MARKER, farm_identity
+from .farm_layout import CATEGORY_PATHS, COLLABORATION, MARKER, farm_identity, shared_farm
 from .package_paths import check, safe_path
 from .storage import ProjectLock, atomic_json, read_json
 
@@ -26,6 +26,17 @@ SCHEMA = 'cowmata-collaboration-v1'
 MANIFEST = '协作清单.json'
 ASSIGNMENT = '.cowmata-assignment.json'
 CHUNK = 4 * 1024 * 1024
+
+
+def farm_root(path):
+    """Return the unified farm root when a category subdirectory was selected.
+
+    The picker is intentionally allowed to start in a category folder (for
+    example ``...\\产犊``), but all collaboration manifests and locks must be
+    rooted at the directory carrying ``.cowmata-farm.json``.
+    """
+    value = Path(path).resolve(strict=True)
+    return shared_farm(value) or value
 
 
 def canonical(value):
@@ -42,7 +53,7 @@ def _registry(root):
 
 
 def inventory(root, category, *, cancelled=lambda: False):
-    root = Path(root).resolve(strict=True)
+    root = farm_root(root)
     if not farm_identity(root) or category not in CATEGORY_PATHS:
         raise ValueError('请选择已统一目录的牧场及健康类别')
     assigned, prior_stamps, prior_paths = {}, {}, {}
@@ -109,6 +120,7 @@ def inventory(root, category, *, cancelled=lambda: False):
 
 def plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', cancelled=lambda: False):
     from .package_readiness import download_guard
+    root = farm_root(root)
     with DatasetLease([root], 'annotation'), download_guard(root):
         return _plan_dispatch(root, units, count=count, views=views, purpose=purpose, cancelled=cancelled)
 
@@ -116,6 +128,7 @@ def plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', can
 def plan_dispatch_groups(root, groups, *, purpose='annotation', cancelled=lambda: False):
     """Honor explicit per-package dates; every package includes all video views."""
     from .package_readiness import download_guard
+    root = farm_root(root)
     groups = [list(group) for group in groups]
     if not groups or any(not group for group in groups):
         raise ValueError('每个包都需要选择资料；存在未选择日期的空包')
@@ -141,7 +154,7 @@ def _check_unit_files(root, units):
 
 def _plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', cancelled=lambda: False, groups=None):
     from .package_readiness import validate_complete
-    root = Path(root).resolve(strict=True)
+    root = farm_root(root)
     identity = farm_identity(root)
     if not identity or not units or not 1 <= count <= len(units):
         raise ValueError('请选择资料；分包数量不能超过设备日期条目数')

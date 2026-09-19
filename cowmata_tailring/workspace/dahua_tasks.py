@@ -294,7 +294,7 @@ def video_row(prepared, view, root, reserved, cancelled=lambda: False):
         covered_dates=covered_days(begin, end),
         timezone_offset_minutes=480,
         metadata={**prepared["metadata"], "camera": view},
-        message="MP4 已完整解码，等待归档",
+        message="MP4 已通过校验，等待归档",
     )
 
 
@@ -356,7 +356,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
             source_sha256=source_info["sha256"],
             lo=lo,
             hi=hi,
-            profile="avc-hevc-counter-verified-v4" if timing else "avc-hevc-vfr-verified-v4",
+            profile="avc-hevc-native-clock-v5" if timing else "avc-hevc-vfr-verified-v5",
         )
         key = hashlib.sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()
         directory = source.parent / key[:16]
@@ -427,7 +427,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
                 packet_end_ms=ended,
                 packet_clock=clock,
                 settings=converted["settings"],
-                full_decode_verified=True,
+                full_decode_verified=converted["settings"].get("verification_mode") == "full_decode",
                 motion_calibrated=False,
                 query_start=request.get("start"),
                 query_end=request.get("end"),
@@ -500,7 +500,7 @@ def resolve_video_job(request, job):
 def organize(
     request, job, cancelled=lambda: False, progress=lambda *_: None, on_row=lambda *_: None
 ):
-    from .catalog import file_stamp
+    from .catalog import file_stamp, verified_archive_matches
     from .dahua_run import RunLog, configure_storage, media_root, release_media
     from .farm_layout import storage_root, video_root
     from .resource_import import execute
@@ -563,6 +563,7 @@ def organize(
         on_row(dict(event_kind="task_resume", job=str(job)))
         log = RunLog(job, selected, request["mapping"], on_row)
         reserved, provenance = {}, []
+        verified_index = {r["path"]: r for r in read_json(destination_root / "资源索引.json", {}).get("records", [])}
         active_outputs = []
 
         def checkpoint():
@@ -620,11 +621,13 @@ def organize(
                         raise ValueError("恢复记录的归档路径越界")
                     if not target.is_file():
                         raise ValueError("已归档视频缺失，请核对归档目录")
+                    receipt = verified_index.get(target.relative_to(destination_root).as_posix(), {})
+                    reuse = verified_archive_matches(target, receipt, output.get("sha256"))
                     if (core.identity(target) != output["archive_identity"]
-                            or digest_file(target, cancelled=is_cancelled) != output["sha256"]):
+                            or (not reuse and digest_file(target, cancelled=is_cancelled) != output["sha256"])):
                         raise ValueError("已归档视频发生变化，已保留文件并停止复用")
                     value = {**output, "status": "existing", "transfer": "move",
-                             "identity": core.identity(target)}
+                             "identity": core.identity(target), "_verified_reuse": reuse}
                     prepared_rows.append(value)
             elif pending_record:
                 # The complete output list is durable before the first move.
@@ -678,7 +681,13 @@ def organize(
                             commit["start"] = min(commit["start"] or days[0], days[0])
                             commit["end"] = max(commit["end"] or days[-1], days[-1])
                             checkpoint()
-                            yield result
+                            if prior and result.pop("_verified_reuse", False):
+                                reused = dict(result, status="existing", file_seconds=0,
+                                              message="已归档，来源与目标身份未变化，直接复用")
+                                active_outputs.append(reused)
+                                log.archive(reused)
+                            else:
+                                yield result
                             if log.current["status"] == "blocked":
                                 raise ValueError(log.current["message"])
                             provenance.append(dict(source_id=row["id"], group=row["group"],

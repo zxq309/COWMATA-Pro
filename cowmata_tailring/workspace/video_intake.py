@@ -1004,7 +1004,7 @@ def _organize(
     recovered = set()
     recovered_rows = []
     if previous and previous.get('streaming'):
-        from .catalog import file_stamp
+        from .catalog import file_stamp, verified_archive_matches
         index_path = Path(previous['target']) / '资源索引.json'
         index = json.loads(index_path.read_text(encoding='utf-8')) if index_path.is_file() else {}
         indexed = {r['path']: r for r in index.get('records', [])}
@@ -1036,8 +1036,7 @@ def _organize(
                 relative = destination.relative_to(Path(previous['target'])).as_posix()
                 archived = indexed.get(relative, {})
                 source_ok = (core.identity(source) == row['identity'] if source.exists() else row.get('transfer') == 'move')
-                if (source_ok and destination.is_file() and archived.get('verified_stamp') == file_stamp(destination)
-                        and archived.get('sha256') == row.get('sha256') and row.get('sha256')):
+                if source_ok and verified_archive_matches(destination, archived, row.get('sha256')):
                     done = {**row, 'status': 'done', 'resumed_complete': True, 'file_seconds': 0, 'recognition_seconds': 0, 'transfer_seconds': 0, 'message': '已归类，来源与目标身份未变化，无需重复复制'}
                     recovered.add(str(source))
                     recovered_rows.append(done)

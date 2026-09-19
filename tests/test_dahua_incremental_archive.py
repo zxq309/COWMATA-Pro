@@ -351,3 +351,47 @@ def test_automatic_resume_cannot_bypass_an_active_task_lease(incremental, monkey
         with pytest.raises(OSError, match="目录正在"):
             tasks.organize(request, new_job)
     assert not list((farm / "录像").rglob("*.mp4"))
+
+
+def test_resume_reuses_verified_archive_without_reading_media_again(incremental, monkeypatch):
+    farm, job, index, request, _ = incremental
+    monkeypatch.setattr(tasks, "prepare_record", fake_prepared)
+    tasks.organize(request, job)
+    before = {str(p):p.stat().st_mtime_ns for p in (farm / "录像").rglob("*.mp4")}
+    monkeypatch.setattr(tasks, "prepare_record", lambda *a: pytest.fail("Completed media was prepared again"))
+    monkeypatch.setattr(tasks, "digest_file", lambda *a, **k: pytest.fail("Unchanged verified archive was read again"))
+    result = tasks.organize(request, job)
+    assert not result["issues"]
+    assert {str(p):p.stat().st_mtime_ns for p in (farm / "录像").rglob("*.mp4")} == before
+    report = tasks.read_json(job / "dahua-run.json")
+    assert all(r["status"] == "existing" for r in report["records"])
+    assert len(result["completed_records"]) == len(index["rows"])
+
+
+def test_continue_last_classification_restores_then_starts_saved_task(tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+
+    from cowmata_tailring.workspace.dahua_ui import DahuaPanel
+    app = QApplication.instance() or QApplication([])
+    panel = DahuaPanel()
+    job = tmp_path / "job"
+    job.mkdir()
+    result_path = job / "dahua-result.json"
+    tasks.atomic_json(result_path, dict(job=str(job),options=dict(target=str(tmp_path / 'farm'))),backup=False)
+    calls=[]
+    monkeypatch.setattr(panel,'read_output',lambda:None)
+    monkeypatch.setattr(panel,'read_error',lambda:None)
+    monkeypatch.setattr(panel,'apply_index',lambda value:None)
+    monkeypatch.setattr(panel,'apply_restored_options',lambda value: calls.append('restore'))
+    monkeypatch.setattr(panel,'organize',lambda: calls.append('continue'))
+    try:
+        assert panel.resume_button.text() == '继续上次归类'
+        panel.operation = 'restore'
+        panel.result_path = result_path
+        panel.error = ''
+        panel.active = False
+        panel.finished()
+        app.processEvents()
+        assert calls == ['restore','continue']
+    finally:
+        panel.close()
