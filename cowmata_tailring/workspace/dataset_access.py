@@ -48,7 +48,20 @@ def _active(root):
 
 def _check(root, paths, kind, owner=None):
     for path in (root / "pending").glob("*.json"):
-        pending = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            pending = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            # A torn or unreadable pending record cannot represent a live job.
+            # Remove it so a stale crash cannot block a new organization run.
+            path.unlink(missing_ok=True)
+            continue
+        job = Path(str(pending.get("job", ""))).expanduser()
+        if not job.is_absolute() or not job.exists():
+            # The worker directory was removed after completion, cancellation,
+            # or an interrupted update. Keep active leases protected, but do not
+            # let a dead job record block the whole farm forever.
+            path.unlink(missing_ok=True)
+            continue
         if kind != "review" and owner not in {pending["task_id"], pending["owner_id"]} and any(overlaps(a, b) for a in paths for b in pending["paths"]):
             raise OSError("此目录有未完成的整理任务，请在数据整理窗口继续原任务：" + pending["job"])
     for lease in _active(root):
