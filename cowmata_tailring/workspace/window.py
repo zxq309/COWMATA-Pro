@@ -325,7 +325,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.alignment_label.setWordWrap(True)
         signal_layout.addWidget(self.alignment_label)
         self.plot = self.create_plot()
-        self.plot.setMinimumSize(420, 300)
+        signal_panel.setMinimumWidth(520)
+        self.plot.setMinimumSize(520, 360)
         self.plot.seekRequested.connect(self.seek_imu)
         self.plot.rangeSelected.connect(self.select_range)
         self.plot.eventSelected.connect(self.select_plot_event)
@@ -366,7 +367,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.video_slider.sliderReleased.connect(self.slider_seek)
         video_layout.addWidget(self.video_slider)
         top.addWidget(video_panel)
-        top.setSizes([650, 800])
+        top.setChildrenCollapsible(False)
+        top.setStretchFactor(0, 2)
+        top.setStretchFactor(1, 3)
+        top.setSizes([760, 1140])
         right.addWidget(top)
 
         bottom = QWidget()
@@ -415,7 +419,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.events.itemSelectionChanged.connect(self.sync_event_selection)
         bottom_layout.addWidget(self.events)
         right.addWidget(bottom)
-        right.setSizes([720, 220])
+        right.setChildrenCollapsible(False)
+        right.setStretchFactor(0, 3)
+        right.setStretchFactor(1, 1)
+        right.setSizes([780, 260])
         horizontal.addWidget(right)
         horizontal.setSizes([240, 1350])
         outer.addWidget(horizontal, 1)
@@ -1442,7 +1449,13 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 if before != row["stamp"]:
                     raise ValueError("九轴文件在读取时变化，请等复制完成后刷新")
                 cached = self.motion_cache.get(asset_id)
-                motion = cached or load_motion_json(path)
+                # A catalog contains both Motion and PPG rows.  The generic
+                # loader defaults to Motion, so pass the row kind explicitly
+                # or PPG records are parsed as empty IMU records.
+                metadata = row.get("metadata") or {}
+                is_ppg = (metadata.get("kind") == "ppg" or
+                          any(part.casefold() == "ppg" for part in Path(row["path"]).parts))
+                motion = cached or load_motion_json(path, kind="ppg" if is_ppg else "imu")
                 if file_stamp(path) != before:
                     raise ValueError("九轴文件在读取时变化，请等复制完成后刷新")
                 if not self._closed:
@@ -1528,6 +1541,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.board.two_view_ratio = profile.get("two_view_ratio", 50)
             self.board.set_main(profile.get("main", self.settings.get("main_camera", self.board.main_camera)))
         self.work.project.source.update({"name": Path(row["path"]).name, "path": row["path"], "asset_id": row["asset_id"],
+                                         "kind": getattr(motion, "kind", metadata.get("kind", "imu")),
                                          "project_root_hint":str(self.catalog.root),
                                          "device": motion.device, "uid": motion.uid, "durationMs": motion.duration_ms,
                                          "createTimeMs": motion.create_time_ms,
