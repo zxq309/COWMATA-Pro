@@ -10,6 +10,14 @@ APP_ORG = "Cowmata"
 APP_NAME = "Cowmata TailRing"
 
 
+def run_event_loop(application):
+    try:
+        return application.exec()
+    finally:
+        from cowmata_tailring.workspace.maintenance import cleanup_session
+        cleanup_session()
+
+
 def resolve_start_mode(role: str, mode: str, *, has_single_source: bool) -> str:
     """Choose the shared project workspace for both authenticated roles.
 
@@ -122,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         install_window(window, security_root, "pro")
         window.show()
         splash.finish(window)
-        return application.exec()
+        return run_event_loop(application)
 
     if (args.mode == "workspace" and not (args.json or args.video)) or args.project:
         if args.workspace_ui == "classic":
@@ -152,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.project or args.json or args.video:
         QTimer.singleShot(0, open_startup_files)
-    return application.exec()
+    return run_event_loop(application)
 
 
 if __name__ == "__main__":

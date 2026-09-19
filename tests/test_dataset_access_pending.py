@@ -55,3 +55,23 @@ def test_running_dahua_task_still_blocks_project_open(tmp_path, monkeypatch):
 
     with pytest.raises(OSError, match="未完成"):
         ensure_available([farm])
+
+
+def test_paused_job_keeps_reservation_against_unrelated_organizer(tmp_path, monkeypatch):
+    access_root = tmp_path / "access"
+    monkeypatch.setenv("COWMATA_ACCESS_DIR", str(access_root))
+    _pending(access_root, tmp_path / "job", "paused")
+    from cowmata_tailring.workspace.dataset_access import ensure_available
+    with pytest.raises(OSError, match="未完成"):
+        ensure_available([tmp_path / "farm"], "organize")
+    ensure_available([tmp_path / "farm"], "organize", owner="a" * 32)
+
+
+def test_paused_status_does_not_override_live_writer(tmp_path, monkeypatch):
+    access_root = tmp_path / "access"
+    monkeypatch.setenv("COWMATA_ACCESS_DIR", str(access_root))
+    from cowmata_tailring.workspace.dataset_access import DatasetLease, ensure_available
+    with DatasetLease([tmp_path / "farm"], "organize"):
+        _pending(access_root, tmp_path / "job", "paused")
+        with pytest.raises(OSError, match="正在标注或整理"):
+            ensure_available([tmp_path / "farm"])
