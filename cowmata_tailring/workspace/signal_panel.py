@@ -520,11 +520,11 @@ class SignalPanel(QWidget):
         self.wave.set_group(group)
         self.track.refresh()
 
-    def load_related(self, primary, root, cow_id):
+    def load_related(self, primary, root, cow_id, allowed=None):
         from .multi_sensor import RelatedSignalLoader
         if not hasattr(self, "related_loader"):
             self.related_loader = RelatedSignalLoader(self)
-        self.related_loader.load(primary, root, cow_id)
+        self.related_loader.load(primary, root, cow_id, allowed=allowed)
 
     def set_clock(self, clock):
         self.wave.set_clock(clock)
