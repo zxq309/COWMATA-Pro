@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import shutil
 import subprocess
 import threading
@@ -99,6 +100,7 @@ class UpdateController(QObject):
         self.settings = QSettings()
         self.root = Path(__file__).resolve().parents[2]
         self.cache = (Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "COWMATA Annotator" / "updates").resolve()
+        self._cleanup_completed_update_cache()
         self.update = None
         self.setup = None
         self.pending_job = None
@@ -130,6 +132,46 @@ class UpdateController(QObject):
             self.timer.start()
             QTimer.singleShot(1500, self.startup_check)
         QApplication.instance().aboutToQuit.connect(self.on_exit)
+
+    def _cleanup_completed_update_cache(self):
+        """Remove only updater-owned artifacts from already completed jobs.
+
+        Project data, labels, models and resumable downloads are deliberately
+        outside this cleanup.  A job is eligible only after the detached
+        updater has written ``phase=complete``; interrupted or failed jobs are
+        retained so a later launch can show a useful diagnostic.
+        """
+        try:
+            cache = self.cache
+            if not cache.is_dir():
+                return
+            for job_dir in cache.glob("job-*"):
+                if not job_dir.is_dir() or job_dir.is_symlink():
+                    continue
+                try:
+                    result_path = job_dir / "result.json"
+                    state = json.loads(result_path.read_text(encoding="utf-8"))
+                    if state.get("phase") != "complete":
+                        continue
+                    job_path = job_dir / "job.json"
+                    job = json.loads(job_path.read_text(encoding="utf-8")) if job_path.is_file() else {}
+                    setup = Path(job.get("setup", "")).resolve() if job.get("setup") else None
+                    if setup is not None:
+                        downloads = (cache / "downloads").resolve()
+                        if setup.parent == downloads / setup.parent.name and setup.parent.parent == downloads:
+                            for candidate in (setup, Path(str(setup) + ".part")):
+                                if candidate.is_file() and not candidate.is_symlink():
+                                    candidate.unlink()
+                            try:
+                                setup.parent.rmdir()
+                            except OSError:
+                                pass
+                    shutil.rmtree(job_dir)
+                except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                    # A running/partially written job is left untouched.
+                    continue
+        except (OSError, ValueError):
+            return
 
     def option(self, key, default=True):
         return self.settings.value("updates/" + key, default, type=bool)

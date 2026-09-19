@@ -158,15 +158,20 @@ class CollaborationDialog(QDialog):
         # Accept a category folder selected from the standard Windows picker,
         # then make the normalized farm root visible before scanning starts.
         try:
-            normalized = shared_farm(root)
-            if normalized:
-                root = str(normalized)
-                self.root.setText(root)
+            # Resolve both a farm root and a selected category folder through
+            # the same strict layout helper used by package validation.  This
+            # avoids an empty planner when the Windows picker returns
+            # ``...\\产犊`` instead of the directory carrying the farm marker.
+            normalized = packages.farm_root(root)
+            root = str(normalized)
+            self.root.setText(root)
         except (OSError, ValueError) as exc:
             self.status.setText(str(exc))
             self.log.appendPlainText(str(exc))
             return
         categories = {pane.category.currentText() for pane in self.planner.panes}
+        self.status.setText('正在扫描牧场资料与派发状态，请稍候…')
+        self.log.appendPlainText('扫描根目录：' + root)
         def operation():
             return {category: packages.inventory(root, category, cancelled=self.stop.is_set) for category in sorted(categories)}
         def loaded(value):
