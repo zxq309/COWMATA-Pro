@@ -330,7 +330,7 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         warnings.append(f"{stills['missing']} 张证据图缺失或损坏；请把标注 JSON 与“证据”文件夹一起复制")
     try:
         rows, settings = _history_index(root, scope=index_scope) if root else ([], {})
-    except (OSError, ValueError, sqlite3.Error):
+    except (OSError, ValueError, UnicodeError, RuntimeError, sqlite3.Error):
         rows, settings = [], {}
         warnings.append("当前索引无法读取；改用历史快照核验，原索引不会被修改。")
     motion = None
@@ -398,7 +398,11 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         warnings.append("没有可用九轴采集时间或校准锚点；不会用文件名或服务器收包时间对齐视频。")
     if requested_root and requested_root != root:
         root = requested_root
-        rows, settings = _history_index(root, scope=index_scope)
+        try:
+            rows, settings = _history_index(root, scope=index_scope)
+        except (OSError, ValueError, UnicodeError, RuntimeError, sqlite3.Error):
+            rows, settings = [], {}
+            warnings.append("所选数据工程索引无法读取；仍可查看标签和证据图，请检查工程是否已关闭或重新建立索引。")
     saved = doc.get("video", {})
     video_root_hint=saved.get('archive',{}).get('archive_root_hint') or hint
     saved_ids={r['asset_id'] for r in saved.get('rows',[])}
@@ -408,7 +412,7 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         root=Path(video_root_hint).resolve()
         try:
             rows,settings=_history_index(root, scope=index_scope)
-        except (OSError,ValueError,sqlite3.Error):
+        except (OSError, ValueError, UnicodeError, RuntimeError, sqlite3.Error):
             rows,settings=[],{}
     elif local_match:
         video_root_hint=hint

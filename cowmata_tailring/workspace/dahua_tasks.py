@@ -8,8 +8,9 @@ import os
 import re
 import shutil
 import threading
+import time
 import uuid
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from functools import wraps
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from .storage import ProjectLock, atomic_json
 
 VIEWS = tuple(f"视角{i:02}" for i in range(1, 21))
 ADAPTER = "cowmata-dahua-1"
+DEFAULT_DEADLINE_SECONDS = 8 * 60 * 60
 
 
 def task_root():
@@ -176,14 +178,66 @@ def original_paths(index):
     return [] if index["mode"] == "disk" else [Path(p) for p in index["files"]]
 
 
-_source_read_lock = threading.RLock()
+def cleanup_completed_sources(index, result, *, cancelled=lambda: False, confirm_partial=False):
+    """Remove only verified, successfully classified mounted source files.
+
+    Physical DHFS recorder images remain read-only by design; the function
+    returns a review state for those instead of attempting raw-sector writes.
+    A blocked or unresolved file makes the whole cleanup a no-op and is
+    reported to the operator for confirmation.
+    """
+    if not isinstance(index, dict) or index.get("mode") == "disk":
+        return {"state": "manual_required", "deleted": [], "pending": [],
+                "message": "录像机原盘按只读方式读取，未执行原盘写入；请在确认备份后使用厂商清盘工具"}
+    rows = result.get("rows") or result.get("records") or []
+    by_source = {str(Path(row.get("source", "")).resolve()): row for row in rows if row.get("source")}
+    pending = []
+    sources = [Path(path).resolve() for path in index.get("files", [])]
+    for source in sources:
+        row = by_source.get(str(source))
+        if row is None or row.get("status") not in {"done", "existing", "deleted"}:
+            pending.append(str(source))
+    if pending and not confirm_partial:
+        return {"state": "needs_review", "deleted": [], "pending": pending,
+                "message": f"有 {len(pending)} 个来源尚未完成归类，已保留原文件"}
+    deleted = []
+    for source in sources:
+        check(lambda: cancelled())
+        if not source.exists():
+            continue
+        if source.suffix.lower() not in {".dav", ".dhav", ".h264", ".h265"}:
+            pending.append(str(source))
+            continue
+        row = by_source.get(str(source))
+        if row is None or row.get("status") not in {"done", "existing", "deleted"}:
+            continue
+        before = core.identity(source)
+        expected = row.get("source_identity") or row.get("metadata", {}).get("dahua", {}).get("source_identity")
+        if expected and before != expected:
+            pending.append(str(source))
+            continue
+        source.unlink()
+        if source.exists():
+            raise OSError("清理原始录像失败：" + str(source))
+        deleted.append(str(source))
+    state = "cleaned" if not pending else "needs_review"
+    return {"state": state, "deleted": deleted, "pending": pending,
+            "message": (f"已清理 {len(deleted)} 个已归类原始录像" if not pending
+                        else f"已清理 {len(deleted)} 个；另有 {len(pending)} 个待核对，原文件保留")}
+
+
+_source_read_lock = threading.BoundedSemaphore(2)
 
 
 def serial_source_read(method):
     @wraps(method)
     def wrapped(*args, **kwargs):
-        # Raw mechanical disks keep one reader while other clips convert/verify.
-        with _source_read_lock:
+        # Raw recorder disks get a small read budget so all mapped views can
+        # make progress without turning random seeks into a 17% throughput
+        # cliff.  Ordinary mounted files are independently readable.
+        index = args[1] if len(args) > 1 else kwargs.get("index", {})
+        guard = _source_read_lock if isinstance(index, dict) and index.get("mode") == "disk" else nullcontext()
+        with guard:
             return method(*args, **kwargs)
     return wrapped
 
@@ -483,6 +537,11 @@ def pending_video_job(target):
 def resolve_video_job(request, job):
     """Resume only an identical selection; leave the dataset lease checks intact."""
     job = Path(job).resolve()
+    if request.get("fresh_start"):
+        # The UI has explicitly chosen a new scan after a paused history.  The
+        # old job remains available from the history/report window, but it must
+        # not prevent a new source selection from starting.
+        return job
     pending = pending_video_job(request["target"])
     if pending is None or pending == job:
         return job
@@ -551,6 +610,13 @@ def organize(
     plan = dict(adapter=ADAPTER, id=token, request=request, request_sha256=signature,
                 status="preparing", rows=[], issues=[], completed_records=completed, prepared_records=prepared_records,
                 existing_json_sources=existing_json_sources)
+    started_at = time.monotonic()
+    try:
+        deadline_seconds = float(request.get("deadline_seconds", DEFAULT_DEADLINE_SECONDS))
+    except (TypeError, ValueError):
+        deadline_seconds = DEFAULT_DEADLINE_SECONDS
+    deadline_seconds = max(60.0, deadline_seconds)
+
     with ExitStack() as stack:
         destination_root = storage_root(root)
         stage = destination_root / ".归类缓存" / "原始录像" / job.name
@@ -579,6 +645,9 @@ def organize(
 
         def is_cancelled():
             log.pulse()
+            elapsed = time.monotonic() - started_at
+            if elapsed >= deadline_seconds:
+                raise TimeoutError(f"原始录像归类已达到 {deadline_seconds / 3600:.1f} 小时硬截止；已完成项保留，请继续剩余任务")
             return stopping.is_set() or cancelled()
 
         def archived(value):
@@ -708,6 +777,9 @@ def organize(
                     except InterruptedError:
                         log.finish("paused", "任务已暂停，已归档成品保留，可继续")
                         raise
+                    except TimeoutError as exc:
+                        log.finish("paused", str(exc))
+                        raise InterruptedError(str(exc)) from exc
                     except (OSError, ValueError, RuntimeError) as exc:
                         check(is_cancelled)
                         issue = dict(source=row["id"], original_source=row["source"], status="blocked", message=str(exc))
@@ -759,6 +831,10 @@ def organize(
             report = log.save(plan["status"])
             atomic_json(attachments / "视频任务记录.json", report, backup=False)
             shutil.copy2(job / "视频任务记录.csv", attachments / "视频任务记录.csv")
+            # A successful Dahua task no longer needs a resumable access guard.
+            # Without this, the pending record survived the lease context and
+            # blocked every later project open on the same farm.
+            lease.complete(token)
             return plan
         except BaseException as exc:
             plan["status"] = "paused" if isinstance(exc, InterruptedError) else "failed"

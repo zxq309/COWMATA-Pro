@@ -48,6 +48,10 @@ def portable_ignore(directory, names):
             ignored.update(name for name in names if name not in profile['plugin_families'])
     if path.name == "bin" and path.parent.name == "ffmpeg":
         ignored.add("ffplay.exe")
+    if path.name == "plugins" and path.parent.name == "vlc":
+        # VLC regenerates this machine-specific index on first start. Shipping
+        # it makes every clean export report a stale plugin cache.
+        ignored.add("plugins.dat")
     if any(p in {"runtime", "model_runtime_20260906"} for p in path.parts):
         ignored.add("tests")
     return ignored
@@ -102,7 +106,7 @@ def main():
     for name in ("cowmata-security.json", "upload_key.pub", "COWMATA.exe", "START_ANNOTATOR.bat", "修复旧版更新.cmd", "portable_start.py", "使用说明.txt", "README.md", "README.zh-CN.md", "CHANGELOG.md", "CITATION.cff", "CONTRIBUTING.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'operator-guide-395.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'release-395.md', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md'):
+    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'operator-guide-395.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'release-395.md', 'release-410.md', 'release-411.md', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md'):
         shutil.copy2(source/'docs'/name, destination/'docs'/name)
     shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
     shutil.copytree(source/'docs/images/guide390', destination/'docs/images/guide390')

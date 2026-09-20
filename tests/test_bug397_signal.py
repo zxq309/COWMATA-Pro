@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication
 from cowmata_tailring.ui.widgets import PlotSeries
 from cowmata_tailring.workspace.multi_sensor import load_related
 from cowmata_tailring.workspace.signal_panel import SignalPanel
+from cowmata_tailring.workspace.sensor_records import parse_sensor_object
 
 
 @pytest.fixture(scope="module")
@@ -47,6 +48,24 @@ def test_ppg_record_selects_explicit_ppg_tab_and_no_motion_curve(app):
     assert not panel.wave._series
     assert "selected" in panel.sheets.styleSheet()
     panel.close()
+
+
+def test_ppg_json_is_loaded_as_ppg_when_the_record_kind_is_explicit(tmp_path):
+    """The project row loader must not fall back to the Motion parser."""
+    payload = dict(
+        device="0C3D5EA22E37",
+        create_time=1787782800000,
+        sample_rate_hz=10,
+        configs={"pulse_sample_time": 3},
+        data=base64.b64encode(struct.pack("<30I", *range(30))).decode(),
+    )
+    path = tmp_path / "PPG" / "2026-08-27" / "record.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    record = parse_sensor_object(payload, path, kind="ppg")
+    assert record.kind == "ppg"
+    assert record.sample_count == 30
+    assert record.plot_series()
 
 
 @pytest.mark.parametrize("flat", [False, True])

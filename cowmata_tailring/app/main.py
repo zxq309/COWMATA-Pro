@@ -10,6 +10,29 @@ APP_ORG = "Cowmata"
 APP_NAME = "Cowmata TailRing"
 
 
+def run_event_loop(application):
+    try:
+        return application.exec()
+    finally:
+        from cowmata_tailring.workspace.maintenance import cleanup_session
+        cleanup_session()
+
+
+def resolve_start_mode(role: str, mode: str, *, has_single_source: bool) -> str:
+    """Choose the shared project workspace for both authenticated roles.
+
+    The model-assist window is still useful for explicitly supplied single
+    JSON/video inputs.  A normal launch, however, must open the same project
+    workspace for administrators and operators so that project indexing and
+    multi-sensor loading are identical.
+    """
+    if mode == "model-assist" and not has_single_source:
+        return "workspace"
+    if role == "operator" and mode == "model-assist":
+        return "basic"
+    return mode
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cowmata-annotator",
@@ -84,8 +107,11 @@ def main(argv: list[str] | None = None) -> int:
     session = authenticate(security_root, 'pro')
     if session is None:
         return 0
-    if session.identity['role'] == 'operator' and args.mode == 'model-assist':
-        args.mode = 'basic' if (args.json or args.video) else 'workspace'
+    args.mode = resolve_start_mode(
+        session.identity['role'],
+        args.mode,
+        has_single_source=bool(args.json or args.video),
+    )
     canvas = QPixmap(520, 130)
     canvas.fill(QColor('#e8f4dc'))
     splash = QSplashScreen(canvas)
@@ -104,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
         install_window(window, security_root, "pro")
         window.show()
         splash.finish(window)
-        return application.exec()
+        return run_event_loop(application)
 
     if (args.mode == "workspace" and not (args.json or args.video)) or args.project:
         if args.workspace_ui == "classic":
@@ -134,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.project or args.json or args.video:
         QTimer.singleShot(0, open_startup_files)
-    return application.exec()
+    return run_event_loop(application)
 
 
 if __name__ == "__main__":

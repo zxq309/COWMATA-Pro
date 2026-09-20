@@ -345,7 +345,14 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                         "-hide_banner",
                         "-v",
                         "warning",
-                        "-xerror",
+                        # A-law packets from the recorder occasionally carry
+                        # a one-packet backwards DTS jump.  Treat it as a
+                        # recoverable mux warning in the remux path; the
+                        # container, codec, frame count and boundary samples
+                        # are still checked below.  Failing here forces a
+                        # full H.265/H.264 re-encode and turns a seconds-long
+                        # remux into a minutes-long CPU job.
+                        "-err_detect", "ignore_err",
                         "-progress", "pipe:1", "-stats_period", "0.5", "-nostats",
                         "-copyts",
                         "-start_at_zero",
@@ -372,6 +379,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                         "48000",
                         "-b:a",
                         "96k",
+                        "-avoid_negative_ts", "make_zero",
                         "-movflags",
                         "+faststart",
                         "-n",
@@ -513,8 +521,9 @@ def expected_video_frames(timing, offset_ms, duration_ms):
 def audio_clock_options(timing):
     if timing and timing.get("audio_offset_ms") is not None:
         # A validated recorder clock already has an explicit audio offset;
-        # preserve that expression byte-for-byte for the alignment contract.
-        return ["-af", f"asetpts=N/SR/TB+{timing['audio_offset_ms']}/(1000*TB)"]
+        # preserve that expression while first repairing short backwards DTS
+        # jumps observed in A-law tracks.
+        return ["-af", f"aresample=async=1:min_hard_comp=0.100:first_pts=0,asetpts=N/SR/TB+{timing['audio_offset_ms']}/(1000*TB)"]
     # Without a recovered clock, DHAV audio occasionally reports a short
     # backwards DTS jump. Resampling that clock repairs the discontinuity
     # without touching video.

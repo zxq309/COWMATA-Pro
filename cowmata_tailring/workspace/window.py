@@ -325,7 +325,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.alignment_label.setWordWrap(True)
         signal_layout.addWidget(self.alignment_label)
         self.plot = self.create_plot()
-        self.plot.setMinimumSize(420, 300)
+        signal_panel.setMinimumWidth(520)
+        self.plot.setMinimumSize(520, 360)
         self.plot.seekRequested.connect(self.seek_imu)
         self.plot.rangeSelected.connect(self.select_range)
         self.plot.eventSelected.connect(self.select_plot_event)
@@ -366,7 +367,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.video_slider.sliderReleased.connect(self.slider_seek)
         video_layout.addWidget(self.video_slider)
         top.addWidget(video_panel)
-        top.setSizes([650, 800])
+        top.setChildrenCollapsible(False)
+        top.setStretchFactor(0, 2)
+        top.setStretchFactor(1, 3)
+        top.setSizes([760, 1140])
         right.addWidget(top)
 
         bottom = QWidget()
@@ -415,7 +419,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.events.itemSelectionChanged.connect(self.sync_event_selection)
         bottom_layout.addWidget(self.events)
         right.addWidget(bottom)
-        right.setSizes([720, 220])
+        right.setChildrenCollapsible(False)
+        right.setStretchFactor(0, 3)
+        right.setStretchFactor(1, 1)
+        right.setSizes([780, 260])
         horizontal.addWidget(right)
         horizontal.setSizes([240, 1350])
         outer.addWidget(horizontal, 1)
@@ -473,19 +480,36 @@ class MainWindow(AlignmentMixin, QMainWindow):
 
     def choose_project(self):
         from .project_picker import ProjectPicker
+        from .farm_layout import shared_farm
         settings=QSettings()
         root = QFileDialog.getExistingDirectory(self, '第一步：选择本批数据所属的牧场根目录',
             settings.value('workspace/last_farm','',type=str))
         if not root:
             return
+        # Selecting a visible category folder (for example 产犊) should still
+        # resolve to the shared farm root instead of leaving the picker empty.
+        normalized = shared_farm(root)
+        if normalized is not None:
+            root = str(normalized)
         dialog=ProjectPicker(root,self)
         if dialog.exec()==QDialog.DialogCode.Accepted:
             selected=dialog.selection()
             settings.setValue('workspace/last_farm',selected['farm'])
             preferred = None
-            if selected.get('modality') == 'PPG':
-                preferred = next((Path(selected['root'])/'PPG'/selected['day']).rglob('*.json'), None)
-            self.open_project(selected['root'],day=selected['day'],preferred_json=preferred)
+            modality = selected.get('modality')
+            # Catalogs use Motion/PPG records as their primary rows.  A
+            # temperature-only view therefore opens the nearest primary
+            # record, then filters the signal panel to Temp after loading.
+            preferred_dirs = ['PPG'] if modality == 'PPG' else ['Motion', 'PPG']
+            for directory in preferred_dirs:
+                candidate = Path(selected['root']) / directory / selected['day']
+                preferred = next(candidate.rglob('*.json'), None) if candidate.is_dir() else None
+                if preferred is not None:
+                    break
+            self.open_project(
+                selected['root'], day=selected['day'], preferred_json=preferred,
+                modalities=modality,
+            )
 
     def choose_record(self):
         path, _ = QFileDialog.getOpenFileName(self, "选择任意原始九轴 JSON", str(self.catalog.root) if self.catalog else "", "JSON (*.json)")
@@ -803,7 +827,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
         catalog.close()
         self.retired = [(w, c) for w, c in self.retired if w is not worker]
 
-    def open_project(self, root, *, preferred_json=None, day=None, standalone=None):
+    def open_project(self, root, *, preferred_json=None, day=None, standalone=None, modalities=None):
         self.cancel_alignment()
         from .dataset_access import ensure_available
         if getattr(self, "_organization_pausing", False):
@@ -833,6 +857,15 @@ class MainWindow(AlignmentMixin, QMainWindow):
             else:
                 self.catalog = Catalog(root, load_session=True,day=day)
             self.settings = self.catalog.settings()
+            selected_modalities = modalities or 'all'
+            if isinstance(selected_modalities, str):
+                selected_modalities = {
+                    'all': ['motion', 'ppg', 'temp'],
+                    'Motion': ['motion'],
+                    'PPG': ['ppg'],
+                    'Temp': ['temp'],
+                }.get(selected_modalities, ['motion', 'ppg', 'temp'])
+            self.settings['open_modalities'] = list(selected_modalities)
             self._daily_auto_views=bool(day and not self.settings.get('selected_cameras'))
             if day:
                 self.settings['active_day']=day
@@ -1416,7 +1449,13 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 if before != row["stamp"]:
                     raise ValueError("九轴文件在读取时变化，请等复制完成后刷新")
                 cached = self.motion_cache.get(asset_id)
-                motion = cached or load_motion_json(path)
+                # A catalog contains both Motion and PPG rows.  The generic
+                # loader defaults to Motion, so pass the row kind explicitly
+                # or PPG records are parsed as empty IMU records.
+                metadata = row.get("metadata") or {}
+                is_ppg = (metadata.get("kind") == "ppg" or
+                          any(part.casefold() == "ppg" for part in Path(row["path"]).parts))
+                motion = cached or load_motion_json(path, kind="ppg" if is_ppg else "imu")
                 if file_stamp(path) != before:
                     raise ValueError("九轴文件在读取时变化，请等复制完成后刷新")
                 if not self._closed:
@@ -1502,6 +1541,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.board.two_view_ratio = profile.get("two_view_ratio", 50)
             self.board.set_main(profile.get("main", self.settings.get("main_camera", self.board.main_camera)))
         self.work.project.source.update({"name": Path(row["path"]).name, "path": row["path"], "asset_id": row["asset_id"],
+                                         "kind": getattr(motion, "kind", metadata.get("kind", "imu")),
                                          "project_root_hint":str(self.catalog.root),
                                          "device": motion.device, "uid": motion.uid, "durationMs": motion.duration_ms,
                                          "createTimeMs": motion.create_time_ms,
@@ -1518,7 +1558,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.plot.set_data([PlotSeries(**series) for series in motion.plot_series()], motion.duration_ms)
         self.plot.set_view(0, motion.duration_ms)
         if hasattr(self.plot, "load_related"):
-            self.plot.load_related(motion, self.catalog.root, self.work.project.cow_id)
+            self.plot.load_related(
+                motion, self.catalog.root, self.work.project.cow_id,
+                allowed=self.settings.get("open_modalities", ["motion", "ppg", "temp"]),
+            )
         self.imu_position.setMaximum(motion.duration_ms / 1000)
         self.imu_ms = float(self.work.progress.get("imu_ms", 0))
         if follow:
@@ -1587,7 +1630,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
             if value != self.work.project.cow_id or self.work.project.extras.get("device_identity", {}).get("status") == "conflict":
                 self.work.confirm_cow(value)
                 if hasattr(self.plot, "load_related"):
-                    self.plot.load_related(self.motion, self.catalog.root, value)
+                    self.plot.load_related(
+                        self.motion, self.catalog.root, value,
+                        allowed=self.settings.get("open_modalities", ["motion", "ppg", "temp"]),
+                    )
                 self.update_identity_display()
                 self.refresh_events()
                 self.dirty = True

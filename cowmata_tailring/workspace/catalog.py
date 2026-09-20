@@ -152,6 +152,11 @@ class Catalog:
         if self.meta.is_symlink() or getattr(self.meta, "is_junction", lambda: False)():
             raise ValueError("标注工程目录不能是指向其他位置的链接")
         new = not self.meta.exists()
+        from cowmata_tailring import __version__
+        previous_cache_version = read_json(self.meta / '.cache-version.json', {}).get('version')
+
+        from .maintenance import clean_version_cache
+        clean_version_cache(self.root, self.meta, __version__)
         self.source_lease = DatasetLease([self.root], owner=organization_owner)
         try:
             self.meta.mkdir(exist_ok=True)
@@ -170,6 +175,10 @@ class Catalog:
                     atomic_json(marker, {"owner": "cowmata-project-load-v1"})
                 self.load_pending = read_json(marker, {}).get("owner") == "cowmata-project-load-v1"
             self._open_index()
+            if new and not self.readonly:
+                atomic_json(self.meta / '.cache-version.json', {'version': __version__}, backup=False)
+            if not self.readonly and previous_cache_version != __version__:
+                self._retry_media_tool_failures()
         except Exception:
             if getattr(self, "db", None):
                 self.db.close()
@@ -247,6 +256,22 @@ class Catalog:
     def _write_check(self):
         if self.readonly:
             raise PermissionError("工程已由另一个窗口打开：当前只读")
+
+    def _retry_media_tool_failures(self):
+        """Requeue only video rows failed by the old missing bundled tools.
+
+        Other invalid rows may represent damaged media or a deliberate parser
+        rejection and must remain visible for manual diagnosis.
+        """
+        message = '等待重新解析：版本更新后已恢复媒体工具'
+        with self.mutex, self.db:
+            self.db.execute(
+                """UPDATE locations SET state='pending', error=?, attempt_at=0
+                   WHERE kind='video' AND state='invalid'
+                     AND (lower(error) LIKE '%ffmpeg.exe%'
+                          OR lower(error) LIKE '%ffprobe.exe%')""",
+                (message,),
+            )
 
     def close(self):
         with self.mutex:
