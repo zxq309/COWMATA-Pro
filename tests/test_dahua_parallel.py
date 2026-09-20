@@ -154,3 +154,25 @@ def test_progress_summary_lists_simultaneous_views():
 
 def test_default_view_scheduler_starts_all_twenty_channels():
     assert tasks.preparation_workers() == 20
+
+
+def test_physical_recorder_reads_are_serialized_to_avoid_seek_thrash():
+    assert tasks.preparation_workers({"mode": "disk"}) == 1
+    assert tasks.preparation_workers({"mode": "files"}) == 20
+
+
+def test_progress_speed_excludes_unfinished_reading_tasks():
+    from cowmata_tailring.workspace.dahua_run_ui import DahuaRunTables
+
+    table = DahuaRunTables()
+    try:
+        table.begin()
+        table.started -= 200
+        table.accept(dict(event_kind="task_record", source_id="done", owner="视角01",
+                          status="done", targets=[], size=100 * 1048576, file_seconds=10))
+        table.accept(dict(event_kind="task_record", source_id="reading", owner="视角02",
+                          status="processing", targets=[], size=0, file_seconds=190))
+        table.flush()
+        assert "10.00 MiB/秒" in table.summary.text()
+    finally:
+        table.close()

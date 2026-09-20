@@ -290,14 +290,14 @@ def serial_source_read(method):
     return wrapped
 
 
-def preparation_workers():
+def preparation_workers(index=None):
     """Queue every recorder view; raw-disk reads remain serialized, conversions overlap.
 
     The worker count is deliberately the recorder capacity (20), while each
     decoder is restricted to one thread. This starts all mapped views instead
     of leaving 18 views in a hidden two-worker queue.
     """
-    return len(VIEWS)
+    return 1 if isinstance(index, dict) and index.get("mode") == "disk" else len(VIEWS)
 
 
 @serial_source_read
@@ -798,7 +798,8 @@ def organize(
 
         def row_stream():
             from .dahua_parallel import prepared_records as parallel_records
-            preparing = parallel_records(selected, prepare_one, preparation_workers(),
+            workers = 1 if index.get("mode") == "disk" else preparation_workers()
+            preparing = parallel_records(selected, prepare_one, workers,
                                          lambda: check(is_cancelled))
             try:
                 for position, (row, future) in enumerate(preparing):

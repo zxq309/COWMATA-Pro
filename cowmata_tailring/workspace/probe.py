@@ -627,7 +627,10 @@ class SourceInspector:
             info = probe_media(path, cancelled=self.stop.is_set)
             try:
                 result = metadata_from_name(path, self.relative_path(path), info)
-                if "mp4" in str(info.get("format", {}).get("format_name", "")):
+                if (
+                    "mp4" in str(info.get("format", {}).get("format_name", ""))
+                    or result.get("duration_basis") == "adjacent_filename"
+                ):
                     return result
             except ValueError:
                 pass
