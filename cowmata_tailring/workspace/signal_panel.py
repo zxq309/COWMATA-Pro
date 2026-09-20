@@ -72,7 +72,7 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumSize(300, 92)
+        self.setMinimumSize(300, 150)
         self.set_lanes_visible(False)
         self.group = "all"
         self.clock = None
@@ -93,7 +93,7 @@ class ReviewWaveform(InteractiveSignalPlotWidget):
         self.group = group
         # Keep each axis readable even when the video leaves little vertical room.
         lanes = len(self.visible_groups())
-        self.setMinimumHeight(max(92, self.TOP + self.BOTTOM + lanes * max(32, self.fontMetrics().height() + 16)))
+        self.setMinimumHeight(max(150, self.TOP + self.BOTTOM + lanes * max(40, self.fontMetrics().height() + 22)))
         self._invalidate_static()
 
     def visible_groups(self):
