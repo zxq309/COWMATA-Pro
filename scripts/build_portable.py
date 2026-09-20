@@ -48,6 +48,10 @@ def portable_ignore(directory, names):
             ignored.update(name for name in names if name not in profile['plugin_families'])
     if path.name == "bin" and path.parent.name == "ffmpeg":
         ignored.add("ffplay.exe")
+    if path.name == "plugins" and path.parent.name == "vlc":
+        # VLC regenerates this machine-specific index on first start. Shipping
+        # it makes every clean export report a stale plugin cache.
+        ignored.add("plugins.dat")
     if any(p in {"runtime", "model_runtime_20260906"} for p in path.parts):
         ignored.add("tests")
     return ignored
