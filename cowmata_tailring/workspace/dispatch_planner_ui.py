@@ -9,6 +9,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -26,12 +27,10 @@ from cowmata_tailring.edge_download.core import CHINA
 from .farm_layout import CATEGORY_PATHS
 
 
-def eligible(unit, purpose):
-    if {'Motion', 'PPG', 'Temp'} - set(unit['modalities']):
-        return False
+def eligible(unit, purpose, allow_repackage=False):
     if purpose == 'review':
         return bool(unit.get('annotated_records'))
-    return unit['annotation_status'] != 'done' and not unit['dispatches']
+    return unit['annotation_status'] != 'done' and (allow_repackage or not unit['dispatches'])
 
 
 class PackageSheet(QWidget):
@@ -83,7 +82,7 @@ class PackageSheet(QWidget):
         self.planner.refresh()
 
     def available(self, day):
-        return [u for u in self.by_day.get(day, []) if eligible(u, self.planner.purpose)]
+        return [u for u in self.by_day.get(day, []) if eligible(u, self.planner.purpose, self.planner.allow_repackage.isChecked())]
 
     def selected_units(self):
         return [u for day in sorted(self.selected_days) for u in self.available(day)]
@@ -161,14 +160,15 @@ class DispatchPlanner(QWidget):
         self.panes = []
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        hint = QLabel('录像：所选日期及时段的全部视角自动纳入，包含跨日覆盖，无需选择视角。')
+        hint = QLabel('所选日期下的 JSON 与录像按原目录树派发；不改名、不移动原始文件。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
+        self.allow_repackage = QCheckBox('允许再次派发已派日期（预览后再次确认）')
+        self.allow_repackage.setToolTip('默认关闭；打开后已派日期仍会显示“已派”标记，并在预览时弹窗确认。')
+        self.allow_repackage.stateChanged.connect(lambda *_: self.refresh())
+        layout.addWidget(self.allow_repackage)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
-        self.balance_button = QPushButton('按设备量 / 记录 / 容量自动均分日期')
-        self.balance_button.clicked.connect(self.balance)
-        layout.addWidget(self.balance_button)
         self.set_count(count)
 
     def set_count(self, count):
@@ -202,7 +202,7 @@ class DispatchPlanner(QWidget):
         # Drop selections that no longer exist before calculating cross-package ownership.
         for pane in self.panes:
             rows = self.inventory_by_category.get(pane.category.currentText(), [])
-            pane.selected_days &= {u['day'] for u in rows if eligible(u, self.purpose)}
+            pane.selected_days &= {u['day'] for u in rows if eligible(u, self.purpose, self.allow_repackage.isChecked())}
         used = {(p.category.currentText(), d): i for i, p in enumerate(self.panes, 1) for d in p.selected_days}
         for i, pane in enumerate(self.panes, 1):
             pane.render(used)

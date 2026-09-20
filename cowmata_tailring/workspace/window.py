@@ -820,6 +820,30 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.worker = self.catalog = None
         self.board.select([])
 
+    def close_annotation_session(self):
+        """Save and release the current project before downstream organization."""
+        if not self.catalog:
+            self.tell("当前没有打开的工程")
+            return
+        if self.active_event:
+            self.tell("请先结束或取消当前动作，再关闭标注")
+            return
+        self.cancel_alignment()
+        def released(message):
+            if self.catalog is None:
+                self.board.catalog = None
+                self.current_row = self.motion = self.work = None
+                self.source_available = False
+                self.motion_cache.clear()
+                self.events.setRowCount(0)
+                self.cameras.clear()
+                self.cow.clear()
+                self.root_label.setText("标注已关闭，可从文件菜单打开工程")
+                self.tell("标注已保存并关闭，播放器和工程占用已释放，可进行数据归类。")
+            else:
+                self.tell(message)
+        self.pause_for_organization(released)
+
     def _release_retired(self, worker, catalog):
         if worker.thread.is_alive():
             QTimer.singleShot(100, lambda: self._release_retired(worker, catalog))
@@ -1540,6 +1564,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.layout_choice.setCurrentIndex(profile.get("layout", self.settings.get("layout", 0)))
             self.board.two_view_ratio = profile.get("two_view_ratio", 50)
             self.board.set_main(profile.get("main", self.settings.get("main_camera", self.board.main_camera)))
+        metadata = row.get("metadata") or {}
         self.work.project.source.update({"name": Path(row["path"]).name, "path": row["path"], "asset_id": row["asset_id"],
                                          "kind": getattr(motion, "kind", metadata.get("kind", "imu")),
                                          "project_root_hint":str(self.catalog.root),

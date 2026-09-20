@@ -11,10 +11,12 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QScrollArea,
     QTabBar,
     QToolTip,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -417,17 +419,29 @@ class SignalPanel(QWidget):
         self.toolbar.addWidget(legend)
         hint = QLabel("标签：拖动两端改起止 · 拖动中间平移")
         hint.setToolTip("先单击标注列表或标签轨道选中；波形上的左右手柄也可直接拖动。修改后请回看复核。")
-        self.toolbar.addWidget(hint)
+        hint.hide()
         self.toolbar.addStretch(1)
         self.pan_button = QPushButton("平移")
         self.pan_button.setCheckable(True)
         self.pan_button.setToolTip("先用滚轮放大，再拖动平移；也可按住 Shift 拖动。不会修改标注边界。")
         self.pan_button.toggled.connect(lambda enabled: setattr(self.wave, "pan_enabled", enabled))
-        self.toolbar.addWidget(self.pan_button)
+        self.pan_button.hide()
         self.full_button = QPushButton("完整记录")
         self.full_button.setToolTip("显示这份记录的完整时间跨度（Ctrl+Shift+F），保留当前播放位置。")
         self.full_button.clicked.connect(lambda: self.set_view(0, self.wave._duration_ms))
-        self.toolbar.addWidget(self.full_button)
+        self.full_button.hide()
+        self.more_button = QToolButton()
+        self.more_button.setText("更多")
+        menu = QMenu(self.more_button)
+        pan_action = menu.addAction("平移模式")
+        pan_action.setCheckable(True)
+        pan_action.toggled.connect(self.pan_button.setChecked)
+        full_action = menu.addAction("完整记录")
+        full_action.triggered.connect(self.full_button.click)
+        self.more_button.setMenu(menu)
+        self.more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.more_button.setToolTip("曲线辅助操作")
+        self.toolbar.addWidget(self.more_button)
         self.sheets = QTabBar()
         self.sheets.setExpanding(False)
         self.sheets.setStyleSheet("QTabBar::tab {background:#edf5e7; border:1px solid #bfd4af; padding:7px 18px; margin-right:4px; color:#315225;}"
@@ -440,11 +454,10 @@ class SignalPanel(QWidget):
         self.modalities = {"motion": [], "ppg": [], "temp": []}
         self.sensor_messages = {}
         self.sheets.currentChanged.connect(self._switch_sheet)
-        layout.addWidget(self.sheets)
         self.sensor_status = QLabel("选择记录后显示曲线；三个页签共用一份标签")
         self.sensor_status.setWordWrap(True)
         self.sensor_status.setStyleSheet("color:#5f777b; padding:2px 10px; font-size:11px")
-        layout.addWidget(self.sensor_status)
+        self.sensor_status.hide()
         layout.addLayout(self.toolbar)
         self.wave_scroll = QScrollArea()
         self.wave_scroll.setWidgetResizable(True)
@@ -452,6 +465,8 @@ class SignalPanel(QWidget):
         self.wave_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.wave_scroll.setWidget(self.wave)
         layout.addWidget(self.wave_scroll, 1)
+        self.sheets.setStyleSheet("QTabBar::tab {background:#edf5e7; border:1px solid #bfd4af; padding:3px 10px; margin-right:3px; color:#315225; font-size:12px;} QTabBar::tab:selected {background:#8add66; border:1px solid #436d25; color:#20351c; font-weight:700;}")
+        layout.addWidget(self.sheets)
         self.track = EventStrip(self.wave)
         self.track.setToolTip(self.track.toolTip() + "；虚线轮廓表示待复核，不代表已确认真值")
         self.scroll = QScrollArea()
@@ -517,6 +532,7 @@ class SignalPanel(QWidget):
         self.sensor_status.setText("当前：" + {"motion":"九轴 Motion", "ppg":"PPG", "temp":"温度 Temp"}[key] + " · " + ('' if self.wave._series else self.wave.empty_text + '；') + note +
             ' · 共用标签；无样本的区间不代表负样本')
         self.sensor_status.setToolTip(self.sensor_status.text())
+        self.sheets.setToolTip(self.sensor_status.text())
         self.wave.set_group(group)
         self.track.refresh()
 

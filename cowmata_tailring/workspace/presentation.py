@@ -279,7 +279,7 @@ class WorkspaceStage(QWidget):
         self.mode = "A"
         self.pip_scale = .34
         self.pip_position = (1.0, 0.0)
-        self.wave_ratio = .42
+        self.wave_ratio = .55
         self.signal_panel = signal_panel
         signal_panel.setParent(self)
         self.video = QFrame(self)

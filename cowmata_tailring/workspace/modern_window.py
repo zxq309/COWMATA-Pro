@@ -9,7 +9,6 @@ from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QActionGroup, QIcon, QPainter
-from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -83,13 +82,8 @@ class MainWindow(ControllerWindow):
         outer.setContentsMargins(14, 8, 14, 8)
         outer.setSpacing(7)
         header = QHBoxLayout()
-        brand = QSvgWidget(str(Path(__file__).resolve().parents[2] / "assets/brand/pro-wordmark.svg"))
-        brand.setFixedSize(210, 26)
-        brand.setAccessibleName("COWMATA Pro™")
-        brand.setToolTip("COWMATA Pro™")
-        header.addWidget(brand)
-        self._icon_button("Folder Open", "打开工程", self.choose_project, header)
         self.root_label = ElidingLabel("九轴 / PPG / 温度与多视角录像")
+        self.root_label.setStyleSheet("font-size:12px; color:#315225; padding-left:6px")
         header.addWidget(self.root_label, 1)
         self.source_toggle = self._icon_button("Panel Left", "素材", self.toggle_sources, header)
         self.source_toggle.setCheckable(True)
@@ -218,13 +212,14 @@ class MainWindow(ControllerWindow):
         self.stage = WorkspaceStage(self.board, self.plot)
         self.board.focusRequested.connect(self.focus_video)
         self.plot.setMinimumSize(300, 160)
-        self.imu_position.setMaximumWidth(140)
+        self.imu_position.setMaximumWidth(230)
         self.imu_position.setToolTip("九轴文件内的位置，不等于服务器收包时间")
-        self.plot.toolbar.addWidget(self.imu_position)
+        self.imu_position.setParent(self.options if hasattr(self, "options") else center)
+        self.imu_position.hide()
         self.plot.toolbar.addWidget(self.link)
         self.alignment_button = self._icon_button("Pin", "一次对齐", self.pin, self.plot.toolbar)
         self.alignment_button.setToolTip("只找一个对应时刻即可完成对齐；点击后可分别拖动录像和九轴。")
-        review.addWidget(self.camera_pages)
+        header.insertWidget(1, self.camera_pages)
         review.addWidget(self.stage, 1)
         review.addWidget(self.alignment_controls)
         self.alignment_label.setStyleSheet("font-size:11px; color:#7b693d")
@@ -264,16 +259,27 @@ class MainWindow(ControllerWindow):
         self.mark_button.setText("动作起止")
         self.mark_button.setToolTip("开始 / 结束当前视频动作；也可使用标签对应的快捷键")
         annotation.addWidget(self.mark_button)
-        self._icon_button("Wand", "自动候选", self.open_candidates, annotation)
+        self.annotation_more = QToolButton()
+        self.annotation_more.setText("更多操作")
+        more_menu = QMenu(self.annotation_more)
+        more_menu.addAction("自动候选", self.open_candidates)
+        more_menu.addAction("界面与播放设置…", self.presentation_settings)
+        more_menu.addAction("加载记录…", self.show_status_details)
+        self.annotation_more.setMenu(more_menu)
+        self.annotation_more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        annotation.addWidget(self.annotation_more)
         self.event_toggle = self._icon_button("Text Bullet List", "标注列表", self.toggle_events, annotation)
         self.event_toggle.setCheckable(True)
         self._icon_button("Save", "保存", self.save_user_annotations, annotation)
         self._button("完成本份…", self.finish_record, annotation).setToolTip("确认整份已检查，选择下一份或保存退出；Ctrl+Enter")
+        self._button("关闭标注", self.close_annotation_session, annotation).setToolTip("保存当前标注并释放工程文件；之后可安全执行数据归类")
         review.addLayout(annotation)
         self.event_status.setStyleSheet("font-size:11px; color:#6b8179")
-        self.event_status.setWordWrap(True)
+        self.event_status.setWordWrap(False)
         action_state = QHBoxLayout()
-        action_state.addWidget(self.event_status, 1)
+        self.event_status.setParent(center)
+        self.event_status.hide()
+        self.mark_button.setToolTip(self.event_status.text())
         action_state.addWidget(self.cancel_action_button)
         review.addLayout(action_state)
         self.body.addWidget(center)
@@ -355,7 +361,7 @@ class MainWindow(ControllerWindow):
         self.status_details_button = QPushButton("加载记录…")
         self.status_details_button.setToolTip("展开完整状态、路径和加载记录；可选择复制")
         self.status_details_button.clicked.connect(self.show_status_details)
-        self.statusBar().addPermanentWidget(self.status_details_button)
+        self.status_details_button.hide()
         self.set_glass(True)
         self.source_panel.hide()
         self.event_panel.hide()
@@ -793,7 +799,7 @@ class MainWindow(ControllerWindow):
             self.dirty = True
 
     def resize_wave(self, i):
-        self.stage.wave_ratio = [.32, .42, .52][i]
+        self.stage.wave_ratio = [.44, .55, .65][i]
         self.stage.arrange()
         if self.catalog:
             self.dirty = True

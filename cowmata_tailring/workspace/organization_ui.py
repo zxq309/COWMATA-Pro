@@ -734,7 +734,8 @@ class OrganizationWindow(TaskWindow):
         from .dahua_ui import DahuaPanel
 
         self.dahua_panel = DahuaPanel(self)
-        self.mode_sheets.addTab(self.dahua_panel, "原始录像转码与归类")
+        self.mode_sheets.insertTab(0, self.dahua_panel, "原始录像转码与归类")
+        self.mode_sheets.setCurrentIndex(0)
 
     def apply_report_snapshot(self):
         from .classification_report import read_snapshot, source_key, summary_text
