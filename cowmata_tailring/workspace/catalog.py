@@ -572,6 +572,13 @@ class Catalog:
                 from cowmata_tailring.media.timeline import MediaTimelineIndex
                 cached_timeline=MediaTimelineIndex.from_dict(metadata['timeline']) if metadata.get('timeline') else None
                 metadata=metadata_from_name(path,relative,info,cached_timeline)
+            if named and metadata and not metadata.get('manual_readings') and metadata.get('time_engine') == FILENAME_SIGNATURE:
+                # Versioned filename media metadata must be re-inspected once
+                # after a timing-engine upgrade; otherwise stale short Dahua
+                # durations remain authoritative forever.
+                from .video_filename import SIGNATURE as CURRENT_FILENAME_SIGNATURE
+                if metadata.get('version') != CURRENT_FILENAME_SIGNATURE:
+                    metadata = {}
             filename_changed = row['kind']=='video' and not metadata.get('manual_readings') and (
                 named != (metadata.get('time_engine')==FILENAME_SIGNATURE))
             if not metadata or metadata.get("recheck") or filename_changed:
@@ -580,6 +587,8 @@ class Catalog:
                 if previous_camera and row["kind"] == "video":
                     metadata["camera"] = previous_camera
             metadata = bind_location_metadata(metadata, before, relative)
+            if metadata.get('time_engine') == FILENAME_SIGNATURE:
+                metadata['version'] = FILENAME_SIGNATURE
             if cancelled and cancelled():
                 raise InterruptedError("素材检查已暂停")
             if not isinstance(metadata, dict):

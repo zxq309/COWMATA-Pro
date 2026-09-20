@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QComboBox,
+    QCheckBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from . import collaboration_packages as packages
 from .dispatch_planner_ui import DispatchPlanner
+from .catalog import VIDEO_SUFFIXES
 from .farm_layout import shared_farm
 from .native_folders import choose_folders
 from .theme import STYLE
@@ -49,7 +51,7 @@ class CollaborationDialog(QDialog):
         self.resize(1060, 740 if mode == 'dispatch' else 480)
         self.setStyleSheet(STYLE)
         layout = QVBoxLayout(self)
-        hint = QLabel({'dispatch': '先更新 CSV 并完成下载、归类，再派包。Motion、PPG、Temp 齐全且录像覆盖采集时段才可派发；容量仅提示，不设上限。',
+        hint = QLabel({'dispatch': '按所选目录和各包勾选日期一键派包，仅包含 JSON 与视频。已派日期默认标记并跳过；异常记录到派包报告。',
                        'returns': '保存标注后生成回传 ZIP。只包含标注结果和证据图，保留任务编号及目录结构。',
                        'receive': '先完整校验任务、目录、原始数据和标签，再接收。重复内容跳过；冲突保留并生成报告。',
                        'open': '选择原始数据 ZIP，软件核验并解包后直接打开工程。无需手动整理文件夹。',
@@ -69,7 +71,7 @@ class CollaborationDialog(QDialog):
             controls = QHBoxLayout()
             self.purpose = QComboBox()
             self.purpose.addItem('标注任务（跳过已完成）', 'annotation')
-            self.purpose.addItem('复核任务（带已有标签）', 'review')
+            self.purpose.addItem('复核任务（原始 JSON 与视频）', 'review')
             controls.addWidget(self.purpose)
             self.scan = QPushButton('扫描资料与派发状态')
             self.scan.clicked.connect(self.scan_inventory)
@@ -111,7 +113,7 @@ class CollaborationDialog(QDialog):
         buttons = QHBoxLayout()
         self.preview = QPushButton('预览派包方案')
         self.preview.setVisible(mode == 'dispatch')
-        self.preview.clicked.connect(self.preview_plan)
+        self.preview.clicked.connect(lambda: self.preview_plan())
         buttons.addWidget(self.preview)
         self.start = QPushButton(TITLES[mode])
         self.start.clicked.connect(self.execute)
@@ -176,10 +178,10 @@ class CollaborationDialog(QDialog):
             return {category: packages.inventory(root, category, cancelled=self.stop.is_set) for category in sorted(categories)}
         def loaded(value):
             self.planner.load_inventory(value)
-            self.status.setText('扫描完成。逐包勾选单日或多日；也可按设备量均分日期。已完成、已派发和缺项资料不重复派发。')
+            self.status.setText('扫描完成。请在每个包中直接勾选单日或多日；已派日期默认标记并跳过。')
         self.run(operation, loaded)
 
-    def preview_plan(self):
+    def preview_plan(self, *, dispatch_after=False):
         self.plans = []
         groups = self.planner.groups()
         if any(not group for group in groups):
@@ -187,16 +189,49 @@ class CollaborationDialog(QDialog):
             self.status.setText('包 ' + empty + ' 未选择可派日期，请选择日期或减少包数。')
             return
         root, purpose = self.root.text(), self.purpose.currentData()
+        replace_previous = False
+        if self.planner.allow_repackage.isChecked():
+            repeated = [u for group in groups for u in group if u.get('dispatches')]
+            if repeated:
+                from PySide6.QtWidgets import QMessageBox
+                confirm = QMessageBox(self)
+                confirm.setWindowTitle('再次派发确认')
+                confirm.setText(f'本次选择包含 {len(repeated)} 个已派设备日。')
+                confirm.setInformativeText('确认后会先生成新 ZIP；新 ZIP 校验成功后，才清理这些日期的旧派包。')
+                cleanup = QCheckBox('确认清理旧派包 ZIP（新包失败时保留旧包）', confirm)
+                cleanup.setChecked(True)
+                confirm.setCheckBox(cleanup)
+                confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                confirm.setDefaultButton(QMessageBox.StandardButton.No)
+                answer = confirm.exec()
+                if answer != QMessageBox.StandardButton.Yes:
+                    repeated_keys = {u['key'] for u in repeated}
+                    for pane in self.planner.panes:
+                        pane.selected_days.difference_update({u['day'] for u in pane.selected_units() if u['key'] in repeated_keys})
+                    self.planner.refresh()
+                    self.status.setText('已取消再次派发，原有派发记录保持不变。')
+                    return
+                if not cleanup.isChecked():
+                    self.status.setText('请勾选清理旧派包 ZIP，或点击“否”取消本次再次派发。')
+                    return
+                replace_previous = True
         def loaded(plans):
             self.plans = plans
+            if replace_previous:
+                for plan in plans:
+                    plan['replace_previous'] = True
             lines = []
             for plan in plans:
-                views = {e['path'].split('/')[-2] for e in plan['entries'] if e['path'].endswith('.mp4')}
+                views = {e['path'].split('/')[-2] for e in plan['entries'] if Path(e['path']).suffix.lower() in VIDEO_SUFFIXES}
                 lines.append(f'包 {plan["part"]} · {"、".join(plan["categories"])} · 日期：{"、".join(plan["dates"])}')
                 lines.append(f'  {len(plan["units"])} 个设备日 · {len(plan["sensor_paths"])} 份记录 · 全量 {len(views)} 个视角 · 预计 {size_text(plan["estimated_bytes"])}')
-            lines.append('按设备日衡量工作量，同日整组保留。不同类别或单日设备量不同时不保证完全等量；容量只提示，不设上限。')
-            lines.append('已核验三类 JSON、台账身份和全部录像视角的时段覆盖。同包共享录像仅保存一份。')
+            lines.append('完全按你在各包中勾选的日期派发，同日整组保留；不会自动均分或改动选择。')
+            lines.append('按牧场原目录树保存所选日期的 JSON、视频及必要清单，不更改来源文件。')
+            for plan in plans:
+                lines.extend(plan.get('readiness', {}).get('warnings', []))
             self.log.setPlainText('\n'.join(lines))
+            if dispatch_after:
+                self.execute()
         self.run(lambda: packages.plan_dispatch_groups(root, groups, purpose=purpose, cancelled=self.stop.is_set), loaded)
 
     def execute(self):
@@ -212,13 +247,21 @@ class CollaborationDialog(QDialog):
             self.run(lambda: migrate(root), completed)
         elif self.mode == 'dispatch':
             if not self.plans:
-                self.status.setText('请先预览均分方案，核对日期、视角和容量。')
+                self.preview_plan(dispatch_after=True)
                 return
             plans = self.plans
             def completed(paths):
                 self.log.appendPlainText('\n'.join(str(p) for p in paths))
                 self.plans = []
-                self.status.setText('原始数据包已完成。重新扫描可查看最新派发状态。')
+                self.status.setText('原始数据包已完成。已派日期标记已更新。')
+                completed_log = self.log.toPlainText()
+                sent = {u['key']: p['package_id'] for p in plans for u in p['units']}
+                for units in self.planner.inventory_by_category.values():
+                    for unit in units:
+                        if unit['key'] in sent:
+                            unit.setdefault('dispatches', []).append(sent[unit['key']])
+                self.planner.refresh()
+                self.log.setPlainText(completed_log)
             self.run(lambda: packages.dispatch(root, plans, **options), completed)
         elif self.mode == 'returns':
             self.run(lambda: packages.make_return(root, **options), lambda p: self.log.setPlainText(str(p)))
@@ -298,6 +341,23 @@ class CollaborationDialog(QDialog):
                 self.progress.setValue(0)
                 self.status.setText(str(exc))
                 self.log.appendPlainText(str(exc))
+                if self.mode == 'dispatch':
+                    self.record_dispatch_error(exc)
+
+    def record_dispatch_error(self, exc):
+        from datetime import datetime
+        from uuid import uuid4
+        from .storage import atomic_json
+        from .farm_layout import COLLABORATION
+        try:
+            root = packages.farm_root(self.root.text().strip())
+            report = root / COLLABORATION / '派包报告' / (datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid4().hex[:8] + '.json')
+            atomic_json(report, dict(error_type=type(exc).__name__, message=str(exc), root=str(root),
+                selected_packages=[[dict(category=u['category'], day=u['day'], owner=u['owner'])
+                                    for u in group] for group in self.planner.groups()]), backup=False)
+            self.log.appendPlainText('异常报告：' + str(report))
+        except (OSError, ValueError) as report_error:
+            self.log.appendPlainText('异常报告保存失败：' + str(report_error))
 
     def cancel_or_close(self):
         if self.future:

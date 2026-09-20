@@ -178,6 +178,54 @@ def original_paths(index):
     return [] if index["mode"] == "disk" else [Path(p) for p in index["files"]]
 
 
+def anomaly_rows(index, result):
+    """Join failure IDs to exact original locations, including raw-disk segments."""
+    lookup = {row['id']: row for row in index.get('rows', [])}
+    rows = []
+    for issue in result.get('issues', []):
+        source_id = issue['source']
+        row = lookup.get(source_id, {})
+        source = row.get('source') or issue.get('original_source', source_id)
+        size = row.get('source_bytes', row.get('size'))
+        message = issue.get('message') or row.get('message') or '未提供原因'
+        if index.get('mode') == 'disk':
+            source += f" · 分区 {row.get('partition', '?')} · 描述符 {row.get('descriptor', '?')} · 通道 {row.get('channel', '?')}"
+        else:
+            try:
+                size = Path(source).stat().st_size
+            except OSError:
+                pass
+        reason = '读取或归档失败'
+        for words, label in [(['索引', '链', '描述符'], '录像索引异常'),
+                             (['时间', '时钟', 'clock', '时间戳'], '录像时间异常'),
+                             (['解码', '视频流', '转码', 'codec'], '视频解码或转码异常'),
+                             (['空间', '磁盘', '权限', 'Permission'], '磁盘或文件访问异常'),
+                             (['变化', '身份', '校验', '摘要'], '文件身份或校验异常')]:
+            if any(word in message for word in words):
+                reason = label
+                break
+        rows.append(dict(source_id=source_id, source=source, size=size,
+                         reason_type=reason, message=message))
+    return rows
+
+
+def refresh_invalid_disk_row(row, index, cancelled):
+    """Re-read one failed descriptor chain, without scanning other recordings."""
+    from .dahua_source import packed_ms, u32
+    disk = fresh_disk(index['disk'])
+    with _source_read_lock, DHFSReader(disk['path'], disk['size'], disk['identity'], cancelled,
+                                     lazy_descriptors=True) as reader:
+        part = reader.partitions[row['partition']]
+        desc = reader.descriptor(part, row['descriptor'])
+        chain, last_size = reader.chain(part, row['descriptor'])
+        start, end = packed_ms(u32(desc, 4)), packed_ms(u32(desc, 8))
+        if end <= start:
+            raise ValueError('录像索引时间倒置')
+        row.update(chain=chain, last_size=last_size, index_start_ms=start, index_end_ms=end,
+                   fingerprint=hashlib.sha256(b''.join(reader.descriptor(part, i) for i in chain)).hexdigest(),
+                   source_bytes=(len(chain)-1)*part['fragment']+last_size, status='indexed')
+
+
 def cleanup_completed_sources(index, result, *, cancelled=lambda: False, confirm_partial=False):
     """Remove only verified, successfully classified mounted source files.
 
@@ -563,7 +611,7 @@ def resolve_video_job(request, job):
 
 
 def organize(
-    request, job, cancelled=lambda: False, progress=lambda *_: None, on_row=lambda *_: None
+    request, job, cancelled=lambda: False, progress=lambda *_: None, on_row=lambda *_: None, *, retry_ids=None
 ):
     from .catalog import file_stamp, verified_archive_matches
     from .dahua_run import RunLog, configure_storage, media_root, release_media
@@ -604,12 +652,26 @@ def organize(
     saved = read_json(job / "dahua-plan.json", {})
     if saved and saved.get("request_sha256") != signature:
         raise ValueError("恢复任务的范围或映射已变化；请重新扫描建立新任务")
+    if retry_ids is None and saved.get('status') in {'paused', 'failed'}:
+        retry_ids = saved.get('retry_ids')
+    if retry_ids is not None:
+        retry_ids = set(retry_ids)
+        allowed = {issue['source'] for issue in saved.get('issues', [])} | set(saved.get('retry_ids') or [])
+        if not retry_ids or not retry_ids <= allowed or not retry_ids <= {r['id'] for r in selected}:
+            raise ValueError('重试范围必须来自本任务的异常列表')
+        selected = [row for row in selected if row['id'] in retry_ids]
+        json_sources = []
     token = saved.get("id") or uuid.uuid4().hex
     completed = dict(saved.get("completed_records", {}))
     prepared_records = dict(saved.get("prepared_records", {}))
     plan = dict(adapter=ADAPTER, id=token, request=request, request_sha256=signature,
                 status="preparing", rows=[], issues=[], completed_records=completed, prepared_records=prepared_records,
                 existing_json_sources=existing_json_sources)
+    previous_report = read_json(job / 'dahua-run.json', {})
+    if retry_ids is not None:
+        plan['retry_ids'] = sorted(retry_ids)
+        plan['rows'] = [row for row in saved.get('rows', []) if row.get('source_id') not in retry_ids]
+        plan['issues'] = [issue for issue in saved.get('issues', []) if issue['source'] not in retry_ids]
     started_at = time.monotonic()
     try:
         deadline_seconds = float(request.get("deadline_seconds", DEFAULT_DEADLINE_SECONDS))
@@ -634,6 +696,13 @@ def organize(
         lease.mark_pending(token, job)
         on_row(dict(event_kind="task_resume", job=str(job)))
         log = RunLog(job, selected, request["mapping"], on_row)
+        if retry_ids is not None:
+            for row in previous_report.get('records', []):
+                if row['source_id'] not in retry_ids:
+                    log.rows[row['source_id']] = row
+                    on_row(dict(row, event_kind='task_record'))
+            log.outputs.extend(row for row in previous_report.get('outputs', []) if row.get('source_id') not in retry_ids)
+            log.save()
         reserved, provenance = {}, []
         verified_index = {r["path"]: r for r in read_json(destination_root / "资源索引.json", {}).get("records", [])}
         active_outputs = []
@@ -669,6 +738,8 @@ def organize(
 
         def prepare_one(row):
             log.begin(row["id"])
+            if retry_ids is not None and row['status'] == 'invalid' and index['mode'] == 'disk':
+                refresh_invalid_disk_row(row, index, is_cancelled)
             if row["status"] == "invalid":
                 raise ValueError(row.get("message", "索引无效"))
             prior = completed.get(row["id"])
@@ -690,12 +761,21 @@ def organize(
                             raise ValueError("原盘录像索引已变化")
             if prior:
                 log.stage("verify", "核对已归档成品，完整成品不重复转码", method="复用已归档")
+                missing_prior = False
                 for output in prior["outputs"]:
                     target = Path(output["target"])
                     if not target.resolve().is_relative_to(video_root(root).resolve()):
                         raise ValueError("恢复记录的归档路径越界")
                     if not target.is_file():
-                        raise ValueError("已归档视频缺失，请核对归档目录")
+                        missing_prior = True
+                        break
+                if missing_prior:
+                    # The derived target can be missing while the raw recorder
+                    # chain is still readable. Rebuild only this record.
+                    prior = None
+            if prior:
+                for output in prior["outputs"]:
+                    target = Path(output["target"])
                     receipt = verified_index.get(target.relative_to(destination_root).as_posix(), {})
                     reuse = verified_archive_matches(target, receipt, output.get("sha256"))
                     if (core.identity(target) != output["archive_identity"]

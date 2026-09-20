@@ -12,7 +12,7 @@ from .clocks import wall_text
 from .demand import camera_folder
 from .video_names import filename_wall
 
-SIGNATURE = "cowmata-classified-filename-1"
+SIGNATURE = "cowmata-classified-filename-2"
 
 
 def metadata_from_name(path, relative, info, timeline=None):
