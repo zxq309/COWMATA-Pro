@@ -793,7 +793,7 @@ class MainWindow(ControllerWindow):
             self.dirty = True
 
     def resize_wave(self, i):
-        self.stage.wave_ratio = [.25, .32, .43][i]
+        self.stage.wave_ratio = [.32, .42, .52][i]
         self.stage.arrange()
         if self.catalog:
             self.dirty = True

@@ -392,3 +392,11 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 [2.2.0]: https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.2.0
 [2.1.0]: https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.1.0
 [2.0.0]: https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v2.0.0
+## 4.1.1
+
+- 版本迭代时清理受版本标记管理的兼容缓存，并保留原始录像、标注和证据。
+- 加强 MPEG-PS / 伪装扩展名录像的探测与首帧解析，失败时保留可重试状态。
+- 派包按设备日、记录量和字节量进行确定性均衡，完成任务后不再被陈旧任务记录阻塞。
+- 原始转码增加 8 小时硬截止、并行读取预算和完成后的来源清理核验。
+- 九轴曲线区域自适应增高，改善多轴查看和操作密度。
+- 增加 DOCX 上传文件的结构校验与安全临时解包入口。

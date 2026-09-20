@@ -75,6 +75,27 @@ def nonvideo_signature(head, size):
     return None
 
 
+def _container_hint(path):
+    """Return an FFmpeg demuxer hint for recordings with unreliable suffixes."""
+    try:
+        with Path(path).open('rb') as stream:
+            head = stream.read(376)
+    except OSError:
+        return None
+    if head.startswith(b'\x00\x00\x01\xba') or head.startswith(b'\x00\x00\x01\xbb'):
+        return 'mpeg'
+    if head.startswith(b'\x47') and len(head) >= 4 and head[188:189] == b'\x47':
+        return 'mpegts'
+    if head.startswith(b'\x1a\x45\xdf\xa3'):
+        return 'matroska,webm'
+    return None
+
+
+def _input_args(path):
+    hint = _container_hint(path)
+    return ['-f', hint] if hint else []
+
+
 def probe(path, cancelled):
     _, ffprobe = find_ffmpeg()
     result = run_cancellable(
@@ -91,6 +112,7 @@ def probe(path, cancelled):
             "-show_format",
             "-of",
             "json",
+            *_input_args(path),
             str(path),
         ],
         timeout=90,
@@ -118,6 +140,7 @@ def opening_frame(path, media_ms, cancelled):
             "-analyzeduration",
             "3000000",
             "-skip_estimate_duration_from_pts", "1",
+            *_input_args(path),
             "-i",
             str(path),
             "-map",

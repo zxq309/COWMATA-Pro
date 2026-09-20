@@ -279,7 +279,7 @@ class WorkspaceStage(QWidget):
         self.mode = "A"
         self.pip_scale = .34
         self.pip_position = (1.0, 0.0)
-        self.wave_ratio = .32
+        self.wave_ratio = .42
         self.signal_panel = signal_panel
         signal_panel.setParent(self)
         self.video = QFrame(self)
@@ -319,7 +319,8 @@ class WorkspaceStage(QWidget):
                                    self.pip_top + int((h - ph - self.pip_top - self.pip_bottom) * self.pip_position[1]), pw, ph)
             self.video.raise_()
         else:
-            wave_h = min(h - 150, max(172, int(h * self.wave_ratio)))
+            available = max(120, h - 150)
+            wave_h = min(available, max(240, int(h * self.wave_ratio)))
             self.video.setGeometry(0, 0, w, h - wave_h - 8)
             self.signal_panel.setGeometry(0, h - wave_h, w, wave_h)
         self.signal_panel.show()
