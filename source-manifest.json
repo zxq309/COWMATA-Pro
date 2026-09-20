@@ -3755,8 +3755,8 @@
     },
     {
       "path": "scripts/build_portable.py",
-      "size": 8872,
-      "sha256": "9d8bdf6dbe5cd1fea8dca37bbb27105d72d6dec17fcc8ba9121f9f0f522667e0"
+      "size": 9114,
+      "sha256": "77795e309c5dc8d318772d4f3816c198f6dc10115ff852b39f0bfd65f37c87e8"
     },
     {
       "path": "scripts/build_quick_start_pdf.py",
