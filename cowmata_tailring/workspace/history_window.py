@@ -236,7 +236,7 @@ class HistoryWindow(QMainWindow):
             data = future.result()
             if not self.closed:
                 self.apply_data(data)
-        except (OSError, ValueError, KeyError, TypeError, sqlite3.Error) as exc:
+        except (OSError, ValueError, KeyError, TypeError, UnicodeError, RuntimeError, sqlite3.Error) as exc:
             self.banner.setText("历史标注读取失败：" + str(exc))
 
     def apply_data(self, data):

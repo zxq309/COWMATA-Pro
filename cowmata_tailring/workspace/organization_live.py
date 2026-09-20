@@ -45,10 +45,25 @@ def pending_job(paths):
     from .dataset_access import overlaps, registry_root
     matches = []
     for path in (registry_root() / 'pending').glob('*.json'):
-        value = json.loads(path.read_text(encoding='utf-8'))
+        try:
+            value = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError, UnicodeDecodeError):
+            # A torn registry entry cannot describe a resumable task.
+            path.unlink(missing_ok=True)
+            continue
         if any(overlaps(a, b) for a in paths for b in value['paths']):
             job = Path(value['job'])
-            if (job / 'plan.json').is_file():
+            result = {}
+            if (job / 'result.json').is_file():
+                try:
+                    result = json.loads((job / 'result.json').read_text(encoding='utf-8'))
+                except (OSError, ValueError, UnicodeDecodeError):
+                    result = {}
+            # Finished classification jobs are history, not a lock.  Only a
+            # streaming plan without a completed result remains resumable.
+            if (job / 'plan.json').is_file() and not (
+                result.get('completed') and not result.get('requires_attention')
+            ):
                 matches.append(job)
     matches = list(dict.fromkeys(matches))
     if len(matches) > 1:

@@ -48,8 +48,37 @@ def _active(root):
 
 def _check(root, paths, kind, owner=None):
     for path in (root / "pending").glob("*.json"):
-        pending = json.loads(path.read_text(encoding="utf-8"))
-        if kind != "review" and owner not in {pending["task_id"], pending["owner_id"]} and any(overlaps(a, b) for a in paths for b in pending["paths"]):
+        try:
+            pending = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            # A torn or unreadable pending record cannot represent a live job.
+            # Remove it so a stale crash cannot block a new organization run.
+            path.unlink(missing_ok=True)
+            continue
+        job = Path(str(pending.get("job", ""))).expanduser()
+        if not job.is_absolute() or not job.exists():
+            # The worker directory was removed after completion, cancellation,
+            # or an interrupted update. Keep active leases protected, but do not
+            # let a dead job record block the whole farm forever.
+            path.unlink(missing_ok=True)
+            continue
+        # Dahua jobs persist a resumable lease while paused. A paused worker
+        # has released its file handles, so opening the project is safe; the
+        # pending record is intentionally kept so the job can be resumed.
+        # Reconcile completed receipts left by interrupted finalization, while
+        # keeping a paused job reserved against a different organization task.
+        run = job / "dahua-run.json"
+        if run.is_file():
+            try:
+                state = json.loads(run.read_text(encoding="utf-8")).get("status")
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                state = None
+            if state in {"completed", "no_output"}:
+                path.unlink(missing_ok=True)
+                continue
+            if state == "paused" and kind in {"annotation", "review", "maintenance", "organize"}:
+                continue
+        if kind not in {"review", "maintenance"} and owner not in {pending.get("task_id"), pending.get("owner_id")} and any(overlaps(a, b) for a in paths for b in pending.get("paths", [])):
             raise OSError("此目录有未完成的整理任务，请在数据整理窗口继续原任务：" + pending["job"])
     for lease in _active(root):
         if lease["id"] == owner or kind in {"annotation", "review"} and lease["kind"] in {"annotation", "review"}:
@@ -82,6 +111,10 @@ class DatasetLease:
                 raise OSError("无法锁定本次数据整理任务")
             self.path.write_text(json.dumps({"id": self.id, "kind": kind, "paths": paths,
                                              "pid": os.getpid()}, ensure_ascii=False), encoding="utf-8")
+            if kind != "maintenance":
+                from .maintenance import remember_project
+                for path in paths:
+                    remember_project(Path(path))
         except Exception:
             self.close()
             raise

@@ -1306,7 +1306,18 @@ class OrganizationWindow(TaskWindow):
             if pending and (job is None or Path(job) != pending):
                 validate_resume(json.loads((pending / "plan.json").read_text(encoding="utf-8")), request)
                 job = pending
-        except (OSError, ValueError) as exc:
+        except ValueError as exc:
+            # A changed source selection is a deliberate new run.  Keep the
+            # paused task for the classification history, but do not force an
+            # operator to resume it before starting fresh work.
+            if "未完成" in str(exc) or "继续原任务" in str(exc):
+                request = dict(request, fresh_start=True)
+                job = None
+                self.status.setText("已保留上次归类历史，当前选择将作为新任务开始")
+            else:
+                self.status.setText(str(exc))
+                return
+        except OSError as exc:
             self.status.setText(str(exc))
             return
         catalog = getattr(self.owner, "catalog", None)

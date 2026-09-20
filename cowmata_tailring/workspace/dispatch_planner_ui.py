@@ -166,7 +166,7 @@ class DispatchPlanner(QWidget):
         layout.addWidget(hint)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
-        self.balance_button = QPushButton('按设备量自动均分日期')
+        self.balance_button = QPushButton('按设备量 / 记录 / 容量自动均分日期')
         self.balance_button.clicked.connect(self.balance)
         layout.addWidget(self.balance_button)
         self.set_count(count)
@@ -223,10 +223,15 @@ class DispatchPlanner(QWidget):
                     by_day[u['day']].append(u)
             for pane in panes:
                 pane.selected_days.clear()
-            weights = [[0, 0] for _ in panes]
+            # Keep whole device-days together, then minimize the largest
+            # workload dimensions in a deterministic order.  A day with a
+            # long PPG/Motion record must not be treated as equal to a tiny
+            # day merely because both contain one device.
+            weights = [[0, 0, 0] for _ in panes]
             for day, units in sorted(by_day.items(), key=lambda p: (-len(p[1]), -sum(len(u['paths']) for u in p[1]), p[0])):
+                day_weight = (len(units), sum(len(u['paths']) for u in units), sum(int(u.get('bytes', 0) or 0) for u in units))
                 index = min(range(len(panes)), key=lambda i: (*weights[i], i))
                 panes[index].selected_days.add(day)
-                weights[index][0] += len(units)
-                weights[index][1] += sum(len(u['paths']) for u in units)
+                for pos, value in enumerate(day_weight):
+                    weights[index][pos] += value
         self.refresh()

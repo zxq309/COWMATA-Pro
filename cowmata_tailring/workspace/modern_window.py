@@ -793,7 +793,7 @@ class MainWindow(ControllerWindow):
             self.dirty = True
 
     def resize_wave(self, i):
-        self.stage.wave_ratio = [.25, .32, .43][i]
+        self.stage.wave_ratio = [.32, .42, .52][i]
         self.stage.arrange()
         if self.catalog:
             self.dirty = True
@@ -802,10 +802,10 @@ class MainWindow(ControllerWindow):
         self.stage.pip_position = (1.0, 0.0)
         self.stage.arrange()
 
-    def open_project(self, root, *, preferred_json=None, day=None, standalone=None):
+    def open_project(self, root, *, preferred_json=None, day=None, standalone=None, modalities=None):
         self.exit_algorithm()
         self.banner.hide()
-        super().open_project(root, preferred_json=preferred_json,day=day,standalone=standalone)
+        super().open_project(root, preferred_json=preferred_json,day=day,standalone=standalone,modalities=modalities)
         if not self.catalog:
             return
         self.restore_presentation(self.settings.get("presentation", {}))

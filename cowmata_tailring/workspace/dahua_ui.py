@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QTableWidget,
@@ -39,6 +40,7 @@ class DahuaPanel(QWidget):
         self.settings = QSettings()
         self.job = None
         self.index = None
+        self.index_full = None
         self.process = None
         self.active = False
         self.groups = {}
@@ -451,7 +453,14 @@ class DahuaPanel(QWidget):
                 split_midnight=self.midnight.isChecked(),
                 json_sources=self.json_sources if self.import_json.isChecked() else [],
                 storage_profile=self.storage_profile.currentData(),
+                deadline_seconds=tasks.DEFAULT_DEADLINE_SECONDS,
             )
+            # A new scan is a deliberate new task.  Keep the paused video
+            # history available for the explicit resume button, but do not
+            # let an old mapping block this fresh selection.
+            pending = tasks.pending_video_job(options["target"])
+            if pending and Path(self.job).resolve() != Path(pending).resolve():
+                options["fresh_start"] = True
             self.settings.setValue("dahua/target", options["target"])
             self.start("organize", dict(options=options), self.job)
         except (OSError, ValueError) as exc:
@@ -631,6 +640,19 @@ class DahuaPanel(QWidget):
                             self.run_tables.restore(result["run"])
                 elif self.operation == "organize":
                     self.output = result.get("output", "")
+                    cleanup = None
+                    if result.get("status") in {"completed", "no_output"} and self.index_full:
+                        cleanup = tasks.cleanup_completed_sources(self.index_full, result)
+                        if cleanup.get("state") == "needs_review":
+                            answer = QMessageBox.question(
+                                self,
+                                "原始录像清理核对",
+                                cleanup["message"] + "。是否清理已完成归类的来源文件？待核对来源仍会保留。",
+                            )
+                            if answer == QMessageBox.StandardButton.Yes:
+                                cleanup = tasks.cleanup_completed_sources(
+                                    self.index_full, result, confirm_partial=True
+                                )
                     self.status.setText(
                         (
                             "归类完成"
@@ -639,6 +661,8 @@ class DahuaPanel(QWidget):
                         )
                         + f"；待核对 {len(result.get('issues', []))} 项。原始录像保留。"
                     )
+                    if cleanup:
+                        self.status.setText(self.status.text() + "；" + cleanup["message"])
                 elif self.operation == "previews":
                     self.status.setText("缩略图已就绪；同号通道已对应同号视角，可直接开始转码。")
             elif not self.error:
@@ -650,6 +674,7 @@ class DahuaPanel(QWidget):
             QTimer.singleShot(0, self.organize)
 
     def apply_index(self, index):
+        self.index_full = index if isinstance(index, dict) else None
         if "rows" in index:
             index = tasks.index_summary(index)
         self.index = index
@@ -709,7 +734,7 @@ class DahuaPanel(QWidget):
     def reset_idle_form(self):
         if self.running:
             return
-        self.job = self.index = None
+        self.job = self.index = self.index_full = None
         self.groups = {}
         self.run_tables.begin()
         self.run_tables.finish()
