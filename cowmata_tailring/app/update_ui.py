@@ -438,7 +438,9 @@ class UpdateController(QObject):
         if answer != QMessageBox.StandardButton.Yes:
             return
         directory = worker.safe_path(self.cache / "downloads" / self.update["sha256"])
-        for name in (self.update["name"], self.update["name"] + ".part"):
+        names = [self.update["name"], self.update["name"] + ".part"]
+        names += [self.update["name"] + f".part-{index}" for index in range(16)]
+        for name in names:
             path = worker.member(directory, name)
             path.unlink(missing_ok=True)
         self.setup = None

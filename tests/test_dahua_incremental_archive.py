@@ -12,7 +12,7 @@ from cowmata_tailring.workspace.farm_layout import initialize_farm
 
 @pytest.fixture
 def incremental(tmp_path, monkeypatch):
-    monkeypatch.setattr(tasks, "preparation_workers", lambda: 1)
+    monkeypatch.setattr(tasks, "preparation_workers", lambda *a, **k: 1)
     monkeypatch.setenv("COWMATA_ACCESS_DIR", str(tmp_path / "locks"))
     farm, job = tmp_path / "farm", tmp_path / "job"
     initialize_farm(farm)
