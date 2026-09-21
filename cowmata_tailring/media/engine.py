@@ -315,6 +315,27 @@ class MediaEngine(QObject):
             self._player, ctypes.c_void_p(hwnd)
         )
 
+    def refresh_video_output(self) -> None:
+        """Rebuild the embedded video output at the widget's current size.
+
+        libVLC's Direct3D swap chain can keep a stale size after the host
+        widget is resized or reparented while playing; frames then land in a
+        narrow strip or stale sub-rectangles even though decoding advances.
+        Detaching and reattaching the HWND forces a full video-output rebuild
+        against the real client rectangle.
+        """
+
+        if self._closed or self._player is None or self._video_widget is None:
+            return
+        try:
+            hwnd = int(self._video_widget.winId())
+        except RuntimeError:
+            return
+        if not hwnd:
+            return
+        self._lib.libvlc_media_player_set_hwnd(self._player, ctypes.c_void_p(0))
+        self._lib.libvlc_media_player_set_hwnd(self._player, ctypes.c_void_p(hwnd))
+
     # ------------------------------------------------------------------
     # Media controls
     # ------------------------------------------------------------------

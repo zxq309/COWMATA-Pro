@@ -413,6 +413,7 @@ class DahuaPanel(QWidget):
             request = dict(mode="files", files=self.files)
         self.job = tasks.task_root() / uuid.uuid4().hex
         self.index = None
+        self._resumed_request = None
         self.start("scan", request, self.job)
 
     def selected_mapping(self):
@@ -455,6 +456,13 @@ class DahuaPanel(QWidget):
                 storage_profile=self.storage_profile.currentData(),
                 deadline_seconds=tasks.DEFAULT_DEADLINE_SECONDS,
             )
+            # A resume replays the saved request verbatim while the restored
+            # form still agrees with it; rebuilding from widgets can add
+            # version-newer keys that change the resume signature.
+            resumed = getattr(self, "_resumed_request", None)
+            self._resumed_request = None
+            if resumed is not None and self._same_selection(resumed, options):
+                options = dict(resumed)
             # A new scan is a deliberate new task.  Keep the paused video
             # history available for the explicit resume button, but do not
             # let an old mapping block this fresh selection.
@@ -465,6 +473,19 @@ class DahuaPanel(QWidget):
             self.start("organize", dict(options=options), self.job)
         except (OSError, ValueError) as exc:
             self.status.setText(str(exc))
+
+    @staticmethod
+    def _same_selection(saved, current):
+        defaults = {"scenario": "mixed", "storage_profile": "native", "split_midnight": True,
+                    "json_sources": [], "start": "", "end": ""}
+
+        def semantic(request):
+            value = {k: v for k, v in request.items() if k not in {"deadline_seconds", "fresh_start"}}
+            for key, default in defaults.items():
+                value.setdefault(key, default)
+            return value
+
+        return semantic(saved) == semantic(current)
 
     def restore(self):
         saved = str(self.settings.value("dahua/last_job", "")).strip()
@@ -478,6 +499,7 @@ class DahuaPanel(QWidget):
     def apply_restored_options(self, options):
         if not options:
             return
+        self._resumed_request = dict(options)
         self.target.setText(options["target"])
         self.category.setCurrentIndex(self.category.findData(options["category"]))
         self.scenario.setCurrentIndex(self.scenario.findData(options.get("scenario", "mixed")))

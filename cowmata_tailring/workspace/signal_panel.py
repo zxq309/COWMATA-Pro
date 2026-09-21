@@ -436,8 +436,10 @@ class SignalPanel(QWidget):
         pan_action = menu.addAction("平移模式")
         pan_action.setCheckable(True)
         pan_action.toggled.connect(self.pan_button.setChecked)
+        self.pan_button.toggled.connect(pan_action.setChecked)
         full_action = menu.addAction("完整记录")
-        full_action.triggered.connect(self.full_button.click)
+        full_action.triggered.connect(self._exit_pan_to_full)
+        self._pan_action = pan_action
         self.more_button.setMenu(menu)
         self.more_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.more_button.setToolTip("曲线辅助操作")
@@ -558,6 +560,13 @@ class SignalPanel(QWidget):
         self.wave.set_events(labels, events)
         self.track.refresh()
         self.scroll.setFixedHeight(min(56, self.track.height()))
+
+    def _exit_pan_to_full(self):
+        # Leaving pan mode must clear the flag first, or the waveform keeps
+        # panning and the full-record reset appears to do nothing.
+        if self.pan_button.isChecked():
+            self.pan_button.setChecked(False)
+        self.full_button.click()
 
     def set_view(self, *args, **kwargs):
         self.wave.set_view(*args, **kwargs)

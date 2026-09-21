@@ -660,6 +660,36 @@ class Catalog:
                 queued += 1
         return queued
 
+    def queue_dahua_timeline_upgrade(self) -> int:
+        """Recheck PS recordings once after the frame-clock upgrade.
+
+        Older releases stored the adjacent-filename guess without byte seek
+        keys for these streams, so paused frames inside the file could not be
+        decoded. Manual clock readings stay authoritative; identity and
+        annotations are never touched.
+        """
+        self._write_check()
+        queued = 0
+        with self.mutex, self.db:
+            for row in self.rows(kind="video"):
+                metadata = row["metadata"]
+                if row["state"] not in {"ready", "review"}:
+                    continue
+                if len(metadata.get("manual_readings", [])) >= 2:
+                    continue
+                fmt = str(metadata.get("format", ""))
+                if "mpeg" not in fmt or "mp4" in fmt:
+                    continue
+                timeline = metadata.get("timeline") or {}
+                if timeline.get("native") or metadata.get("dahua"):
+                    continue
+                self.db.execute("UPDATE assets SET metadata=json_set(metadata,'$.recheck',1) WHERE id=?",
+                                (row["asset_id"],))
+                self.db.execute("UPDATE locations SET state='pending',attempt_at=0,error=? WHERE path=?",
+                                ("大华时间轴规则已更新，等待重建索引；人工标注保留", row["path"]))
+                queued += 1
+        return queued
+
     def archived_record(self,relative):
         if self._resource_records is None:
             registry=read_json(self.root/'资源索引.json',{})

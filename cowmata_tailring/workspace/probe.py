@@ -627,10 +627,22 @@ class SourceInspector:
             info = probe_media(path, cancelled=self.stop.is_set)
             try:
                 result = metadata_from_name(path, self.relative_path(path), info)
-                if (
-                    "mp4" in str(info.get("format", {}).get("format_name", ""))
-                    or result.get("duration_basis") == "adjacent_filename"
-                ):
+                if "mp4" in str(info.get("format", {}).get("format_name", "")):
+                    return result
+                if result.get("duration_basis") == "adjacent_filename":
+                    # The neighbouring filename is only a bounded browse guess
+                    # for raw Dahua PS recordings. Prefer the recorder's own
+                    # frame clock and byte seek keys so mid-file frames stay
+                    # decodable; keep the guess only when the scan fails.
+                    from cowmata_tailring.media.classified_dahua import classified_dahua_timeline
+
+                    try:
+                        dahua_timeline = classified_dahua_timeline(path, self.stop.is_set)
+                    except (ValueError, OSError, InterruptedError) as exc:
+                        self.progress(f"大华帧时钟不可用，保留相邻文件名时长：{exc}")
+                        dahua_timeline = None
+                    if dahua_timeline:
+                        return metadata_from_name(path, self.relative_path(path), info, dahua_timeline)
                     return result
             except ValueError:
                 pass

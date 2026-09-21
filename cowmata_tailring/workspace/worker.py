@@ -181,6 +181,9 @@ class IndexWorker(QObject):
             upgraded = self.catalog.queue_ocr_upgrade(TIMESTAMP_SIGNATURE, time_signature=NATIVE_SIGNATURE)
             if upgraded:
                 self.progress.emit(f"OCR 算法已升级，{upgraded} 个录像索引等待复核；人工标注保留")
+            upgraded_dahua = self.catalog.queue_dahua_timeline_upgrade()
+            if upgraded_dahua:
+                self.progress.emit(f"大华时间轴规则已升级，{upgraded_dahua} 个原始码流录像等待重建索引；人工标注保留")
             while not self.stop.is_set():
                 while not self.commands.empty():
                     action, value = self.commands.get_nowait()

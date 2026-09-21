@@ -262,6 +262,22 @@ class VideoTile(QFrame):
         timeline_bar.addWidget(self.seek_slider, 1)
         timeline_bar.addWidget(self.seek_clock)
         layout.addLayout(timeline_bar)
+        # A live native surface whose widget was resized can keep a stale
+        # Direct3D swap chain; one rebuild shortly after the layout settles
+        # restores full-frame rendering without touching decode or clocks.
+        self._surface_sync = QTimer(self)
+        self._surface_sync.setSingleShot(True)
+        self._surface_sync.setInterval(300)
+        self._surface_sync.timeout.connect(self._sync_video_output)
+
+    def request_surface_sync(self):
+        if self.engine is not None:
+            self._surface_sync.start()
+
+    def _sync_video_output(self):
+        if (self.engine is not None and self.stack.currentWidget() is self.surface
+                and self.surface.isVisible()):
+            self.engine.refresh_video_output()
 
     def activate_preview(self):
         if getattr(self, "_preview_only", False) and self.interval:
@@ -321,6 +337,7 @@ class VideoTile(QFrame):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.scale_frame()
+        self.request_surface_sync()
 
     def control_icon(self, icon):
         pixmap = self.style().standardIcon(icon).pixmap(18, 18)

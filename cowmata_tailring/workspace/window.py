@@ -1204,6 +1204,32 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 tile.status(self.board.coverage_message(camera))
         if self.motion and not self.board.reference_ms and timeline.bounds():
             self.board.seek(self.work.clock.map(self.imu_ms))
+        if not (self.motion and self.work and self.work.clock.anchors):
+            # Video-first browsing (no calibrated IMU record) still needs the
+            # on-demand index; anchor it to the playhead or the first named
+            # recording of the selected views so tiles stop waiting forever.
+            self._request_browse_window()
+
+    def _request_browse_window(self):
+        if not self.worker or not self.board.selected:
+            return
+        from .demand import camera_folder
+        from .video_names import filename_wall
+
+        anchor = self.board.reference_ms
+        if not anchor > 0:
+            chosen = set(self.board.selected)
+            starts = [t for t in (filename_wall(Path(r["path"]).name)
+                                  for r in self.rows
+                                  if r["kind"] == "video" and r["state"] in {"pending", "invalid"}
+                                  and camera_folder(r["path"]) in chosen)
+                      if t is not None]
+            if not starts:
+                return
+            anchor = min(starts)
+        settings = copy.deepcopy(self.settings)
+        settings["priority_reference_ms"] = anchor
+        self.worker.request("window", (anchor - 300_000, anchor + 300_000, settings))
 
     def refresh_records(self, *_):
         device = self.devices.currentData()
@@ -1747,6 +1773,14 @@ class MainWindow(AlignmentMixin, QMainWindow):
         if self.worker and self.work and abs(value - getattr(self, "_index_playhead", -1e30)) >= 5000:
             self._index_playhead = value
             self.worker.request("playhead", value)
+        elif (self.worker and not (self.work and self.work.clock.anchors)
+              and value > 0 and abs(value - getattr(self, "_index_playhead", -1e30)) >= 5000):
+            # Without a calibrated IMU record nothing else drives the demand
+            # index; follow the video playhead so browsing stays decodable.
+            self._index_playhead = value
+            settings = copy.deepcopy(self.settings)
+            settings["priority_reference_ms"] = value
+            self.worker.request("window", (value - 300_000, value + 300_000, settings))
         if not self.wall_input.hasFocus():
             self.wall_input.setText(wall_text(value))
         bounds = self.board.timeline.bounds()

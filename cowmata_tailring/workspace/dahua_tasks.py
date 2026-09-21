@@ -610,6 +610,32 @@ def resolve_video_job(request, job):
     return pending
 
 
+_REQUEST_DEFAULTS = {"scenario": "mixed", "storage_profile": "native", "split_midnight": True,
+                     "json_sources": [], "start": "", "end": ""}
+
+
+def _legacy_request_matches(request, saved):
+    """Older releases stored fewer request keys (for example no deadline bound).
+
+    A resume that differs from the saved task only by those version-added
+    defaults still selects exactly the same recordings, so accept it; any
+    real change of source, range or mapping keeps failing as before.
+    """
+    if not isinstance(saved, dict):
+        return False
+
+    def semantic(value):
+        normalized = {k: v for k, v in value.items() if k not in {"deadline_seconds", "fresh_start"}}
+        for key, default in _REQUEST_DEFAULTS.items():
+            normalized.setdefault(key, default)
+        return normalized
+
+    try:
+        return semantic(request) == semantic(saved)
+    except (TypeError, ValueError):
+        return False
+
+
 def organize(
     request, job, cancelled=lambda: False, progress=lambda *_: None, on_row=lambda *_: None, *, retry_ids=None
 ):
@@ -650,7 +676,7 @@ def organize(
         raise ValueError("输出、原始来源和任务暂存目录必须相互独立")
     signature = hashlib.sha256(json.dumps(request, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     saved = read_json(job / "dahua-plan.json", {})
-    if saved and saved.get("request_sha256") != signature:
+    if saved and saved.get("request_sha256") != signature and not _legacy_request_matches(request, saved.get("request")):
         raise ValueError("恢复任务的范围或映射已变化；请重新扫描建立新任务")
     if retry_ids is None and saved.get('status') in {'paused', 'failed'}:
         retry_ids = saved.get('retry_ids')
