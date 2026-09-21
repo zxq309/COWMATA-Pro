@@ -60,6 +60,18 @@ def main():
                 result["job"] = str(restored)
                 result["options"] = tasks.read_json(restored / "dahua-plan.json", {}).get("request", {})
                 result["run"] = tasks.read_json(restored / "dahua-run.json", {})
+            elif action == "wipe_survey":
+                from cowmata_tailring.workspace.dahua_wipe import survey
+                result = dict(survey=survey(int(request["number"])))
+            elif action == "wipe":
+                from cowmata_tailring.workspace.dahua_wipe import wipe
+
+                def wipe_progress(current, total, label):
+                    emit(dict(event="progress", current=current, total=total,
+                              message="清盘中 · " + label))
+
+                result = dict(wipe=wipe(int(request["number"]), request["identity"],
+                                        wipe_progress, cancelled))
             elif action == "previews":
                 from cowmata_tailring.workspace.dahua_run import configure_storage, release_media
                 from cowmata_tailring.workspace.data_category import category_root

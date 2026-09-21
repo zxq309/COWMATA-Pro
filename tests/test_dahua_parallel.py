@@ -13,7 +13,7 @@ from cowmata_tailring.workspace import dahua_tasks as tasks
 def test_two_views_prepare_together_and_archive_independently(incremental, monkeypatch):  # noqa: F811
     farm, job, index, request, sources = incremental
     barrier = threading.Barrier(2, timeout=3)
-    monkeypatch.setattr(tasks, "preparation_workers", lambda: 2, raising=False)
+    monkeypatch.setattr(tasks, "preparation_workers", lambda *a, **k: 2, raising=False)
     def prepare(row, *args):
         barrier.wait()
         return fake_prepared(row, *args)
@@ -77,7 +77,7 @@ def test_lazy_chain_reads_only_needed_blocks_and_rechecks_new_reader():
 
 def test_fast_view_archives_while_slow_view_is_still_preparing(incremental, monkeypatch):  # noqa: F811
     farm, job, index, request, _ = incremental
-    monkeypatch.setattr(tasks, "preparation_workers", lambda: 2)
+    monkeypatch.setattr(tasks, "preparation_workers", lambda *a, **k: 2)
     archived = threading.Event()
     started = threading.Barrier(2, timeout=3)
     first = index["rows"][0]["id"]
@@ -97,7 +97,7 @@ def test_fast_view_archives_while_slow_view_is_still_preparing(incremental, monk
 def test_parallel_pause_joins_workers_and_resume_keeps_first_output(incremental, monkeypatch):  # noqa: F811
     import time
     farm, job, index, request, _ = incremental
-    monkeypatch.setattr(tasks, "preparation_workers", lambda: 2)
+    monkeypatch.setattr(tasks, "preparation_workers", lambda *a, **k: 2)
     first = index["rows"][0]["id"]
     started = threading.Barrier(2, timeout=3)
     stopped = threading.Event()
@@ -157,8 +157,11 @@ def test_default_view_scheduler_starts_all_twenty_channels():
 
 
 def test_physical_recorder_reads_are_serialized_to_avoid_seek_thrash():
-    assert tasks.preparation_workers({"mode": "disk"}) == 1
+    # Disk mode pipelines two workers (reader + overlapping converter), while
+    # the raw-chain read itself stays strictly single-connection.
+    assert tasks.preparation_workers({"mode": "disk"}) == 2
     assert tasks.preparation_workers({"mode": "files"}) == 20
+    assert tasks._source_read_lock._initial_value == 1
 
 
 def test_progress_speed_excludes_unfinished_reading_tasks():

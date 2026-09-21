@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QInputDialog,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -73,6 +74,10 @@ class DahuaPanel(QWidget):
         self.disk_button = QPushButton("刷新原盘")
         self.disk_button.clicked.connect(lambda: self.start("disks", {}))
         row.addWidget(self.disk_button)
+        self.wipe_button = QPushButton("立即清盘…")
+        self.wipe_button.setToolTip("将选定的录像机原盘恢复为空白 DHFS 格式：录像索引立即清空，格式保持不变，后续录像即为纯净数据。不可恢复，请谨慎使用。")
+        self.wipe_button.clicked.connect(self.wipe_confirm)
+        row.addWidget(self.wipe_button)
         outer.addLayout(row)
         self.mode.currentIndexChanged.connect(self.mode_changed)
         self.mode_changed()
@@ -207,6 +212,7 @@ class DahuaPanel(QWidget):
             self.files_button,
             self.folder_button,
             self.disk_button,
+            self.wipe_button,
             self.target,
             self.target_button,
             self.category,
@@ -487,6 +493,38 @@ class DahuaPanel(QWidget):
 
         return semantic(saved) == semantic(current)
 
+    def wipe_confirm(self):
+        if self.running or self.mode.currentIndex() != 1:
+            return
+        disk = self.disk_choice.currentData()
+        if not disk:
+            self.status.setText("请先选择要清盘的录像机原盘")
+            return
+        self.start("wipe_survey", dict(number=disk["number"]))
+
+    def confirm_wipe(self, info):
+        size_tb = info["size"] / 1e12
+        letters = "、".join(info.get("letters", [])) or "无盘符"
+        message = (
+            f"磁盘 {info['model']} · 序列号 {info['serial']} · {size_tb:.2f} TB · {letters}\n"
+            f"分区 {len(info['partitions'])} 个 · 现有录像索引 {info['existing_recordings']} 段。\n\n"
+            "清盘会立即清空此录像机原盘上的全部录像索引，已录内容不可恢复；\n"
+            "磁盘格式保持不变，随后即可继续录制纯净数据。\n\n"
+            "确定要清盘吗？"
+        )
+        answer = QMessageBox.warning(self, "立即清盘 · 危险操作", message,
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                     QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        text, ok = QInputDialog.getText(
+            self, "立即清盘 · 二次确认",
+            "此操作不可恢复。输入“清盘”两字以确认：")
+        if not ok or text.strip() != "清盘":
+            self.status.setText("已取消清盘。")
+            return
+        self.start("wipe", dict(number=info["number"], identity=info["identity"]))
+
     def restore(self):
         saved = str(self.settings.value("dahua/last_job", "")).strip()
         target = self.target.text().strip()
@@ -685,6 +723,14 @@ class DahuaPanel(QWidget):
                     )
                     if cleanup:
                         self.status.setText(self.status.text() + "；" + cleanup["message"])
+                elif self.operation == "wipe_survey":
+                    self.confirm_wipe(result["survey"])
+                elif self.operation == "wipe":
+                    wiped = result.get("wipe", {})
+                    self.status.setText(
+                        f"清盘完成：{wiped.get('partitions', '?')} 个分区已重置为空白录像机格式，"
+                        f"复核 0 条录像；磁盘可立即继续录制纯净数据。")
+                    self.start("disks", {})
                 elif self.operation == "previews":
                     self.status.setText("缩略图已就绪；同号通道已对应同号视角，可直接开始转码。")
             elif not self.error:
@@ -806,6 +852,10 @@ class DahuaPanel(QWidget):
         self.preview_button.setEnabled(not self.running and bool(self.index))
         self.run_button.setEnabled(not self.running and bool(self.index))
         self.pause_button.setEnabled(self.running)
+        selected_disk = self.disk_choice.currentData()
+        self.wipe_button.setEnabled(
+            not self.running and self.mode.currentIndex() == 1
+            and isinstance(selected_disk, dict) and bool(selected_disk.get("dhfs")))
         self.report_button.setEnabled(bool(self.job))
 
     def open_output(self):

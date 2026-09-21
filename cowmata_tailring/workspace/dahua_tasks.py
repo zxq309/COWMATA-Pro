@@ -274,30 +274,33 @@ def cleanup_completed_sources(index, result, *, cancelled=lambda: False, confirm
                         else f"已清理 {len(deleted)} 个；另有 {len(pending)} 个待核对，原文件保留")}
 
 
-_source_read_lock = threading.BoundedSemaphore(2)
+_source_read_lock = threading.BoundedSemaphore(1)
 
 
 def serial_source_read(method):
     @wraps(method)
     def wrapped(*args, **kwargs):
-        # Raw recorder disks get a small read budget so all mapped views can
-        # make progress without turning random seeks into a 17% throughput
-        # cliff.  Ordinary mounted files are independently readable.
+        # Raw recorder disks read ONE chain at a time (seek storms on a
+        # spinning platter cost far more than parallelism gains), while the
+        # conversion stage of the other workers overlaps the read fully.
         index = args[1] if len(args) > 1 else kwargs.get("index", {})
         guard = _source_read_lock if isinstance(index, dict) and index.get("mode") == "disk" else nullcontext()
         with guard:
             return method(*args, **kwargs)
-    return wrapped
+    return wraps(method)(wrapped)
 
 
 def preparation_workers(index=None):
-    """Queue every recorder view; raw-disk reads remain serialized, conversions overlap.
+    """Disk mode pipelines: one serialized reader + one overlapping converter.
 
-    The worker count is deliberately the recorder capacity (20), while each
-    decoder is restricted to one thread. This starts all mapped views instead
-    of leaving 18 views in a hidden two-worker queue.
+    The recorder chain read stays exclusive, but the second worker remuxes and
+    verifies the previously staged segment while the platter streams the next
+    one, so the disk never waits for the CPU and vice versa. Mounted-file
+    sources keep one independent worker per mapped view.
     """
-    return 1 if isinstance(index, dict) and index.get("mode") == "disk" else len(VIEWS)
+    if isinstance(index, dict) and index.get("mode") == "disk":
+        return 2
+    return len(VIEWS)
 
 
 @serial_source_read
@@ -824,7 +827,7 @@ def organize(
 
         def row_stream():
             from .dahua_parallel import prepared_records as parallel_records
-            workers = 1 if index.get("mode") == "disk" else preparation_workers()
+            workers = preparation_workers(index)
             preparing = parallel_records(selected, prepare_one, workers,
                                          lambda: check(is_cancelled))
             try:

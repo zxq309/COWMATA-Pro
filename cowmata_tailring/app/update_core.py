@@ -76,13 +76,13 @@ def _native_open(url, headers):
     return open_windows(url, headers, valid_url)
 
 
-def open_url(url, headers=None):
+def open_url(url, headers=None, timeout=30):
     valid_url(url)
     request = urllib.request.Request(url, headers={"User-Agent": "COWMATA-Annotator-Updater",
                                                   "Accept": "application/vnd.github+json", **(headers or {})})
     transport = urllib.request.build_opener(_Redirect())
     try:
-        return transport.open(request, timeout=30)
+        return transport.open(request, timeout=timeout)
     except urllib.error.HTTPError as exc:
         if exc.code != 403 or "/releases/download/" not in urllib.parse.urlsplit(url).path:
             raise
@@ -92,7 +92,7 @@ def open_url(url, headers=None):
         query = urllib.parse.parse_qsl(split.query) + [("cowmata_refresh", str(time.time_ns()))]
         fresh = urllib.parse.urlunsplit(split._replace(query=urllib.parse.urlencode(query)))
         retry = urllib.request.Request(fresh, headers={**dict(request.header_items()), "Cache-Control":"no-cache"})
-        return transport.open(retry, timeout=30)
+        return transport.open(retry, timeout=timeout)
     except (urllib.error.URLError, ssl.SSLEOFError, ConnectionError, TimeoutError) as exc:
         if os.name != "nt" or not transient_error(exc):
             raise
@@ -203,6 +203,187 @@ def check_update(current, channel="preview", opener=open_url, package_kind="port
             "release_url": PAGE + "/tag/" + urllib.parse.quote(release["tag_name"], safe="")}
 
 
+READ_BLOCK = 1024 * 1024
+STALL_TIMEOUT = 25            # a read slower than this reconnects from the offset
+SEGMENTS = 6                  # parallel range connections for one release asset
+MIN_SEGMENT = 12 * 1024**2    # smaller transfers stay single-stream
+MAX_ZERO_ROUNDS = 8           # consecutive reconnects without progress before failing
+
+
+def _part_paths(directory, name):
+    return [directory / (name + f".part-{index}") for index in range(SEGMENTS)]
+
+
+def _harden(response, timeout):
+    """Shorten the socket read timeout so a stalled link reconnects instead of
+    hanging the whole update; the opener contract stays (url, headers)."""
+    sock = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+    try:
+        sock.settimeout(timeout)
+    except (AttributeError, OSError):
+        pass
+    return response
+
+
+def _harden(response, timeout):
+    """Shorten the socket read timeout so a stalled link reconnects instead of
+    hanging the whole update; the opener contract stays (url, headers)."""
+    sock = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+    try:
+        sock.settimeout(timeout)
+    except (AttributeError, OSError):
+        pass
+    return response
+
+
+def _download_single_stream(update, partial, offset, progress, cancelled, opener):
+    """One connection, resuming from `offset`; a stalled or throttled link is
+    reconnected from the written offset instead of failing the whole update.
+    A 200 answer to a Range request restarts inside the same response — never
+    append a full body behind existing bytes."""
+    url, size = update["url"], update["size"]
+    written, zero_rounds, restarts = offset, 0, 0
+    while written < size:
+        if cancelled():
+            raise InterruptedError("下载已暂停，下次检查可续传")
+        try:
+            headers = {"Range": f"bytes={written}-"} if written else {}
+            with _harden(opener(url, headers), STALL_TIMEOUT) as response:
+                if response.status == 206:
+                    match = re.fullmatch(rf"bytes {written}-(\d+)/(\d+)",
+                                         response.headers.get("Content-Range", ""))
+                    if not match or int(match[2]) != size:
+                        raise ValueError("Invalid resumed download range")
+                    stream = partial.open("ab")
+                    stream.seek(written)
+                elif response.status == 200:
+                    restarts += 1
+                    if restarts > 4:
+                        raise ValueError("下载服务不支持断点续传；请清除下载后重试")
+                    written = 0  # Server ignored Range: restart, never append.
+                    stream = partial.open("wb")
+                else:
+                    raise ValueError("Unexpected download status")
+                with stream:
+                    while True:
+                        if cancelled():
+                            raise InterruptedError("下载已暂停，下次检查可续传")
+                        block = response.read(READ_BLOCK)
+                        if not block:
+                            break
+                        written += len(block)
+                        if written > size:
+                            raise ValueError("Download exceeds expected size")
+                        stream.write(block)
+                        progress(written, size)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                zero_rounds = 0
+        except InterruptedError:
+            raise
+        except (urllib.error.URLError, ssl.SSLEOFError, http.client.IncompleteRead,
+                ConnectionError, TimeoutError, OSError) as exc:
+            if not transient_error(exc):
+                raise
+            zero_rounds += 1
+            if zero_rounds > MAX_ZERO_ROUNDS:
+                raise
+            progress(written, size)
+            time.sleep(0.5 * min(zero_rounds, 4))
+
+
+def _download_parallel(update, directory, partial, progress, cancelled, opener):
+    """Split the asset across SEGMENTS range connections with per-segment resume."""
+    import threading
+    size = update["size"]
+    url = update["url"]
+    bounds = []
+    edge = 0
+    for index in range(SEGMENTS):
+        seg_end = size - 1 if index == SEGMENTS - 1 else edge + size // SEGMENTS - 1
+        bounds.append((edge, seg_end))
+        edge = seg_end + 1
+    parts = _part_paths(directory, update["name"])
+    done = [0] * SEGMENTS
+    lock = threading.Lock()
+
+    def advance(index):
+        def counter(amount):
+            if amount:
+                with lock:
+                    done[index] += amount
+            progress(sum(done), size)
+        return counter
+
+    def worker(index):
+        path = parts[index]
+        seg_start, seg_end = bounds[index]
+        length = seg_end - seg_start + 1
+        if path.exists() and not path.is_file():
+            raise ValueError("Linked update cache is not supported")
+        have = path.stat().st_size if path.exists() else 0
+        if have > length:
+            raise ValueError("Oversized partial download")
+        done[index] = have
+        with path.open("ab") as stream:
+            stream.seek(have)
+            position = seg_start + have
+            while position <= seg_end:
+                if cancelled():
+                    raise InterruptedError("下载已暂停，下次检查可续传")
+                headers = {"Range": f"bytes={position}-{seg_end}"}
+                with _harden(opener(url, headers), STALL_TIMEOUT) as response:
+                    if response.status != 206:
+                        raise ValueError("下载服务不支持分段续传，请重试")
+                    match = re.fullmatch(rf"bytes {position}-(\d+)/(\d+)",
+                                         response.headers.get("Content-Range", ""))
+                    if not match or int(match[1]) != seg_end or int(match[2]) != size:
+                        raise ValueError("Invalid resumed download range")
+                    while True:
+                        if cancelled():
+                            raise InterruptedError("下载已暂停，下次检查可续传")
+                        block = response.read(READ_BLOCK)
+                        if not block:
+                            break
+                        if position + len(block) > seg_end + 1:
+                            raise ValueError("Download exceeds expected size")
+                        stream.write(block)
+                        position += len(block)
+                        advance(index)(len(block))
+            if path.stat().st_size != length:
+                raise ValueError("下载不完整或校验失败；未运行安装器")
+
+    threads = [threading.Thread(target=worker, args=(index,), daemon=True,
+                                name=f"cowmata-dl-{index}") for index in range(SEGMENTS)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    if cancelled():
+        raise InterruptedError("下载已暂停，下次检查可续传")
+    with partial.open("wb") as target:
+        for path in parts:
+            with path.open("rb") as source:
+                while block := source.read(4 * READ_BLOCK):
+                    target.write(block)
+            path.unlink()
+        target.flush()
+        os.fsync(target.fileno())
+    progress(size, size)
+
+
+def _server_supports_ranges(update, opener):
+    try:
+        with opener(update["url"], {"Range": "bytes=0-0"}) as response:
+            if response.status != 206:
+                return False
+            match = re.fullmatch(r"bytes 0-0/(\d+)", response.headers.get("Content-Range", ""))
+            return bool(match) and int(match[1]) == update["size"]
+    except (urllib.error.URLError, ssl.SSLEOFError, http.client.IncompleteRead,
+            ConnectionError, TimeoutError):
+        return False
+
+
 def _download_once(update, directory, progress=lambda *_: None, cancelled=lambda: False, opener=open_url):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -211,7 +392,8 @@ def _download_once(update, directory, progress=lambda *_: None, cancelled=lambda
         raise ValueError("Unsafe download filename")
     final = directory / name
     partial = directory / (name + ".part")
-    for path in (final, partial):
+    parts = _part_paths(directory, name)
+    for path in (final, partial, *parts):
         if path.is_symlink():
             raise ValueError("Linked update cache is not supported")
     if final.exists():
@@ -222,31 +404,23 @@ def _download_once(update, directory, progress=lambda *_: None, cancelled=lambda
     if offset > update["size"]:
         raise ValueError("Oversized partial download")
     if offset < update["size"]:
-        with opener(update["url"], {"Range": f"bytes={offset}-"} if offset else {}) as response:
-            status = response.status
-            if status == 206:
-                content_range = response.headers.get("Content-Range", "")
-                expected = f"bytes {offset}-{update['size'] - 1}/{update['size']}"
-                if content_range != expected:
-                    raise ValueError("Invalid resumed download range")
-            elif status == 200:
-                offset = 0  # A server may ignore Range; restart, never append.
-            else:
-                raise ValueError("Unexpected download status")
-            with partial.open("ab" if offset else "wb") as stream:
-                while True:
-                    if cancelled():
-                        raise InterruptedError("下载已暂停，下次检查可续传")
-                    block = response.read(1024 * 1024)
-                    if not block:
-                        break
-                    offset += len(block)
-                    if offset > update["size"]:
-                        raise ValueError("Download exceeds expected size")
-                    stream.write(block)
-                    progress(offset, update["size"])
-                stream.flush()
-                os.fsync(stream.fileno())
+        resuming_segments = any(path.exists() for path in parts)
+        worth_parallel = update["size"] >= SEGMENTS * MIN_SEGMENT and (
+            resuming_segments or _server_supports_ranges(update, opener))
+        if offset == 0 and worth_parallel:
+            try:
+                _download_parallel(update, directory, partial, progress, cancelled, opener)
+            except ValueError as exc:
+                if "分段" not in str(exc) or cancelled():
+                    raise
+                # The endpoint stopped honoring ranges mid-flight; restart single.
+                for path in parts:
+                    path.unlink(missing_ok=True)
+                partial.write_bytes(b"")
+        else:
+            for path in parts:  # Mixed single/parallel states restart cleanly.
+                path.unlink(missing_ok=True)
+            _download_single_stream(update, partial, offset, progress, cancelled, opener)
     if partial.stat().st_size != update["size"]:
         raise ValueError("下载不完整或校验失败；未运行安装器")
     if digest(partial) != update["sha256"]:
@@ -333,8 +507,12 @@ def public_releases(current, channel, opener, package_kind="portable"):
 
 
 def download(update, directory, progress=lambda *_: None, cancelled=lambda: False, opener=open_url):
-    """Resume transient transport failures with a bounded retry budget."""
-    for attempt in range(3):
+    """Resume transient transport failures with a bounded retry budget.
+
+    Every attempt continues from the stored offset, so a lossy route still
+    finishes across many reconnects instead of stranding the user mid-update.
+    """
+    for attempt in range(8):
         if cancelled():
             raise InterruptedError("下载已暂停，下次可续传")
         try:
@@ -342,9 +520,9 @@ def download(update, directory, progress=lambda *_: None, cancelled=lambda: Fals
         except (urllib.error.URLError, ssl.SSLEOFError, http.client.IncompleteRead, ConnectionError, TimeoutError) as exc:
             if not transient_error(exc) and not (isinstance(exc, urllib.error.HTTPError) and exc.code == 403):
                 raise
-            if attempt == 2:
+            if attempt == 7:
                 raise
-            deadline = time.monotonic() + attempt + 1
+            deadline = time.monotonic() + min(attempt + 1, 4)
             while time.monotonic() < deadline:
                 if cancelled():
                     raise InterruptedError("下载已暂停，下次可续传") from exc
