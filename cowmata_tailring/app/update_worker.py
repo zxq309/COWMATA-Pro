@@ -173,6 +173,39 @@ def member(root, relative, *, checked_dirs=None):
     return result
 
 
+JUNK_DIR_PATTERNS = ("%SystemDrive%",)
+
+
+def purge_junk(root):
+    """Remove installer droppings that block the directory swap.
+
+    Windows components and GPU installers occasionally run with the
+    application directory as their working directory and write to
+    unexpanded paths, leaving e.g. a literal percent SystemDrive folder
+    holding a ProgramData cache copy, or NVIDIA Corporation umdlogs,
+    inside the install tree. None of it is user data; deleting it keeps
+    self-update unblocked.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        return []
+    removed = []
+    for entry in sorted(root.iterdir()):
+        if not entry.is_dir() or entry.is_symlink():
+            continue
+        name = entry.name
+        targeted = name in JUNK_DIR_PATTERNS or (name == "NVIDIA Corporation"
+                                                 and (entry / "umdlogs").is_dir())
+        if not targeted:
+            continue
+        try:
+            shutil.rmtree(entry)
+            removed.append(name)
+        except OSError:
+            continue
+    return removed
+
+
 def inventory(root, *, verify=False, manifest_sha=None, progress=lambda *_: None):
     checked_dirs = set()
     root = safe_path(root, checked_dirs=checked_dirs)
@@ -267,6 +300,7 @@ def desktop_enabled(root, version):
 def remove_owned(root):
     """No recursive delete: validate the complete inventory before first unlink."""
     root = safe_path(root)
+    purge_junk(root)
     actual = inventory(root)
     checked_dirs = set()
     for rel in actual:
@@ -346,6 +380,11 @@ def _install_locked(job, *, runner, registration, unregister, restart):
     inventory(root)
     if shutil.disk_usage(root.parent).free < update["unpacked_size"] + 128 * 1024**2:
         raise OSError("磁盘空间不足；旧版保持不变")
+    junk = purge_junk(root)
+    if junk:
+        state = read_json(journal, {})
+        state.update(purged_junk=junk)
+        write_json(journal, state)
     job_dir = safe_path(job["job_dir"])
     if job_dir.is_relative_to(root):
         raise ValueError("Updater must be outside the application directory")
@@ -402,6 +441,7 @@ def _install_locked(job, *, runner, registration, unregister, restart):
         if result.returncode or version_key(output) != version_key(version):
             raise RuntimeError("新版运行库导入检查失败；旧版未修改")
         phase("pre_swap_check")
+        purge_junk(root)
         inventory(root)  # Catch files added during extraction.
         if running_check(root, job_dir, runner, version=old_version):
             raise RuntimeError("软件被重新打开；已取消替换")

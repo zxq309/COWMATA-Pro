@@ -1,5 +1,5 @@
 {
-  "version": "4.1.8",
+  "version": "4.1.9",
   "files": [
     {
       "path": ".gitattributes",
@@ -1043,8 +1043,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 45767,
-      "sha256": "1c5379bc8445aa214980387ad85642a3a29ef0c8a5d3381fe47ebe60ca100df8"
+      "size": 46767,
+      "sha256": "2d33c9e4eb3c8c39cea6ea7926ac4e134f6be6cd2fc85d438e08fa390bb69e36"
     },
     {
       "path": "CITATION.cff",
@@ -1153,8 +1153,8 @@
     },
     {
       "path": "cowmata_tailring/__init__.py",
-      "size": 216,
-      "sha256": "679037b209de092768ee3a144d23844d1bab51c1a1e9cd359961cd045ba0aeb4"
+      "size": 221,
+      "sha256": "65e0bb7253b7a513f9b61f566b4ec3e4c6c0fe7a2ce0bc9350592d54c0d42f76"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -1438,8 +1438,8 @@
     },
     {
       "path": "cowmata_tailring/app/update_worker.py",
-      "size": 23104,
-      "sha256": "16f4831c004accdc1054c2e8b9433137a93a8628a2c688ddee6e9bf94e514155"
+      "size": 24391,
+      "sha256": "edc713bd7144f166ad17cfb8ade526f4c6f5b554ae478deae9d4d9897388f856"
     },
     {
       "path": "cowmata_tailring/app/windows_identity.py",
@@ -2068,13 +2068,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_tasks.py",
-      "size": 46203,
-      "sha256": "b0d69ebdbb61ea68fdc888ad253d2a61c864dacbd9ccfb1eaeb3383b7db4d703"
+      "size": 47277,
+      "sha256": "7a30402456481d81ea3d15b6f70122dac9744d5dd5b183ed61faa2f57489afa5"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_ui.py",
-      "size": 38267,
-      "sha256": "73f97ff680f3fe5223907c87eeaa71c491b6ee992bb29bcb223867cd8363af99"
+      "size": 38282,
+      "sha256": "b6cbc8b5a48aa3c438894c26ec5906d9cc87eb9b92db69e8c37267a958820d4f"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_wipe.py",
@@ -2283,8 +2283,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/organization_ui.py",
-      "size": 89034,
-      "sha256": "71ba9d4207c963e8c3c08b5a1ae8e208975045d4360b9dc433364c90cf0894c2"
+      "size": 90065,
+      "sha256": "b2ffa6fc36b8347512df85ae4416f9771b09aa6ed30e829da3bab8bd18d70629"
     },
     {
       "path": "cowmata_tailring/workspace/organization_worker.py",
@@ -4355,6 +4355,11 @@
       "path": "tests/test_release_417.py",
       "size": 7670,
       "sha256": "1029fbdf42de1cd5fcda8ffe5e0f31ee0816f7150adb684bbc18465bb2d201fc"
+    },
+    {
+      "path": "tests/test_release_419.py",
+      "size": 3989,
+      "sha256": "3f535602ab89bed5108155e370a06930c664c9a8d4214c7f63b596da9b1c827a"
     },
     {
       "path": "tests/test_release_v364.py",

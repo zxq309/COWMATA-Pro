@@ -266,6 +266,24 @@ class PlanModel(QAbstractTableModel):
 
 
 class OrganizationWindow(TaskWindow):
+    def showEvent(self, event):
+        # A previously maximized or hand-moved geometry can reopen with the
+        # title bar off-screen, hiding the disk row entirely; clamp the frame
+        # into the current screen on every show so the page always fully shows.
+        super().showEvent(event)
+        screen = self.screen() or self.windowHandle().screen()
+        available = screen.availableGeometry()
+        if self.width() > available.width() or self.height() > available.height():
+            self.resize(min(self.width(), available.width()),
+                        min(self.height(), available.height()))
+        position = self.frameGeometry().topLeft()
+        target_x = min(max(position.x(), available.left()),
+                       available.right() - self.frameGeometry().width() + 1)
+        target_y = min(max(position.y(), available.top()),
+                       available.bottom() - self.frameGeometry().height() + 1)
+        if (target_x, target_y) != position:
+            self.move(target_x, target_y)
+
     def __init__(self, window):
         super().__init__(window, Qt.WindowType.Window)
         self.owner = window

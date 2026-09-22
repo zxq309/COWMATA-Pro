@@ -561,8 +561,27 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
     return results
 
 
+def _job_source_available(job):
+    """A paused disk task is only resumable while its recorder disk is attached."""
+    index = read_json(job / "dahua-index.json", {})
+    if not isinstance(index, dict) or index.get("mode") != "disk":
+        return True
+    saved = index.get("disk") or {}
+    if not saved.get("identity"):
+        return True
+    try:
+        return any(d.get("identity") == saved.get("identity") for d in disks())
+    except (OSError, TypeError, KeyError):
+        return False
+
+
 def pending_video_job(target):
-    """Find the farm's actual pending video job, independent of the last scan."""
+    """Find the farm's actual pending video job, independent of the last scan.
+
+    When several paused jobs match, tasks whose recorder disk is no longer
+    attached cannot resume and are skipped, so replacing a recorder disk does
+    not deadlock the farm behind an old task forever.
+    """
     from .dataset_access import registry_root
 
     if not target:
@@ -581,7 +600,14 @@ def pending_video_job(target):
             matches.append(job)
     matches = list(dict.fromkeys(matches))
     if len(matches) > 1:
-        raise ValueError("此牧场有多个未完成的视频任务，请核对任务记录：" + "；".join(map(str, matches)))
+        resumable = [job for job in matches if _job_source_available(job)]
+        if len(resumable) == 1:
+            matches = resumable
+        elif not resumable:
+            raise ValueError(
+                "此牧场有多个未完成的视频任务，但它们的来源磁盘都未连接；请接回对应录像机原盘后再继续")
+        else:
+            raise ValueError("此牧场有多个未完成的视频任务，请核对任务记录：" + "；".join(map(str, matches)))
     return matches[0] if matches else None
 
 
