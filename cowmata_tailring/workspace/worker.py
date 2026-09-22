@@ -7,6 +7,7 @@ import queue
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, Signal
 
@@ -45,6 +46,10 @@ class IndexWorker(QObject):
         self.attempted_stamps = {}
         self.explicit = set()
         self.bulk = False
+        self.inspect_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="video-inspect")
+        self._pool_shutdown = False
+        self.inspect_pending = {}
+        self._thread_state = threading.local()
         self.playhead = None
         self.thread = threading.Thread(target=self.run, daemon=True, name="project-index")
 
@@ -76,6 +81,58 @@ class IndexWorker(QObject):
         self.stop.set()
         self.job_stop.set()
         self.wake.set()
+
+    def _ensure_pool(self):
+        # A paused/closed worker shuts the pool down; a restarted worker
+        # recreates it instead of crashing on submit.
+        if getattr(self, "_pool_shutdown", False):
+            self.inspect_pool = ThreadPoolExecutor(
+                max_workers=3, thread_name_prefix="video-inspect")
+            self._pool_shutdown = False
+        return self.inspect_pool
+
+    def _thread_inspector(self):
+        """One SourceInspector per working thread; OCR models are not shared."""
+        inspector = getattr(self._thread_state, "inspector", None)
+        if inspector is None:
+            inspector = SourceInspector(self.catalog.root, self.catalog.meta,
+                                        self.job_stop, self.progress.emit)
+            inspector.defer_native_checks = True
+            self._thread_state.inspector = inspector
+        return inspector
+
+    def _inspect_full(self, row, path):
+        inspector = self._thread_inspector()
+        if row["kind"] == "video" and row["metadata"].get("recheck") and not row["metadata"].get("manual_readings"):
+            try:
+                assert_not_being_written(path)
+                inspector.video_hint(path)
+            except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+                if not self.job_stop.is_set():
+                    self.progress.emit(str(exc))
+        result = self.catalog.index_one(row["path"], inspector,
+                                        cancelled=self.job_stop.is_set, eager=True)
+        return result, inspector
+
+    def _harvest_inspections(self):
+        """Emit finished parallel inspections; failures stay pending for retry."""
+        for future in [f for f in list(self.inspect_pending) if f.done()]:
+            row, path = self.inspect_pending.pop(future)
+            try:
+                result, inspector = future.result()
+            except Exception:
+                if not self.stop.is_set():
+                    self.scanned.emit(None)
+                continue
+            if self.job_stop.is_set() or self.stop.is_set():
+                continue
+            if result:
+                motion = getattr(inspector, 'last_motion', None)
+                if motion and motion[:2] == (path.resolve(), result['asset_id']):
+                    result = {**result, 'motion': motion[2]}
+                self.indexed.emit(result)
+            else:
+                self.scanned.emit(None)
 
     def next_task(self, pending):
         by_path = {r["path"]: r for r in pending}
@@ -270,6 +327,19 @@ class IndexWorker(QObject):
                                     self.catalog.update_metadata(row["asset_id"], metadata)
                         finally:
                             inspector.defer_native_checks = True
+                    elif mode == "full" and row["kind"] == "video" and self.bulk:
+                        # Bulk full-indexing runs three inspections at a time;
+                        # each thread keeps its own SourceInspector (OCR models
+                        # are thread-local) while the catalog serializes
+                        # commits. Annotation windows keep the serial path so
+                        # their completion order stays deterministic.
+                        self.attempted.add(row["path"])
+                        self.attempted_stamps[row["path"]] = row["stamp"]
+                        self.explicit.discard(row["path"])
+                        self.inspect_pending[self._ensure_pool().submit(
+                            self._inspect_full, row, path)] = (row, path)
+                        idle_reported = False
+                        self._harvest_inspections()
                     elif mode == "full":
                         if row["kind"] == "video" and row["metadata"].get("recheck") and not row["metadata"].get("manual_readings"):
                             # Legacy intervals can route straight to full OCR.
@@ -325,4 +395,12 @@ class IndexWorker(QObject):
             if not self.stop.is_set():
                 self.failed.emit(str(exc))
         finally:
+            deadline = time.monotonic() + 60
+            while self.inspect_pending and not self.stop.is_set():
+                self._harvest_inspections()
+                if not self.inspect_pending or time.monotonic() > deadline:
+                    break
+                time.sleep(.05)
+            self._pool_shutdown = True
+            self.inspect_pool.shutdown(wait=False)
             self.finished.emit()

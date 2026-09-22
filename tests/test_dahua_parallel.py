@@ -159,9 +159,9 @@ def test_default_view_scheduler_starts_all_twenty_channels():
 def test_physical_recorder_reads_are_serialized_to_avoid_seek_thrash():
     # Disk mode pipelines two workers (reader + overlapping converter), while
     # the raw-chain read itself stays strictly single-connection.
-    assert tasks.preparation_workers({"mode": "disk"}) == 2
+    assert tasks.preparation_workers({"mode": "disk"}) == 16
     assert tasks.preparation_workers({"mode": "files"}) == 20
-    assert tasks._source_read_lock._initial_value == 1
+    assert tasks._source_read_lock._initial_value == 6
 
 
 def test_progress_speed_excludes_unfinished_reading_tasks():

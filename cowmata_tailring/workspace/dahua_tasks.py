@@ -274,7 +274,7 @@ def cleanup_completed_sources(index, result, *, cancelled=lambda: False, confirm
                         else f"已清理 {len(deleted)} 个；另有 {len(pending)} 个待核对，原文件保留")}
 
 
-_source_read_lock = threading.BoundedSemaphore(1)
+_source_read_lock = threading.BoundedSemaphore(6)
 
 
 def serial_source_read(method):
@@ -299,7 +299,7 @@ def preparation_workers(index=None):
     sources keep one independent worker per mapped view.
     """
     if isinstance(index, dict) and index.get("mode") == "disk":
-        return 2
+        return 16
     return len(VIEWS)
 
 
