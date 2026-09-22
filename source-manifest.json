@@ -1,5 +1,5 @@
 {
-  "version": "4.2.0",
+  "version": "4.2.1",
   "files": [
     {
       "path": ".gitattributes",
@@ -1043,8 +1043,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 47688,
-      "sha256": "61cf3a37eb2f2ab00fd58a3dceeac5000a87f1d37085eb9321edb03b08782405"
+      "size": 48526,
+      "sha256": "be6150709d4d0eef690bacaf41f1ae330b96c9cddba82d8f9c1e92575dd096b9"
     },
     {
       "path": "CITATION.cff",
@@ -1153,8 +1153,8 @@
     },
     {
       "path": "cowmata_tailring/__init__.py",
-      "size": 219,
-      "sha256": "8538e737d7f755664520257a6f09f582ea2a203677205e636dc97ff91a5b6dc0"
+      "size": 208,
+      "sha256": "4abb7eb39d8171de0c289c8f6873c16791db83af611bc0eae65c9ab5e1852dfb"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -2043,8 +2043,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_parallel.py",
-      "size": 1716,
-      "sha256": "40951be00d16af1de57ae4045ffd379e429e58046ef33d399a9fd6beeb6ef864"
+      "size": 3818,
+      "sha256": "5e53f4e81eb3d0661a3ddd7ef839edb0c17ba6e3c2ed1b78de56c82fe160a2dd"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_report_ui.py",
@@ -2068,8 +2068,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_tasks.py",
-      "size": 47278,
-      "sha256": "5b8e997b05fc1c35eb135fb7779e078b879c3512f5d87f5579a65d3f85ca2047"
+      "size": 48420,
+      "sha256": "5d85bb5b47f04f5b697e616bdc5399248c0677663b15cc7dbe4bb6d1b7bfa3fa"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_ui.py",
@@ -4000,6 +4000,11 @@
       "path": "tests/test_dahua_parallel.py",
       "size": 7591,
       "sha256": "b1572a08a278cec942c134eb1bbfd608e812d228713bc3c6e450b152f55f1d92"
+    },
+    {
+      "path": "tests/test_dahua_pipeline_421.py",
+      "size": 3372,
+      "sha256": "1007b6bf4c8ef937d5301ece836af3c38f00c7292089d2033a3d49ed8b0d1e71"
     },
     {
       "path": "tests/test_dahua_recorded_clock.py",

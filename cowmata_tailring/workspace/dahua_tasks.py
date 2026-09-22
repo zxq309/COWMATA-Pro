@@ -851,11 +851,32 @@ def organize(
             return prior, prepared_rows, False
 
 
+        def stage_source(row):
+            """Reader thread: pull this recording's chain onto the target disk.
+
+            The raw chain read stays one-at-a-time (single platter head); the
+            converter pool works purely on staged files on the target volume.
+            """
+            if row["id"] in completed or row["id"] in prepared_records:
+                return
+            if retry_ids is not None and row['status'] == 'invalid' and index['mode'] == 'disk':
+                refresh_invalid_disk_row(row, index, is_cancelled)
+            normalized(row, index, job, is_cancelled)
+
         def row_stream():
-            from .dahua_parallel import prepared_records as parallel_records
+            from .dahua_parallel import pipelined_records
             workers = preparation_workers(index)
-            preparing = parallel_records(selected, prepare_one, workers,
-                                         lambda: check(is_cancelled))
+            if index.get("mode") == "disk":
+                # Sweep the platter in partition/descriptor order (physical
+                # layout) while all mapped views convert in parallel.
+                preparing = pipelined_records(
+                    selected, stage_source, prepare_one, workers,
+                    lambda: check(is_cancelled), ahead=4,
+                    order_key=lambda row: (row.get("partition", 0), row.get("descriptor", 0)))
+            else:
+                from .dahua_parallel import prepared_records as parallel_records
+                preparing = parallel_records(selected, prepare_one, workers,
+                                             lambda: check(is_cancelled))
             try:
                 for position, (row, future) in enumerate(preparing):
                     check(is_cancelled)
