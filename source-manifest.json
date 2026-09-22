@@ -1,5 +1,5 @@
 {
-  "version": "4.2.1",
+  "version": "4.2.2",
   "files": [
     {
       "path": ".gitattributes",
@@ -1043,8 +1043,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 48526,
-      "sha256": "be6150709d4d0eef690bacaf41f1ae330b96c9cddba82d8f9c1e92575dd096b9"
+      "size": 49510,
+      "sha256": "27235dc2fde7edb1aee6f9295ab013dc1741f8e589acb5e69ca230067ecf1423"
     },
     {
       "path": "CITATION.cff",
@@ -1488,13 +1488,13 @@
     },
     {
       "path": "cowmata_tailring/edge_download/csv_download.py",
-      "size": 11698,
-      "sha256": "d170463216f3bb1e7a6037b1ec6e071a26a887dcb784297655159839c9b3e293"
+      "size": 12218,
+      "sha256": "1c4dae2336ab1820cb9e6d0ecc1fb0bdb7157059db38816d661db693af0a9177"
     },
     {
       "path": "cowmata_tailring/edge_download/csv_targets.py",
-      "size": 16515,
-      "sha256": "c33c6b0a8bcf4e813e44d75b949a5afee8065df40747bcbf4547b572ac1d32c7"
+      "size": 29387,
+      "sha256": "b8a9d9b5b078584f02e5e17dd6350532e463bbbd7dc2131e69b6a64293b5df7b"
     },
     {
       "path": "cowmata_tailring/edge_download/deduplication.py",
@@ -1512,9 +1512,14 @@
       "sha256": "7cf3101508dbad8962278b6fc8b3fa39ca7e12b4e294ed82b143192b195c087f"
     },
     {
+      "path": "cowmata_tailring/edge_download/download_notes.py",
+      "size": 3422,
+      "sha256": "9bcb0d0a60394a98d602e86b2834c644225f4f6e736629daf50a1057468867d0"
+    },
+    {
       "path": "cowmata_tailring/edge_download/integration.py",
-      "size": 2491,
-      "sha256": "d6453706f62091e0c19b8b3c100b68b6d0df0b1b4c28b11b18eff5ab7dc7e5df"
+      "size": 2513,
+      "sha256": "30d157b5e83e501533886439bcc7476acdda43516c60bd6cf42e45bb3131beb1"
     },
     {
       "path": "cowmata_tailring/edge_download/ledger.py",
@@ -1543,18 +1548,18 @@
     },
     {
       "path": "cowmata_tailring/edge_download/paths.py",
-      "size": 200,
-      "sha256": "bd038554a10d3a7127a9da45a4fc5472b8c0273bf9db9bee08450f6be46b46c2"
+      "size": 2995,
+      "sha256": "1c6aa9dee2bf2bd62a0d6b2ca92ec4d461315d79544f97ff8a37d3403f6dea8b"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_dialog.py",
-      "size": 45667,
-      "sha256": "6e73555334c795240fb5385c5c089fbc96788f8fd79791685d0e27284e42d9f5"
+      "size": 58288,
+      "sha256": "ee847e1fbebc1f8aae7d20413bb9a75f45594e4f86bd72c987446753bf35f237"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_settings.py",
-      "size": 4482,
-      "sha256": "53341cd31ba78fee9bf2fbff912ab536a5ff60c44f619556749ef3b6e8e967d2"
+      "size": 7726,
+      "sha256": "9d47b9433488c7119b4a3df881232857dde66701e88a37f84ab14ab01d70377f"
     },
     {
       "path": "cowmata_tailring/edge_download/raw_connection.py",
@@ -1563,13 +1568,13 @@
     },
     {
       "path": "cowmata_tailring/edge_download/settings.py",
-      "size": 4089,
-      "sha256": "0f2d7d05e44afe2632350b60a9b6f4423cc4e07874bf8c6a4aaf28254b9bdbd6"
+      "size": 4217,
+      "sha256": "f150a86a6a255adeeda5d1497690edebf24d40ddd7a27f4a4dccb50cb0be47cd"
     },
     {
       "path": "cowmata_tailring/edge_download/site_records.py",
-      "size": 17759,
-      "sha256": "228eff8467ef99257d075eb8ddf8e89d525d73d13d868334fb9178bcf20e72de"
+      "size": 17942,
+      "sha256": "efe58616c95ddd1ea9179803a908c2975fcc4e8d8e77b310718deaf421610783"
     },
     {
       "path": "cowmata_tailring/edge_download/transport.py",
@@ -2038,8 +2043,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_media.py",
-      "size": 33804,
-      "sha256": "cee84f0b0889cd5054a1b1eb5d387d14bb5e0b2fb86bf868d07eb8326327be08"
+      "size": 40056,
+      "sha256": "6fdb88a58c79d7fae401112ba087d6a8087de0179280220a30e2410bb050276d"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_parallel.py",
@@ -2068,8 +2073,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_tasks.py",
-      "size": 48420,
-      "sha256": "5d85bb5b47f04f5b697e616bdc5399248c0677663b15cc7dbe4bb6d1b7bfa3fa"
+      "size": 50859,
+      "sha256": "9b9d6e6418e997c5a9efb783ce2d6bc15bbe318ebb413bb8fe0cccb7b68d6527"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_ui.py",
@@ -3517,6 +3522,11 @@
       "sha256": "7e4cb868013a8b118e06c09c23a408f76934497fe2d20cbe7dfa19390463e73a"
     },
     {
+      "path": "result_422.log",
+      "size": 161,
+      "sha256": "1357e76bf51799c851edf147a140265b579b799ceae88936ca470eba23ba5352"
+    },
+    {
       "path": "scripts/benchmark_ocr_v6.py",
       "size": 3042,
       "sha256": "e3f3e45e4f1877174cbd58777a3d8b4fb1aa076b48e855d4ae1497346a9c9109"
@@ -4087,6 +4097,11 @@
       "sha256": "4e7df2251ae86ed205f47715e9e31760e49b22416ceafc4bf6a24f637cd6c8d9"
     },
     {
+      "path": "tests/test_downloader_completion_422.py",
+      "size": 17775,
+      "sha256": "e82a3db9fb1df889444b1ab34c20dff86a11a79cbbc59d98b1e56c4d003000d2"
+    },
+    {
       "path": "tests/test_draft_evidence_396.py",
       "size": 2452,
       "sha256": "b5c2fa60f04893c17118b3228720e6370fc8d220b1e670dab0378fe6404b8009"
@@ -4350,6 +4365,11 @@
       "path": "tests/test_regressions_396.py",
       "size": 4731,
       "sha256": "8463953153b56f63698c72720ddad0d211b30701957650a3cd75c4c5a1114159"
+    },
+    {
+      "path": "tests/test_relative_download_412.py",
+      "size": 12675,
+      "sha256": "e0765242ebc152b8312c3e0634518dfb7341595cc6c9a2aac5f4b0b0b7717c29"
     },
     {
       "path": "tests/test_release_390.py",

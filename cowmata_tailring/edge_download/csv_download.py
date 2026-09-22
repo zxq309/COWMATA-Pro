@@ -26,6 +26,7 @@ from .core import (
 )
 from .csv_targets import CsvPlan
 from .deduplication import RootSyncLock
+from .download_notes import NotesStore, notes_path
 from .local_records import LocalRecords
 from .settings import atomic_json
 
@@ -104,6 +105,12 @@ def run_csv_job(
             initialize_farm(root)
         with record_cycle(job, plan, result):
             state = checked_path(root, ".edge-download")
+            # Notes are archived beside the download state, never inside the
+            # mirrored ledger CSVs, and survive every later refresh.
+            try:
+                NotesStore(notes_path(root)).merge(plan.notes, plan.fingerprint).save()
+            except (OSError, ValueError) as exc:
+                log(f"备注记录未能写入：{exc}")
             atomic_json(
                 state / "csv-download-plan.json",
                 dict(
@@ -112,6 +119,7 @@ def run_csv_job(
                     records=plan.preview(),
                     issues=plan.issues,
                     births=plan.births,
+                    notes=list(plan.notes),
                 ),
             )
             for issue in plan.issues:
@@ -137,6 +145,7 @@ def run_csv_job(
                     while lo < hi:
                         client.check()
                         end = min(hi, lo + timedelta(days=1))
+                        log(f"正在下载 {device} {lo:%Y-%m-%d}")
                         try:
                             items = client.listing(Target(device), lo, end, ("motion", "pulse", "temp"))
                             for kind, uid, actual_device, history_cow in items:

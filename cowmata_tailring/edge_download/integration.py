@@ -17,7 +17,7 @@ class DownloadIntegration(QObject):
     def open(self):
         if self.dialog is None:
             from .pro_dialog import ProDownloadDialog
-            self.dialog = ProDownloadDialog(self.window)
+            self.dialog = ProDownloadDialog(self.window, refresh_on_open=True)
         self.dialog.show()
         self.dialog.raise_()
         self.dialog.activateWindow()
