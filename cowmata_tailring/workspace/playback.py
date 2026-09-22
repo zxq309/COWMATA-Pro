@@ -277,7 +277,9 @@ class VideoTile(QFrame):
     def _sync_video_output(self):
         if (self.engine is not None and self.stack.currentWidget() is self.surface
                 and self.surface.isVisible()):
-            self.engine.refresh_video_output()
+            refresh = getattr(self.engine, "refresh_video_output", None)
+            if callable(refresh):
+                refresh()
 
     def activate_preview(self):
         if getattr(self, "_preview_only", False) and self.interval:

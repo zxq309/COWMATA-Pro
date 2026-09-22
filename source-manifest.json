@@ -1,5 +1,5 @@
 {
-  "version": "4.2.2",
+  "version": "4.2.3",
   "files": [
     {
       "path": ".gitattributes",
@@ -1043,8 +1043,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 49510,
-      "sha256": "27235dc2fde7edb1aee6f9295ab013dc1741f8e589acb5e69ca230067ecf1423"
+      "size": 49043,
+      "sha256": "acf15b27ddb581996e804e2b498ff5b9febc51c0d6171f553e225b72d263ee65"
     },
     {
       "path": "CITATION.cff",
@@ -1153,8 +1153,8 @@
     },
     {
       "path": "cowmata_tailring/__init__.py",
-      "size": 208,
-      "sha256": "bc69087cfed728fd39e60fd353608429ce42dd98961611a37aed6f904dec233f"
+      "size": 209,
+      "sha256": "d74bb1f1ee4ad14179f6fa55128f1e8e48ca132d94f76db80a35e0ab2819adc2"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -2313,8 +2313,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/playback.py",
-      "size": 55020,
-      "sha256": "2e4a5fe74364c46002c43a6502896a8887652dbdb31b90d71e49de73ed5df692"
+      "size": 55106,
+      "sha256": "bd8c5f144225bf875c76beec866233f13c0a2c650c6daa5dc41cac5847b4922b"
     },
     {
       "path": "cowmata_tailring/workspace/ppg_intake.py",
@@ -2393,8 +2393,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/threaded_engine.py",
-      "size": 8724,
-      "sha256": "4ba6ec855f9fcfa4e3b1f615dd01293ebafb10bbd7a4c48390845012bd938dc5"
+      "size": 9320,
+      "sha256": "125987064328da014771bd226f43bf86f45bb240dbcbed7c2c10f2da6c30ff6c"
     },
     {
       "path": "cowmata_tailring/workspace/video_discovery.py",
@@ -4008,8 +4008,8 @@
     },
     {
       "path": "tests/test_dahua_parallel.py",
-      "size": 7591,
-      "sha256": "b1572a08a278cec942c134eb1bbfd608e812d228713bc3c6e450b152f55f1d92"
+      "size": 7588,
+      "sha256": "5a19cf69d987ef168806faf15ceb331e1c8e86fffc2d91c90f198e747930c2c0"
     },
     {
       "path": "tests/test_dahua_pipeline_421.py",
