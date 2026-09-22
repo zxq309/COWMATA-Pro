@@ -274,7 +274,7 @@ def cleanup_completed_sources(index, result, *, cancelled=lambda: False, confirm
                         else f"已清理 {len(deleted)} 个；另有 {len(pending)} 个待核对，原文件保留")}
 
 
-_source_read_lock = threading.BoundedSemaphore(6)
+_source_read_lock = threading.BoundedSemaphore(16)
 
 
 def serial_source_read(method):
@@ -447,7 +447,22 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
     source, source_info = normalized(row, index, job, cancelled)
     stage("verify", "核对码流时钟")
     input_info = probe(source, cancelled, dav=True)
-    clock = recorded_clock(source, input_info, cancelled) or packet_clock(source, cancelled, dav=True)
+    try:
+        clock = recorded_clock(source, input_info, cancelled) or packet_clock(source, cancelled, dav=True)
+    except ValueError as exc:
+        # Recorder clock restarts (PTS jumps backwards then resyncs) are
+        # rebuilt onto a monotonic frame-slot timeline instead of blocking
+        # the segment in 待核对; the corrections drive the remux filters.
+        if "视频时钟不连续" not in str(exc):
+            raise
+        stage("verify", "时钟回跳，重建单调时间轴")
+        from .dahua_media import packet_clock_sanitized
+
+        clock = packet_clock_sanitized(source, cancelled, dav=True)
+        # CFR slot timeline: frame N lands at N*interval. Monotonic by
+        # construction (no corrections expression needed), content gaps
+        # compress to one frame slot; the recorder index anchor stays.
+        clock["recovery"]["video_clock_corrections"] = []
     timing = clock.get("recovery")
     input_video = input_info["video"]
     started = source_info["start_ms"]
@@ -488,7 +503,17 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
         temporary = directory / (uuid.uuid4().hex + ".mp4")
         try:
             stage("convert", "转换 MP4")
-            converted = transcode(source, temporary, lo - started, hi - lo, cancelled, stage=stage, timing=timing, storage_profile=options["storage_profile"])
+            try:
+                converted = transcode(source, temporary, lo - started, hi - lo, cancelled, stage=stage, timing=timing, storage_profile=options["storage_profile"])
+            except ValueError as exc:
+                from .dahua_media import audio_broken
+
+                if not audio_broken(str(exc)):
+                    raise
+                stage("convert", "音频流损坏，保留视频丢弃音频重试")
+                converted = transcode(source, temporary, lo - started, hi - lo, cancelled, stage=stage, timing=timing, storage_profile=options["storage_profile"], drop_audio=True)
+                converted["settings"]["audio"] = "dropped"
+                converted["settings"]["audio_note"] = "音频流损坏已丢弃，视频完整保留"
             video = converted["info"]["video"]
             if (video["width"], video["height"]) != (input_video["width"], input_video["height"]):
                 raise ValueError("转码改变了原视频分辨率")

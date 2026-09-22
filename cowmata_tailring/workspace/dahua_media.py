@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import statistics
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime, timedelta
@@ -146,6 +147,114 @@ def packet_clock(path, cancelled=lambda: False, *, dav=False):
         max_backwards_seconds=max_back,
         max_gap_seconds=max_gap,
 
+    )
+
+
+def _slots_from_stamps(stamps, cancelled, *, interval, max_back_seconds, max_events):
+    """Walk raw PTS onto an interval-slot monotonic timeline.
+
+    Backwards steps continue at the running pace; source-side gaps are kept
+    as content gaps. Returns (slots, back_seconds, restarts, max_gap).
+    """
+    slots = [stamps[0]]
+    back_seconds = 0.0
+    restarts = 0
+    max_gap = 0.0
+    tolerance = max(0.020, interval * 0.75)
+    for index in range(1, len(stamps)):
+        back = slots[index - 1] - stamps[index]
+        if back > tolerance:
+            # A real clock restart (recorder resync). Bounded jumps continue
+            # at the running pace on the slot timeline.
+            if back > max_back_seconds * 1000:
+                raise ValueError(
+                    f"视频时钟不连续超出可恢复范围（回退 {back / 1000:.3f}s），需单独复核")
+            back_seconds = max(back_seconds, back)
+            restarts += 1
+            slots.append(slots[index - 1] + interval)
+        else:
+            gap = stamps[index] - slots[index - 1]
+            if gap > 0:
+                max_gap = max(max_gap, gap / 1000.0)
+            slots.append(max(stamps[index], slots[index - 1] + interval))
+        if index % 4096 == 0:
+            check(cancelled)
+    return slots, back_seconds, restarts, max_gap
+
+
+def packet_clock_sanitized(source, cancelled=lambda: False, *, dav=False,
+                           max_back_seconds=5.0, max_events=512):
+    """Rebuild a monotonic frame-slot clock from a discontinuous PTS walk.
+
+    Recorders occasionally emit a backwards PTS step (tested real segments:
+    -0.84 s followed by a +0.92 s gap, repeating). Instead of blocking the
+    segment in 待核对, frames keep their order on an interval-slot timeline:
+    backwards steps continue at the running pace, source-side gaps stay as
+    content gaps, and every discontinuity becomes a cumulative clock
+    correction for the existing setts/setpts remux machinery.
+    """
+    _, ffprobe = find_ffmpeg()
+    args = ["-f", "dhav"] if dav else []
+    value = run(
+        [ffprobe, "-v", "error", *args, "-select_streams", "v:0", "-show_packets",
+         "-show_entries", "packet=pts_time,duration_time", "-of",
+         "compact=p=0:nk=0", source],
+        cancelled, 300,
+    )
+    stamps = []
+    for line in value.stdout.decode("utf-8", "replace").splitlines():
+        fields = dict(part.split("=", 1) for part in line.split("|") if "=" in part)
+        try:
+            stamps.append(float(fields["pts_time"]) * 1000.0)
+        except (KeyError, ValueError):
+            continue
+    if len(stamps) < 2:
+        raise ValueError("视频帧不足，无法重建时钟")
+
+    intervals = [b - a for a, b in zip(stamps, stamps[1:]) if 0 < b - a <= 1000]
+    interval = statistics.median(intervals) if intervals else 40.0
+    if not 5.0 <= interval <= 250.0:
+        interval = 40.0
+
+    slots, back_seconds, restarts, max_gap = _slots_from_stamps(
+        stamps, cancelled, interval=interval,
+        max_back_seconds=max_back_seconds, max_events=max_events)
+
+    raw_corrections = []
+    previous_shift = 0.0
+    for index in range(1, len(slots)):
+        shift = slots[index] - stamps[index]
+        if abs(shift - previous_shift) > 0.5:
+            raw_corrections.append([index, int(round(shift - previous_shift))])
+            previous_shift = shift
+    # Only resync-scale jumps go into the remux expression: sub-250 ms jitter
+    # stays as source VFR (players tolerate it), and the expression must stay
+    # small enough for ffmpeg's filter graph to compile.
+    significant = [c for c in raw_corrections if abs(c[1]) >= 250]
+    significant.sort(key=lambda c: -abs(c[1]))
+    corrections = sorted(significant[:400])
+
+    interval_ms = int(round(interval))
+    total = int(round(slots[-1] - slots[0])) + interval_ms
+    if total <= 0:
+        raise ValueError("视频时钟重建失败：时长无效")
+    recovery = dict(
+        method="monotonic_slot_recovery",
+        frame_interval_ms=interval_ms,
+        video_frames=len(stamps),
+        video_clock_corrections=corrections,
+        duration_ms=total,
+    )
+    return dict(
+        first=stamps[0],
+        last=stamps[-1],
+        duration=total / 1000.0,
+        packets=len(stamps),
+        duplicates=0,
+        backwards=len(corrections),
+        max_backwards_seconds=back_seconds,
+        max_gap_seconds=max_gap,
+        recovery=recovery,
     )
 
 
@@ -295,7 +404,20 @@ def segments(start, end, requested_start=None, requested_end=None, split_midnigh
     return result
 
 
-def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, stage=lambda *_a, **_k: None, timing=None, storage_profile="native"):
+def audio_broken(exc_text):
+    """True when a remux failure traces to the damaged audio stream.
+
+    Video-only retry (-an) archives those segments; video-side failures
+    must keep surfacing.
+    """
+    text = exc_text or ""
+    return ("pcm_alaw" in text or "aresample" in text
+            or "Guessed Channel Layout" in text
+            or ("Non-monotonic DTS" in text and "aac" in text)
+            or "alist" in text)
+
+
+def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, stage=lambda *_a, **_k: None, timing=None, storage_profile="native", drop_audio=False):
     """Keep compatible H.264/HEVC packets; exact middle cuts use the encoder."""
     import os
     import uuid
@@ -364,21 +486,22 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                         *([] if full_record and not boundary_copy else ["-t", f"{duration_ms / 1000:.6f}"]),
                         "-map",
                         "0:v:0",
-                        "-map",
-                        "0:a:0?",
+                        *([] if drop_audio else ["-map", "0:a:0?"]),
                         "-map_metadata",
                         "-1",
                         "-c:v",
                         "copy",
                         *(["-tag:v", "hvc1"] if video["codec_name"] == "hevc" else []),
                         *(["-bsf:v", video_clock_filter(copy_timing)] if copy_timing else []),
+                        *([] if drop_audio else [
                         *audio_clock_options(copy_timing),
                         "-c:a",
                         "aac",
                         "-ar",
                         "48000",
                         "-b:a",
-                        "96k",
+                        "96k"]),
+                        *(["-an"] if drop_audio else []),
                         "-avoid_negative_ts", "make_zero",
                         "-movflags",
                         "+faststart",
@@ -407,7 +530,7 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
             stage_path.unlink(missing_ok=True)
     if copy_failure:
         stage("convert", "快速封装校验未通过，改用编码转换", method="encoded")
-    result = encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, timing=timing, storage_profile=storage_profile)
+    result = encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, timing=timing, storage_profile=storage_profile, drop_audio=drop_audio)
     if copy_failure:
         result.setdefault("settings", {})["stream_copy_fallback_reason"] = copy_failure
     return result
@@ -453,7 +576,7 @@ def available_encoder(cancelled=lambda: False, preferred=None):
     return _encoder_cache[key]
 
 
-def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, *, timing=None, storage_profile="native"):
+def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, *, timing=None, storage_profile="native", drop_audio=False):
     """Encode only when the user explicitly selects the space-saving profile."""
     import os
     import uuid
@@ -467,7 +590,8 @@ def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stag
         temporary = target.with_name(target.stem + ".hardware-" + uuid.uuid4().hex + ".mp4")
         try:
             result = _encode(source, temporary, offset_ms, duration_ms, cancelled,
-                             encoder=encoder, stage=stage, **({"timing": timing} if timing else {}))
+                             encoder=encoder, stage=stage, drop_audio=drop_audio,
+                             **({"timing": timing} if timing else {}))
             check(cancelled)
             if os.name == "nt":
                 os.rename(temporary, target)
@@ -488,7 +612,7 @@ def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stag
             stage("convert", "硬件加速不可用，自动回退 CPU 编码", method="libx264")
         finally:
             temporary.unlink(missing_ok=True)
-    return _encode(source, target, offset_ms, duration_ms, cancelled, stage=stage, **({"timing": timing} if timing else {}))
+    return _encode(source, target, offset_ms, duration_ms, cancelled, stage=stage, drop_audio=drop_audio, **({"timing": timing} if timing else {}))
 
 
 def video_clock_expression(timing, variable="N"):
@@ -530,7 +654,7 @@ def audio_clock_options(timing):
     return ["-af", "aresample=async=1:min_hard_comp=0.100"]
 
 
-def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None, timing=None):
+def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None, timing=None, drop_audio=False):
     """Try a complete QSV decode/VPP/encode pipeline, then retain software fallback."""
     import uuid
     from pathlib import Path
@@ -544,7 +668,7 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, 
                     and info.get('pix_fmt') in {'yuv420p', 'nv12'}
                     and info.get('color_range') == 'tv'):
                 result = _encode_attempt(source, temporary, offset_ms, duration_ms, cancelled, encoder=encoder,
-                                         stage=stage, timing=timing, decoder=info['codec_name'] + '_qsv')
+                                         stage=stage, timing=timing, decoder=info['codec_name'] + '_qsv', drop_audio=drop_audio)
                 check(cancelled)
                 if os.name == 'nt':
                     os.rename(temporary, target)
@@ -558,10 +682,10 @@ def _encode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, 
             stage('convert', 'Intel 硬件解码不可用，保留硬件编码并回退软件解码', method=encoder)
         finally:
             temporary.unlink(missing_ok=True)
-    return _encode_attempt(source, target, offset_ms, duration_ms, cancelled, encoder=encoder, stage=stage, timing=timing)
+    return _encode_attempt(source, target, offset_ms, duration_ms, cancelled, encoder=encoder, stage=stage, timing=timing, drop_audio=drop_audio)
 
 
-def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None, timing=None, decoder=None):
+def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: False, *, encoder="libx264", stage=lambda *_a, **_k: None, timing=None, decoder=None, drop_audio=False):
     ffmpeg, _ = find_ffmpeg()
     title = "Intel 硬件解码＋编码" if decoder else "硬件编码 H.265" if encoder.startswith("hevc") else "硬件编码 H.264" if encoder != "libx264" else "CPU 编码 H.264"
     stage("convert", title, method=encoder)
@@ -590,13 +714,11 @@ def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: Fa
         f"{duration_ms / 1000:.6f}",
         "-map",
         "0:v:0",
-        "-map",
-        "0:a:0?",
+        *([] if drop_audio else ["-map", "0:a:0?"]),
         "-map_metadata",
         "-1",
         "-vf",
         (f"settb=1/1000,setpts={video_clock_expression(timing)}/(1000*TB)," if timing else "") + ("vpp_qsv=format=nv12:out_range=tv" if decoder else "scale=in_range=auto:out_range=tv"),
-        *audio_clock_options(timing),
         "-c:v",
         encoder,
         *encoder_options(encoder),
@@ -604,16 +726,15 @@ def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: Fa
         *( ["-tag:v", "hvc1"] if encoder.startswith("hevc") else []),
         "-threads",
         "2",
-        "-fps_mode",
-        "passthrough" if timing else "vfr",
-        "-enc_time_base",
-        "1:1000",
+        *(["-fps_mode", "cfr", "-r", f"{1000 / timing['frame_interval_ms']:.6f}"] if timing and drop_audio else ["-fps_mode", "passthrough" if timing else "vfr", "-enc_time_base", "1:1000"]),
+        *([] if drop_audio else [
         "-c:a",
         "aac",
         "-ar",
         "48000",
         "-b:a",
-        "96k",
+        "96k"]),
+        *(["-an"] if drop_audio else []),
         "-movflags",
         "+faststart",
         "-n",
