@@ -269,14 +269,24 @@ class VideoTile(QFrame):
         self._surface_sync.setSingleShot(True)
         self._surface_sync.setInterval(300)
         self._surface_sync.timeout.connect(self._sync_video_output)
+        self._surface_playing = False
+
+    def set_surface_playing(self, live):
+        self._surface_playing = bool(live)
+        if not live:
+            self.request_surface_sync()
 
     def request_surface_sync(self):
-        if self.engine is not None:
+        if self.engine is not None and not self._surface_playing:
             self._surface_sync.start()
 
     def _sync_video_output(self):
+        # Rebuilding the embedded output while the playout runs tears down the
+        # active vout mid-playback and leaves the picture frozen; apply the
+        # rebuild only while the surface is idle (paused frames re-render on
+        # their own and the next play recreates the output anyway).
         if (self.engine is not None and self.stack.currentWidget() is self.surface
-                and self.surface.isVisible()):
+                and self.surface.isVisible() and not self._surface_playing):
             refresh = getattr(self.engine, "refresh_video_output", None)
             if callable(refresh):
                 refresh()
@@ -623,6 +633,8 @@ class VideoBoard(QWidget):
                 preview = hasattr(self, "is_preview") and self.is_preview(tile.camera)
                 tile.engine.pause(not self.playing or preview)
         self.playbackChanged.emit(self.playing)
+        for tile in self.tiles.values():
+            tile.set_surface_playing(self.playing)
         if previous != self.playing:
             self.seek(self.reference_ms)
 
@@ -646,6 +658,7 @@ class VideoBoard(QWidget):
             except RuntimeError:
                 pass
         tile.ready = False
+        tile.set_surface_playing(False)
 
     def _position(self, camera, tile, *, force=False):
         match = self.timeline.locate(camera, self.reference_ms, prefer=tile.asset_id)

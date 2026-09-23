@@ -1,5 +1,5 @@
 {
-  "version": "4.2.4",
+  "version": "4.2.5",
   "files": [
     {
       "path": ".gitattributes",
@@ -1153,8 +1153,8 @@
     },
     {
       "path": "cowmata_tailring/__init__.py",
-      "size": 208,
-      "sha256": "caa278979adfddd79327a0ca37929b4a737081330dc09c6612870b28fcafeebc"
+      "size": 214,
+      "sha256": "c052ed7d983177ad4660544d51eeccadf69413a2e482ac3e085ab3f0928159e3"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -1553,8 +1553,8 @@
     },
     {
       "path": "cowmata_tailring/edge_download/pro_dialog.py",
-      "size": 58288,
-      "sha256": "ee847e1fbebc1f8aae7d20413bb9a75f45594e4f86bd72c987446753bf35f237"
+      "size": 60904,
+      "sha256": "e7ae2f9fd18cfd8f8f1a5592beb41d43b7297998e9b112f4998b5e0a35e6399b"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_settings.py",
@@ -2248,8 +2248,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/materials.py",
-      "size": 3795,
-      "sha256": "d249f07dc71b6a2d7e32a6975ca8fb06cac04d78bf002f111f9a29fd8b757681"
+      "size": 4172,
+      "sha256": "299f62fef8dac58cf93b5657454826e1abde6b84f7a48ffcf5c9cf944d624943"
     },
     {
       "path": "cowmata_tailring/workspace/modern_window.py",
@@ -2313,8 +2313,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/playback.py",
-      "size": 55106,
-      "sha256": "bd8c5f144225bf875c76beec866233f13c0a2c650c6daa5dc41cac5847b4922b"
+      "size": 56920,
+      "sha256": "4f7eb41e156c29db190109710ae33984bf1cc5934b98ef928cd3ab34ede6f79b"
     },
     {
       "path": "cowmata_tailring/workspace/ppg_intake.py",
@@ -4098,8 +4098,8 @@
     },
     {
       "path": "tests/test_downloader_completion_422.py",
-      "size": 17775,
-      "sha256": "e82a3db9fb1df889444b1ab34c20dff86a11a79cbbc59d98b1e56c4d003000d2"
+      "size": 19786,
+      "sha256": "43420673f86fd35ecba24add3a76017b5fd63b27d6f9cb5b43a0110891562b11"
     },
     {
       "path": "tests/test_draft_evidence_396.py",

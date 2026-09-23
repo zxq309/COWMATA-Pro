@@ -367,6 +367,36 @@ class LedgerReportWindow(QDialog):
         QApplication.clipboard().setText("\n".join(lines))
 
 
+class RoundNoticeDialog(QDialog):
+    """One non-modal reminder when a download round finishes."""
+
+    retry_requested = Signal()
+
+    def __init__(self, parent, lines, retry=False):
+        super().__init__(parent)
+        self.setWindowTitle("下载完成提醒")
+        self.setModal(False)
+        layout = QVBoxLayout(self)
+        for line in lines:
+            label = QLabel(line)
+            label.setWordWrap(True)
+            layout.addWidget(label)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        if retry:
+            retry_button = QPushButton("重试下载失败的数据")
+            retry_button.clicked.connect(self._retry)
+            buttons.addWidget(retry_button)
+        close_button = QPushButton("关闭")
+        close_button.clicked.connect(self.hide)
+        buttons.addWidget(close_button)
+        layout.addLayout(buttons)
+
+    def _retry(self):
+        self.retry_requested.emit()
+        self.hide()
+
+
 class ProDownloadDialog(TaskWindow):
     def __init__(
         self, parent=None, store=None, worker_factory=SyncWorker, launch_automatically=False,
@@ -382,6 +412,8 @@ class ProDownloadDialog(TaskWindow):
         self.csv_issues = []
         self.csv_notes = []
         self.report_window = None
+        self._round_notice = None
+        self._round_notice_signature = None
         self.row_status = {}
         self._row_positions = {}
         self._problem_notice_signature = None
@@ -930,7 +962,7 @@ class ProDownloadDialog(TaskWindow):
             self.armed = False
         self.start_task('all', from_timer=True)
 
-    def start_task(self, operation="all", from_timer=False, refresh_ledger=False):
+    def start_task(self, operation="all", from_timer=False, refresh_ledger=False, skip_ledger=False):
         if self.running:
             if from_timer and not self.scheduling_stopped:
                 self.timer.start(1000)
@@ -944,6 +976,9 @@ class ProDownloadDialog(TaskWindow):
         values = dict(self.store.value)
         if refresh_ledger:
             values['sync_ledger'] = True
+        if skip_ledger:
+            # Retrying failed batches reuses the just-verified local CSV copy.
+            values['sync_ledger'] = False
         if self.session:
             values['session_token'] = self.session['token']
         if operation == 'login':
@@ -1049,6 +1084,36 @@ class ProDownloadDialog(TaskWindow):
             )
         except (OSError, ValueError) as exc:
             self.append("运行状态未保存：" + str(exc))
+        if report.get("motion") is not None and not report.get("canceled"):
+            self._notify_round(report)
+
+    def _notify_round(self, report):
+        """One reminder per finished round; identical outcomes stay silent."""
+        result = report["motion"]
+        errors = [str(e) for e in report["errors"]]
+        signature = (result.saved, result.skipped, result.failed, tuple(errors))
+        if signature == self._round_notice_signature:
+            return
+        self._round_notice_signature = signature
+        lines = [f"本轮下载结束：新增 {result.saved} · 已存在 {result.skipped} · 失败 {result.failed}"]
+        if result.pending:
+            lines.append(f"待补齐 {result.pending}（台账补全后下轮自动补）")
+        if result.failed or errors:
+            lines.append("有失败批次或失败步骤，可点击下方按钮重试：")
+            lines += errors[:5]
+        notice = RoundNoticeDialog(self, lines, retry=bool(result.failed or errors))
+        notice.retry_requested.connect(self.retry_failed)
+        self._round_notice = notice
+        notice.show()
+        notice.raise_()
+        notice.activateWindow()
+
+    def retry_failed(self):
+        """Run one more download cycle over the same ledger; existing files skip."""
+        if self.running:
+            return
+        self.stop_scheduling()
+        self.start_task("all", skip_ledger=True)
 
     def task_finished(self):
         worker, self.worker = self.worker, None

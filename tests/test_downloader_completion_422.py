@@ -389,6 +389,48 @@ def test_failed_cycle_is_not_recorded_as_downloaded_and_later_completes(tmp_path
     assert fixed.saved == 1
 
 
+def test_round_finish_notice_offers_retry_once(tmp_path, qt_application, monkeypatch):
+    from PySide6.QtWidgets import QPushButton
+
+    from cowmata_tailring.edge_download import pro_dialog as module
+    from cowmata_tailring.edge_download.core import Result
+    from cowmata_tailring.edge_download.pro_settings import ProSettings
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    root = tmp_path / "installation" / "Pro"
+    root.mkdir(parents=True)
+    dialog = module.ProDownloadDialog(
+        store=ProSettings(tmp_path / "config", app_root=root),
+        worker_factory=lambda values, operation, parent: None,
+    )
+    started = []
+    dialog.start_task = lambda *args, **kwargs: started.append((args, kwargs))
+    try:
+        result = Result()
+        result.saved, result.skipped, result.failed = 3, 1, 2
+        dialog.cycle_completed(dict(errors=["原始数据：连接中断"], ledger=None,
+                                    ledger_attempted=True, canceled=False, motion=result))
+        notice = dialog._round_notice
+        assert notice is not None and notice.isVisible() and not notice.isModal()
+        retry = next(b for b in notice.findChildren(QPushButton) if "重试" in b.text())
+        retry.click()
+        assert started == [(("all",), {"skip_ledger": True})]
+        # The same failed outcome must not pop a second window (auto cycles).
+        dialog.cycle_completed(dict(errors=["原始数据：连接中断"], ledger=None,
+                                    ledger_attempted=True, canceled=False, motion=result))
+        assert len(dialog.findChildren(module.RoundNoticeDialog)) == 1
+        # A user-canceled round never notifies.
+        ok = Result()
+        ok.saved = 1
+        before = dialog._round_notice
+        dialog.cycle_completed(dict(errors=[], ledger=None, canceled=True, motion=ok))
+        assert dialog._round_notice is before
+    finally:
+        dialog.stop_task()
+        dialog.deleteLater()
+        qt_application.processEvents()
+
+
 def test_refresh_failure_keeps_cached_csv_and_skips_this_cycle(tmp_path):
     folder = ledgers(tmp_path / "ledger")
 
