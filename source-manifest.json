@@ -1,5 +1,5 @@
 {
-  "version": "4.2.3",
+  "version": "4.2.4",
   "files": [
     {
       "path": ".gitattributes",
@@ -2048,8 +2048,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_parallel.py",
-      "size": 3818,
-      "sha256": "5e53f4e81eb3d0661a3ddd7ef839edb0c17ba6e3c2ed1b78de56c82fe160a2dd"
+      "size": 5279,
+      "sha256": "07f2b3090ba204b86a3304323d02ef548258a0621d3ea995373fdc827eeb764f"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_report_ui.py",
@@ -2073,8 +2073,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_tasks.py",
-      "size": 50859,
-      "sha256": "9b9d6e6418e997c5a9efb783ce2d6bc15bbe318ebb413bb8fe0cccb7b68d6527"
+      "size": 50758,
+      "sha256": "3ebc97422a56d065c719dd99500dc8f7c80f677e4e9dcf0ac63eea0950cce215"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_ui.py",

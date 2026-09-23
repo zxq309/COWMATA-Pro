@@ -794,9 +794,8 @@ def organize(
 
         def is_cancelled():
             log.pulse()
-            elapsed = time.monotonic() - started_at
-            if elapsed >= deadline_seconds:
-                raise TimeoutError(f"原始录像归类已达到 {deadline_seconds / 3600:.1f} 小时硬截止；已完成项保留，请继续剩余任务")
+            # No wall-clock hard stop: long tasks run to 100% (manual pause
+            # remains available and checkpoints keep every finished segment).
             return stopping.is_set() or cancelled()
 
         def archived(value):
