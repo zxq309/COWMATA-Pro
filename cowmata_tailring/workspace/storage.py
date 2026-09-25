@@ -77,9 +77,9 @@ def recovery_path(path):
     return path.with_suffix(path.suffix + ".bak")
 
 
-def atomic_json(path: Path, value: Any, *, backup=True) -> None:
+def atomic_json(path: Path, value: Any, *, backup=True, indent=2) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False)
+    payload = json.dumps(value, ensure_ascii=False, indent=indent, allow_nan=False)
     fd, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:

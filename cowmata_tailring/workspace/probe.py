@@ -63,6 +63,14 @@ def extract_frame(
         with path.open("rb") as stream:
             stream.seek(start_byte)
             payload = stream.read(end_byte - start_byte)
+        if native.get('patch_timestamps'):
+            from cowmata_tailring.media.native_ps import playback_index
+            from cowmata_tailring.media.native_stream import NativePlaybackStream
+            transport = NativePlaybackStream(playback_index(path, native), target)
+            try:
+                payload = transport.patch_bytes(start_byte, payload)
+            finally:
+                transport.close()
         filters = f"trim=start={max(0, target - base) / 1000:.6f},showinfo"
         if preview_width is not None:
             filters += f",scale=w={int(preview_width)}:h=-2:force_original_aspect_ratio=decrease"
@@ -621,11 +629,30 @@ class SourceInspector:
                 result = metadata_from_name(path, self.relative_path(path), info)
                 if "mp4" in str(info.get("format", {}).get("format_name", "")):
                     return result
+                if result.get("duration_basis") == "adjacent_filename":
+                    # The neighbouring filename is only a bounded browse guess
+                    # for raw Dahua PS recordings. Prefer the recorder's own
+                    # frame clock and byte seek keys so mid-file frames stay
+                    # decodable; keep the guess only when the scan fails.
+                    from cowmata_tailring.media.classified_dahua import classified_dahua_timeline
+
+                    try:
+                        dahua_timeline = classified_dahua_timeline(path, self.stop.is_set)
+                    except (ValueError, OSError, InterruptedError) as exc:
+                        self.progress(f"大华帧时钟不可用，保留相邻文件名时长：{exc}")
+                        dahua_timeline = None
+                    if dahua_timeline:
+                        return metadata_from_name(path, self.relative_path(path), info, dahua_timeline)
+                    return result
             except ValueError:
                 pass
             # Old recorder streams can have an .mp4 suffix but no MP4 duration.
             # The confirmed filename still anchors time; build playback timing only.
             self.progress(f"读取历史录像播放索引：{path.name}")
+            from cowmata_tailring.media.classified_dahua import classified_dahua_timeline
+            dahua_timeline = classified_dahua_timeline(path, self.stop.is_set)
+            if dahua_timeline:
+                return metadata_from_name(path, self.relative_path(path), info, dahua_timeline)
             try:
                 native = read_native_index(
                     path, timezone_minutes=self.timezone_minutes, cancelled=self.stop.is_set

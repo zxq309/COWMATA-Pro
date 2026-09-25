@@ -185,7 +185,7 @@ class VideoTile(QFrame):
         header.addWidget(self.title, 1)
         layout.addLayout(header)
         self.surface = VideoSurface(self)
-        self.surface.clicked.connect(lambda: self.activated.emit(self))
+        self.surface.clicked.connect(self._activate_surface)
         self.surface.doubleClicked.connect(lambda: self.enlarged.emit(self))
         self.frame_view = PausedFrame()
         self.frame_view.doubleClicked.connect(lambda: self.enlarged.emit(self))
@@ -201,6 +201,11 @@ class VideoTile(QFrame):
         self.overlay.setObjectName("videoTransport")
         # A native sibling stays above VLC's embedded native video surface.
         self.overlay.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        # Be explicit because a native VLC sibling otherwise wins hit testing
+        # on some Windows compositor paths even while this overlay is visible.
+        self.overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.overlay.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.overlay.setMouseTracking(True)
         self.overlay.setStyleSheet("""
             QFrame#videoTransport { background: rgba(15, 24, 36, 220); border: 1px solid #60778b; border-radius: 9px; }
             QFrame#videoTransport QToolButton { color: #ffffff; background: transparent; border: 0; border-radius: 5px; padding: 0; margin: 0; min-height: 0; }
@@ -262,10 +267,45 @@ class VideoTile(QFrame):
         timeline_bar.addWidget(self.seek_slider, 1)
         timeline_bar.addWidget(self.seek_clock)
         layout.addLayout(timeline_bar)
+        # A live native surface whose widget was resized can keep a stale
+        # Direct3D swap chain; one rebuild shortly after the layout settles
+        # restores full-frame rendering without touching decode or clocks.
+        self._surface_sync = QTimer(self)
+        self._surface_sync.setSingleShot(True)
+        self._surface_sync.setInterval(300)
+        self._surface_sync.timeout.connect(self._sync_video_output)
+        self._surface_playing = False
+
+    def set_surface_playing(self, live):
+        self._surface_playing = bool(live)
+        if not live:
+            self.request_surface_sync()
+
+    def request_surface_sync(self):
+        if self.engine is not None and not self._surface_playing:
+            self._surface_sync.start()
+
+    def _sync_video_output(self):
+        # Rebuilding the embedded output while the playout runs tears down the
+        # active vout mid-playback and leaves the picture frozen; apply the
+        # rebuild only while the surface is idle (paused frames re-render on
+        # their own and the next play recreates the output anyway).
+        if (self.engine is not None and self.stack.currentWidget() is self.surface
+                and self.surface.isVisible() and not self._surface_playing):
+            refresh = getattr(self.engine, "refresh_video_output", None)
+            if callable(refresh):
+                refresh()
 
     def activate_preview(self):
         if getattr(self, "_preview_only", False) and self.interval:
             self.transportRequested.emit(self, "play", 0)
+
+    def _activate_surface(self):
+        self.activated.emit(self)
+        # A preview still is an actionable transport surface. This fallback
+        # keeps the main view playable when the native VLC child consumes the
+        # click before the small overlay button receives it.
+        self.activate_preview()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and getattr(self, "_preview_only", False):
@@ -321,6 +361,7 @@ class VideoTile(QFrame):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.scale_frame()
+        self.request_surface_sync()
 
     def control_icon(self, icon):
         pixmap = self.style().standardIcon(icon).pixmap(18, 18)
@@ -604,6 +645,8 @@ class VideoBoard(QWidget):
                 preview = hasattr(self, "is_preview") and self.is_preview(tile.camera)
                 tile.engine.pause(not self.playing or preview)
         self.playbackChanged.emit(self.playing)
+        for tile in self.tiles.values():
+            tile.set_surface_playing(self.playing)
         if previous != self.playing:
             self.seek(self.reference_ms)
 
@@ -627,6 +670,7 @@ class VideoBoard(QWidget):
             except RuntimeError:
                 pass
         tile.ready = False
+        tile.set_surface_playing(False)
 
     def _position(self, camera, tile, *, force=False):
         match = self.timeline.locate(camera, self.reference_ms, prefer=tile.asset_id)

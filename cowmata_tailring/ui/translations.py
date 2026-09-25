@@ -3120,7 +3120,6 @@ NON_TRANSLATABLE = frozenset([
   "F:\\牛舍\\_现场记录",
   "F:\\牛舍\\_现场记录\\扬大产犊登记汇总.csv",
   "F:\\牛舍_现场记录",
-  "F:\\科牧特\\_模型\\行为识别",
   "Programs/COWMATA 现场台账/auth/upload_key",
   "^(?:大约|约)",
   "决策训练评价.json",
@@ -3777,7 +3776,6 @@ ZH_TO_EN.update({
   "显示这份记录的完整时间跨度（Ctrl+Shift+F），保留当前播放位置。": "Show the full recording (Ctrl+Shift+F) and retain the playback position."
 })
 
-NON_TRANSLATABLE = NON_TRANSLATABLE | {r'F:\科牧特_模型', r'F:\科牧特\_模型', r'F:\科牧特_数据集', r'F:\科牧特\_数据集'}
 
 ZH_TO_EN["按温度采集时间归类；保留原始摄氏温度记录"] = "Organize by temperature acquisition time; preserve the original Celsius record"
 

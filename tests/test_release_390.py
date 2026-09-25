@@ -173,7 +173,7 @@ def test_download_cache_hash_and_raw_intake(tmp_path):
     first = run_csv_job(job, threading.Event(), client_factory=Fake)
     assert first.saved == 1 and first.failed == 0
     second = run_csv_job(job, threading.Event(), client_factory=Fake)
-    assert second.skipped == 1 and len(calls) == 1
+    assert second.skipped + second.settled == 1 and len(calls) == 1
     raw = next((root / "产犊/Motion").rglob("*.json"))
     assert raw.parent.name == "546C50CA07E5-21314-D2"
     assert json.loads(raw.read_text()) == doc

@@ -33,6 +33,11 @@ def infer_features(suite, feature, codes=None):
         if codes is not None and entry["code"] not in codes:
             continue
         model = json.loads((Path(suite["root"]) / entry["file"]).read_text(encoding="utf-8"))
+        if model.get("algorithm") == "liedown-tailring-1":
+            # Needs the raw 50 Hz signal, not the shared one-second summary.
+            from .liedown import detect_motion_file
+            events.extend(detect_motion_file(feature["source"], model, threshold=entry["threshold"]))
+            continue
         if model["features"] != feature["names"]:
             raise ValueError("Algorithm feature order does not match the trained model")
         scores = predict_forest(model, feature["X"])

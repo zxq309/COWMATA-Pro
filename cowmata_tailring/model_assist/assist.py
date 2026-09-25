@@ -44,16 +44,17 @@ from cowmata_tailring.annotation.prediction_edit import (
 )
 from cowmata_tailring.ui.helpers import format_relative
 from cowmata_tailring.ui.i18n import t
+from cowmata_tailring.algorithms.paths import algorithm_output_root, data_root
 
 APP_DIR = Path(__file__).resolve().parent
 MODEL_RUNTIME_DIR = APP_DIR.parent / "model_runtime"
-FULL_PACKAGE_ROOT = APP_DIR / "预测" / "20260816"
+FULL_PACKAGE_ROOT = data_root() / "预测" / "20260816"
 DEFAULT_MODEL_PATH = (
     FULL_PACKAGE_ROOT
     / "复现实验"
     / "final_model"
 )
-PREDICTION_CACHE_DIR = APP_DIR / "prediction_cache"
+PREDICTION_CACHE_DIR = algorithm_output_root() / "model-assist-cache"
 
 RECOMMENDATION_THRESHOLDS = {
     "STANDING": 0.60,

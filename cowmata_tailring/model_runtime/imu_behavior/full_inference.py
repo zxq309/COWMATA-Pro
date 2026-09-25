@@ -303,7 +303,11 @@ def _guide_cache_roots(model_directory: Path) -> list[Path]:
     """Locate the two cache roots in the same order as predict_full.py."""
 
     anchors = [model_directory, *model_directory.parents]
-    bundled_root = Path(__file__).resolve().parents[2] / "预测" / "20260816"
+    # Optional guide caches live beside the configured external model/data root.
+    # The client package contains no developer-machine model directory.
+    from cowmata_tailring.algorithms.paths import data_root
+    configured_root = data_root() / "预测" / "20260816"
+    bundled_root = configured_root if configured_root.is_dir() else Path(__file__).resolve().parents[2] / "data" / "预测" / "20260816"
     anchors.append(bundled_root)
     data_roots: list[Path] = []
     seen: set[str] = set()

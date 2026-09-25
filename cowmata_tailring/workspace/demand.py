@@ -167,11 +167,22 @@ def next_video_task(rows, hints, start, end, *, maps=None, overrides=None, attem
         # Both edges and the predecessor matter. Estimated header end times
         # are NEVER sufficient to exclude a candidate before full inspection.
         before = [(i, t) for i, t in starts if t <= lo]
-        predecessor = max(before, key=lambda p: p[1])[0] if before else None
+        # Equal timestamp variants (for example ``clip.mp4`` and
+        # ``clip__001.mp4``) form one timestamp bucket.  Choose the last
+        # member of that bucket so the following distinct timestamp can close
+        # the browse-only span instead of leaving the duplicate pair pending.
+        predecessor = max(before, key=lambda p: (p[1], p[0]))[0] if before else None
+        start_by_index = dict(starts)
+        duplicate_predecessor_start = predecessor is not None and sum(
+            t == start_by_index[predecessor] for _, t in starts
+        ) > 1
         for i, span in known:
             row = group[i]
             overlaps = lo <= span[0] <= hi or span[1] is not None and span[0] <= hi and span[1] >= lo
-            bracketed = span[1] is None and i == predecessor and (i == len(group) - 1 or any(j == i + 1 and t > lo for j, t in starts))
+            same_predecessor_bucket = predecessor is not None and span[0] == start_by_index[predecessor]
+            next_boundary = any(j == i + 1 and t > lo for j, t in starts)
+            duplicate_boundary = duplicate_predecessor_start and any(j > predecessor and t > lo for j, t in starts)
+            bracketed = span[1] is None and same_predecessor_bucket and (next_boundary or duplicate_boundary)
             if (overlaps or bracketed) and row["state"] in {"pending", "invalid"} and row["path"] not in attempted:
                 full_choices.append((abs(span[0] - lo), row))
         unknown = [i for i, r in enumerate(group) if not source_span(r, hints) and r["state"] in {"pending", "invalid"}

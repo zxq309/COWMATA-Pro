@@ -262,6 +262,10 @@ class DragHeader(QLabel):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and self.stage.mode == "C":
             self.origin = event.globalPosition().toPoint() - self.stage.video.pos()
+            # Grab the pointer so the drag survives fast moves that leave the
+            # 26px header; without the grab the drag silently breaks and the
+            # PiP appears immovable.
+            self.grabMouse()
 
     def mouseMoveEvent(self, event):
         if self.origin is not None:
@@ -270,6 +274,8 @@ class DragHeader(QLabel):
 
     def mouseReleaseEvent(self, event):
         self.origin = None
+        if self.mouseGrabber() is self:
+            self.releaseMouse()
 
 
 class WorkspaceStage(QWidget):
@@ -279,7 +285,7 @@ class WorkspaceStage(QWidget):
         self.mode = "A"
         self.pip_scale = .34
         self.pip_position = (1.0, 0.0)
-        self.wave_ratio = .42
+        self.wave_ratio = .55
         self.signal_panel = signal_panel
         signal_panel.setParent(self)
         self.video = QFrame(self)

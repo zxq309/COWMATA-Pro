@@ -13,18 +13,11 @@ from cowmata_tailring.workspace.storage import atomic_json
 
 from . import EVENT_CODES
 from .features import FEATURE_VERSION
-
-APP_ROOT = Path(__file__).resolve().parents[2]
+from .paths import APP_ROOT, ensure_runtime_layout, model_home
 
 
 def default_home():
-    override = os.environ.get("COWMATA_ALGORITHM_HOME")
-    if override:
-        return Path(override).resolve()
-    root = Path(r'F:\科牧特_模型')
-    if not root.is_dir():
-        root = Path(r'F:\科牧特\_模型')
-    return (root / '行为识别').resolve()
+    return ensure_runtime_layout(model_home())
 
 
 def child(root, name):

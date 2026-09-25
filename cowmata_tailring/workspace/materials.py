@@ -44,27 +44,34 @@ class FrostedCanvas(QWidget):
 
     def paintEvent(self, event):
         dpr = self.devicePixelRatioF()
+        if not self.effects_enabled:
+            # Non-glass look: let the stylesheet's own backgrounds paint the
+            # page; a solid canvas fill here would occlude the layout after
+            # toggling (the reported beige overlay).
+            if self.cache is not None:
+                self.cache = None
+            return
         if self.cache is None or self.cache.devicePixelRatio() != dpr:
             self.cache = QPixmap(round(self.width() * dpr), round(self.height() * dpr))
             self.cache.setDevicePixelRatio(dpr)
             self.cache.fill(QColor("#f3f7f0"))
-            if self.effects_enabled:
-                p = QPainter(self.cache)
-                gradient = QLinearGradient(0, 0, self.width(), self.height())
-                gradient.setColorAt(0, QColor("#e5f1d8"))
-                gradient.setColorAt(.5, QColor("#f4f8ef"))
-                gradient.setColorAt(1, QColor("#e2f1f4"))
-                p.fillRect(self.rect(), gradient)
-                for x, y, radius, color in ((.15, .1, .7, "#8add66"), (.92, .7, .55, "#35afc8")):
-                    glow = QRadialGradient(self.width() * x, self.height() * y, self.width() * radius)
-                    center = QColor(color)
-                    center.setAlpha(85)
-                    glow.setColorAt(0, center)
-                    glow.setColorAt(1, QColor(255, 255, 255, 0))
-                    p.fillRect(self.rect(), glow)
-                p.end()
-        painter = QPainter(self)
-        painter.drawPixmap(0, 0, self.cache)
+            p = QPainter(self.cache)
+            gradient = QLinearGradient(0, 0, self.width(), self.height())
+            gradient.setColorAt(0, QColor("#e5f1d8"))
+            gradient.setColorAt(.5, QColor("#f4f8ef"))
+            gradient.setColorAt(1, QColor("#e2f1f4"))
+            p.fillRect(self.rect(), gradient)
+            for x, y, radius, color in ((.15, .1, .7, "#8add66"), (.92, .7, .55, "#35afc8")):
+                glow = QRadialGradient(self.width() * x, self.height() * y, self.width() * radius)
+                center = QColor(color)
+                center.setAlpha(85)
+                glow.setColorAt(0, center)
+                glow.setColorAt(1, QColor(255, 255, 255, 0))
+                p.fillRect(self.rect(), glow)
+            p.end()
+        if self.cache is not None:
+            painter = QPainter(self)
+            painter.drawPixmap(0, 0, self.cache)
 
 
 GLASS_STYLE = """
