@@ -280,7 +280,15 @@ class MainWindow(ControllerWindow):
         review.addLayout(annotation)
         self.event_status.setStyleSheet("font-size:11px; color:#6b8179")
         self.event_status.setWordWrap(False)
+        # Keep transient action feedback in the annotation toolbar.  It used
+        # to be parented to the central widget without a layout item; the
+        # first status update then made Qt give the label its default 640x480
+        # geometry, covering the main video, waveform and their controls.
+        self.event_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.event_status.setMinimumHeight(0)
+        self.event_status.setMaximumHeight(24)
         action_state = QHBoxLayout()
+        action_state.addWidget(self.event_status, 1)
         self.event_status.setParent(center)
         self.event_status.hide()
         self.mark_button.setToolTip(self.event_status.text())
