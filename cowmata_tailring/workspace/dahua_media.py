@@ -18,14 +18,22 @@ from .dahua_source import TZ, check
 
 
 def run(command, cancelled, timeout=3600, *, progress=None):
+    import subprocess
     try:
         if progress is None:
             result = run_cancellable([str(v) for v in command], cancelled=cancelled, timeout=timeout)
         else:
-            result = run_progress([str(v) for v in command], cancelled=cancelled, timeout=timeout, progress=progress)
+            # Sixteen converters share one archive volume; a clip can wait on
+            # I/O for minutes without being hung, so allow a longer stall.
+            result = run_progress([str(v) for v in command], cancelled=cancelled, timeout=timeout,
+                                  progress=progress, stall_timeout=300)
     except RuntimeError:
         check(cancelled)
         raise
+    except subprocess.TimeoutExpired as exc:
+        # One slow clip must fail that clip only, never the whole task.
+        check(cancelled)
+        raise ValueError(f"媒体处理超时（{int(exc.timeout)} 秒），已停止本次尝试") from None
     check(cancelled)
     if result.returncode:
         raise ValueError(result.stderr.decode("utf-8", "replace")[-2400:] or "媒体处理失败")
@@ -258,7 +266,7 @@ def packet_clock_sanitized(source, cancelled=lambda: False, *, dav=False,
     )
 
 
-def recorded_clock(path, info, cancelled=lambda: False):
+def recorded_clock(path, info, cancelled=lambda: False, *, ignore_audio=False):
     """Recover only a proved continuous DHAV counter; never infer a frame rate.
 
     The packed calendar can jump while the recorder's 16-bit millisecond
@@ -274,7 +282,8 @@ def recorded_clock(path, info, cancelled=lambda: False):
 
     if info.get("video", {}).get("has_b_frames") != 0:
         return None
-    audio = next((s for s in info.get("streams", []) if s.get("codec_type") == "audio"), None)
+    audio = None if ignore_audio else next(
+        (s for s in info.get("streams", []) if s.get("codec_type") == "audio"), None)
     audio_width = {"pcm_alaw": 1, "pcm_mulaw": 1, "pcm_s8": 1, "pcm_s16le": 2}
     if audio and audio.get("codec_name") not in audio_width:
         return None
@@ -311,6 +320,10 @@ def recorded_clock(path, info, cancelled=lambda: False):
                 if data[pos+size-8:pos+size-4] != b"dhav" or struct.unpack_from("<I", data, pos+size-4)[0] != size:
                     return None
                 kind = data[pos+4]
+                if kind == 0xf0 and ignore_audio:
+                    audio_count += 1
+                    pos += size
+                    continue
                 if kind in (0xfc, 0xfd, 0xf0):
                     key = "audio" if kind == 0xf0 else "video"
                     last = previous.get(key)
@@ -503,8 +516,9 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
                         "96k"]),
                         *(["-an"] if drop_audio else []),
                         "-avoid_negative_ts", "make_zero",
-                        "-movflags",
-                        "+faststart",
+                        # No +faststart: it rewrites the whole finished file
+                        # a second time (≈1 GiB extra read+write per hour of
+                        # video). Local archives seek fine with moov at the end.
                         "-n",
                         stage_path,
                     ],
@@ -537,6 +551,13 @@ def transcode(source, target, offset_ms, duration_ms, cancelled=lambda: False, *
 
 
 _encoder_cache = {}
+_encoder_failures = {}
+# Consumer NVENC/QSV parts allow only a few simultaneous sessions. Sixteen
+# parallel converters used to exceed that, the first rejected session was
+# taken as "hardware unavailable" and the whole task fell back to CPU x264.
+HARDWARE_SESSIONS = 4
+_hardware_sessions = __import__("threading").BoundedSemaphore(HARDWARE_SESSIONS)
+_encoder_lock = __import__("threading").Lock()
 
 
 def encoder_options(encoder):
@@ -558,22 +579,40 @@ def available_encoder(cancelled=lambda: False, preferred=None):
     key = (str(ffmpeg), preferred or "default")
     if os.name != "nt":
         return "libx265" if preferred == "hevc_qsv" else "libx264"
-    if key not in _encoder_cache:
-        selected = "libx265" if preferred == "hevc_qsv" else "libx264"
-        candidates = ("hevc_qsv", "hevc_nvenc") if preferred == "hevc_qsv" else ("h264_qsv", "h264_nvenc")
-        for encoder in candidates:
-            check(cancelled)
-            try:
-                run([ffmpeg, "-nostdin", "-hide_banner", "-v", "error",
-                     "-f", "lavfi", "-i", "color=c=black:s=640x360:r=25",
-                     "-frames:v", "5", "-an", "-c:v", encoder, *encoder_options(encoder),
-                     "-f", "null", "-"], cancelled, 12)
-                selected = encoder
-                break
-            except (ValueError, OSError, RuntimeError):
-                check(cancelled)
-        _encoder_cache[key] = selected
+    with _encoder_lock:
+        # Probe once per process: sixteen converters falling back together
+        # must not start sixteen concurrent GPU probes.
+        if key not in _encoder_cache:
+            _encoder_cache[key] = _probe_encoder(ffmpeg, preferred, cancelled)
     return _encoder_cache[key]
+
+
+def _probe_encoder(ffmpeg, preferred, cancelled):
+    selected = "libx265" if preferred == "hevc_qsv" else "libx264"
+    # NVENC first: a discrete NVIDIA encoder is several times faster than
+    # the iGPU and allows many more concurrent sessions (12 on RTX 30xx).
+    candidates = ("hevc_nvenc", "hevc_qsv") if preferred == "hevc_qsv" else ("h264_nvenc", "h264_qsv")
+    for encoder in candidates:
+        check(cancelled)
+        try:
+            # GPU initialisation can take several seconds while many ffmpeg
+            # processes are busy; a slow or failed probe just means "skip".
+            run([ffmpeg, "-nostdin", "-hide_banner", "-v", "error",
+                 "-f", "lavfi", "-i", "color=c=black:s=640x360:r=25",
+                 "-frames:v", "5", "-an", "-c:v", encoder, *encoder_options(encoder),
+                 "-f", "null", "-"], cancelled, 45)
+            return encoder
+        except (ValueError, OSError, RuntimeError):
+            check(cancelled)
+    return selected
+
+
+def _encoder_key(preferred):
+    try:
+        ffmpeg = str(find_ffmpeg()[0])
+    except Exception:  # noqa: BLE001 - only used as a cache key
+        ffmpeg = ""
+    return (ffmpeg, preferred or "default")
 
 
 def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stage, *, timing=None, storage_profile="native", drop_audio=False):
@@ -588,10 +627,12 @@ def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stag
         raise ValueError("节省空间模式需要可用的 HEVC 硬件编码器；请改用快速原码流模式")
     if encoder != "libx264":
         temporary = target.with_name(target.stem + ".hardware-" + uuid.uuid4().hex + ".mp4")
+        key = _encoder_key(preferred)
         try:
-            result = _encode(source, temporary, offset_ms, duration_ms, cancelled,
-                             encoder=encoder, stage=stage, drop_audio=drop_audio,
-                             **({"timing": timing} if timing else {}))
+            with _hardware_sessions:
+                result = _encode(source, temporary, offset_ms, duration_ms, cancelled,
+                                 encoder=encoder, stage=stage, drop_audio=drop_audio,
+                                 **({"timing": timing} if timing else {}))
             check(cancelled)
             if os.name == "nt":
                 os.rename(temporary, target)
@@ -599,16 +640,21 @@ def encode_with_fallback(source, target, offset_ms, duration_ms, cancelled, stag
                 os.link(temporary, target)
                 temporary.unlink()
             result["info"].setdefault("format", {})["filename"] = str(target)
+            with _encoder_lock:
+                _encoder_failures[key] = 0
             return result
         except (OSError, ValueError, RuntimeError):
             check(cancelled)
             if target.exists():
                 raise
-            # Don't repeatedly spend time on an unavailable/busy encoder.
-            ffmpeg, _ = find_ffmpeg()
             if preferred:
                 raise ValueError("HEVC 硬件编码失败，未生成不完整成品；请改用快速原码流模式") from None
-            _encoder_cache[(str(ffmpeg), "default")] = "libx264"
+            # One failed clip (damaged input, busy session) is not proof that
+            # the encoder is unusable; downgrade only after repeated failures.
+            with _encoder_lock:
+                _encoder_failures[key] = _encoder_failures.get(key, 0) + 1
+                if _encoder_failures[key] >= 3:
+                    _encoder_cache[key] = "libx264"
             stage("convert", "硬件加速不可用，自动回退 CPU 编码", method="libx264")
         finally:
             temporary.unlink(missing_ok=True)
@@ -725,8 +771,13 @@ def _encode_attempt(source, target, offset_ms, duration_ms, cancelled=lambda: Fa
         *([] if decoder or encoder.startswith("hevc") else ["-pix_fmt", "yuv420p"]),
         *( ["-tag:v", "hvc1"] if encoder.startswith("hevc") else []),
         "-threads",
-        "2",
+        # Two encoder threads made a CPU fallback of one 2304x1296 hour take
+        # tens of thousands of seconds; these fallbacks are rare, let them finish.
+        str(max(2, verification_threads())),
         *(["-fps_mode", "cfr", "-r", f"{1000 / timing['frame_interval_ms']:.6f}"] if timing and drop_audio else ["-fps_mode", "passthrough" if timing else "vfr", "-enc_time_base", "1:1000"]),
+        # A recovered video clock must be matched by the recovered audio
+        # clock, exactly as in the remux path; otherwise sound drifts.
+        *(audio_clock_options(timing) if timing and not drop_audio and timing.get("audio_offset_ms") is not None else []),
         *([] if drop_audio else [
         "-c:a",
         "aac",
@@ -763,6 +814,8 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
     elif video["codec_name"] not in {"h264", "hevc"} or video.get("pix_fmt") not in {"yuv420p", "nv12"}:
         raise ValueError("派生 MP4 编码不符合标准")
     frames = None
+    timeline = None
+    source_damage = False
     verification_mode = "full_decode"
     if processing == "stream_copy":
         # The supplied Dahua clips share a stable HEVC/H.264 + PCM-A-law
@@ -772,12 +825,27 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
         verification_mode = "quick_samples"
         stage("verify", "快速校验（容器、时间轴、首尾采样）")
         if timing:
-            clock = packet_clock(target, cancelled)
-            frames = clock["packets"]
+            # One packet pass yields both the frame count and the timeline
+            # (previously two full ffprobe reads of the same 1 GiB file).
+            frames, packets = _packet_timeline(target, cancelled)
             expected = expected_video_frames(timing, offset_ms, duration_ms)
             if frames != expected:
                 raise ValueError(f"转封装后帧数不一致（预期 {expected}，实际 {frames}），已停止归档")
-        _sample_decode(target, duration_ms, cancelled)
+            from cowmata_tailring.media.timeline import build_timeline_index
+            timeline = build_timeline_index(target, packets)
+        try:
+            _sample_decode(target, duration_ms, cancelled)
+        except ValueError as exc:
+            # Recorder-side bit errors (a camera wrote damaged HEVC slices)
+            # are carried over unchanged by a lossless remux; a strict decode
+            # rejects them and a re-encode fails on the very same packets.
+            # The frame count above already proves no packet was lost, so
+            # keep the byte-identical copy once it still decodes leniently.
+            if "Invalid data found" not in str(exc) and "Error while decoding" not in str(exc):
+                raise
+            stage("verify", "原始录像含损坏帧，按原样无损保留并复核可解码")
+            _sample_decode(target, duration_ms, cancelled, strict=False)
+            source_damage = True
     else:
         stage("verify", "完整解码校验 MP4")
         decoded = run(
@@ -819,7 +887,8 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
                 raise ValueError(f"转码后帧数不一致（预期 {expected}，实际 {frames}），已停止归档")
     _, ffprobe = find_ffmpeg()
     stage("verify", "核对成品时间轴")
-    timeline = probe_media_timeline(target, ffprobe, cancelled=cancelled)
+    if timeline is None:
+        timeline = probe_media_timeline(target, ffprobe, cancelled=cancelled)
     if timing and abs(timeline.duration_ms - duration_ms) > 250:
         raise ValueError("校时后成品时长与原始录像计数不一致")
     if not 0 < timeline.duration_ms <= duration_ms + 1500:
@@ -840,18 +909,36 @@ def _validate_output(target, duration_ms, result, processing, cancelled, *, stag
             video_processing=processing,
             verification_mode=verification_mode,
             original_resolution=True,
+            **({"source_damage": "recorder_bit_errors_preserved"} if source_damage else {}),
         ),
     )
 
 
-def _sample_decode(target, duration_ms, cancelled):
+def _packet_timeline(target, cancelled):
+    """Frame count plus packet timestamps from a single ffprobe packet pass."""
+    from cowmata_tailring.media.timeline import parse_ffprobe_packets
+
+    _, ffprobe = find_ffmpeg()
+    result = run([ffprobe, "-v", "error", "-select_streams", "v:0", "-show_packets",
+                  "-show_entries", "packet=pts_time,dts_time,duration_time,pos",
+                  "-of", "compact=p=0:nk=0", target], cancelled, 300)
+    lines = [line for line in result.stdout.decode("utf-8", "replace").splitlines() if line.strip()]
+    packets = parse_ffprobe_packets(lines)
+    if len(packets) != len(lines):
+        raise ValueError("码流缺少逐帧 PTS，不能根据猜测帧率归档")
+    return len(packets), packets
+
+
+def _sample_decode(target, duration_ms, cancelled, *, strict=True):
     """Decode only the beginning and end of a stream-copy result."""
     ffmpeg, _ = find_ffmpeg()
     windows = [("首段", 0)]
     if duration_ms > 5000:
         windows.append(("尾段", -2))
     for _title, seek in windows:
-        args = [ffmpeg, "-nostdin", "-v", "error", "-xerror", "-err_detect", "explode", "-threads", "1"]
+        args = [ffmpeg, "-nostdin", "-v", "error",
+                *(["-xerror", "-err_detect", "explode"] if strict else ["-err_detect", "ignore_err"]),
+                "-threads", "1"]
         args.extend(["-sseof", str(seek)] if seek < 0 else ["-ss", str(seek)])
         args.extend(["-i", target, "-map", "0:v:0", "-t", "2", "-an", "-f", "null", "-"])
         run(args, cancelled, 90)

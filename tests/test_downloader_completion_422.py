@@ -360,7 +360,7 @@ def test_corrected_ledger_downloads_previously_skipped_data_without_duplicates(t
 
     calls = []
     third = run_csv_job(job, threading.Event(), client_factory=client_for(documents, calls))
-    assert third.saved == 0 and third.skipped >= 1 and calls == []
+    assert third.saved == 0 and third.skipped + third.settled >= 1 and calls == []
     assert len(downloaded_files(tmp_path / "farm")) == 1
 
 

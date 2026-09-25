@@ -185,7 +185,7 @@ class VideoTile(QFrame):
         header.addWidget(self.title, 1)
         layout.addLayout(header)
         self.surface = VideoSurface(self)
-        self.surface.clicked.connect(lambda: self.activated.emit(self))
+        self.surface.clicked.connect(self._activate_surface)
         self.surface.doubleClicked.connect(lambda: self.enlarged.emit(self))
         self.frame_view = PausedFrame()
         self.frame_view.doubleClicked.connect(lambda: self.enlarged.emit(self))
@@ -201,6 +201,11 @@ class VideoTile(QFrame):
         self.overlay.setObjectName("videoTransport")
         # A native sibling stays above VLC's embedded native video surface.
         self.overlay.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        # Be explicit because a native VLC sibling otherwise wins hit testing
+        # on some Windows compositor paths even while this overlay is visible.
+        self.overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.overlay.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.overlay.setMouseTracking(True)
         self.overlay.setStyleSheet("""
             QFrame#videoTransport { background: rgba(15, 24, 36, 220); border: 1px solid #60778b; border-radius: 9px; }
             QFrame#videoTransport QToolButton { color: #ffffff; background: transparent; border: 0; border-radius: 5px; padding: 0; margin: 0; min-height: 0; }
@@ -294,6 +299,13 @@ class VideoTile(QFrame):
     def activate_preview(self):
         if getattr(self, "_preview_only", False) and self.interval:
             self.transportRequested.emit(self, "play", 0)
+
+    def _activate_surface(self):
+        self.activated.emit(self)
+        # A preview still is an actionable transport surface. This fallback
+        # keeps the main view playable when the native VLC child consumes the
+        # click before the small overlay button receives it.
+        self.activate_preview()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and getattr(self, "_preview_only", False):

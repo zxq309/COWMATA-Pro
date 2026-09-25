@@ -78,6 +78,10 @@ class MainWindow(ControllerWindow):
         self.setWindowTitle("COWMATA Pro")
         central = FrostedCanvas()
         self.shell = central
+        # Mica/frosted repainting can cover a native VLC child window while
+        # the layout is changing. Keep the operator preference, but suspend
+        # the effect for the duration of live video playback.
+        self._glass_requested = True
         outer = QVBoxLayout(central)
         outer.setContentsMargins(14, 8, 14, 8)
         outer.setSpacing(7)
@@ -595,9 +599,12 @@ class MainWindow(ControllerWindow):
             menu.setToolTipsVisible(True)
 
     def set_glass(self, enabled):
-        self.shell.set_effects(enabled)
-        self.setStyleSheet(STYLE + (GLASS_STYLE if enabled else ""))
-        self.material_result = apply_mica(int(self.winId()), enabled)
+        self._glass_requested = bool(enabled)
+        playing = bool(getattr(getattr(self, "board", None), "playing", False))
+        effective = self._glass_requested and not playing
+        self.shell.set_effects(effective)
+        self.setStyleSheet(STYLE + (GLASS_STYLE if effective else ""))
+        self.material_result = apply_mica(int(self.winId()), effective)
         if self.catalog:
             self.dirty = True
 
@@ -888,4 +895,12 @@ class MainWindow(ControllerWindow):
 
     def playback_changed(self, playing):
         super().playback_changed(playing)
+        # Native VLC surfaces must remain opaque while their parent is live;
+        # otherwise the Mica repaint can leave a stale/frozen rectangle over
+        # the left part of the main view and intercept its transport button.
+        if hasattr(self, "shell"):
+            effective = self._glass_requested and not playing
+            self.shell.set_effects(effective)
+            self.setStyleSheet(STYLE + (GLASS_STYLE if effective else ""))
+            self.material_result = apply_mica(int(self.winId()), effective)
         self.play_button.setToolTip("空格播放 / 暂停；输入文字时不会触发标注快捷键")

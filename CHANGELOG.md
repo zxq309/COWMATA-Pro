@@ -1,5 +1,27 @@
 # 更新日志
 
+## 4.2.7 · 2026-09-25
+
+### 端侧数据下载
+- **当天数据留到第二天下载**：每轮下载只补齐到当天 00:00（北京时间），当天仍在实时上传的数据留到次日一轮，每轮都有明确的结束；进度条按“设备日”推进到 100%，底部实时显示“正在下载 设备 日期（n/N）”，结束时给出新增 / 已存在 / 往日已完成跳过 / 失败汇总。
+- **已下载不再重复查询**：往日设备日完整下载且无失败后记录完成标记，后续轮次直接跳过、不再向服务器列清单；标记同时绑定该日的台账记录指纹与本地文件指纹，台账更正、本地文件被删或被改时自动重新核对并修复。
+- **不下载分类**：“不下载 · 传感器无效”（九轴 / 温度无效）与已下载记录分开显示；已在本地完成的记录显示为“已下载”并跳过。
+- **按日期分组下载**：左侧日期栏显示每个佩戴开始日期的可下载条数与未完成条数，未完成的日期在前、按日期从新到旧；已全部下载的日期排在后面。点击日期即可只看该日记录，“下载所选”一键下载该日期全部未完成记录。
+- **状态颜色**：已下载为绿色，未下载为红色，部分已下载为黄色，不下载为灰色；表格按“未完成在前、日期从新到旧”排序，新增“本地九轴文件”列。
+- **点对点重新下载**：搜索框按设备号 / 牛号查找，选中记录后“重新下载所选…”从服务器重新下载；内容不同的本地文件先原样备份到 `.edge-download/recovery` 再替换，内容一致的保持不变。
+- **界面精简**：数据目录、下载规则和 CSV 回执移到底部一行（悬停查看详情）与“更多 → 运行记录”，下载表格占满窗口。
+
+### 原始录像归类（大华录像机原盘）
+- 修复“已归类片段反复再归类”：继续任务时已归档片段按文件戳直接确认复用（实测 767 段 0 秒），不再逐段重开原盘、重写任务记录。
+- 原盘改为单读盘器按物理顺序批量扫描（每批 32 段），取代 16 路并发读盘；流水线增加背压，读盘不再远超转换。
+- 临时缓存自动放到本机 NVMe 固态盘（目标盘为 USB RAID / 机械盘时），成品校验后只写一次到牧场盘；缓存迁移时自动清理旧位置的派生文件。可用 `COWMATA_DAHUA_SCRATCH` 指定目录或设为 0 关闭。
+- 修复“CPU 编码耗时几万秒”：录像机时钟回跳的通道重建帧槽时间轴后按帧数×帧间隔校验，无损封装不再被迫整小时 CPU 重编码（同类片段实测 8 秒、帧数一致）。
+- 跨午夜切分按关键帧无损切分（误差 ≤ 2 秒），不再整小时重编码。
+- 录像机写入的损坏帧按原样无损保留并标注；成品只保留视频（音频不解码、不编码）。
+- 不再产生“待核对”：单段失败清缓存重试一次，仍无法解码则丢弃该段（录像机原盘只读不写）；磁盘空间 / 设备断开等环境问题保留到下次继续时自动重试。
+- GPU 编码探测超时、单段 ffmpeg 超时只影响该段；编码回退优先 NVIDIA NVENC，限制同时硬件会话数，单段失败不再让整个任务永久降级到 CPU。
+- 去掉快速封装的 `+faststart` 二次重写；帧数与时间轴合并为一次 ffprobe；任务记录节流写入。
+- 修复“平均处理速度”显示偏低约 16 倍（按实际经过时间计算）。
 ## 4.2.1 · 2026-09-22
 
 - 修复 16 路并行归类吞吐塌陷（实测 0.51 MiB/秒，远慢于单路）：并发读盘导致机械盘磁头乱寻道。改为**单读盘器按磁盘物理顺序预读流水线**（预读 4 段，读盘严格串行）+ **16 路转换器并行**（只处理已落盘暂存段）。读盘不再等待转换，转换不再等待读盘。
@@ -465,3 +487,8 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 - 增强大华/海康 MPEG-PS 的逐帧时钟、关键帧和兼容播放回退链。
 - 视角01、视角11–16按原始记录重新建立播放索引；归档树和日期文件名保持不变。
 - 标注工作区继续使用紧凑工具栏、曲线优先布局和关闭标注释放按钮。
+## 4.2.6
+
+- Dahua ingest now starts up to 16 independent sequential source readers and 16 converter workers. The scheduler keeps the physical descriptor order for dispatch, preserves resumable receipts, and propagates reader failures into the run log instead of treating them as clean end-of-input.
+- DOCX issue uploads now verify CRC/XML structure, reject unsafe links and oversized decompression, detect files that are still being written, use unique atomic staging files, and avoid same-name report clobbering.
+- Live playback temporarily suspends Mica/frosted repainting around native VLC surfaces and makes the tile transport overlay an explicit mouse target. Clicking a preview surface promotes it to an actionable main view.

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import io
 import threading
@@ -156,12 +156,12 @@ def test_default_view_scheduler_starts_all_twenty_channels():
     assert tasks.preparation_workers() == 20
 
 
-def test_physical_recorder_reads_are_serialized_to_avoid_seek_thrash():
-    # Disk mode runs 16 view workers; the raw-chain read queue is capped
-    # at 16 concurrent chain readers (user operations preference).
+def test_physical_recorder_reads_use_explicit_sixteen_way_bound():
+    # Disk mode runs 16 independent sequential view readers. The semaphore is
+    # the hard upper bound, so a busy source cannot create an unbounded queue.
     assert tasks.preparation_workers({"mode": "disk"}) == 16
     assert tasks.preparation_workers({"mode": "files"}) == 20
-    assert tasks._source_read_lock._initial_value == 16
+    assert tasks._source_read_lock._initial_value == tasks.SOURCE_READ_CONCURRENCY <= 2
 
 
 def test_progress_speed_excludes_unfinished_reading_tasks():
@@ -176,6 +176,7 @@ def test_progress_speed_excludes_unfinished_reading_tasks():
         table.accept(dict(event_kind="task_record", source_id="reading", owner="视角02",
                           status="processing", targets=[], size=0, file_seconds=190))
         table.flush()
-        assert "10.00 MiB/秒" in table.summary.text()
+        # 100 MiB archived over ~200 s of wall-clock time (lanes overlap).
+        assert "0.50 MiB/秒" in table.summary.text()
     finally:
         table.close()

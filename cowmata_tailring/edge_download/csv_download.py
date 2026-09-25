@@ -31,7 +31,7 @@ from .local_records import LocalRecords
 from .settings import atomic_json
 
 
-def save_record(job, plan, kind, data):
+def save_record(job, plan, kind, data, *, replace=False):
     validate_payload(data, kind)
     stamp = record_datetime(data, kind)
     wear, reason = plan.resolve_download(data["device"], stamp, data.get("cow_id", ""))
@@ -59,7 +59,8 @@ def save_record(job, plan, kind, data):
         if valid:
             if fingerprint(old, kind) == fingerprint(data, kind):
                 return file, False, wear, reason
-            raise DownloadError("同秒时间戳文件冲突，原件保留，未另建重复名称：" + str(file))
+            if not replace:
+                raise DownloadError("同秒时间戳文件冲突，原件保留，未另建重复名称：" + str(file))
         backup = checked_path(
             job.farm, Path(".edge-download/recovery") / (file.name + "." + uuid.uuid4().hex)
         )
@@ -88,10 +89,42 @@ def save_record(job, plan, kind, data):
     return file, True, wear, reason
 
 
+def _ledger_signature(plan, device, lo, hi):
+    """Fingerprint of every sample record that decides downloads of this device-day."""
+    rows = []
+    for wear in plan.by_device.get(device, []):
+        if wear.start < hi and (wear.end is None or lo < wear.end):
+            status, _ = plan.eligibility(wear)
+            rows.append([wear.source, wear.row, wear.identity.folder_name, wear.category,
+                         wear.start.isoformat(), wear.end.isoformat() if wear.end else "", status])
+    return hashlib.sha256(json.dumps(sorted(rows), ensure_ascii=False).encode()).hexdigest()
+
+
+def _local_signature(db, root, device, lo, hi):
+    """Fingerprint of the local originals of this device-day that still exist."""
+    rows = db.execute(
+        "SELECT path, sha FROM local_raw_records WHERE device=? AND stamp>=? AND stamp<? ORDER BY path",
+        (device.upper(), int(lo.timestamp() * 1000), int(hi.timestamp() * 1000)),
+    ).fetchall()
+    # The index keeps rows of deleted files until they are looked up again.
+    present = [row for row in rows if (root / row[0]).is_file()]
+    return hashlib.sha256(json.dumps(present).encode()).hexdigest()
+
+
 def run_csv_job(
-    job, cancel, log=lambda message: None, progress=lambda done, total: None, client_factory=Client
+    job, cancel, log=lambda message: None, progress=lambda done, total: None, client_factory=Client,
+    *, only=None, force=False, now=None,
 ):
+    """Download the ledger-authorised range up to 00:00 today (Beijing).
+
+    ``only`` restricts the round to the given plan records (a date or rows
+    picked in the window); ``force`` re-downloads them from the server even if
+    local copies exist, keeping a byte-exact backup of every replaced file.
+    """
+    from .download_status import clear_done, clip_ranges, day_cutoff, mark_done, settled
+
     result = Result()
+    cutoff = day_cutoff(now)
     root = Path(job.farm)
     root.mkdir(parents=True, exist_ok=True)
     with RootSyncLock(root, cancel):
@@ -124,7 +157,13 @@ def run_csv_job(
             )
             for issue in plan.issues:
                 log(f"台账待核对 {issue['source']} 第 {issue['row']} 行：{issue['message']}")
-            ranges = list(plan.bounds(job.start, job.end))
+            end_limit = min(job.end, cutoff)
+            if job.end > cutoff:
+                log(f"今日数据仍在实时上传，留到明天下载；本轮截至 {cutoff:%Y-%m-%d %H:%M}（北京时间）")
+            ranges = list(plan.bounds(job.start, end_limit)) if job.start < end_limit else []
+            if only is not None:
+                ranges = clip_ranges(ranges, only)
+                log(f"按所选记录下载：{len(only)} 条记录，{len(ranges)} 个查询时段" + ("（强制重新下载）" if force else ""))
             if not ranges:
                 result.pending = sum(r["eligibility"] == "pending" for r in plan.preview())
                 log("本轮没有符合条件的样本；未请求原始数据。缺项补全后下轮重新核对。")
@@ -139,108 +178,125 @@ def run_csv_job(
             )
             seen = set()
             try:
+                if force:
+                    for device, lo, hi in ranges:
+                        clear_done(db, device, lo, hi)
+                    db.commit()
                 local = LocalRecords(root, db, cancel, log)
                 local.refresh()
+                windows = []
                 for device, lo, hi in ranges:
                     while lo < hi:
-                        client.check()
-                        end = min(hi, lo + timedelta(days=1))
-                        log(f"正在下载 {device} {lo:%Y-%m-%d}")
-                        try:
-                            items = client.listing(Target(device), lo, end, ("motion", "pulse", "temp"))
-                            for kind, uid, actual_device, history_cow in items:
-                                client.check()
-                                key = json.dumps([job.base_url.rstrip("/"), kind, uid, actual_device])
-                                if key in seen:
+                        windows.append((device, lo, min(hi, lo + timedelta(days=1))))
+                        lo = windows[-1][2]
+                for number, (device, lo, end) in enumerate(windows, 1):
+                    client.check()
+                    ledger_sig = _ledger_signature(plan, device, lo, end)
+                    if not force and settled(db, device, lo, end, ledger_sig,
+                                             _local_signature(db, root, device, lo, end)):
+                        result.settled += 1
+                        log(f"已完成，跳过：{device} {lo:%Y-%m-%d}（{number}/{len(windows)}）")
+                        progress(number, len(windows))
+                        continue
+                    failures = result.failed
+                    log(f"正在下载 {device} {lo:%Y-%m-%d}（{number}/{len(windows)}）")
+                    try:
+                        items = client.listing(Target(device), lo, end, ("motion", "pulse", "temp"))
+                        for kind, uid, actual_device, history_cow in items:
+                            client.check()
+                            key = json.dumps([job.base_url.rstrip("/"), kind, uid, actual_device])
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            try:
+                                existing = None if force else local.find_uid(kind, actual_device, uid, lo, end)
+                                if existing is not None:
+                                    result.skipped += 1
+                                    log(
+                                        "已存在，跳过下载：" + existing.relative_to(root).as_posix()
+                                    )
                                     continue
-                                seen.add(key)
-                                try:
-                                    existing = local.find_uid(kind, actual_device, uid, lo, end)
-                                    if existing is not None:
-                                        result.skipped += 1
-                                        log(
-                                            "已存在，跳过下载：" + existing.relative_to(root).as_posix()
-                                        )
-                                        progress(
-                                            result.saved + result.skipped + result.failed, len(seen)
-                                        )
-                                        continue
-                                    cached = db.execute(
-                                        "SELECT path,sha,ledger FROM files WHERE key=?", (key,)
-                                    ).fetchone()
-                                    data = None
-                                    if cached:
-                                        previous = checked_path(root, cached[0])
-                                        if previous.is_file():
-                                            raw = previous.read_bytes()
-                                            if hashlib.sha256(raw).hexdigest() == cached[1]:
-                                                if local.remember(previous, kind):
-                                                    result.skipped += 1
-                                                    continue
-                                                data = json.loads(raw)
-                                    if data is None:
-                                        data = client.record(kind, uid, actual_device, history_cow)
-                                    actual = datetime.fromtimestamp(
-                                        int(data["create_time"]) / 1000, CHINA
-                                    )
-                                    if not lo <= actual < end:
-                                        raise DownloadError("详情采集时间不在请求时段")
+                                cached = db.execute(
+                                    "SELECT path,sha,ledger FROM files WHERE key=?", (key,)
+                                ).fetchone()
+                                data = None
+                                if cached and not force:
+                                    previous = checked_path(root, cached[0])
+                                    if previous.is_file():
+                                        raw = previous.read_bytes()
+                                        if hashlib.sha256(raw).hexdigest() == cached[1]:
+                                            if local.remember(previous, kind):
+                                                result.skipped += 1
+                                                continue
+                                            data = json.loads(raw)
+                                if data is None:
+                                    data = client.record(kind, uid, actual_device, history_cow)
+                                actual = datetime.fromtimestamp(
+                                    int(data["create_time"]) / 1000, CHINA
+                                )
+                                if not lo <= actual < end:
+                                    raise DownloadError("详情采集时间不在请求时段")
+                                wear, reason = plan.resolve_download(
+                                    actual_device,
+                                    actual,
+                                    data.get("cow_id")
+                                    or data.get("animal_number")
+                                    or data.get("animalNumber")
+                                    or "",
+                                )
+                                if wear is None:
+                                    raise DownloadError("台账未授权保存：" + reason)
+                                existing = local.find_data(kind, data)
+                                if existing is not None:
+                                    file, saved = existing, False
                                     wear, reason = plan.resolve_download(
-                                        actual_device,
-                                        actual,
-                                        data.get("cow_id")
-                                        or data.get("animal_number")
-                                        or data.get("animalNumber")
-                                        or "",
+                                        actual_device, actual, data.get("cow_id", "")
                                     )
-                                    if wear is None:
-                                        raise DownloadError("台账未授权保存：" + reason)
-                                    existing = local.find_data(kind, data)
-                                    if existing is not None:
-                                        file, saved = existing, False
-                                        wear, reason = plan.resolve_download(
-                                            actual_device, actual, data.get("cow_id", "")
+                                else:
+                                    file, saved, wear, reason = save_record(job, plan, kind, data, replace=force)
+                                local.remember(file, kind)
+                                relative = file.relative_to(root).as_posix()
+                                digest = hashlib.sha256(file.read_bytes()).hexdigest()
+                                db.execute(
+                                    "INSERT OR REPLACE INTO files VALUES (?,?,?,?)",
+                                    (key, relative, digest, plan.fingerprint),
+                                )
+                                db.commit()
+                                provenance = dict(
+                                    path=relative,
+                                    sha256=digest,
+                                    sources=plan.sources,
+                                    device=actual_device,
+                                    uid=uid,
+                                    kind=kind,
+                                    reason=reason,
+                                    source_row=wear.row if wear else None,
+                                    source_file=wear.source if wear else None,
+                                )
+                                if saved:
+                                    with (state / "csv-provenance.jsonl").open(
+                                        "a", encoding="utf-8"
+                                    ) as stream:
+                                        stream.write(
+                                            json.dumps(provenance, ensure_ascii=False) + "\n"
                                         )
-                                    else:
-                                        file, saved, wear, reason = save_record(job, plan, kind, data)
-                                    local.remember(file, kind)
-                                    relative = file.relative_to(root).as_posix()
-                                    digest = hashlib.sha256(file.read_bytes()).hexdigest()
-                                    db.execute(
-                                        "INSERT OR REPLACE INTO files VALUES (?,?,?,?)",
-                                        (key, relative, digest, plan.fingerprint),
-                                    )
-                                    db.commit()
-                                    provenance = dict(
-                                        path=relative,
-                                        sha256=digest,
-                                        sources=plan.sources,
-                                        device=actual_device,
-                                        uid=uid,
-                                        kind=kind,
-                                        reason=reason,
-                                        source_row=wear.row if wear else None,
-                                        source_file=wear.source if wear else None,
-                                    )
-                                    if saved:
-                                        with (state / "csv-provenance.jsonl").open(
-                                            "a", encoding="utf-8"
-                                        ) as stream:
-                                            stream.write(
-                                                json.dumps(provenance, ensure_ascii=False) + "\n"
-                                            )
-                                    result.saved += int(saved)
-                                    result.skipped += int(not saved)
-                                    result.pending += int(wear is None)
-                                    log(("已下载：" if saved else "已存在：") + relative)
-                                except (ValueError, OSError, sqlite3.Error) as exc:
-                                    result.failed += 1
-                                    log(f"下载失败 {kind}/{device}/{uid}：{exc}")
-                                progress(result.saved + result.skipped + result.failed, len(seen))
-                        except DownloadError as exc:
-                            result.failed += 1
-                            log(f"查询失败 {device} {lo:%Y-%m-%d}：{exc}")
-                        lo = end
+                                result.saved += int(saved)
+                                result.skipped += int(not saved)
+                                result.pending += int(wear is None)
+                                log(("已下载：" if saved else "已存在：") + relative)
+                            except (ValueError, OSError, sqlite3.Error) as exc:
+                                result.failed += 1
+                                log(f"下载失败 {kind}/{device}/{uid}：{exc}")
+                    except DownloadError as exc:
+                        result.failed += 1
+                        log(f"查询失败 {device} {lo:%Y-%m-%d}：{exc}")
+                    if result.failed == failures and end <= cutoff:
+                        # A finished, failure-free past day is not listed again
+                        # while its ledger records and local files stay unchanged.
+                        mark_done(db, device, lo, end, ledger_sig, _local_signature(db, root, device, lo, end))
+                        db.commit()
+                    progress(number, len(windows))
+                log(f"本轮下载完成：{len(windows)} 个设备日，已完成跳过 {result.settled}；数据截至 {end_limit:%Y-%m-%d %H:%M}")
             except Cancelled:
                 result.canceled = True
             finally:

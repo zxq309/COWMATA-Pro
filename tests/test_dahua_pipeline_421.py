@@ -1,4 +1,4 @@
-"""4.2.1: pipelined disk-mode scheduler (single reader + parallel converters)."""
+﻿"""4.2.6: pipelined disk-mode scheduler (sixteen bounded source readers)."""
 import threading
 import time
 
@@ -32,7 +32,7 @@ def test_pipeline_overlaps_reader_with_converters():
                                          check_cancel=lambda: False, ahead=4):
         results.append(future.result()["id"])
     assert sorted(results) == sorted(r["id"] for r in rows)
-    assert state["max_reads"] == 1, "platter reads must stay serialized"
+    assert state["max_reads"] >= 2, "independent views must read concurrently"
     assert state["converting_while_reading"] > 0, "converters must overlap the reader"
 
 
@@ -58,11 +58,15 @@ def test_pipeline_stages_in_disk_order_and_bounds_ahead():
         future.result()
         consumed += 1
         if consumed == 1:
-            # reader stays only `ahead` segments ahead of the consumer
+            # Reader stays bounded by the worker width, rather than opening
+            # an unbounded task queue.
             with lock:
-                assert len(started) <= 5, f"reader ran too far ahead: {started}"
+                assert len(started) <= 8, f"reader ran too far ahead: {started}"
     assert consumed == len(rows)
-    assert started == [r["id"] for r in rows], "staging must follow disk order"
+    # Per-row staging runs on several threads, so only submission order is fixed;
+    # the physical-order guarantee for recorder disks is the batch sweep
+    # (test_dahua_sweep_427). Every row still starts exactly once.
+    assert sorted(started) == [r["id"] for r in rows]
 
 
 def test_pipeline_surfaces_staging_errors():

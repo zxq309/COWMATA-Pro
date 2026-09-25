@@ -5,17 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import queue
 import re
 import shutil
+import subprocess
 import threading
 import time
 import uuid
-from contextlib import ExitStack, nullcontext
-from functools import wraps
+from contextlib import ExitStack
 from pathlib import Path
 
 from . import organization as core
-from .catalog import digest_file
+from .catalog import digest_file, file_stamp
 from .dahua_media import (
     packet_clock,
     probe,
@@ -25,7 +26,7 @@ from .dahua_media import (
     time_ms,
     transcode,
 )
-from .dahua_source import DHFSReader, check, disks, normalize_file
+from .dahua_source import DHFSReader, check, disks, normalize_chunks, normalize_file
 from .data_category import category_fields, category_root
 from .dataset_access import DatasetLease, overlaps
 from .resource_layout import covered_days, day_at, start_stamp
@@ -34,6 +35,12 @@ from .storage import ProjectLock, atomic_json
 VIEWS = tuple(f"视角{i:02}" for i in range(1, 21))
 ADAPTER = "cowmata-dahua-1"
 DEFAULT_DEADLINE_SECONDS = 8 * 60 * 60
+
+
+class UndecodableRecording(ValueError):
+    """The recording itself failed media processing twice; it is discarded."""
+
+CHECKPOINT_SECONDS = 2.0
 
 
 def task_root():
@@ -274,36 +281,62 @@ def cleanup_completed_sources(index, result, *, cancelled=lambda: False, confirm
                         else f"已清理 {len(deleted)} 个；另有 {len(pending)} 个待核对，原文件保留")}
 
 
-_source_read_lock = threading.BoundedSemaphore(16)
-
-
-def serial_source_read(method):
-    @wraps(method)
-    def wrapped(*args, **kwargs):
-        # Raw recorder disks read ONE chain at a time (seek storms on a
-        # spinning platter cost far more than parallelism gains), while the
-        # conversion stage of the other workers overlaps the read fully.
-        index = args[1] if len(args) > 1 else kwargs.get("index", {})
-        guard = _source_read_lock if isinstance(index, dict) and index.get("mode") == "disk" else nullcontext()
-        with guard:
-            return method(*args, **kwargs)
-    return wraps(method)(wrapped)
+SOURCE_READ_CONCURRENCY = 2
+_source_read_lock = threading.BoundedSemaphore(SOURCE_READ_CONCURRENCY)
+DISK_CONVERT_WORKERS = 16
+# Measured on the 4 TB recorder disk (USB, 184 MiB/s raw): sixteen rows per
+# sweep yield 111 MiB/s of useful data, thirty-two rows 145 MiB/s, because
+# simultaneously recorded channels interleave their fragments.
+SWEEP_BATCH = 32
+_fresh_sources = set()
+_fresh_lock = threading.Lock()
 
 
 def preparation_workers(index=None):
-    """Disk mode pipelines: one serialized reader + one overlapping converter.
+    """Return the bounded conversion width for the selected source.
 
-    The recorder chain read stays exclusive, but the second worker remuxes and
-    verifies the previously staged segment while the platter streams the next
-    one, so the disk never waits for the CPU and vice versa. Mounted-file
-    sources keep one independent worker per mapped view.
+    Disk mode reads the recorder with one sequential sweep (plus at most one
+    per-row fallback reader) and converts sixteen staged recordings in
+    parallel. Mounted-file sources keep one worker per mapped view.
     """
     if isinstance(index, dict) and index.get("mode") == "disk":
-        return 16
+        return DISK_CONVERT_WORKERS
     return len(VIEWS)
 
 
-@serial_source_read
+def _remember_source(folder, source, row, info, *, fresh):
+    info["source_record_id"] = row["id"]
+    info["stamp"] = file_stamp(source)
+    atomic_json(folder / "source.json", info, backup=False)
+    if fresh:
+        with _fresh_lock:
+            _fresh_sources.add(row["id"])
+
+
+def _cached_source(folder, source, saved, cancelled):
+    """rsync-style quick check for the private cache; hash only legacy entries."""
+    if not source.is_file() or not saved.get("sha256"):
+        return False
+    stamp = file_stamp(source)
+    if saved.get("stamp") == stamp:
+        return True
+    if digest_file(source, cancelled=cancelled) != saved["sha256"]:
+        return False
+    atomic_json(folder / "source.json", dict(saved, stamp=stamp), backup=False)
+    saved["stamp"] = stamp
+    return True
+
+
+def _check_disk_chain(row, disk, cancelled):
+    with _source_read_lock, DHFSReader(disk["path"], disk["size"], disk["identity"], cancelled,
+                                       lazy_descriptors=True) as reader:
+        part = reader.partitions[row["partition"]]
+        chain, _ = reader.chain(part, row["descriptor"])
+        fingerprint = hashlib.sha256(b"".join(reader.descriptor(part, i) for i in chain)).hexdigest()
+    if fingerprint != row["fingerprint"]:
+        raise ValueError("原盘录像索引已变化")
+
+
 def normalized(row, index, job, cancelled):
     from .dahua_run import record_folder
     folder = record_folder(job, row["id"], cancelled)
@@ -312,6 +345,7 @@ def normalized(row, index, job, cancelled):
     saved = read_json(folder / "source.json", {})
     if saved and saved.get("source_record_id") != row["id"]:
         raise ValueError("暂存记录身份冲突，请重新扫描")
+    disk = None
     if index["mode"] == "file":
         path = Path(row["source"])
         if core.identity(path) != row["source_identity"]:
@@ -325,36 +359,153 @@ def normalized(row, index, job, cancelled):
         if row.get("sha256") is None:
             row.update(sha256=source_sha, status="indexed")
             atomic_json(job / "dahua-index.json", index, backup=False)
-    else:
-        disk = fresh_disk(index["disk"])
-    if source.is_file() and saved.get("sha256") == digest_file(source, cancelled=cancelled):
-        if index["mode"] == "file":
-            return source, saved
-        # Revalidate the selected chain even when the normalized bytes are cached.
-        with DHFSReader(disk["path"], disk["size"], disk["identity"], cancelled, lazy_descriptors=True) as reader:
-            part = reader.partitions[row["partition"]]
-            chain, _ = reader.chain(part, row["descriptor"])
-            fingerprint = hashlib.sha256(
-                b"".join(reader.descriptor(part, i) for i in chain)
-            ).hexdigest()
-            if fingerprint != row["fingerprint"]:
-                raise ValueError("原盘录像索引已变化")
+    if _cached_source(folder, source, saved, cancelled):
+        with _fresh_lock:
+            fresh = row["id"] in _fresh_sources
+        if index["mode"] != "file" and not fresh:
+            # A cache from an earlier run: confirm the recorder chain is unchanged.
+            # Rows swept by this process were fingerprint-checked moments ago.
+            _check_disk_chain(row, fresh_disk(index["disk"]), cancelled)
         return source, saved
+    if index["mode"] != "file":
+        disk = fresh_disk(index["disk"])
     temporary = folder / (uuid.uuid4().hex + ".dav")
     try:
-        if index["mode"] == "disk":
-            with DHFSReader(disk["path"], disk["size"], disk["identity"], cancelled, lazy_descriptors=True) as reader:
+        if disk is not None:
+            with _source_read_lock, DHFSReader(disk["path"], disk["size"], disk["identity"], cancelled,
+                                               lazy_descriptors=True) as reader:
                 info = reader.extract(row, temporary)
         else:
             with core.prevent_writes(Path(row["source"])):
                 info = normalize_file(row["source"], temporary, cancelled)
         check(cancelled)
         os.replace(temporary, source)  # Private task cache only, never a source.
-        info["source_record_id"] = row["id"]
-        atomic_json(folder / "source.json", info, backup=False)
+        _remember_source(folder, source, row, info, fresh=disk is not None)
         return source, info
     finally:
         temporary.unlink(missing_ok=True)
+
+
+class _Feed:
+    """Bounded hand-off from the disk sweep to one recording's normaliser."""
+
+    END = object()
+
+    def __init__(self, cancelled, depth=8):
+        self.queue = queue.Queue(maxsize=depth)
+        self.closed = threading.Event()
+        self.cancelled = cancelled
+
+    def put(self, item):
+        while not self.closed.is_set():
+            try:
+                self.queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                if self.cancelled():
+                    return False
+        return False
+
+    def finish(self):
+        # Must reach the consumer even after a pause: it exits on END or on
+        # its own cancellation check, whichever comes first.
+        while not self.closed.is_set():
+            try:
+                self.queue.put(self.END, timeout=0.1)
+                return
+            except queue.Full:
+                continue
+
+    def chunks(self):
+        while True:
+            try:
+                item = self.queue.get(timeout=0.5)
+            except queue.Empty:
+                check(self.cancelled)
+                continue
+            if item is self.END:
+                return
+            if isinstance(item, BaseException):
+                raise item
+            yield item
+
+
+def _normalize_feed(row, folder, feed, temporary, cancelled, done, ready):
+    """Parse one recording from the sweep and publish it the moment it is whole."""
+    try:
+        info = normalize_chunks(feed.chunks(), temporary, cancelled)
+        if row["id"] in done and not cancelled():
+            source = folder / "normalized.dav"
+            os.replace(temporary, source)  # Private task cache only, never a source.
+            _remember_source(folder, source, row, info, fresh=True)
+            ready(row)
+    except BaseException:  # noqa: BLE001 - this row falls back to the per-row path
+        pass
+    finally:
+        feed.closed.set()
+        temporary.unlink(missing_ok=True)
+
+
+def stage_disk_batch(rows, index, job, cancelled, ready=lambda row: None):
+    """Stage recorder rows with one sequential sweep; best effort by design.
+
+    Only fully delivered, fully parsed rows are committed to the cache, and
+    each is handed to ``ready(row)`` as soon as it is complete, so conversion
+    starts while the sweep continues. Any other row keeps no partial file and
+    is extracted by the per-row path in prepare_record, which reports the real
+    error exactly as before.
+    """
+    from .dahua_run import record_folder
+    pending = []
+    for row in rows:
+        if row.get("status") == "invalid" or not row.get("fingerprint"):
+            continue
+        try:
+            folder = record_folder(job, row["id"], cancelled)
+            saved = read_json(folder / "source.json", {})
+            if saved and saved.get("source_record_id") != row["id"]:
+                continue
+            if (folder / "normalized.dav").is_file() and saved.get("sha256"):
+                ready(row)
+                continue
+            pending.append((row, folder))
+        except InterruptedError:
+            raise
+        except (OSError, ValueError):
+            continue
+    if not pending:
+        return
+    feeds, threads, done = {}, [], set()
+    interrupted = None
+    try:
+        disk = fresh_disk(index["disk"])
+        with _source_read_lock, DHFSReader(disk["path"], disk["size"], disk["identity"], cancelled,
+                                           lazy_descriptors=True) as reader:
+            for row, folder in pending:
+                temporary = folder / (uuid.uuid4().hex + ".dav")
+                feed = _Feed(cancelled)
+                feeds[row["id"]] = feed
+                thread = threading.Thread(target=_normalize_feed, name="dahua-normalize", daemon=True,
+                                          args=(row, folder, feed, temporary, cancelled, done, ready))
+                thread.start()
+                threads.append(thread)
+            fallback = reader.sweep([row for row, _ in pending],
+                                    lambda row, item: feeds[row["id"]].put(item), done=done,
+                                    on_done=lambda row: feeds[row["id"]].finish())
+            for row in fallback:
+                feeds[row["id"]].put(ValueError("录像链非顺序排布，改为单段读取"))
+    except InterruptedError as exc:
+        interrupted = exc
+    except (OSError, ValueError, RuntimeError):
+        pass
+    finally:
+        for feed in feeds.values():
+            feed.finish()
+        for thread in threads:
+            thread.join()
+    if interrupted is not None:
+        raise interrupted
+    check(cancelled)
 
 
 def prepare_preview(row, index, job, cancelled=lambda: False):
@@ -442,27 +593,122 @@ def select_records(index, request):
     return list({r["id"]: r for r in selected}.values())
 
 
+def frame_time(timing, frame):
+    """Media time (ms) of a video frame on the recovered recorder clock."""
+    value = frame * timing["frame_interval_ms"]
+    for index, delta in timing.get("video_clock_corrections", []):
+        if index <= frame:
+            value += delta
+    return value
+
+
+def dhav_keyframes(path, cancelled=lambda: False):
+    """(video frame index, byte offset) of every I-frame packet, plus totals."""
+    import mmap
+    import struct
+
+    keys, frames, packets = [], 0, 0
+    with open(path, "rb") as stream:
+        size = stream.seek(0, 2)
+        if not size:
+            return keys, 0, 0
+        with mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as data:
+            position = 0
+            while position < size:
+                if packets % 8192 == 0:
+                    check(cancelled)
+                if position + 24 > size or data[position:position + 4] != b"DHAV":
+                    raise ValueError("DHAV 包边界不连续")
+                length = struct.unpack_from("<I", data, position + 12)[0]
+                if length < 32 or position + length > size:
+                    raise ValueError("DHAV 包长无效")
+                kind = data[position + 4]
+                if kind in (0xFC, 0xFD):
+                    if kind == 0xFD:
+                        keys.append((frames, position))
+                    frames += 1
+                position += length
+                packets += 1
+    return keys, frames, size
+
+
+def keyframe_pieces(source, timing, bounds, started, ended, cancelled=lambda: False):
+    """Snap interior cut points to the nearest keyframe; None if not provable."""
+    keys, total, size = dhav_keyframes(source, cancelled)
+    if not keys or keys[0][0] != 0 or total != timing.get("video_frames"):
+        return None
+    record = ended - started
+    points = [(frame, frame_time(timing, frame), position) for frame, position in keys]
+
+    def snap(offset):
+        return min(points, key=lambda item: abs(item[1] - offset))
+
+    pieces = []
+    for lo, hi in bounds:
+        first, first_ms, first_pos = (0, 0, 0) if lo - started <= 0 else snap(lo - started)
+        end, end_ms, end_pos = (total, record, size) if hi - started >= record else snap(hi - started)
+        if end <= first:
+            continue
+        pieces.append((started + first_ms, started + end_ms,
+                       dict(first=first, end=end, start_pos=first_pos, end_pos=end_pos, requested=[lo, hi])))
+    return pieces or None
+
+
+def recovered_clock(source, cancelled=lambda: False, stage=lambda *_a, **_k: None, info=None):
+    """Recorder clock for one DAV: validated counter, measured PTS, or CFR slots."""
+    from .dahua_media import packet_clock_sanitized
+
+    info = info or probe(source, cancelled, dav=True)
+    try:
+        # Audio is never archived, so its continuity must not disqualify the
+        # recorder's validated video counter.
+        return (recorded_clock(source, info, cancelled, ignore_audio=True)
+                or packet_clock(source, cancelled, dav=True))
+    except ValueError as exc:
+        # Recorder clock restarts (PTS jumps backwards then resyncs) are
+        # rebuilt onto a monotonic frame-slot timeline instead of blocking
+        # the segment in 待核对.
+        if "视频时钟不连续" not in str(exc):
+            raise
+    stage("verify", "时钟回跳，重建单调时间轴")
+    clock = packet_clock_sanitized(source, cancelled, dav=True)
+    recovery = clock["recovery"]
+    # CFR slot timeline: frame N lands at N*interval. Monotonic by
+    # construction (no corrections expression needed) and content gaps
+    # compress to one frame slot, so the product lasts exactly
+    # frames*interval. Keeping the raw PTS span here (gaps included) made
+    # every lossless remux fail its duration check and fall back to a
+    # full-hour CPU x264 encode at ~35 fps on the 2560x1440 channels.
+    recovery["video_clock_corrections"] = []
+    recovery["duration_ms"] = recovery["video_frames"] * recovery["frame_interval_ms"]
+    clock["duration"] = recovery["duration_ms"] / 1000
+    return clock
+
+
+def extract_piece(source, piece, target, cancelled=lambda: False):
+    """Copy whole DHAV packets [keyframe, next cut) into a standalone DAV."""
+    target.unlink(missing_ok=True)
+    with open(source, "rb") as inp, open(target, "xb") as out:
+        inp.seek(piece["start_pos"])
+        remaining = piece["end_pos"] - piece["start_pos"]
+        while remaining:
+            check(cancelled)
+            block = inp.read(min(8 * 1024**2, remaining))
+            if not block:
+                raise ValueError("切分原码流时读取不完整")
+            out.write(block)
+            remaining -= len(block)
+    clock = recovered_clock(target, cancelled)
+    timing = clock.get("recovery")
+    return target, timing, (timing["duration_ms"] if timing else round(clock["duration"] * 1000))
+
+
 def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_kw: None):
     stage("read", "读取与核对原始录像")
     source, source_info = normalized(row, index, job, cancelled)
     stage("verify", "核对码流时钟")
     input_info = probe(source, cancelled, dav=True)
-    try:
-        clock = recorded_clock(source, input_info, cancelled) or packet_clock(source, cancelled, dav=True)
-    except ValueError as exc:
-        # Recorder clock restarts (PTS jumps backwards then resyncs) are
-        # rebuilt onto a monotonic frame-slot timeline instead of blocking
-        # the segment in 待核对; the corrections drive the remux filters.
-        if "视频时钟不连续" not in str(exc):
-            raise
-        stage("verify", "时钟回跳，重建单调时间轴")
-        from .dahua_media import packet_clock_sanitized
-
-        clock = packet_clock_sanitized(source, cancelled, dav=True)
-        # CFR slot timeline: frame N lands at N*interval. Monotonic by
-        # construction (no corrections expression needed), content gaps
-        # compress to one frame slot; the recorder index anchor stays.
-        clock["recovery"]["video_clock_corrections"] = []
+    clock = recovered_clock(source, cancelled, stage, info=input_info)
     timing = clock.get("recovery")
     input_video = input_info["video"]
     started = source_info["start_ms"]
@@ -474,15 +720,29 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
         request.get("end"),
         request.get("split_midnight", True),
     )
+    storage_profile = request.get("storage_profile", "native")
+    pieces = None
+    if timing and storage_profile != "compact_hevc" and any(lo > started or hi < ended for lo, hi in bounds):
+        # A midnight (or range) cut inside a recording used to force a CPU
+        # re-encode of the whole hour. Cut the DAV at the nearest keyframe
+        # instead (every 4 s on these recorders, so at most 2 s off the
+        # requested boundary) and remux each piece losslessly, the way NVR
+        # exporters and LosslessCut split without re-encoding.
+        pieces = keyframe_pieces(source, timing, bounds, started, ended, cancelled)
+    work = ([(lo, hi, None) for lo, hi in bounds] if pieces is None
+            else [(lo, hi, piece) for lo, hi, piece in pieces])
     results = []
-    for lo, hi in bounds:
+    for lo, hi, piece in work:
         options = dict(
             adapter=ADAPTER,
             source_sha256=source_info["sha256"],
             lo=lo,
             hi=hi,
-            profile="avc-hevc-native-clock-v5" if timing else "avc-hevc-vfr-verified-v5",
-            storage_profile=request.get("storage_profile", "native"),
+            profile=("avc-hevc-keyframe-split-v6" if piece else
+                     "avc-hevc-native-clock-v5" if timing else "avc-hevc-vfr-verified-v5"),
+            storage_profile=storage_profile,
+            # Archives are video only: audio is neither decoded nor encoded.
+            audio="none",
         )
         key = hashlib.sha256(json.dumps(options, sort_keys=True).encode()).hexdigest()
         directory = source.parent / key[:16]
@@ -491,7 +751,9 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
         saved = read_json(directory / "prepared.json", {})
         if saved and saved.get("options") != options:
             raise ValueError("暂存记录身份冲突，请重新扫描")
-        if target.is_file() and saved.get("sha256") == digest_file(target, cancelled=cancelled):
+        if target.is_file() and saved.get("sha256") and (
+                saved.get("stamp") == file_stamp(target)
+                or saved["sha256"] == digest_file(target, cancelled=cancelled)):
             saved["path"] = str(target)
             if isinstance(saved.get("metadata", {}).get("timeline", {}).get("source"), dict):
                 saved["metadata"]["timeline"]["source"]["path"] = str(target)
@@ -501,19 +763,17 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
         if free < max(256 * 1024**2, source.stat().st_size * 2):
             raise OSError("暂存磁盘空间不足，任务已保留，可释放空间后继续")
         temporary = directory / (uuid.uuid4().hex + ".mp4")
+        piece_path = directory / "piece.dav"
+        media, offset, length, media_timing = source, lo - started, hi - lo, timing
         try:
-            stage("convert", "转换 MP4")
-            try:
-                converted = transcode(source, temporary, lo - started, hi - lo, cancelled, stage=stage, timing=timing, storage_profile=options["storage_profile"])
-            except ValueError as exc:
-                from .dahua_media import audio_broken
-
-                if not audio_broken(str(exc)):
-                    raise
-                stage("convert", "音频流损坏，保留视频丢弃音频重试")
-                converted = transcode(source, temporary, lo - started, hi - lo, cancelled, stage=stage, timing=timing, storage_profile=options["storage_profile"], drop_audio=True)
-                converted["settings"]["audio"] = "dropped"
-                converted["settings"]["audio_note"] = "音频流损坏已丢弃，视频完整保留"
+            if piece:
+                stage("convert", "按关键帧切分原码流（无需重新编码）")
+                media, media_timing, length = extract_piece(source, piece, piece_path, cancelled)
+                offset = 0
+            stage("convert", "转换 MP4（仅视频）")
+            converted = transcode(media, temporary, offset, length, cancelled, stage=stage, timing=media_timing,
+                                  storage_profile=options["storage_profile"], drop_audio=True)
+            converted["settings"]["audio"] = "none"
             video = converted["info"]["video"]
             if (video["width"], video["height"]) != (input_video["width"], input_video["height"]):
                 raise ValueError("转码改变了原视频分辨率")
@@ -521,6 +781,11 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
             os.replace(temporary, target)
         finally:
             temporary.unlink(missing_ok=True)
+            piece_path.unlink(missing_ok=True)
+        if piece:
+            converted["settings"]["keyframe_split"] = dict(
+                method="dhav_keyframe_stream_copy", first_frame=piece["first"], end_frame=piece["end"],
+                requested_start_ms=piece["requested"][0], requested_end_ms=piece["requested"][1])
         stage("verify", "计算成品校验值")
         sha = digest_file(target, cancelled=cancelled)
         # Video PTS remains separate from epoch time. Intervals allow browsing;
@@ -567,8 +832,14 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
                 motion_calibrated=False,
                 query_start=request.get("start"),
                 query_end=request.get("end"),
+                fingerprint=row.get("fingerprint"),
+                storage_profile=options["storage_profile"],
+                segment_index=len(results),
+                segment_count=len(work),
             ),
         )
+        if converted["settings"].get("source_damage"):
+            metadata["warnings"].append("原始录像含录像机写入的损坏帧，已按原样无损保留；个别画面可能花屏")
         if timing and timing.get("wall_clock_events"):
             metadata["warnings"].append("录像机发生校时；连续播放计时已恢复，日期时间与传感器同步需核对")
             for interval in metadata["intervals"]:
@@ -576,6 +847,7 @@ def prepare_record(row, index, request, job, cancelled, stage=lambda *_args, **_
         value = dict(
             path=str(target),
             sha256=sha,
+            stamp=file_stamp(target),
             start_ms=actual_start,
             duration_ms=duration,
             metadata=metadata,
@@ -694,7 +966,14 @@ def organize(
     request, job, cancelled=lambda: False, progress=lambda *_: None, on_row=lambda *_: None, *, retry_ids=None
 ):
     from .catalog import file_stamp, verified_archive_matches
-    from .dahua_run import RunLog, configure_storage, media_root, release_media
+    from .dahua_run import (
+        RunLog,
+        configure_storage,
+        media_root,
+        purge_stale_media,
+        release_media,
+        scratch_volume,
+    )
     from .farm_layout import storage_root, video_root
     from .resource_import import execute
 
@@ -762,17 +1041,25 @@ def organize(
     with ExitStack() as stack:
         destination_root = storage_root(root)
         stage = destination_root / ".归类缓存" / "原始录像" / job.name
+        disk = fresh_disk(index["disk"]) if index["mode"] == "disk" else None
+        previous_media = media_root(job)
+        scratch = scratch_volume(destination_root, avoid=[disk.get("number")] if disk else [])
+        scratch_stage = scratch / "原始录像" / job.name if scratch else None
         lease = stack.enter_context(DatasetLease(
-            [destination_root, stage / "records", job / "records", *sources], "organize", owner=token))
-        if index["mode"] == "disk":
-            disk = fresh_disk(index["disk"])
+            [destination_root, stage / "records", job / "records",
+             *([scratch_stage / "records"] if scratch_stage else []), *sources], "organize", owner=token))
+        if disk is not None:
             lockdir = task_root() / "disk-locks"
             lockdir.mkdir(parents=True, exist_ok=True)
             device_lock = ProjectLock(lockdir / (disk["identity"] + ".lock"))
             stack.callback(device_lock.close)
             if not device_lock.acquired:
                 raise OSError("此原盘正在被另一归类任务读取，请稍后继续")
-        configure_storage(job, destination_root)
+        current_media = configure_storage(job, destination_root, scratch=scratch)
+        if previous_media not in {job, current_media}:
+            # The intermediate cache moved (e.g. from the farm to a local SSD):
+            # its DAV/MP4 copies are derived data that would never be read again.
+            purge_stale_media(previous_media, keep=prepared_records)
         lease.mark_pending(token, job)
         on_row(dict(event_kind="task_resume", job=str(job)))
         log = RunLog(job, selected, request["mapping"], on_row)
@@ -786,9 +1073,18 @@ def organize(
         reserved, provenance = {}, []
         verified_index = {r["path"]: r for r in read_json(destination_root / "资源索引.json", {}).get("records", [])}
         active_outputs = []
+        archive_root = video_root(root).resolve()
+        last_checkpoint = [0.0]
 
-        def checkpoint():
-            atomic_json(job / "dahua-plan.json", plan, backup=False)
+        def checkpoint(force=False):
+            # The plan grows with every archived segment; rewriting all of it
+            # several times per segment made the archive loop O(N²). Durability
+            # points (outputs recorded before the first move, pause, end) force it.
+            now = time.monotonic()
+            if not force and now - last_checkpoint[0] < CHECKPOINT_SECONDS:
+                return
+            atomic_json(job / "dahua-plan.json", plan, backup=False, indent=None)
+            last_checkpoint[0] = time.monotonic()
 
         stopping = threading.Event()
 
@@ -809,18 +1105,141 @@ def organize(
             target=str(root), resource_root=str(farm), farm=farm.name, farm_path=str(farm),
             sources=[dict(path=str(stage / "records"), kind="video"),
                      dict(path=str(job / "records"), kind="video")]
+                    + ([dict(path=str(scratch_stage / "records"), kind="video")] if scratch_stage else [])
                     + [dict(path=str(p), kind="imu") for p in json_sources],
             category=category, note=request.get("note", ""), created_at=core.now(),
             scenario=scenario, reference_records=reference, transfer="move", delete_unusable=False,
             allow_partial=True, fast_video=True, incremental_dahua=True,
             start="", end="", rows=plan["rows"], total_files=len(selected))
 
+        reuse_disk_rows = index["mode"] == "disk" and request.get("storage_profile", "native") == "native"
+        archived_by_source = {}
+        if reuse_disk_rows:
+            for record in verified_index.values():
+                origin = (record.get("metadata") or {}).get("dahua") or {}
+                if origin.get("source_id"):
+                    archived_by_source.setdefault(origin["source_id"], []).append(record)
+
+        def verified_output(output):
+            """Stamp-verified archived output, or None when it must be re-checked."""
+            target = Path(output["target"])
+            if not target.is_file() or not target.resolve().is_relative_to(archive_root):
+                return None
+            receipt = verified_index.get(target.relative_to(destination_root).as_posix(), {})
+            if not verified_archive_matches(target, receipt, output.get("sha256")):
+                return None
+            identity = core.identity(target)
+            if output.get("archive_identity") not in (None, identity):
+                return None
+            return {**output, "status": "existing", "transfer": "move", "identity": identity,
+                    "archive_identity": identity}
+
+        def adopted_outputs(row):
+            """Outputs an earlier task archived for this exact recorder row.
+
+            A rescan creates a new job whose receipts are empty; without this
+            every archived hour was read from the recorder and converted again.
+            Adoption is strict: same disk, descriptor, chain fingerprint,
+            index times, query range, view, native profile, and a complete
+            segment set whose files still match their verified stamps.
+            """
+            records = archived_by_source.get(row["id"]) if reuse_disk_rows and row.get("fingerprint") else None
+            if not records:
+                return None
+            view = request["mapping"][row["group"]]
+            for record in records:
+                origin = record["metadata"]["dahua"]
+                if (origin.get("source_identity") != row["source_identity"]
+                        or origin.get("index_start_ms") != row.get("index_start_ms")
+                        or origin.get("index_end_ms") != row.get("index_end_ms")
+                        or origin.get("fingerprint", row["fingerprint"]) != row["fingerprint"]
+                        or (origin.get("query_start") or "") != (request.get("start") or "")
+                        or (origin.get("query_end") or "") != (request.get("end") or "")
+                        or origin.get("storage_profile", "native") != "native"
+                        or record.get("owner") != view or record.get("kind") != "video"):
+                    return None
+            counts = {record["metadata"]["dahua"].get("segment_count") for record in records}
+            margin = 10 * 60 * 1000
+            single_day = (row.get("index_start_ms") is not None and row.get("index_end_ms") is not None
+                          and day_at(row["index_start_ms"] - margin) == day_at(row["index_end_ms"] + margin))
+            if counts != {len(records)} and not (counts == {None} and len(records) == 1 and single_day):
+                return None
+            outputs = []
+            for record in sorted(records, key=lambda r: r.get("record_start_ms") or 0):
+                value = verified_output(dict(
+                    source=record.get("source", ""), target=str(destination_root / record["path"]), kind="video",
+                    owner=view, sha256=record["sha256"], size=record["size"],
+                    record_start_ms=record["record_start_ms"], record_end_ms=record["record_end_ms"],
+                    record_date=day_at(record["record_start_ms"]), covered_dates=record["covered_dates"],
+                    timezone_offset_minutes=record.get("timezone_offset_minutes", 480),
+                    metadata=record["metadata"], source_id=row["id"]))
+                if value is None:
+                    return None
+                outputs.append(value)
+            return outputs
+
+        def reuse_without_media(row, handled):
+            """Resume fast path: archived rows are confirmed by file stamp only.
+
+            Previously every resume pushed each archived row through the
+            conversion pool, reopened the recorder disk and rewrote the whole
+            plan several times per row, so ~750 reused rows cost over an hour.
+            """
+            if row.get("status") == "invalid" or row["id"] in prepared_records:
+                return False
+            prior = completed.get(row["id"])
+            if prior and prior.get("discarded"):
+                if (prior.get("source_identity") != row["source_identity"]
+                        or prior.get("fingerprint") != row.get("fingerprint")):
+                    return False
+                log.begin(row["id"])
+                log.finish("skipped", prior["discarded"])
+                plan["progress"] = handled
+                return True
+            if prior:
+                if (prior.get("source_identity") != row["source_identity"]
+                        or prior.get("fingerprint") != row.get("fingerprint")):
+                    return False
+                if index["mode"] == "file" and core.identity(Path(row["source"])) != row["source_identity"]:
+                    return False
+                outputs = [verified_output(output) for output in prior["outputs"]]
+                if any(output is None for output in outputs):
+                    return False
+                message = "已归档，来源与目标身份未变化，直接复用"
+            else:
+                outputs = adopted_outputs(row)
+                if outputs is None:
+                    return False
+                message = "此前任务已归档同一原盘录像，校验一致，直接复用"
+            log.begin(row["id"])
+            log.stage("verify", "核对已归档成品，完整成品不重复转码", method="复用已归档")
+            active_outputs.clear()
+            for result in outputs:
+                result["_file_started"] = log.record_started
+                log.stage("archive", "逐段归档，成功后即可在录像目录查看", method="复用已归档")
+                plan["rows"].append(result)
+                days = result["covered_dates"]
+                commit["start"] = min(commit["start"] or days[0], days[0])
+                commit["end"] = max(commit["end"] or days[-1], days[-1])
+                reused = dict(result, status="existing", file_seconds=0, message=message)
+                active_outputs.append(reused)
+                log.archive(reused)
+                provenance.append(dict(source_id=row["id"], group=row["group"], target=result["target"],
+                                       sha256=result["sha256"], origin=result["metadata"].get("dahua", {})))
+            completed[row["id"]] = dict(source_identity=row["source_identity"],
+                                        fingerprint=row.get("fingerprint"), outputs=list(active_outputs))
+            plan["progress"] = handled
+            release_media(job, row["id"])
+            log.finish("existing")
+            checkpoint()
+            return True
+
         def prepare_one(row):
             log.begin(row["id"])
             if retry_ids is not None and row['status'] == 'invalid' and index['mode'] == 'disk':
                 refresh_invalid_disk_row(row, index, is_cancelled)
             if row["status"] == "invalid":
-                raise ValueError(row.get("message", "索引无效"))
+                raise UndecodableRecording(row.get("message", "索引无效"))
             prior = completed.get(row["id"])
             pending_record = prepared_records.get(row["id"])
             prepared_rows = []
@@ -832,12 +1251,7 @@ def organize(
                     if core.identity(Path(row["source"])) != row["source_identity"]:
                         raise ValueError("原始码流已变化，请重新扫描")
                 else:
-                    with _source_read_lock, DHFSReader(disk["path"], disk["size"], disk["identity"], is_cancelled, lazy_descriptors=True) as reader:
-                        part = reader.partitions[row["partition"]]
-                        chain, _ = reader.chain(part, row["descriptor"])
-                        actual = hashlib.sha256(b"".join(reader.descriptor(part, i) for i in chain)).hexdigest()
-                        if actual != row["fingerprint"]:
-                            raise ValueError("原盘录像索引已变化")
+                    _check_disk_chain(row, disk, is_cancelled)
             if prior:
                 log.stage("verify", "核对已归档成品，完整成品不重复转码", method="复用已归档")
                 missing_prior = False
@@ -869,40 +1283,79 @@ def organize(
                 # before its receipt; unfinished parts retain their cache.
                 prepared_rows = [dict(value, status="ready") for value in pending_record["outputs"]]
             else:
-                values = prepare_record(row, index, request, job, is_cancelled, log.stage)
+                media_errors = (ValueError, RuntimeError, subprocess.SubprocessError, FileExistsError)
+                try:
+                    values = prepare_record(row, index, request, job, is_cancelled, log.stage)
+                except media_errors as exc:
+                    if isinstance(exc, InterruptedError):
+                        raise
+                    # One clean retry: drop this row's cached media (a stall
+                    # under load or a damaged cache) and read it afresh.
+                    check(is_cancelled)
+                    release_media(job, row["id"])
+                    log.stage("read", "首次处理失败，清理缓存后重试一次：" + str(exc).strip()[-80:])
+                    try:
+                        values = prepare_record(row, index, request, job, is_cancelled, log.stage)
+                    except media_errors as again:
+                        if isinstance(again, InterruptedError):
+                            raise
+                        raise UndecodableRecording(str(again)) from again
                 return prior, values, True
 
             return prior, prepared_rows, False
 
 
-        def stage_source(row):
-            """Reader thread: pull this recording's chain onto the target disk.
+        def needs_media(row):
+            if row["id"] in prepared_records:
+                return False
+            prior = completed.get(row["id"])
+            return not prior or any(not Path(o["target"]).is_file() for o in prior["outputs"])
 
-            The raw chain read stays one-at-a-time (single platter head); the
-            converter pool works purely on staged files on the target volume.
-            """
-            if row["id"] in completed or row["id"] in prepared_records:
-                return
-            if retry_ids is not None and row['status'] == 'invalid' and index['mode'] == 'disk':
-                refresh_invalid_disk_row(row, index, is_cancelled)
-            normalized(row, index, job, is_cancelled)
+        def stage_batch(batch, ready):
+            """One sequential recorder sweep for a batch of rows (disk order)."""
+            wanted = []
+            for row in batch:
+                if not needs_media(row):
+                    ready(row)
+                    continue
+                if retry_ids is not None and row['status'] == 'invalid':
+                    try:
+                        refresh_invalid_disk_row(row, index, is_cancelled)
+                    except (OSError, ValueError):
+                        continue  # prepare_one reports the real error for this row
+                wanted.append(row)
+            stage_disk_batch(wanted, index, job, is_cancelled, ready)
 
         def row_stream():
             from .dahua_parallel import pipelined_records
             workers = preparation_workers(index)
+            handled = 0
+            remaining = []
+            for row in selected:
+                check(is_cancelled)
+                if reuse_without_media(row, handled + 1):
+                    handled += 1
+                    progress(handled, len(selected), f"已处理 {handled}/{len(selected)} 段（复用已归档）")
+                else:
+                    remaining.append(row)
+            checkpoint(force=True)
+            log.save(json_only=True)
             if index.get("mode") == "disk":
-                # Sweep the platter in partition/descriptor order (physical
-                # layout) while all mapped views convert in parallel.
+                # One sequential sweep per batch in physical order: the
+                # recorder interleaves all channels' fragments, so a batch of
+                # simultaneously recorded hours is read almost contiguously
+                # instead of sixteen readers seeking every 2 MiB.
                 preparing = pipelined_records(
-                    selected, stage_source, prepare_one, workers,
-                    lambda: check(is_cancelled), ahead=4,
-                    order_key=lambda row: (row.get("partition", 0), row.get("descriptor", 0)))
+                    remaining, None, prepare_one, workers,
+                    lambda: check(is_cancelled), ahead=SWEEP_BATCH,
+                    order_key=lambda row: (row.get("partition", 0), (row.get("chain") or [row.get("descriptor", 0)])[0]),
+                    stage_batch=stage_batch, batch_size=SWEEP_BATCH)
             else:
                 from .dahua_parallel import prepared_records as parallel_records
-                preparing = parallel_records(selected, prepare_one, workers,
+                preparing = parallel_records(remaining, prepare_one, workers,
                                              lambda: check(is_cancelled))
             try:
-                for position, (row, future) in enumerate(preparing):
+                for position, (row, future) in enumerate(preparing, start=handled):
                     check(is_cancelled)
                     log.select(row["id"])
                     active_outputs.clear()
@@ -925,7 +1378,7 @@ def organize(
                         if not prior:
                             prepared_records[row["id"]] = dict(source_identity=row["source_identity"],
                                 fingerprint=row.get("fingerprint"), outputs=prepared_rows)
-                            checkpoint()
+                            checkpoint(force=True)
                         for result in prepared_rows:
                             result["_file_started"] = log.record_started
                             log.stage("archive", "逐段归档，成功后即可在录像目录查看",
@@ -961,15 +1414,28 @@ def organize(
                     except TimeoutError as exc:
                         log.finish("paused", str(exc))
                         raise InterruptedError(str(exc)) from exc
-                    except (OSError, ValueError, RuntimeError) as exc:
+                    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
                         check(is_cancelled)
-                        issue = dict(source=row["id"], original_source=row["source"], status="blocked", message=str(exc))
-                        plan["issues"].append(issue)
-                        # No cache growth for invalid recordings; originals remain read-only.
-                        # Retain prepared pieces if any target commit needs recovery.
-                        if row["id"] not in prepared_records:
+                        if not isinstance(exc, UndecodableRecording) or row["id"] in prepared_records:
+                            # Archive-side or environment problems (disk space,
+                            # device, a changed archived file) are not the
+                            # recording's fault: keep it for the next resume.
+                            issue = dict(source=row["id"], original_source=row["source"], status="blocked", message=str(exc))
+                            plan["issues"].append(issue)
+                            if row["id"] not in prepared_records:
+                                release_media(job, row["id"])
+                            log.finish("blocked", str(exc))
+                        else:
+                            # The recording itself cannot be decoded even after
+                            # a clean retry: discard it (no 待核对). Only this
+                            # task's temporary media is deleted; the recorder
+                            # disk is read-only and is never written.
+                            reason = "无法解码，已丢弃：" + (str(exc).strip().splitlines() or [""])[-1][-120:]
                             release_media(job, row["id"])
-                        log.finish("blocked", str(exc))
+                            completed[row["id"]] = dict(source_identity=row["source_identity"],
+                                                        fingerprint=row.get("fingerprint"), outputs=[],
+                                                        discarded=reason)
+                            log.finish("skipped", reason)
                     plan["progress"] = position + 1
                     checkpoint()
                     progress(position + 1, len(selected), f"已处理 {position+1}/{len(selected)} 段")
@@ -989,7 +1455,7 @@ def organize(
                     plan["rows"].append(value)
                     yield value
 
-        checkpoint()
+        checkpoint(force=True)
         try:
             def commit_progress(current, total, message):
                 log.pulse()
@@ -1008,7 +1474,7 @@ def organize(
                      source_disk=index.get("disk"), records=provenance, issues=plan["issues"]), backup=False)
             plan.update(status="completed" if any(v.get("outputs") for v in completed.values()) else "no_output", result=result,
                         output=str(video_root(root)), media_root=str(media_root(job)))
-            checkpoint()
+            checkpoint(force=True)
             report = log.save(plan["status"])
             atomic_json(attachments / "视频任务记录.json", report, backup=False)
             shutil.copy2(job / "视频任务记录.csv", attachments / "视频任务记录.csv")
@@ -1019,7 +1485,7 @@ def organize(
             return plan
         except BaseException as exc:
             plan["status"] = "paused" if isinstance(exc, InterruptedError) else "failed"
-            checkpoint()
+            checkpoint(force=True)
             log.save(plan["status"])
             lease.mark_pending(token, job)
             raise

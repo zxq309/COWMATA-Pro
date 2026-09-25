@@ -340,7 +340,9 @@ def test_legacy_without_uid_is_not_duplicated_after_detail_check(tmp_path):
     fake = client_for([("pulse", doc)], calls)
     result = run_csv_job(job, threading.Event(), client_factory=fake)
     assert (result.saved, result.skipped, len(calls)) == (0, 1, 1)
-    assert run_csv_job(job, threading.Event(), client_factory=fake).skipped == 1
+    # 4.2.7: the finished day is skipped without listing the server again.
+    again = run_csv_job(job, threading.Event(), client_factory=fake)
+    assert again.skipped + again.settled == 1
     assert len(calls) == 1
 
 

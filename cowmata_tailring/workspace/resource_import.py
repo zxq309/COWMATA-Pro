@@ -554,7 +554,8 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
 
         def checkpoint():
             with commit_lock:
-                atomic_json(job / ('dahua-commit.json' if dahua else 'plan.json'), plan, backup=False)
+                atomic_json(job / ('dahua-commit.json' if dahua else 'plan.json'), plan, backup=False,
+                            indent=None if dahua else 2)
 
         def journal(path, entry):
             with commit_lock:

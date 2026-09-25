@@ -135,7 +135,8 @@ class DahuaRunTables(QTabWidget):
         errors = sum(r["status"] == "blocked" for r in self.records.values())
         completed = [r for r in self.records.values() if r["status"] in {"done", "existing"}]
         amount = sum(r.get("size", 0) for r in completed if r["status"] == "done")
-        completed_elapsed = sum(max(0.0, float(r.get("file_seconds", 0) or 0)) for r in completed)
+        # Parallel lanes overlap in time: divide by wall-clock time, not the sum of per-segment times.
+        completed_elapsed = elapsed if completed else 0
         speed = (f"{amount/1048576/completed_elapsed:.2f} MiB/秒" if completed_elapsed > 0 and amount
                  else "成品复用，无需传输" if done and not amount else "统计中")
         running = sorted({r.get("owner", "") for r in self.records.values() if r["status"] == "processing"})

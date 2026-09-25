@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import os
 import threading
 import time
@@ -17,6 +18,55 @@ STATES = {"waiting": "等待", "processing": "处理中", "done": "已归档",
           "existing": "已复用", "blocked": "待核对", "paused": "已暂停", "skipped": "范围外"}
 
 
+SCRATCH_DIR = "COWMATA-归类缓存"
+SCRATCH_MIN_FREE = 200 * 1024**3
+
+
+def scratch_volume(target, avoid=()):
+    """Pick a fast local SSD for intermediate media when the archive disk is slow.
+
+    Every recording is written as raw DAV, remuxed, verified and hashed before
+    the final MP4 is committed: about six passes over the data. Doing those on
+    a USB RAID/HDD target starves it (measured 40-60 MiB/s under load), while
+    the same work takes 17 s per recorded hour on local NVMe. Like Frigate or
+    Plex transcoders, stage on local SSD and write the verified product once.
+    ``COWMATA_DAHUA_SCRATCH`` may name a folder, or ``0`` to keep the target.
+    """
+    import shutil
+    import string
+
+    from .fast_transfer import drive_profile
+
+    override = os.environ.get("COWMATA_DAHUA_SCRATCH", "").strip()
+    if override.lower() in {"0", "off", "none"}:
+        return None
+    if override:
+        return Path(override).resolve()
+    if os.name != "nt":
+        return None
+    target_profile = drive_profile(Path(target).resolve().anchor)
+    if target_profile["seek_penalty"] is False:
+        return None  # The archive disk is already a local SSD.
+    avoid_disks = {target_profile["disk"], *avoid} - {None}
+    system = os.environ.get("SystemDrive", "C:").upper().rstrip("\\") + "\\"
+    candidates = []
+    for letter in string.ascii_uppercase:
+        anchor = letter + ":\\"
+        try:
+            if not os.path.isdir(anchor):
+                continue
+            profile = drive_profile(anchor)
+            free = shutil.disk_usage(anchor).free
+        except OSError:
+            continue
+        if profile["seek_penalty"] is not False or profile["disk"] in avoid_disks or free < SCRATCH_MIN_FREE:
+            continue
+        candidates.append((anchor != system, free, anchor))
+    if not candidates:
+        return None
+    return Path(max(candidates)[2]) / SCRATCH_DIR
+
+
 def media_root(job):
     import json
     job = Path(job).resolve()
@@ -25,27 +75,67 @@ def media_root(job):
         return job
     value = json.loads(config.read_text(encoding="utf-8"))
     root = Path(value["root"]).resolve()
-    expected = root / ".归类缓存" / "原始录像" / job.name
+    if value.get("scratch"):
+        expected = Path(value["scratch"]).resolve() / "原始录像" / job.name
+    else:
+        expected = root / ".归类缓存" / "原始录像" / job.name
     if Path(value["media_root"]).resolve() != expected or expected.is_symlink():
         raise ValueError("视频任务暂存路径不合法")
     return expected
 
 
-def configure_storage(job, root):
+def configure_storage(job, root, *, scratch=None):
     job, root = Path(job).resolve(), Path(root).resolve()
     if job == root or job.is_relative_to(root) or root.is_relative_to(job):
         raise ValueError("任务记录与输出目录必须独立")
-    expected = root / ".归类缓存" / "原始录像" / job.name
+    scratch = Path(scratch).resolve() if scratch else None
+    if scratch is not None and (scratch.is_relative_to(root) or root.is_relative_to(scratch)
+                                or scratch.is_relative_to(job) or job.is_relative_to(scratch)):
+        raise ValueError("临时缓存目录必须独立于牧场和任务记录")
+    legacy = root / ".归类缓存" / "原始录像" / job.name
+    expected = scratch / "原始录像" / job.name if scratch else legacy
     # Resolve before creating so junctions cannot redirect media to another disk.
     if expected.resolve() != expected:
         raise ValueError("视频任务暂存目录不能经过链接")
     old = media_root(job)
-    if old != job and old != expected:
+    saved_root = (json.loads((job / "dahua-storage.json").read_text(encoding="utf-8")).get("root")
+                  if (job / "dahua-storage.json").is_file() else None)
+    # A resumed job may move its intermediate cache between the farm and a
+    # local SSD folder of the same job; another farm or job is refused.
+    moved = old.name == job.name and old.parent.name == "原始录像" and old.parent.parent.name == SCRATCH_DIR
+    if (saved_root is not None and Path(saved_root).resolve() != root) or (
+            old not in {job, expected, legacy} and not moved):
         raise ValueError("恢复任务的输出牧场已变化，请重新扫描")
     expected.mkdir(parents=True, exist_ok=True)
-    atomic_json(job / "dahua-storage.json",
-                dict(root=str(root), media_root=str(expected)), backup=False)
+    value = dict(root=str(root), media_root=str(expected))
+    if scratch is not None:
+        value["scratch"] = str(scratch)
+    atomic_json(job / "dahua-storage.json", value, backup=False)
     return expected
+
+
+def purge_stale_media(folder, keep=()):
+    """Delete derived DAV/MP4 left in a previous cache location of this job.
+
+    Only task-owned intermediate media under ``records`` is removed; the
+    recorder disk is never written and JSON receipts stay for audit. Rows in
+    ``keep`` still have prepared outputs that await their archive commit.
+    """
+    records = Path(folder) / "records"
+    if not records.is_dir() or records.resolve() != records:
+        return 0
+    removed = 0
+    keep = {value[:24] for value in keep}
+    for record in records.iterdir():
+        if record.name in keep or record.is_symlink() or not record.is_dir():
+            continue
+        for path in record.rglob("*"):
+            if path.is_symlink() or not path.resolve().is_relative_to(records):
+                raise ValueError("旧视频缓存路径异常，停止清理")
+            if path.is_file() and path.suffix.lower() in {".dav", ".mp4"}:
+                path.unlink()
+                removed += 1
+    return removed
 
 
 def record_folder(job, source_id, cancelled):
@@ -222,7 +312,11 @@ class RunLog:
         self.current = value
         self.active.pop(value["source_id"], None)
         self.emit(dict(value, event_kind="task_record"))
-        self.save()
+        # Rewriting every record's report per finished row was O(N²) for a
+        # 3000-row task; the report stays at most a few seconds behind, and
+        # is always written once no row is running (pause / end).
+        if not self.active or time.monotonic() - self.last_save >= 5:
+            self.save()
         self.current = None
 
     @synchronized
@@ -232,7 +326,7 @@ class RunLog:
         records = [self.snapshot(r["source_id"]) for r in self.rows.values()]
         report = dict(status=self.status, elapsed_seconds=round(time.monotonic()-self.started, 3),
                       records=records, outputs=self.outputs, updated_at=core.now())
-        atomic_json(self.job / "dahua-run.json", report, backup=False)
+        atomic_json(self.job / "dahua-run.json", report, backup=False, indent=None)
         self.last_save = time.monotonic()
         if json_only:
             return report

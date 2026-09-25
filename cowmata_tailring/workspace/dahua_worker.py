@@ -24,8 +24,16 @@ def main():
     job = Path(sys.argv[1]).resolve()
     request = tasks.read_json(job / "dahua-request.json")
 
+    cancel_flag = job / "dahua-cancel"
+    cancel_state = [False, 0.0]
+
     def cancelled():
-        return (job / "dahua-cancel").exists()
+        # Polled by every converter/hash loop; one stat per 0.2 s is plenty.
+        now = time.monotonic()
+        if not cancel_state[0] and now - cancel_state[1] >= 0.2:
+            cancel_state[0] = cancel_flag.exists()
+            cancel_state[1] = now
+        return cancel_state[0]
 
     last = [0.0]
 
@@ -39,9 +47,10 @@ def main():
         from cowmata_tailring.workspace.classification_resources import (
             acquire_preparation_slot,
             limit_worker,
+            video_budget,
         )
 
-        emit(dict(event="resources", budget=limit_worker()))
+        emit(dict(event="resources", budget=limit_worker(video_budget())))
         action = request["action"]
         # Source discovery must not queue behind lengthy transcodes.
         admission = (

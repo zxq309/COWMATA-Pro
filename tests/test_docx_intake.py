@@ -28,3 +28,35 @@ def test_docx_upload_rejects_partial_or_unsafe_package(tmp_path):
     make_docx(unsafe, unsafe=True)
     with pytest.raises(ValueError, match="不安全"):
         validate_docx(unsafe)
+
+
+def test_docx_upload_same_name_is_idempotent_and_collision_safe(tmp_path):
+    first = tmp_path / "bug.docx"
+    make_docx(first)
+    staged = tmp_path / "staged"
+    original = stage_docx_upload(first, staged)
+    assert stage_docx_upload(first, staged) == original
+
+    second_dir = tmp_path / "second"
+    second_dir.mkdir()
+    second = second_dir / "bug.docx"
+    with zipfile.ZipFile(second, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types><Default/></Types>")
+        archive.writestr("word/document.xml", "<document><body/></document>")
+    collision = stage_docx_upload(second, staged)
+    assert collision != original
+    assert collision.suffix == ".docx"
+    assert not list(staged.glob("*.part"))
+
+
+def test_docx_upload_rejects_bad_crc(tmp_path):
+    source = tmp_path / "bad.docx"
+    make_docx(source)
+    data = bytearray(source.read_bytes())
+    # Corrupt a payload byte without changing the ZIP directory CRC.
+    marker = b"<document/>"
+    position = data.index(marker)
+    data[position] ^= 0xFF
+    source.write_bytes(data)
+    with pytest.raises(ValueError, match="损坏|校验"):
+        validate_docx(source)
