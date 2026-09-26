@@ -81,7 +81,7 @@ def export_table(owner, widget):
 
 
 def dataset_default(name):
-    from .paths import APP_ROOT, dataset_root
+    from cowmata_tailring.algorithms.paths import APP_ROOT
     configured = dataset_root()
     if configured is not None and (configured / name).is_dir():
         return str(configured / name)

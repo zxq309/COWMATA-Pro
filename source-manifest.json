@@ -1043,8 +1043,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 60388,
-      "sha256": "6df9fc0dee8e7bd5e7fb7de7bf8969eef9c299525571a89e1a131c96b9e1decd"
+      "size": 60999,
+      "sha256": "1c984c7f6d672202d7708325aaf1dae3db0777e6c7d99f426ec0b842b3dde057"
     },
     {
       "path": "CITATION.cff",
@@ -2098,8 +2098,8 @@
     },
     {
       "path": "cowmata_tailring/ui/algorithms/workbench_ui.py",
-      "size": 22009,
-      "sha256": "48c129c781cd898bd83a418023e1172f9f1ea23f881a38c3bcf15c79b4b93ea4"
+      "size": 22022,
+      "sha256": "103abdcbe69f9ca805664faa375033fe80d77fda14df820a418009c531d114aa"
     },
     {
       "path": "cowmata_tailring/ui/cached_widgets.py",
@@ -4093,8 +4093,8 @@
     },
     {
       "path": "tests/test_algorithm_management_ui.py",
-      "size": 2824,
-      "sha256": "f29a152f731fe3e0909f504bd85180015bb585372a138790c24d1bd6ecd27d49"
+      "size": 2830,
+      "sha256": "80fab4e83a39de4b7edf38a69a8fcb58bb4badcc656d8ddc1fe62b589d1145b8"
     },
     {
       "path": "tests/test_algorithm_progress395.py",
@@ -4145,6 +4145,11 @@
       "path": "tests/test_behavior_specialists_428.py",
       "size": 1783,
       "sha256": "94fa5747258635a40d1170ba3070ac98e3ccfdddd0ad41825d668e9d0d63a522"
+    },
+    {
+      "path": "tests/test_behavior_window_432.py",
+      "size": 1659,
+      "sha256": "791a66d84b0e02d54b04a88dd8e5edeef9c9f7404a47777d7f4a62a6053bfb54"
     },
     {
       "path": "tests/test_birth_event_models_395.py",
