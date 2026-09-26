@@ -516,3 +516,8 @@ All notable changes to COWMATA Tail-Ring Annotator are documented here.
 - Dahua ingest now starts up to 16 independent sequential source readers and 16 converter workers. The scheduler keeps the physical descriptor order for dispatch, preserves resumable receipts, and propagates reader failures into the run log instead of treating them as clean end-of-input.
 - DOCX issue uploads now verify CRC/XML structure, reject unsafe links and oversized decompression, detect files that are still being written, use unique atomic staging files, and avoid same-name report clobbering.
 - Live playback temporarily suspends Mica/frosted repainting around native VLC surfaces and makes the tile transport overlay an explicit mouse target. Clicking a preview surface promotes it to an actionable main view.
+# 4.3.0 — 2026-09-26
+
+- 修复“立即清盘”进度回调参数不一致导致的清盘任务启动即失败。
+- 数据归类成功后显示明确完成弹窗；录像机原盘模式额外询问是否立即清盘，确认后仍保留原有的只读勘查、二次确认和输入“清盘”保护。
+- 核对原有转码调度逻辑：录像机原盘仍使用顺序读取扫描和 16 路并行转换，未修改原始速度策略；速度显示继续使用 FFmpeg 实测进度。

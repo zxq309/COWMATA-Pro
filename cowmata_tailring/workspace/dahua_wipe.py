@@ -133,7 +133,14 @@ def wipe(number, expected_identity, progress=lambda *_: None, cancelled=lambda: 
             done = 0
             for job in jobs:
                 base = done
-                def step(current, _label=job["label"]):
+                # _write_zeros reports the local byte count, the local total,
+                # and the label.  The previous adapter accepted only
+                # ``current`` and therefore every real wipe failed before the
+                # first write with ``takes from 1 to 2 positional arguments
+                # but 3 were given``.  Keep the extra values explicit so the
+                # callback contract remains stable if progress reporting is
+                # extended again.
+                def step(current, _local_total=None, _label=job["label"]):
                     progress(base + current, total, _label)
                 _write_zeros(handle, job["offset"], job["length"], job["label"], step, cancelled)
                 done += job["length"]

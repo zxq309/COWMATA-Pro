@@ -713,16 +713,15 @@ class DahuaPanel(QWidget):
                                 cleanup = tasks.cleanup_completed_sources(
                                     self.index_full, result, confirm_partial=True
                                 )
+                    completed = result.get("status") == "completed"
                     self.status.setText(
-                        (
-                            "归类完成"
-                            if result.get("status") == "completed"
-                            else "所选范围没有可输出录像"
-                        )
+                        ("归类完成" if completed else "所选范围没有可输出录像")
                         + f"；待核对 {len(result.get('issues', []))} 项。原始录像保留。"
                     )
                     if cleanup:
                         self.status.setText(self.status.text() + "；" + cleanup["message"])
+                    if completed:
+                        self._offer_wipe_after_organize(result)
                 elif self.operation == "wipe_survey":
                     self.confirm_wipe(result["survey"])
                 elif self.operation == "wipe":
@@ -740,6 +739,32 @@ class DahuaPanel(QWidget):
         self.refresh()
         if continue_task and not self.error:
             QTimer.singleShot(0, self.organize)
+
+    def _offer_wipe_after_organize(self, result):
+        """Confirm a successful classification before offering destructive wipe.
+
+        Classification may run from ordinary files/directories, so the wipe
+        question is shown only when the selected source is a recorder disk.
+        Choosing Yes still enters the existing survey plus typed confirmation;
+        this dialog never performs a destructive write by itself.
+        """
+        if self.mode.currentIndex() != 1 or not self.disk_choice.currentData():
+            QMessageBox.information(
+                self,
+                "数据归类完成",
+                "已成功完成归类。\n\n归类结果已保存，原始录像保留。",
+            )
+            return
+        answer = QMessageBox.question(
+            self,
+            "数据归类完成",
+            "已成功完成归类，归类结果已保存。\n\n是否立即清盘当前选定的录像机原盘？\n"
+            "清盘会清空原盘录像索引，随后仍需二次确认并输入“清盘”。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.wipe_confirm()
 
     def apply_index(self, index):
         self.index_full = index if isinstance(index, dict) else None
