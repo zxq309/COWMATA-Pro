@@ -25,6 +25,8 @@ from cowmata_tailring.workspace.storage import atomic_json
 
 from .analysis import load_features, write_table
 from .evidence import add_baselines, evidence_rows, infer_features
+from .heart_rate import VERSION as HEART_RATE_VERSION
+from .heart_rate import attach_heart_rate
 from .inputs import scan_inputs
 from .models import export_forest, predict_forest
 from .registry import child, read_suite
@@ -138,7 +140,7 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
                 row["heart_rate_bpm"] = None
                 row["spo2_percent"] = None
                 row["prediction_probability"] = None
-                row["evidence_interpretation"] = "行为模型输出与传感器温度；缺失项保留为空"
+                row["evidence_interpretation"] = "行为模型输出、传感器温度与 PPG 心率；缺失项保留为空"
             rows.extend(record_rows)
         except (OSError, ValueError, KeyError) as exc:
             issues.append(dict(path=record["raw"], reason=str(exc)))
@@ -195,6 +197,8 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
             row["ppg_sources"] = [r["source"] for r in matches]
             consumed.update(id(r) for r in matches)
     rows = motion + [r for r in optical if id(r) not in consumed]
+    progress(len(index["records"]), len(index["records"]), "计算 PPG 心率决策特征")
+    issues.extend(attach_heart_rate(rows, [r for r in index["records"] if r["modality"] == "ppg"]))
     add_baselines(rows)
     result = dict(
         schema="cowmata-fusion-3.9",
@@ -206,7 +210,8 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
         timing_policy="server-receipt-v1",
         temperature_basis="sensor_celsius",
         temperature_contract=dict(CONTRACT),
-        future_extensions=["heart_rate_bpm", "spo2_percent"],
+        heart_rate_algorithm=HEART_RATE_VERSION,
+        future_extensions=["spo2_percent"],
     )
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -350,7 +355,11 @@ def train_decision(
             )
         )
         progress(number, min(5, len(set(groups))), "按牛分组验证决策模型")
-    tn, fp, fn, tp = confusion_matrix(y, probabilities >= 0.5, labels=[0, 1]).ravel()
+    grid = np.unique(np.quantile(probabilities[np.isfinite(probabilities)], np.linspace(0.05, 0.95, 19)))
+    scores = [(float(t), float(np.mean((probabilities >= t)[y == 1])
+                         + np.mean((probabilities < t)[y == 0]) - 1.0)) for t in grid]
+    threshold = max(scores, key=lambda item: item[1])[0] if scores else 0.5
+    tn, fp, fn, tp = confusion_matrix(y, probabilities >= threshold, labels=[0, 1]).ravel()
     precision, recall, _ = precision_recall_curve(y, probabilities)
     fpr, tpr, _ = roc_curve(y, probabilities)
     bins = []
@@ -374,7 +383,7 @@ def train_decision(
         specificity=float(tn / max(1, tn + fp)),
         precision=float(tp / max(1, tp + fp)),
         confusion_matrix=[[int(tn), int(fp)], [int(fn), int(tp)]],
-        threshold=0.5,
+        threshold=threshold,
         validation="按牛分组留出；未完成跨牧场前瞻验证",
         probability_calibrated=False,
     )
@@ -404,7 +413,7 @@ def train_decision(
         model_file=file.name,
         sha256=hashlib.sha256(file.read_bytes()).hexdigest(),
         horizon_hours=horizon_hours,
-        threshold=0.5,
+        threshold=threshold,
         probability_calibrated=False,
         metrics=metrics,
         training_rows=len(y),
@@ -501,7 +510,7 @@ def predict_decision(evidence, model_path, output):
         row["risk_score"] = (
             None
             if not np.isfinite(values).any()
-            or max(row.get("motion_coverage") or 0, row.get("ppg_coverage") or 0) < 0.5
+            or max(row.get("motion_coverage") or 0, row.get("ppg_coverage") or 0) < float(doc.get("threshold_policy", {}).get("min_signal_coverage", 0.5))
             else float(score)
         )
         row["warning_level"] = (

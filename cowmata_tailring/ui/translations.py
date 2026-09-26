@@ -4573,5 +4573,55 @@ ZH_TO_EN.update({
     "首段": "First segment"
 })
 
+# 4.3.1: wipe flow, video focus, simplified menus and downloader views.
+ZH_TO_EN.update({
+    "可直接再次点击“立即清盘…”重试；已归类的录像不受影响。": "Click “Wipe now…” again to retry; archived recordings are not affected.",
+    " TB": " TB",
+    "现有录像索引 ": "Existing recording index ",
+    " 个分区已重置为空白录像机格式，复核 0 条录像；磁盘可立即放回录像机继续录制。": " partitions reset to the blank recorder format; 0 recordings on re-check. The disk can go back into the recorder now.",
+    " 个视频文件，结果已保存到牧场目录。": " video files; results are saved in the farm folder.",
+    "清盘会一次清空此录像机原盘上的全部录像索引（不可恢复），磁盘格式保持不变，放回录像机即可继续录制纯净数据。": "Wiping clears every recording index on this recorder disk in one step (irreversible). The disk format is kept, so the recorder can record clean data again.",
+    "是否立即清盘？": "Wipe the recorder disk now?",
+    "台账与连接": "Ledgers and connection",
+    "并行复制到牧场盘": "Copying to the farm disk in parallel",
+    "归类已全部完成，共归档 ": "Classification finished; archived ",
+    "当前选择的原盘不是刚刚完成归类的那块盘，已取消清盘。请重新选择后再试。": "The selected disk is not the one just classified, so the wipe was cancelled. Select the disk again and retry.",
+    "录像 · 拖动标题移动画中画，双击放大": "Video · drag the title to move, double-click to enlarge",
+    "录像 · 放大查看（双击标题恢复画中画）": "Video · enlarged (double-click the title to restore picture-in-picture)",
+    "录像 · 波形已分屏到独立窗口": "Video · waveform is in a separate window",
+    "录像索引与核验": "Video index and checks",
+    "待下载": "To download",
+    "待下载 = 未下载 + 部分已下载；今日数据与不下载的记录在“全部”中以灰色显示": "To download = not downloaded + partially downloaded; today's data and excluded records appear grey under “All”",
+    "打开目录": "Open folder",
+    "把波形移到独立窗口（可拖到第二块屏幕），主窗口只显示视频；关闭该窗口即合并回来": "Move the waveform to its own window (e.g. a second monitor) so the main window shows only video; close that window to merge it back",
+    "放大视频": "Enlarge video",
+    "放大视频（保留波形条）": "Enlarge video (keep waveform strip)",
+    "数据目录": "Data folder",
+    "无法打开卷 ": "Cannot open volume ",
+    "是否清盘": "Wipe recorder disk?",
+    "标签编辑": "Label editing",
+    "正在清盘…": "Wiping…",
+    "波形 · 分屏（关闭此窗口即合并回主界面）": "Waveform · split view (close this window to merge back)",
+    "波形分屏": "Split waveform",
+    "波形分屏到独立窗口 / 合并": "Split waveform to a window / merge",
+    "清盘完成": "Wipe complete",
+    "清盘已取消": "Wipe cancelled",
+    "清盘未完成": "Wipe not completed",
+    "清盘未完成：": "Wipe not completed: ",
+    "现场记录目录": "Field record folder",
+    "立即清盘": "Wipe now",
+    "算法检查期间保持单视角布局；返回标注布局后可放大视频。": "Algorithm inspection keeps the single-view layout; return to the annotation layout to enlarge the video.",
+    "视频铺满窗口宽度，下方保留波形（双击标题同样切换；F11 全屏）": "Video spans the window width with the waveform below (double-click the title to toggle; F11 for full screen)",
+    "读取失败：": "Read failed: ",
+    "问题清单与备注": "Issues and notes",
+    "\n\n可直接再次点击“立即清盘…”重试；已归类的录像不受影响。": "\n\nClick “Wipe now…” again to retry; archived recordings are not affected.",
+    " TB\n现有录像索引 ": " TB\nExisting recording index ",
+    " 段。\n\n清盘会一次清空此录像机原盘上的全部录像索引（不可恢复），磁盘格式保持不变，放回录像机即可继续录制纯净数据。\n\n是否立即清盘？": " segments.\n\nWiping clears every recording index on this recorder disk in one step (irreversible). The disk format is kept, so the recorder can record clean data again.\n\nWipe the recorder disk now?",
+    "当前时刻暂未匹配录像 · 仍有未检索素材，可在「数据准备 → 录像索引与核验」继续检索": "No matching recording yet; continue searching under Data preparation > Video index and checks",
+    "未检索不等于无录像。未找到时可用「数据准备 → 录像索引与核验 → 扩大当前检索」。\n": "Unsearched does not mean absent. Continue under Data preparation > Video index and checks > Expand search.\n",
+    "看不清牛身记号：Ctrl+E 放大视频（保留波形条，F11 全屏）；Ctrl+Shift+E 把波形分屏到第二块屏幕。\n": "Cannot read the cow mark: Ctrl+E enlarges the video (waveform strip kept, F11 full screen); Ctrl+Shift+E moves the waveform to a second monitor.\n",
+    "1. 新数据先进入「数据准备」：选择采集类别，检查命名、审查并按日期归类。\n   九轴目录：完整设备编号-牛耳标号-现场记号；同设备跨日期复用分别保留。\n2. 打开工程：先确认牧场，再选择类别、Motion 和一个日期；同步检索当天录像。\n3. 核对设备、牛耳标、现场记号及时间同步，再观察录像并标注。\n4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n5. 标注自动按日期保存；在「数据集构建」生成行为数据集或分享标注片段。\n\n未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n未检索不等于无录像。未找到时可用「数据准备 → 录像索引与核验 → 扩大当前检索」。\n看不清牛身记号：Ctrl+E 放大视频（保留波形条，F11 全屏）；Ctrl+Shift+E 把波形分屏到第二块屏幕。\n更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。": "1. Prepare new data: select category, verify names and classify by date.\n2. Open a farm, category and acquisition day.\n3. Check device, cow ID, field mark and synchronization before annotation.\n4. Complete and save the record; unfinished work resumes at its previous position.\n5. Build versioned datasets or export annotations.\nUnknown video times require initial recognition. Continue searching under Data preparation > Video index and checks.\nCannot read the cow mark: Ctrl+E enlarges the video (waveform strip kept, F11 full screen); Ctrl+Shift+E moves the waveform to a second monitor.\nUpdates are in Help > About. Ctrl+L pins the source list."
+})
+
 if __name__ == "__main__":
     _coverage()

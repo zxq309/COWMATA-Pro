@@ -94,7 +94,11 @@ def predict_behavior(code: str, source: str | Path, model_dir: str | Path, *, th
             X, names = feature_matrix(sig)
             if names != model.get("features"):
                 raise ValueError("CFE model feature order does not match current algorithm")
-            result = predict(model, X, times_ms=np.arange(count, dtype=float) * 1000.0, threshold=.5 if threshold is None else threshold, duration_ms=float(motion.duration_ms))
+            configured = model.get("threshold") if threshold is None else threshold
+            if configured is None:
+                raise ValueError("CFE model is missing its calibrated threshold")
+            result = predict(model, X, times_ms=np.arange(count, dtype=float) * 1000.0,
+                             threshold=float(configured), duration_ms=float(motion.duration_ms))
             events = result["events"]
     else:
         raise KeyError(code)

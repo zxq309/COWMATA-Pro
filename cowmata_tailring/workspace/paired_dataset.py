@@ -31,6 +31,8 @@ TASKS = {
     'behavior': ('行为识别数据集', 'COWMATA_Behavior_Dataset', None, tuple(FOLDERS)),
     'calving': ('产犊预测数据集', 'COWMATA_CalvingPred_Dataset', ('calving',),
                 ('STANDING_UP', 'LYING_DOWN', 'STRAINING_BOUT', 'FETAL_PART_FIRST_VISIBLE', 'CALF_FULLY_EXPELLED')),
+    'decision': ('产犊决策数据集', 'COWMATA_Decision_Dataset', None, tuple(FOLDERS)),
+    'comprehensive': ('综合决策数据集', 'COWMATA_ComprehensiveDecision_Dataset', None, tuple(FOLDERS)),
     'estrus': ('发情预测数据集', 'COWMATA_EstrusPred_Dataset', ('estrus',), tuple(FOLDERS)),
     'pregnancy': ('怀孕监测数据集', 'COWMATA_PregnancyMonitor_Dataset',
                   ('pregnancy', 'pregnancy_early', 'pregnancy_mid', 'pregnancy_late'), tuple(FOLDERS)),
@@ -192,7 +194,7 @@ class BuildReport:
                 continue
         else:
             raise OSError('构建记录 CSV 均被占用')
-        snapshot = dict(schema='dataset-build-370', phase=phase, updated_at=datetime.now(TZ).isoformat(),
+        snapshot = dict(schema='dataset-build-434', phase=phase, updated_at=datetime.now(TZ).isoformat(),
                         seconds=time.monotonic()-self.started, counts=_counts(public), rows=public, csv_path=str(csv_path))
         atomic_json(self.root/'构建状态.json', snapshot, backup=False)
         self.last = time.monotonic()

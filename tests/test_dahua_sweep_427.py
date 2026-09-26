@@ -358,3 +358,54 @@ def test_archive_is_video_only_and_audio_never_blocks_the_counter_clock(tmp_path
     assert media.recorded_clock(broken_audio, camera_info()) is None
     clock = media.recorded_clock(broken_audio, camera_info(), ignore_audio=True)
     assert clock["recovery"]["video_frames"] == 75
+
+def test_archive_copy_runs_in_parallel_lane_and_commit_only_renames(incremental, monkeypatch):  # noqa: F811
+    """4.3.1: the serial commit lane must not copy 1 GB products itself."""
+    from test_dahua_incremental_archive import fake_prepared
+
+    from cowmata_tailring.workspace import fast_transfer
+
+    farm, job, index, request, _ = incremental
+    monkeypatch.setattr(tasks, "same_volume", lambda a, b: False)
+    monkeypatch.setattr(tasks, "prepare_record", fake_prepared)
+    calls = []
+    original = fast_transfer.copy_verified
+
+    def spy(source, partial, *args, **kwargs):
+        calls.append((threading.current_thread().name, str(partial)))
+        return original(source, partial, *args, **kwargs)
+
+    monkeypatch.setattr(fast_transfer, "copy_verified", spy)
+    result = tasks.organize(request, job)
+    assert result["status"] == "completed"
+    videos = list((farm / "录像").rglob("*.mp4"))
+    assert len(videos) == 2
+    assert len(calls) == 2, "one staging copy per product, none in the commit lane"
+    assert all(name != "MainThread" for name, _ in calls)
+    assert all(".归类缓存" in path for _, path in calls)
+    assert not list((farm / ".归类缓存").rglob("*.mp4")), "staged files were renamed into place"
+    report = tasks.read_json(job / "dahua-run.json")
+    assert all(r["status"] == "done" for r in report["records"])
+
+
+def test_resource_index_rewrites_are_throttled_but_final_state_is_complete(incremental, monkeypatch):  # noqa: F811
+    from test_dahua_incremental_archive import fake_prepared
+
+    from cowmata_tailring.workspace import resource_import
+
+    farm, job, index, request, _ = incremental
+    monkeypatch.setattr(tasks, "prepare_record", fake_prepared)
+    monkeypatch.setattr(resource_import, "INDEX_PUBLISH_SECONDS", 3600)
+    writes = []
+    original = resource_import.atomic_json
+
+    def spy(path, value, **kwargs):
+        if path.name == "资源索引.json":
+            writes.append(len(value.get("records", [])))
+        return original(path, value, **kwargs)
+
+    monkeypatch.setattr(resource_import, "atomic_json", spy)
+    tasks.organize(request, job)
+    assert len(writes) <= 3, writes
+    final = tasks.read_json(farm / "资源索引.json")
+    assert sum(r["path"].startswith("录像/") for r in final["records"]) == 2
