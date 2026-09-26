@@ -21,6 +21,21 @@ from .probe import SourceInspector
 from .rapid_backend import TIMESTAMP_SIGNATURE
 
 
+def _index_workers():
+    """Return the bounded full-index worker count.
+
+    Full indexing is an independent read/inspect pipeline.  Keeping its
+    default at sixteen gives each selected view a real lane while the
+    in-flight cap below prevents an unbounded future queue from making every
+    remaining file look as if it were actively being processed.
+    """
+    try:
+        value = int(os.environ.get("COWMATA_INDEX_WORKERS", "16"))
+    except (TypeError, ValueError):
+        value = 16
+    return max(1, min(16, value))
+
+
 class IndexWorker(QObject):
     scanned = Signal(object)
     indexed = Signal(object)
@@ -46,7 +61,8 @@ class IndexWorker(QObject):
         self.attempted_stamps = {}
         self.explicit = set()
         self.bulk = False
-        self.inspect_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="video-inspect")
+        self.inspect_pool = ThreadPoolExecutor(max_workers=_index_workers(), thread_name_prefix="video-inspect")
+        self.max_inflight = _index_workers()
         self._pool_shutdown = False
         self.inspect_pending = {}
         self._thread_state = threading.local()
@@ -87,7 +103,7 @@ class IndexWorker(QObject):
         # recreates it instead of crashing on submit.
         if getattr(self, "_pool_shutdown", False):
             self.inspect_pool = ThreadPoolExecutor(
-                max_workers=3, thread_name_prefix="video-inspect")
+                max_workers=self.max_inflight, thread_name_prefix="video-inspect")
             self._pool_shutdown = False
         return self.inspect_pool
 
@@ -327,12 +343,24 @@ class IndexWorker(QObject):
                                     self.catalog.update_metadata(row["asset_id"], metadata)
                         finally:
                             inspector.defer_native_checks = True
-                    elif mode == "full" and row["kind"] == "video" and self.bulk:
-                        # Bulk full-indexing runs three inspections at a time;
-                        # each thread keeps its own SourceInspector (OCR models
-                        # are thread-local) while the catalog serializes
-                        # commits. Annotation windows keep the serial path so
-                        # their completion order stays deterministic.
+                    elif mode == "full" and row["kind"] == "video" and (self.bulk or self.window is not None):
+                        # Full indexing and the active annotation window both
+                        # use independent read lanes.  The previous window
+                        # path fell through to the serial branch, so selecting
+                        # sixteen cameras still left fifteen valid sources in
+                        # the waiting state.  Each thread keeps its own
+                        # SourceInspector while the catalog serializes commits.
+                        # Keep only one bounded batch in flight.  Previously
+                        # every discovered file was submitted immediately;
+                        # thousands of rows then sat in a futures queue while
+                        # the UI reported them as waiting, even though only a
+                        # few readers could run.
+                        if len(self.inspect_pending) >= self.max_inflight:
+                            self._harvest_inspections()
+                            if len(self.inspect_pending) >= self.max_inflight:
+                                self.wake.wait(.05)
+                                self.wake.clear()
+                                continue
                         self.attempted.add(row["path"])
                         self.attempted_stamps[row["path"]] = row["stamp"]
                         self.explicit.discard(row["path"])

@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
-    QInputDialog,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -493,36 +492,48 @@ class DahuaPanel(QWidget):
 
         return semantic(saved) == semantic(current)
 
-    def wipe_confirm(self):
+    def wipe_confirm(self, expected_identity=None):
+        """立即清盘 and the post-classification offer share one flow.
+
+        A read-only survey runs first; the operator then answers a single
+        question. When the question was already answered right after a
+        completed classification, ``expected_identity`` pins the disk that was
+        classified and the wipe starts as soon as the survey confirms it.
+        """
         if self.running or self.mode.currentIndex() != 1:
             return
         disk = self.disk_choice.currentData()
         if not disk:
             self.status.setText("请先选择要清盘的录像机原盘")
             return
+        self._wipe_expected = expected_identity
         self.start("wipe_survey", dict(number=disk["number"]))
 
-    def confirm_wipe(self, info):
+    @staticmethod
+    def wipe_question(info):
         size_tb = info["size"] / 1e12
-        letters = "、".join(info.get("letters", [])) or "无盘符"
-        message = (
-            f"磁盘 {info['model']} · 序列号 {info['serial']} · {size_tb:.2f} TB · {letters}\n"
-            f"分区 {len(info['partitions'])} 个 · 现有录像索引 {info['existing_recordings']} 段。\n\n"
-            "清盘会立即清空此录像机原盘上的全部录像索引，已录内容不可恢复；\n"
-            "磁盘格式保持不变，随后即可继续录制纯净数据。\n\n"
-            "确定要清盘吗？"
+        return (
+            f"磁盘 {info['model']} · 序列号 {info.get('serial', '')} · {size_tb:.2f} TB\n"
+            f"现有录像索引 {info.get('existing_recordings', '?')} 段。\n\n"
+            "清盘会一次清空此录像机原盘上的全部录像索引（不可恢复），磁盘格式保持不变，"
+            "放回录像机即可继续录制纯净数据。\n\n是否立即清盘？"
         )
-        answer = QMessageBox.warning(self, "立即清盘 · 危险操作", message,
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                     QMessageBox.StandardButton.No)
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        text, ok = QInputDialog.getText(
-            self, "立即清盘 · 二次确认",
-            "此操作不可恢复。输入“清盘”两字以确认：")
-        if not ok or text.strip() != "清盘":
-            self.status.setText("已取消清盘。")
-            return
+
+    def confirm_wipe(self, info):
+        expected, self._wipe_expected = getattr(self, "_wipe_expected", None), None
+        if expected is not None:
+            if info["identity"] != expected:
+                QMessageBox.warning(self, "清盘已取消",
+                                    "当前选择的原盘不是刚刚完成归类的那块盘，已取消清盘。请重新选择后再试。")
+                return
+        else:
+            answer = QMessageBox.warning(self, "立即清盘", self.wipe_question(info),
+                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                         QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                self.status.setText("已取消清盘。")
+                return
+        self.status.setText("正在清盘…")
         self.start("wipe", dict(number=info["number"], identity=info["identity"]))
 
     def restore(self):
@@ -681,6 +692,9 @@ class DahuaPanel(QWidget):
                        for row in self.run_tables.records.values())
             self.bar.setRange(0, total)
             self.bar.setValue(done)
+            if self.operation == "wipe":
+                QMessageBox.warning(self, "清盘未完成", "清盘未完成：" + self.error
+                                    + "\n\n可直接再次点击“立即清盘…”重试；已归类的录像不受影响。")
         else:
             self.bar.setRange(0, 1)
             self.bar.setValue(1)
@@ -726,9 +740,10 @@ class DahuaPanel(QWidget):
                     self.confirm_wipe(result["survey"])
                 elif self.operation == "wipe":
                     wiped = result.get("wipe", {})
-                    self.status.setText(
-                        f"清盘完成：{wiped.get('partitions', '?')} 个分区已重置为空白录像机格式，"
-                        f"复核 0 条录像；磁盘可立即继续录制纯净数据。")
+                    text = (f"清盘完成：{wiped.get('partitions', '?')} 个分区已重置为空白录像机格式，"
+                            f"复核 0 条录像；磁盘可立即放回录像机继续录制。")
+                    self.status.setText(text)
+                    QMessageBox.information(self, "清盘完成", text)
                     self.start("disks", {})
                 elif self.operation == "previews":
                     self.status.setText("缩略图已就绪；同号通道已对应同号视角，可直接开始转码。")
@@ -741,30 +756,23 @@ class DahuaPanel(QWidget):
             QTimer.singleShot(0, self.organize)
 
     def _offer_wipe_after_organize(self, result):
-        """Confirm a successful classification before offering destructive wipe.
+        """First announce the finished classification, then ask once about wiping.
 
-        Classification may run from ordinary files/directories, so the wipe
-        question is shown only when the selected source is a recorder disk.
-        Choosing Yes still enters the existing survey plus typed confirmation;
-        this dialog never performs a destructive write by itself.
+        Only a recorder-disk task is offered a wipe, and only for the very
+        disk that was classified; Yes wipes directly without further prompts.
         """
-        if self.mode.currentIndex() != 1 or not self.disk_choice.currentData():
-            QMessageBox.information(
-                self,
-                "数据归类完成",
-                "已成功完成归类。\n\n归类结果已保存，原始录像保留。",
-            )
+        done = sum(len(v.get("outputs", [])) for v in result.get("completed_records", {}).values())
+        QMessageBox.information(self, "数据归类完成",
+                                f"归类已全部完成，共归档 {done} 个视频文件，结果已保存到牧场目录。")
+        disk = (self.index_full or {}).get("disk") if isinstance(self.index_full, dict) else None
+        if self.mode.currentIndex() != 1 or not disk or not disk.get("identity"):
             return
-        answer = QMessageBox.question(
-            self,
-            "数据归类完成",
-            "已成功完成归类，归类结果已保存。\n\n是否立即清盘当前选定的录像机原盘？\n"
-            "清盘会清空原盘录像索引，随后仍需二次确认并输入“清盘”。",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
+        info = dict(disk, existing_recordings=len((self.index_full or {}).get("rows", [])))
+        answer = QMessageBox.question(self, "是否清盘", self.wipe_question(info),
+                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                      QMessageBox.StandardButton.No)
         if answer == QMessageBox.StandardButton.Yes:
-            self.wipe_confirm()
+            self.wipe_confirm(expected_identity=disk["identity"])
 
     def apply_index(self, index):
         self.index_full = index if isinstance(index, dict) else None

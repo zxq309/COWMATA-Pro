@@ -19,6 +19,10 @@ from .dahua_tasks import check, task_root
 from .storage import ProjectLock
 
 WIPE_CHUNK = 2 * 1024 * 1024
+# Raw-device writes must start and end on physical sector boundaries (4 KiB on
+# modern drives). Descriptor tables are count*32 bytes, so their tail is not;
+# an unaligned final WriteFile fails with ERROR_INVALID_PARAMETER (Errno 87).
+ALIGN = 4096
 KERNEL = None
 
 
@@ -35,7 +39,11 @@ def _kernel():
         KERNEL.SetFilePointer.argtypes = [w.HANDLE, ctypes.c_long, ctypes.POINTER(ctypes.c_long), w.DWORD]
         KERNEL.SetFilePointer.restype = ctypes.c_long
         KERNEL.WriteFile.argtypes = [w.HANDLE, ctypes.c_void_p, w.DWORD, ctypes.POINTER(w.DWORD), w.HANDLE]
+        KERNEL.ReadFile.argtypes = [w.HANDLE, ctypes.c_void_p, w.DWORD, ctypes.POINTER(w.DWORD), w.HANDLE]
         KERNEL.FlushFileBuffers.argtypes = [w.HANDLE]
+        KERNEL.DeviceIoControl.argtypes = [w.HANDLE, w.DWORD, ctypes.c_void_p, w.DWORD, ctypes.c_void_p,
+                                           w.DWORD, ctypes.POINTER(w.DWORD), ctypes.c_void_p]
+        KERNEL.CloseHandle.argtypes = [w.HANDLE]
     return KERNEL
 
 
@@ -62,37 +70,111 @@ def survey(number):
                 existing_recordings=existing, partitions=plan)
 
 
-def _dismount_volumes(letters):
-    """Mounted volume sectors reject raw writes; dismount each first."""
+def _volume_extents(number):
+    """(letter, start, end) of every mounted volume that lives on this disk."""
+    from .dahua_source import disk_letters
+
     kernel = _kernel()
-    for letter in letters:
-        handle = kernel.CreateFileW("\\\\.\\\\" + letter, 0xC0000000, 1 | 2, None, 3, 0, None)
+    result = []
+    for letter in disk_letters().get(int(number), []):
+        handle = kernel.CreateFileW("\\\\.\\" + letter, 0, 1 | 2, None, 3, 0, None)
         if handle == w.HANDLE(-1).value:
             continue
         try:
-            if not kernel.DeviceIoControl(handle, 0x00090020, None, 0, None, 0, None, None):
-                raise OSError(f"无法卸载卷 {letter}；请关闭使用该盘的程序后重试")
+            buffer, used = ctypes.create_string_buffer(4096), w.DWORD()
+            if kernel.DeviceIoControl(handle, 0x560000, None, 0, buffer, len(buffer), ctypes.byref(used), None):
+                count = struct.unpack_from("<I", buffer.raw)[0]
+                # VOLUME_DISK_EXTENTS: DWORD count, then DISK_EXTENT{DWORD disk, pad, int64 start, int64 length}.
+                for position in range(8, min(used.value, 8 + count * 24), 24):
+                    disk = struct.unpack_from("<I", buffer.raw, position)[0]
+                    start, length = struct.unpack_from("<qq", buffer.raw, position + 8)
+                    if disk == int(number):
+                        result.append((letter, start, start + length))
+        finally:
+            kernel.CloseHandle(handle)
+    return result
+
+
+def _dismount_overlapping(number, jobs):
+    """Windows rejects raw writes into a mounted volume; dismount only those volumes.
+
+    Volumes elsewhere on the disk (the recorder's small FAT partition at the
+    end of the drive) are left mounted and untouched.
+    """
+    kernel = _kernel()
+    for letter, start, end in _volume_extents(number):
+        if not any(job["offset"] < end and start < job["offset"] + job["length"] for job in jobs):
+            continue
+        handle = kernel.CreateFileW("\\\\.\\" + letter, 0xC0000000, 1 | 2, None, 3, 0, None)
+        if handle == w.HANDLE(-1).value:
+            raise OSError(ctypes.get_last_error(), f"无法打开卷 {letter}；请关闭使用该盘的程序后重试")
+        try:
+            returned = w.DWORD()
+            if not (kernel.DeviceIoControl(handle, 0x00090018, None, 0, None, 0, ctypes.byref(returned), None)
+                    and kernel.DeviceIoControl(handle, 0x00090020, None, 0, None, 0, ctypes.byref(returned), None)):
+                raise OSError(ctypes.get_last_error(), f"无法卸载卷 {letter}；请关闭使用该盘的程序后重试")
         finally:
             kernel.CloseHandle(handle)
 
 
-def _write_zeros(handle, offset, length, label, progress, cancelled):
+def _seek(handle, offset, label):
     kernel = _kernel()
     high = ctypes.c_long(offset >> 32)
+    ctypes.set_last_error(0)
     low = kernel.SetFilePointer(handle, ctypes.c_long(offset & 0xFFFFFFFF), ctypes.byref(high), 0)
-    if low == 0xFFFFFFFF and ctypes.get_last_error():
+    if low == -1 and ctypes.get_last_error():
         raise OSError(ctypes.get_last_error(), f"定位失败：{label}")
+
+
+def _write(handle, offset, payload, label):
+    _seek(handle, offset, label)
+    written = w.DWORD()
+    if not _kernel().WriteFile(handle, payload, len(payload), ctypes.byref(written), None) or written.value != len(payload):
+        raise OSError(ctypes.get_last_error(), f"写入失败：{label}")
+
+
+def _read(handle, offset, size, label):
+    _seek(handle, offset, label)
+    buffer, read = ctypes.create_string_buffer(size), w.DWORD()
+    if not _kernel().ReadFile(handle, buffer, size, ctypes.byref(read), None) or read.value != size:
+        raise OSError(ctypes.get_last_error(), f"读取失败：{label}")
+    return buffer.raw
+
+
+def aligned_plan(offset, length, align=ALIGN):
+    """Split [offset, offset+length) into whole aligned blocks.
+
+    Returns (block_start, block_length, keep_head, keep_tail): the partial
+    first/last blocks are read back and only the bytes inside the region are
+    zeroed, so data sharing a sector with the table is preserved.
+    """
+    start = offset - offset % align
+    end = -(-(offset + length) // align) * align
+    return start, end - start, offset - start, end - (offset + length)
+
+
+def _write_zeros(handle, offset, length, label, progress, cancelled):
+    start, total, head, tail = aligned_plan(offset, length)
     done = 0
     full = bytes(WIPE_CHUNK)
-    written = w.DWORD()
-    while done < length:
+    while done < total:
         check(cancelled)
-        size = min(WIPE_CHUNK, length - done)
+        size = min(WIPE_CHUNK, total - done)
+        position = start + done
         payload = full if size == WIPE_CHUNK else bytes(size)
-        if not kernel.WriteFile(handle, payload, size, ctypes.byref(written), None) or written.value != size:
-            raise OSError(ctypes.get_last_error(), f"写入失败：{label}")
+        first, last = done == 0 and head, done + size == total and tail
+        if first or last:
+            # Read-modify-write the shared sectors instead of an unaligned write.
+            original = _read(handle, position, size, label)
+            payload = bytearray(payload)
+            if first:
+                payload[:head] = original[:head]
+            if last:
+                payload[size - tail:] = original[size - tail:]
+            payload = bytes(payload)
+        _write(handle, position, payload, label)
         done += size
-        progress(done, length, label)
+        progress(min(length, max(0, done - head)), length, label)
 
 
 def wipe(number, expected_identity, progress=lambda *_: None, cancelled=lambda: False):
@@ -120,7 +202,7 @@ def wipe(number, expected_identity, progress=lambda *_: None, cancelled=lambda: 
                 jobs.append(dict(label=f"分区{part['index']} 数据首块",
                                  offset=part["video"], length=part["fragment"]))
             total = sum(job["length"] for job in jobs)
-        _dismount_volumes(info.get("letters", []))
+        _dismount_overlapping(number, jobs)
         kernel = _kernel()
         handle = kernel.CreateFileW(r"\\.\PhysicalDrive" + str(int(number)),
                                     0xC0000000, 1 | 2, None, 3, 0, None)

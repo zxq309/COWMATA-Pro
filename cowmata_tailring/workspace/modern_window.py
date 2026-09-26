@@ -116,6 +116,8 @@ class MainWindow(ControllerWindow):
         self._action(files, "保存并退出", self.close, "Alt+F4")
         view.addSeparator()
         self._action(view, "固定 / 收起素材列表", self.toggle_sources, "Ctrl+L")
+        self._action(view, "放大视频（保留波形条）", self.enlarge_video, "Ctrl+E")
+        self._action(view, "波形分屏到独立窗口 / 合并", self.toggle_waveform_window, "Ctrl+Shift+E")
         self._action(view, "显示 / 隐藏标注列表", self.toggle_events)
         self._action(view, "界面与播放设置…", self.presentation_settings)
         tools = self.menuBar().addMenu("数据准备")
@@ -156,6 +158,7 @@ class MainWindow(ControllerWindow):
         self._action(help_menu, "快速开始", self.quick_help, "F1")
         self._action(help_menu, "新手图文教程…", self.open_tutorial)
         self._action(help_menu, "关于", lambda: show_about(self)).setToolTip("软件说明、公司信息、版本号与检查更新")
+        self._simplify_menus(files, tools, edit, sync, view, materials)
         self.menuBar().show()
         for toolbar in self.findChildren(QToolBar):
             self.removeToolBar(toolbar)
@@ -280,7 +283,15 @@ class MainWindow(ControllerWindow):
         review.addLayout(annotation)
         self.event_status.setStyleSheet("font-size:11px; color:#6b8179")
         self.event_status.setWordWrap(False)
+        # Keep transient action feedback in the annotation toolbar.  It used
+        # to be parented to the central widget without a layout item; the
+        # first status update then made Qt give the label its default 640x480
+        # geometry, covering the main video, waveform and their controls.
+        self.event_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.event_status.setMinimumHeight(0)
+        self.event_status.setMaximumHeight(24)
         action_state = QHBoxLayout()
+        action_state.addWidget(self.event_status, 1)
         self.event_status.setParent(center)
         self.event_status.hide()
         self.mark_button.setToolTip(self.event_status.text())
@@ -377,6 +388,69 @@ class MainWindow(ControllerWindow):
         for control in self.findChildren(QWidget):
             if isinstance(control, QLineEdit | QTextEdit | QPlainTextEdit | QAbstractSpinBox | QComboBox):
                 control.installEventFilter(self)
+
+    @staticmethod
+    def _find_action(menu, text):
+        for action in menu.actions():
+            if action.text() == text:
+                return action
+            if action.menu() is not None:
+                found = MainWindow._find_action(action.menu(), text)
+                if found is not None:
+                    return found
+        return None
+
+    @staticmethod
+    def _arrange(menu, items):
+        """Reorder a menu; actions are only detached, never deleted."""
+        for action in list(menu.actions()):
+            menu.removeAction(action)
+        for item in items:
+            if item is None:
+                menu.addSeparator()
+            elif isinstance(item, QMenu):
+                menu.addMenu(item)
+            else:
+                menu.addAction(item)
+
+    def _simplify_menus(self, files, tools, edit, sync, view, materials):
+        """4.3.1: one task per menu, at most one submenu level for daily work.
+
+        Duplicates are dropped from the menus (算法管理 == 训练与识别), rare
+        tools are grouped, and behaviour inspection moves to 行为识别. Every
+        handler, shortcut and translation stays; only positions change.
+        """
+        def pick(menu, *texts):
+            return [a for a in (self._find_action(menu, t) for t in texts) if a is not None]
+
+        collaboration, legacy, evidence = self._collaboration_menu, self._legacy_menu, self._evidence_menu
+        raw_package = self._find_action(files, "打开协作原始数据包…")
+        self._arrange(files, [*pick(files, "打开工程…", "打开九轴…", "打开单个视频并配对九轴…", "历史回看…"), None,
+                              *pick(files, "保存", "保存并退出"), None, legacy])
+        self._arrange(collaboration, [*([raw_package] if raw_package else []),
+                                      *[a for a in collaboration.actions() if a is not raw_package]])
+        layout = self._find_action(tools, "统一牧场录像目录…")
+        export = self._find_action(tools, "导出标准 MP4 副本…")
+        materials.setTitle("录像索引与核验")
+        index_items = [a for a in materials.actions()]
+        self._arrange(materials, [*([layout, None] if layout else []), *index_items])
+        self._arrange(tools, [*pick(tools, "端侧数据下载…", "数据归类…"), *([export] if export else []), None, materials])
+        labels = QMenu("标签编辑", self)
+        labels.setToolTipsVisible(True)
+        self._label_menu = labels
+        self._arrange(labels, [*pick(edit, "修改所选标签…", "批量修改标签…", "删除所选标注/草稿", "重新标注本份"), None,
+                               *[a for a in evidence.actions() if not a.isSeparator()]])
+        shown = pick(view, "放大视频（保留波形条）", "波形分屏到独立窗口 / 合并", "全屏 / 退出全屏", "退出单路放大")
+        panels = pick(view, "素材列表", "标注列表", "双画面主视角宽度…", "界面与播放设置…")
+        rest = [a for a in view.actions() if not a.isSeparator() and a not in shown and a not in panels]
+        self._arrange(view, [*shown, None, *panels, None, *rest])
+        inspection = self._find_action(edit, "逐项算法检查")
+        self._arrange(edit, [*pick(edit, "自动生成候选…", "用所选九轴区间建立候选"), None,
+                             *pick(edit, "完成本份九轴…", "下一份未完成九轴"), None,
+                             *pick(edit, "撤销", "重做"), None, labels, sync, collaboration, view])
+        behavior = next(a.menu() for a in self.menuBar().actions() if a.menu() and a.text().split("(")[0] == "行为识别")
+        self._arrange(behavior, [*pick(behavior, "训练与识别…"), *([inspection.menu()] if inspection else []),
+                                 None, *pick(behavior, "打开模型库")])
 
     def _heading(self, text):
         label = QLabel(text)
@@ -598,6 +672,7 @@ class MainWindow(ControllerWindow):
         files.addMenu(legacy)
         edit.addMenu(collaboration)
         edit.addMenu(evidence)
+        self._legacy_menu, self._collaboration_menu, self._evidence_menu = legacy, collaboration, evidence
         materials.setTitle("录像索引")
         sync.setTitle("时间同步")
         for menu in (exports, legacy, collaboration, evidence, tools):
@@ -751,7 +826,7 @@ class MainWindow(ControllerWindow):
         self.coverage_label.setToolTip(text)
         self.coverage_label.setVisible(bool(self.motion) and not text.startswith("当前参考时刻有录像覆盖"))
         if text.startswith("录像仍在索引"):
-            self.coverage_label.setText("当前时刻暂未匹配录像 · 仍有未检索素材，可在「数据准备 → 更多数据准备工具 → 录像索引」继续检索")
+            self.coverage_label.setText("当前时刻暂未匹配录像 · 仍有未检索素材，可在「数据准备 → 录像索引与核验」继续检索")
 
     def refresh_action_state(self, *_):
         super().refresh_action_state()
@@ -768,7 +843,8 @@ class MainWindow(ControllerWindow):
             "4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n"
             "5. 标注自动按日期保存；在「数据集构建」生成行为数据集或分享标注片段。\n\n"
             "未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n"
-            "未检索不等于无录像。未找到时可用「数据准备 → 更多数据准备工具 → 录像索引 → 扩大当前检索」。\n"
+            "未检索不等于无录像。未找到时可用「数据准备 → 录像索引与核验 → 扩大当前检索」。\n"
+            "看不清牛身记号：Ctrl+E 放大视频（保留波形条，F11 全屏）；Ctrl+Shift+E 把波形分屏到第二块屏幕。\n"
             "更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。")
 
     def toggle_events(self):
@@ -785,6 +861,20 @@ class MainWindow(ControllerWindow):
         self.layout_buttons.button("ABC".index(mode)).setChecked(True)
         if persist and self.catalog:
             self.dirty = True
+
+    def enlarge_video(self):
+        """Video wide enough to read cow marks, waveform kept as a strip."""
+        if getattr(self, "_algorithm_restore", None) is not None:
+            self.tell("算法检查期间保持单视角布局；返回标注布局后可放大视频。")
+            return
+        if self.stage.mode != "C":
+            self.stage.video_focus = True
+            self.set_presentation("C")
+        else:
+            self.stage.toggle_video_focus()
+
+    def toggle_waveform_window(self):
+        self.stage.toggle_waveform_window()
 
     def presentation_settings(self):
         self.options.show()
@@ -893,6 +983,8 @@ class MainWindow(ControllerWindow):
             self._retry_close(300)
             return
         super().closeEvent(event)
+        if event.isAccepted():
+            self.stage.dock_waveform()
         if event.isAccepted() and panel is not None:
             panel.timer.stop()
         if event.isAccepted() and organize is not None:

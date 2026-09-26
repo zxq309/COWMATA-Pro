@@ -208,6 +208,20 @@ def test_all_source_and_detail_controls_remain_accessible(window, app):
     assert window.compatibility.parentWidget() == window.options
 
 
+def test_action_status_stays_in_toolbar_and_cannot_cover_video(window, app):
+    window.resize(1280, 800)
+    window.show()
+    app.processEvents()
+    window.board.select(["camera-01", "camera-02"])
+    window.event_status.setText("视频画面/时间轴尚未确认到位，请回看并更新证据")
+    window.event_status.show()
+    app.processEvents()
+    assert window.event_status.parentWidget() is window.stage.parentWidget()
+    assert window.event_status.height() <= 24
+    assert window.event_status.geometry().bottom() < window.stage.geometry().top() or not window.stage.geometry().intersects(window.event_status.geometry())
+    assert window.play_button.isEnabled()
+
+
 def test_hover_never_interpolates_gap_or_changes_samples(app):
     wave = ReviewWaveform()
     times = np.array([0, 20, 40, 300, 320], dtype=float)

@@ -506,6 +506,9 @@ def plan_import(target, sources, start="", end=None, note="", cancelled=lambda: 
             "end": max((r["covered_dates"][-1] for r in dated), default=end or start), "rows": rows})
 
 
+INDEX_PUBLISH_SECONDS = 3.0
+
+
 def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_row=lambda *_: None, row_stream=None, _lease=None):
     started = time.monotonic()
     from .farm_layout import adapt_import_plan, video_root
@@ -551,6 +554,7 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
             indexed[reference['path']]={**indexed.get(reference['path'],{}),
                 **{k:v for k,v in reference.items() if k not in {'identity','reference_path'}}}
         commit_lock = threading.RLock()
+        last_index = [0.0]
 
         def checkpoint():
             with commit_lock:
@@ -712,7 +716,14 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
                     if not destination.is_file() or destination.stat().st_size != row['size']:
                         raise OSError('Destination missing or size changed after transfer')
                     if row_stream is not None:
-                        atomic_json(index_path, {**index, 'records': list(indexed.values())})
+                        # Rewriting the multi-MB resource index (plus its backup
+                        # copy) after every file made the serial commit lane
+                        # slower as the farm grew. Publish it at most every few
+                        # seconds; the final write after the loop is unconditional.
+                        now_index = time.monotonic()
+                        if now_index - last_index[0] >= INDEX_PUBLISH_SECONDS:
+                            atomic_json(index_path, {**index, 'records': list(indexed.values())})
+                            last_index[0] = time.monotonic()
                         update_context(root, {**plan, 'rows': [{**row, 'status': 'ready'}]})
                         preserve_annotation_work(root, [row], job)
                     progress(len(selected), plan.get('total_files', len(selected)), str(destination))
@@ -734,6 +745,11 @@ def execute(plan, job, cancelled=lambda: False, progress=lambda *_: None, *, on_
         stream = list(selected) if row_stream is None else row_stream
         limit = max(2, 2 * max(len(plan['sources']), len({r.get('owner') for r in plan.get('inventory', plan['rows'])})))
         with ExitStack() as transfers:
+            if row_stream is not None:
+                # A pause or error must not lose the last few throttled index
+                # updates: publish whatever was committed before unwinding.
+                transfers.callback(lambda: last_index[0] and atomic_json(
+                    index_path, {**index, 'records': list(indexed.values())}))
             for row in stream:
                 core.check_cancel(cancelled)
                 if dahua and plan.get('incremental_dahua'):

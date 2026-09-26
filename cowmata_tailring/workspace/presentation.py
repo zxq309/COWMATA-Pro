@@ -7,8 +7,19 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QPoint, Qt, QTimer, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QLayout, QScrollBar, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
+from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QMenu,
+    QPushButton,
+    QScrollBar,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .adaptive_playback import AdaptiveVideoBoard
 
@@ -260,7 +271,7 @@ class DragHeader(QLabel):
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self.stage.mode == "C":
+        if event.button() == Qt.MouseButton.LeftButton and self.stage.pip_active():
             self.origin = event.globalPosition().toPoint() - self.stage.video.pos()
             # Grab the pointer so the drag survives fast moves that leave the
             # 26px header; without the grab the drag silently breaks and the
@@ -277,15 +288,93 @@ class DragHeader(QLabel):
         if self.mouseGrabber() is self:
             self.releaseMouse()
 
+    def mouseDoubleClickEvent(self, event):
+        if self.stage.mode == "C" and self.stage.wave_window is None:
+            self.stage.toggle_video_focus()
+
+
+class WaveformWindow(QWidget):
+    """Separate top-level window for the waveform, e.g. on a second monitor.
+
+    The waveform is plain Qt painting, so it can move between windows; the
+    native video surfaces never change parent (see module docstring). While
+    this window is active, the main window's labelling and playback hotkeys
+    keep working through mirrored shortcuts.
+    """
+
+    def __init__(self, stage, owner):
+        super().__init__(owner, Qt.WindowType.Window)
+        self.stage, self.owner = stage, owner
+        self.setWindowTitle("波形 · 分屏（关闭此窗口即合并回主界面）")
+        self.setMinimumSize(640, 360)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 6, 6, 6)
+        self.mirrors = []
+
+    def mirror_shortcuts(self):
+        """Mirror every hotkey of the main window, rebuilt on each activation."""
+        for item in self.mirrors:
+            if isinstance(item, QAction):
+                self.removeAction(item)
+            else:
+                item.setEnabled(False)
+                item.deleteLater()
+        self.mirrors = []
+        window_context = Qt.ShortcutContext.WindowShortcut
+        for action in self.owner.findChildren(QAction):
+            if action.shortcut().isEmpty() or action.shortcutContext() != window_context:
+                continue
+            if any(self.owns_hotkey(item) for item in action.associatedObjects()):
+                self.addAction(action)
+                self.mirrors.append(action)
+        for shortcut in self.owner.findChildren(QShortcut):
+            if (shortcut.key().isEmpty() or not shortcut.isEnabled()
+                    or shortcut.context() != window_context or not self.owns_hotkey(shortcut.parent())):
+                continue
+            proxy = QShortcut(QKeySequence(shortcut.key()), self)
+            proxy.setAutoRepeat(shortcut.autoRepeat())
+            proxy.activated.connect(shortcut.activated.emit)
+            self.mirrors.append(proxy)
+
+    def owns_hotkey(self, widget):
+        """True for main-window hotkeys, not those of other child windows."""
+        if not isinstance(widget, QWidget) or widget is self or self.isAncestorOf(widget):
+            return False
+        while isinstance(widget, QMenu) and widget.parentWidget() is not None:
+            widget = widget.parentWidget()  # popup menus are their own window
+        return widget.window() is self.owner
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.mirror_shortcuts()
+
+    def closeEvent(self, event):
+        # The window is reused, never destroyed on close: the waveform goes
+        # back to the main stage and this shell is only hidden.
+        event.ignore()
+        self.stage.dock_waveform()
+
 
 class WorkspaceStage(QWidget):
-    """Stable-parent video + waveform area, including a draggable PiP."""
+    """Stable-parent video + waveform area, including a draggable PiP.
+
+    Operators identify the cow's field mark in the video while locking the
+    feature interval in the waveform, so the video can grow: 放大视频 keeps a
+    waveform strip under a window-wide video (F11 makes it full screen), and
+    波形分屏 moves the waveform to its own window so the video fills the stage.
+    """
+    FOCUS_WAVE_RATIO = .32
+
     def __init__(self, board, signal_panel, parent=None):
         super().__init__(parent)
         self.mode = "A"
         self.pip_scale = .34
         self.pip_position = (1.0, 0.0)
         self.wave_ratio = .55
+        self.video_focus = False
+        self.wave_window = None
+        self._wave_shell = None
         self.signal_panel = signal_panel
         signal_panel.setParent(self)
         self.video = QFrame(self)
@@ -295,11 +384,74 @@ class WorkspaceStage(QWidget):
         layout.setSpacing(3)
         self.drag_header = DragHeader(self)
         header = QHBoxLayout()
-        header.addWidget(self.drag_header)
+        header.setSpacing(4)
+        header.addWidget(self.drag_header, 1)
+        self.focus_button = QPushButton("放大视频")
+        self.focus_button.setCheckable(True)
+        self.focus_button.setToolTip("视频铺满窗口宽度，下方保留波形（双击标题同样切换；F11 全屏）")
+        self.focus_button.clicked.connect(self.toggle_video_focus)
+        self.split_button = QPushButton("波形分屏")
+        self.split_button.setCheckable(True)
+        self.split_button.setToolTip("把波形移到独立窗口（可拖到第二块屏幕），主窗口只显示视频；关闭该窗口即合并回来")
+        self.split_button.clicked.connect(self.toggle_waveform_window)
+        for button in (self.focus_button, self.split_button):
+            button.setFixedHeight(24)
+            header.addWidget(button)
+        self.header_buttons = (self.focus_button, self.split_button)
         layout.addLayout(header)
         layout.addWidget(board, 1)
         self.board = board
         self.setMinimumSize(540, 390)
+
+    def pip_active(self):
+        return self.mode == "C" and not self.video_focus and self.wave_window is None
+
+    def toggle_video_focus(self, *_):
+        self.video_focus = not self.video_focus
+        self.arrange()
+
+    def toggle_waveform_window(self, *_):
+        if self.wave_window is None:
+            self.undock_waveform()
+        else:
+            self.dock_waveform()
+
+    def undock_waveform(self):
+        if self.wave_window is not None:
+            self.wave_window.raise_()
+            self.wave_window.activateWindow()
+            return
+        owner = self.window()
+        window = self._wave_shell
+        if window is None or window.owner is not owner:
+            window = self._wave_shell = WaveformWindow(self, owner)
+        self.signal_panel.setParent(window)
+        window.layout().addWidget(self.signal_panel)
+        self.signal_panel.show()
+        self.wave_window = window
+        # Prefer a second monitor; otherwise open beside the main window.
+        here = owner.screen() if owner is not None else None
+        others = [s for s in QGuiApplication.screens() if s is not here]
+        if others:
+            window.setGeometry(others[0].availableGeometry())
+            window.showMaximized()
+        else:
+            geometry = owner.geometry() if owner is not None else None
+            if geometry is not None:
+                window.resize(max(800, geometry.width() // 2), max(420, geometry.height() // 2))
+            window.show()
+        window.mirror_shortcuts()
+        self.arrange()
+
+    def dock_waveform(self):
+        window, self.wave_window = self.wave_window, None
+        if window is None:
+            return
+        window.layout().removeWidget(self.signal_panel)
+        self.signal_panel.setParent(self)
+        self.signal_panel.show()
+        window.hide()
+        self.arrange()
 
     def set_mode(self, mode):
         if mode not in {"A", "B", "C"}:
@@ -314,8 +466,25 @@ class WorkspaceStage(QWidget):
 
     def arrange(self):
         w, h = self.width(), self.height()
-        self.drag_header.setVisible(self.mode == "C")
-        if self.mode == "C":
+        detached = self.wave_window is not None
+        self.focus_button.setChecked(self.video_focus)
+        self.split_button.setChecked(detached)
+        show_header = self.mode == "C" or detached
+        self.drag_header.setVisible(show_header)
+        self.focus_button.setVisible(self.mode == "C" and not detached)
+        self.split_button.setVisible(show_header)
+        self.drag_header.setText("录像 · 波形已分屏到独立窗口" if detached else
+                                 "录像 · 放大查看（双击标题恢复画中画）" if self.video_focus else
+                                 "录像 · 拖动标题移动画中画，双击放大")
+        if detached:
+            self.video.setGeometry(0, 0, w, h)
+            self.video.show()
+            return
+        if self.mode == "C" and self.video_focus:
+            wave_h = max(200, int(h * self.FOCUS_WAVE_RATIO))
+            self.video.setGeometry(0, 0, w, max(120, h - wave_h - 6))
+            self.signal_panel.setGeometry(0, h - wave_h, w, wave_h)
+        elif self.mode == "C":
             self.signal_panel.setGeometry(0, 0, w, h)
             pw = min(w, max(260, int(w * self.pip_scale)))
             self.pip_top = self.signal_panel.toolbar.sizeHint().height() + 5
@@ -340,7 +509,7 @@ class WorkspaceStage(QWidget):
         before = self.video.geometry()
         self.pip_position = (max(0, min(1, pos.x() / xspan)), max(0, min(1, (pos.y() - top) / yspan)))
         self.arrange()
-        if self.mode == "C" and self.video.geometry() != before:
+        if self.pip_active() and self.video.geometry() != before:
             # Moving native video children can copy stale border pixels into
             # the backing store. Recompose the exposed waveform from its cache;
             # update() coalesces drag events and does not rebuild the curves.

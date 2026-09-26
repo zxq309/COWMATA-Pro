@@ -40,6 +40,18 @@ DEFAULT_DEADLINE_SECONDS = 8 * 60 * 60
 class UndecodableRecording(ValueError):
     """The recording itself failed media processing twice; it is discarded."""
 
+
+# Copies of finished MP4s onto the archive volume run beside conversion, never
+# in the commit lane. Measured on the USB RAID5 farm disk with copy_verified:
+# 1 stream 185 MiB/s, 2 streams 132 MiB/s, 4 streams 109 MiB/s (interleaved
+# writes seek), so exactly one sequential writer is the fastest setting.
+ARCHIVE_COPY_WORKERS = 1
+_archive_copies = threading.BoundedSemaphore(ARCHIVE_COPY_WORKERS)
+
+
+def same_volume(first, second):
+    return Path(first).stat().st_dev == Path(second).stat().st_dev
+
 CHECKPOINT_SECONDS = 2.0
 
 
@@ -1300,10 +1312,43 @@ def organize(
                         if isinstance(again, InterruptedError):
                             raise
                         raise UndecodableRecording(str(again)) from again
+                stage_to_archive(row, values)
                 return prior, values, True
 
             return prior, prepared_rows, False
 
+
+        prefetch_root = destination_root / ".归类缓存" / token / "prepared"
+        staged_files = {}
+
+        def stage_to_archive(row, values):
+            """Copy finished MP4s onto the archive volume inside the parallel lane.
+
+            The serial commit lane used to copy, fsync and re-read every 1 GB
+            product itself (D: scratch → F: farm), which capped the whole
+            pipeline at one disk copy at a time and let segments queue for
+            minutes. Now each converter stages its own product next to the
+            archive; the commit only renames it on the same volume. execute()
+            re-checks the staged file's stamp, identity and size before use.
+            """
+            from .fast_transfer import copy_verified
+
+            for value in values:
+                source = Path(value["path"])
+                prefetch_root.mkdir(parents=True, exist_ok=True)
+                if same_volume(source, prefetch_root):
+                    continue  # Same volume: the commit is already a rename.
+                staged = prefetch_root / (hashlib.sha256(str(source).encode()).hexdigest()[:32] + ".mp4")
+                staged_files.setdefault(row["id"], []).append(staged)
+                log.stage("archive", "并行复制到牧场盘")
+                with _archive_copies:
+                    stats = copy_verified(source, staged, value["sha256"], cancelled=is_cancelled)
+                value["prefetched"] = dict(stats, path=str(staged), stamp=file_stamp(staged),
+                                           identity=core.identity(source))
+
+        def drop_staged(row_id):
+            for path in staged_files.pop(row_id, []):
+                path.unlink(missing_ok=True)
 
         def needs_media(row):
             if row["id"] in prepared_records:
@@ -1370,8 +1415,10 @@ def organize(
                                 # These are our validated, derived MP4s. Move only on the
                                 # destination volume; legacy C: preparations use verified copy.
                                 Path(result["target"]).parent.mkdir(parents=True, exist_ok=True)
-                                if Path(result["source"]).stat().st_dev == Path(result["target"]).parent.stat().st_dev:
+                                if same_volume(Path(result["source"]), Path(result["target"]).parent):
                                     result["transfer"] = "move"
+                                elif value.get("prefetched"):
+                                    result["prefetched"] = value["prefetched"]
                                 result["source_id"] = row["id"]
                                 timeline_source = result["metadata"].get("timeline", {}).get("source")
                                 if isinstance(timeline_source, dict):
@@ -1406,6 +1453,7 @@ def organize(
                         completed[row["id"]] = dict(source_identity=row["source_identity"],
                             fingerprint=row.get("fingerprint"), outputs=list(active_outputs))
                         prepared_records.pop(row["id"], None)
+                        staged_files.pop(row["id"], None)
                         plan["progress"] = position + 1
                         checkpoint()
                         release_media(job, row["id"])
@@ -1426,6 +1474,7 @@ def organize(
                             plan["issues"].append(issue)
                             if row["id"] not in prepared_records:
                                 release_media(job, row["id"])
+                                drop_staged(row["id"])
                             log.finish("blocked", str(exc))
                         else:
                             # The recording itself cannot be decoded even after
@@ -1434,6 +1483,7 @@ def organize(
                             # disk is read-only and is never written.
                             reason = "无法解码，已丢弃：" + (str(exc).strip().splitlines() or [""])[-1][-120:]
                             release_media(job, row["id"])
+                            drop_staged(row["id"])
                             completed[row["id"]] = dict(source_identity=row["source_identity"],
                                                         fingerprint=row.get("fingerprint"), outputs=[],
                                                         discarded=reason)

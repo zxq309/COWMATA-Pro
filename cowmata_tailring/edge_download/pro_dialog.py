@@ -696,18 +696,17 @@ class ProDownloadDialog(TaskWindow):
         self.search.setMaximumWidth(220)
         self.search.textChanged.connect(self.render_plan)
         plan_heading.addWidget(self.search)
+        # Three views only; the finer states (部分 / 今日 / 传感器无效 / 不下载)
+        # are shown by the colour and text of the first column, not by filters.
         self.plan_filter = QComboBox()
         for label, value in [
-            ("全部样本", ""),
-            ("可下载（全部）", "eligible"),
-            ("未下载", "missing"),
-            ("部分已下载", "partial"),
+            ("全部", ""),
+            ("待下载", "pending"),
             ("已下载", "downloaded"),
-            ("今日数据 · 明日下载", "today"),
-            ("不下载（全部）", "excluded"),
-            ("不下载 · 传感器无效", "invalid"),
         ]:
             self.plan_filter.addItem(label, value)
+        self.plan_filter.setToolTip(
+            "待下载 = 未下载 + 部分已下载；今日数据与不下载的记录在“全部”中以灰色显示")
         self.plan_filter.currentIndexChanged.connect(self.render_plan)
         plan_heading.addWidget(self.plan_filter)
         self.download_selected_button = QPushButton("下载所选")
@@ -782,28 +781,28 @@ class ProDownloadDialog(TaskWindow):
         close_log.rejected.connect(self.log_dialog.hide)
         log_layout.addWidget(close_log)
         self.more_menu.addAction("运行记录…", self.log_dialog.show)
-        self.more_menu.addAction("查看问题清单…", self.show_csv_issues)
-        self.more_menu.addAction("查看备注记录…", self.show_notes_window)
-        self.more_menu.addSeparator()
-        self.more_menu.addAction("重新读取本地 CSV", self.refresh_plan)
-        self.ledger_button = self.more_menu.addAction(
+        records_menu = self.more_menu.addMenu("问题清单与备注")
+        records_menu.addAction("查看问题清单…", self.show_csv_issues)
+        records_menu.addAction("查看备注记录…", self.show_notes_window)
+        ledger_menu = self.more_menu.addMenu("台账与连接")
+        ledger_menu.addAction("重新读取本地 CSV", self.refresh_plan)
+        self.ledger_button = ledger_menu.addAction(
             "仅刷新三个 CSV", lambda: self.start_task("ledger")
         )
-        self.probe_button = self.more_menu.addAction(
+        self.probe_button = ledger_menu.addAction(
             "检测服务器连接", lambda: self.start_task("probe")
         )
-        self.more_menu.addSeparator()
+        folders_menu = self.more_menu.addMenu("打开目录")
         for label, field in (
-            ("打开数据目录", self.directory),
-            ("打开现场记录目录", self.ledger_directory),
+            ("数据目录", self.directory),
+            ("现场记录目录", self.ledger_directory),
         ):
-            self.more_menu.addAction(
+            folders_menu.addAction(
                 label,
                 lambda checked=False, edit=field: QDesktopServices.openUrl(
                     QUrl.fromLocalFile(str(self.store.resolve_path(edit.text())))
                 ),
             )
-        self.more_menu.addSeparator()
         # Every visible download mode uses the same sample eligibility rules.
         self.refresh_plan()
         self.update_summary()
@@ -1279,7 +1278,7 @@ class ProDownloadDialog(TaskWindow):
         ignored = sum(r["eligibility"] == "pending" for r in all_sample_records)
         # Rows without enough ledger information are intentionally invisible to
         # the download plan. They are not errors and must never block complete
-        # rows from downloading; the raw CSV remains available from 更多 → 打开现场记录目录.
+        # rows from downloading; the raw CSV remains available from 更多 → 打开目录.
         self.plan_records = [r for r in all_sample_records if r["eligibility"] != "pending"]
         self.local_state = dict(getattr(plan, "local_status", {}) or {})
         counts = Counter(r["eligibility"] for r in self.plan_records)
@@ -1325,6 +1324,8 @@ class ProDownloadDialog(TaskWindow):
 
     def _matches(self, record, selected):
         state = self._state(record)
+        if selected == "pending":
+            return state in ("missing", "partial")
         if selected == "eligible":
             return record["eligibility"] == "eligible"
         if selected == "excluded":
