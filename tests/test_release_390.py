@@ -340,10 +340,10 @@ def test_pro_settings_save_three_modalities_and_ui_preview(tmp_path, monkeypatch
         time.sleep(0.01)
     assert window.plan_table.rowCount() == 1
     behavior = BehaviorWindow()
-    assert behavior.algorithm.count() == 8 and behavior.tabs.count() == 2
+    assert behavior.algorithm.count() == 8 and behavior.tabs.count() == 3
     decision = DecisionWindow()
-    assert decision.tabs.count() == 4 and decision.behavior.count() == 9
-    assert decision.tabs.tabText(0) == "文件夹滚动预警"
+    assert decision.tabs.count() == 5 and decision.algorithm_list.count() == 9
+    assert decision.tabs.tabText(0) == "滚动预测"
     assert not decision.folder_enabled.isChecked()
     for widget in (window, behavior, decision):
         widget.close()
@@ -402,7 +402,11 @@ def test_fusion_ppg_evidence_does_not_invent_motion_coverage(tmp_path):
     result = build_fusion(root, [], tmp_path / "evidence", tmp_path / "cache")
     assert result["rows"] and not result["issues"]
     assert all(r["motion_coverage"] == 0 and r["ppg_coverage"] > 0 for r in result["rows"])
-    assert all(r["heart_rate_bpm"] is None and r["spo2_percent"] is None for r in result["rows"])
+    assert all(r["spo2_percent"] is None for r in result["rows"])
+    # The synthetic optical wave is a clean 7 rad/s pulse (66.8 bpm); nothing else may be invented.
+    rates = [r["heart_rate_bpm"] for r in result["rows"] if r["heart_rate_bpm"] is not None]
+    assert all(abs(rate - 66.85) < 1.5 for rate in rates)
+    assert all("heart_rate_quality_status" in r for r in result["rows"])
 
 
 def test_duplicate_raw_with_conflicting_csv_identity_is_not_assigned(tmp_path):

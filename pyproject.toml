@@ -54,12 +54,13 @@ Algorithm = "https://github.com/zxq309/COWMATA-Pro/blob/main/docs/project/reposi
 
 [project.scripts]
 cowmata-annotator = "cowmata_tailring.app.main:main"
+cowmata-engine = "cowmata_engine.__main__:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "cowmata_tailring.__version__" }
 
 [tool.setuptools.packages.find]
-include = ["cowmata_tailring*"]
+include = ["cowmata_tailring*", "cowmata_engine*"]
 
 [tool.ruff]
 line-length = 100

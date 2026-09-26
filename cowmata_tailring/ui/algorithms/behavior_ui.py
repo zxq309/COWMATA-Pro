@@ -94,6 +94,29 @@ def path_row(owner, layout, label, initial="", *, file=False):
     return edit, button
 
 
+BEHAVIOR_METRIC_TEXT = """
+<h3>一、识别输出（每个候选事件）</h3>
+<ul>
+<li><b>牛耳标、设备编号、现场标号、来源原始记录</b>：候选可追溯到哪份 JSON。</li>
+<li><b>行为、开始 / 结束（北京时间）</b>：区间类行为（起立、卧倒、努责、排尿）给出区间；胎儿首见、犊牛娩出为近似时间点，必须回看视频确认。</li>
+<li><b>模型分数</b>：用于筛选候选的排序分数，<b>不是概率</b>；候选全部进入待人工复核，不会自动写成标签。</li>
+</ul>
+<h3>二、训练评价（按记录或按牛分组留出）</h3>
+<ul>
+<li><b>已知事件召回率</b>：留出记录中已标注事件被候选覆盖的比例（含各折召回）。</li>
+<li><b>候选 / 小时</b>：留出记录每小时产生的候选数，衡量复核工作量。</li>
+<li><b>阈值-召回曲线、阈值-候选密度曲线</b>：每折模型只评其验证记录，用于选择工作点（默认追求召回 ≥ 0.85）。</li>
+<li><b>特征重要性</b>：最终模型的全局重要性。</li>
+</ul>
+<h3>三、综合研判后不输出的指标</h3>
+<ul>
+<li><b>精确率、F1、误报 / 小时</b>：数据集只标注了看到的事件，背景没有逐秒完整审核，未命中已有标签的候选不能直接算误报，因此这三项保持为空，改用“候选 / 小时”衡量工作量。</li>
+<li><b>起止时间毫秒级误差</b>：标签与视频对齐的精度约 1–2 s，只报告区间是否覆盖。</li>
+<li><b>候选分数当作概率</b>：未经校准，不作为概率显示。</li>
+</ul>
+"""
+
+
 class BehaviorWindow(JobWindow):
     def __init__(self, owner=None):
         super().__init__(owner)
@@ -160,6 +183,14 @@ class BehaviorWindow(JobWindow):
         charts.addTab(self.chart, "留出召回")
         charts.addTab(self.density_chart, "候选密度")
         charts.addTab(self.importance_chart, "特征重要性")
+        from cowmata_tailring.ui.algorithms.charts import BarChart, LineChart
+
+        self.threshold_chart = LineChart(xlabel="判定阈值", ylabel="留出已知事件召回率")
+        self.candidate_chart = LineChart(xlabel="判定阈值", ylabel="候选 / 小时")
+        self.fold_chart = BarChart(title="各验证折召回率")
+        charts.addTab(self.threshold_chart, "阈值-召回曲线")
+        charts.addTab(self.candidate_chart, "阈值-候选密度曲线")
+        charts.addTab(self.fold_chart, "各折召回")
         self.train_tabs.addTab(charts, "可视化分析")
         self.train_tabs.addTab(self.details, "训练配置与数据问题")
         tr.addWidget(self.train_tabs, 2)
@@ -201,6 +232,9 @@ class BehaviorWindow(JobWindow):
         self.recognition_note.setWordWrap(True)
         rr.addWidget(self.recognition_note)
         self.tabs.addTab(recognition, "识别")
+        guide = QTextBrowser()
+        guide.setHtml(BEHAVIOR_METRIC_TEXT)
+        self.tabs.addTab(guide, "输出与评价指标")
         footer = QHBoxLayout()
         output = QPushButton("打开本次结果")
         output.clicked.connect(self.open_output)
@@ -375,6 +409,18 @@ class BehaviorWindow(JobWindow):
             self.importance_chart.set_values(
                 "最终训练模型的全局特征重要性", sorted(weights.items(), key=lambda x: -x[1])[:10]
             )
+            models = result.get("models", [])
+            self.threshold_chart.set_data(
+                "留出验证：阈值与已知事件召回率（每折模型只评其验证记录）",
+                [(m.get("title", m["code"]), [(p["threshold"], p["observable_known_recall"]) for p in m.get("threshold_curve", [])])
+                 for m in models], hlines=[("召回 0.85 目标", 0.85)], yrange=(0, 1))
+            self.candidate_chart.set_data(
+                "留出验证：阈值与候选密度",
+                [(m.get("title", m["code"]), [(p["threshold"], p["candidates_per_hour"]) for p in m.get("threshold_curve", [])])
+                 for m in models])
+            self.fold_chart.set_values("各验证折已知事件召回率", [
+                (f"{m.get('title', m['code'])} 第{f['fold']}折", f["matched_events"] / f["known_events"])
+                for m in models for f in m.get("fold_recall", []) if f["known_events"]])
             info["evaluation"] = result
         self.details.setPlainText(json.dumps(info, ensure_ascii=False, indent=2))
         inputs = folder / "training-inputs.json"

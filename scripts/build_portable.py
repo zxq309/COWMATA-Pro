@@ -95,7 +95,7 @@ def main():
             if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
                 raise SystemExit("Portable model hash mismatch: " + item["name"])
     destination.mkdir(parents=True, exist_ok=False)
-    for name in ("cowmata_tailring", "cowmata_security", "server-upgrade", "runtime", "vendor", "assets"):
+    for name in ("cowmata_tailring", "cowmata_engine", "cowmata_security", "server-upgrade", "runtime", "vendor", "assets"):
         # Exclude upstream test corpora and C++ build objects, not runtime DLLs
         # or our reviewed event algorithms. This also avoids NSIS/MAX_PATH
         # failures on deeply nested sklearn test fixtures and Qt object files.
@@ -106,7 +106,7 @@ def main():
     for name in ("cowmata-security.json", "upload_key.pub", "COWMATA.exe", "START_ANNOTATOR.bat", "修复旧版更新.cmd", "portable_start.py", "使用说明.txt", "README.md", "README.zh-CN.md", "CHANGELOG.md", "CITATION.cff", "CONTRIBUTING.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'operator-guide-395.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'release-395.md', 'release-410.md', 'release-411.md', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md'):
+    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'operator-guide-395.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'release-395.md', 'release-410.md', 'release-411.md', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md', 'DECISION_ENGINE_433.md', 'ENGINE_API_433.md', 'DECISION_RESULTS_433.md', 'LYING_RATIO_ALGORITHM.md', 'heart-rate-algorithm.md', 'spo2-algorithm.md'):
         shutil.copy2(source/'docs'/name, destination/'docs'/name)
     shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
     shutil.copytree(source/'docs/images/guide390', destination/'docs/images/guide390')

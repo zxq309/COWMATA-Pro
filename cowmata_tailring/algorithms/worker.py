@@ -61,7 +61,13 @@ def main():
     progress = progress_writer(request["progress"])
 
     action = request["action"]
-    if action == 'inspect390':
+    if action == 'engine433':
+        from cowmata_engine.api import handle
+        cancel_file = request.get('cancel_file')
+        response = handle(request['engine'], progress=progress, raise_errors=True,
+                          cancelled=lambda: bool(cancel_file) and Path(cancel_file).exists())
+        result = response['result']
+    elif action == 'inspect390':
         from cowmata_tailring.algorithms.inputs import scan_inputs
         result = scan_inputs(request['dataset'], training=request.get('training',False), progress=progress)
     elif action == 'folder_predict393':

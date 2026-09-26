@@ -196,8 +196,9 @@ def test_folder_entry_requires_manual_enable_and_no_training_inputs(
     window.folder_enabled.setChecked(True)
     assert not calls
     window.receive_folder()
-    assert len(calls) == 1 and calls[0]["action"] == "folder_predict393"
-    assert "ledger" not in calls[0] and "evidence" not in calls[0] and "dataset" not in calls[0]
+    assert len(calls) == 1 and calls[0]["action"] == "engine433"
+    assert calls[0]["engine"]["action"] == "decision.predict_folder"
+    assert "ledger" not in calls[0]["engine"] and "dataset" not in calls[0]["engine"]
     window.folder_enabled.setChecked(False)
     window.receive_folder()
     assert len(calls) == 1
