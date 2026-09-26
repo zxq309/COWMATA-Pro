@@ -1,5 +1,5 @@
 {
-  "version": "4.3.1",
+  "version": "4.3.2",
   "files": [
     {
       "path": ".gitattributes",
@@ -1043,8 +1043,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 59636,
-      "sha256": "8d508fead061b5e78cf8fc203bec2eb4fc6d434c09e772c809ead6981f997bdc"
+      "size": 60388,
+      "sha256": "6df9fc0dee8e7bd5e7fb7de7bf8969eef9c299525571a89e1a131c96b9e1decd"
     },
     {
       "path": "CITATION.cff",
@@ -1158,8 +1158,8 @@
     },
     {
       "path": "cowmata_tailring/__init__.py",
-      "size": 223,
-      "sha256": "1210b281c0a4d3a93338c4833cdb5614e0b0e85b50f3d99de1e9d42e720d4796"
+      "size": 206,
+      "sha256": "1d7aa3f6406b511050c7bf2ed835bdb7ba3bae08b855d760374d622179932a69"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -2293,8 +2293,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_ui.py",
-      "size": 40528,
-      "sha256": "617251bb598cf2290dce74bd83a57622bc4b4c70ca3408a1f0e7cbc17698bf7f"
+      "size": 40698,
+      "sha256": "bd5baa256f641ccf5e7632f0052454b934115ca441ffaea5db7aa52c0d412357"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_wipe.py",
@@ -4293,8 +4293,8 @@
     },
     {
       "path": "tests/test_dahua_wipe_431.py",
-      "size": 7829,
-      "sha256": "344b8712c2ab8f09141a3a6ac65ec7ad8bf285744784f3c51d3976c531f934a1"
+      "size": 9189,
+      "sha256": "301af6f0e80187b0e6e591480cf17674d40a8ba72faf01cb517aa832fab4d1d7"
     },
     {
       "path": "tests/test_daily_project.py",

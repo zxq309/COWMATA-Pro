@@ -75,7 +75,8 @@ class DahuaPanel(QWidget):
         row.addWidget(self.disk_button)
         self.wipe_button = QPushButton("立即清盘…")
         self.wipe_button.setToolTip("将选定的录像机原盘恢复为空白 DHFS 格式：录像索引立即清空，格式保持不变，后续录像即为纯净数据。不可恢复，请谨慎使用。")
-        self.wipe_button.clicked.connect(self.wipe_confirm)
+        # clicked(bool) would otherwise arrive as expected_identity=False.
+        self.wipe_button.clicked.connect(lambda _checked=False: self.wipe_confirm())
         row.addWidget(self.wipe_button)
         outer.addLayout(row)
         self.mode.currentIndexChanged.connect(self.mode_changed)
@@ -506,7 +507,7 @@ class DahuaPanel(QWidget):
         if not disk:
             self.status.setText("请先选择要清盘的录像机原盘")
             return
-        self._wipe_expected = expected_identity
+        self._wipe_expected = expected_identity if isinstance(expected_identity, str) and expected_identity else None
         self.start("wipe_survey", dict(number=disk["number"]))
 
     @staticmethod

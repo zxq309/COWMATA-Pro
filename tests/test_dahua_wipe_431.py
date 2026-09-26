@@ -188,3 +188,31 @@ def test_file_source_classification_only_reports_completion(panel, monkeypatch):
     monkeypatch.setattr(dahua_ui.QMessageBox, "question", lambda *a, **k: pytest.fail("no wipe for file sources"))
     dahua_ui.DahuaPanel._offer_wipe_after_organize(panel, {"status": "completed", "completed_records": {}})
     assert shown == ["数据归类完成"] and not panel.started
+
+def test_real_wipe_button_click_asks_once_and_wipes(monkeypatch):
+    """4.3.2: clicked(bool) used to arrive as expected_identity=False and cancel every wipe."""
+    from PySide6.QtWidgets import QApplication
+
+    from cowmata_tailring.workspace import dahua_ui
+
+    app = QApplication.instance() or QApplication([])  # noqa: F841
+    widget = dahua_ui.DahuaPanel()
+    try:
+        started = []
+        widget.start = lambda action, request=None, job=None: started.append((action, request))
+        widget.mode.setCurrentIndex(1)
+        widget.disk_choice.addItem("G: • 磁盘 3", {"number": 3, "identity": "disk-431"})
+        widget.disk_choice.setCurrentIndex(widget.disk_choice.count() - 1)
+        widget.wipe_button.setEnabled(True)
+        asked, warned = [], []
+        monkeypatch.setattr(dahua_ui.QMessageBox, "warning",
+                            lambda *a, **k: (asked if a[1] == "立即清盘" else warned).append(a[1])
+                            or dahua_ui.QMessageBox.StandardButton.Yes)
+        widget.wipe_button.click()
+        assert started == [("wipe_survey", {"number": 3})]
+        assert widget._wipe_expected is None
+        widget.confirm_wipe(survey())
+        assert asked == ["立即清盘"] and warned == []
+        assert started[-1] == ("wipe", {"number": 3, "identity": "disk-431"})
+    finally:
+        widget.close()
