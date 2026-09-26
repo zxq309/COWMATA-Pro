@@ -488,6 +488,23 @@ def model_columns(rows):
     return keys
 
 
+def _number(value):
+    """Parse CSV scalars while retaining label provenance booleans."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        lowered = value.strip().casefold()
+        if lowered in {"true", "yes"}:
+            return True
+        if lowered in {"false", "no"}:
+            return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return value
+    return int(number) if number.is_integer() else number
+
+
 def profile(rows, *, bins_h=6, span_h=168):
     """Median / IQR of every ``@1h`` column by hours-before-calving (statistical regularity)."""
     labelled = [r for r in rows if r.get("hours_to_calving") is not None and r["hours_to_calving"] <= span_h]
@@ -601,7 +618,7 @@ def read_table(path):
         for raw in csv.DictReader(stream):
             row = {}
             for k, v in raw.items():
-                if k in ("cow_id", "devices", "label_source", "label_quality"):
+                if k in ("cow_id", "devices", "label_source", "label_quality", "training_eligible"):
                     row[k] = v or None
                 else:
                     row[k] = _number(v)
