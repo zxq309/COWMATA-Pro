@@ -57,7 +57,7 @@ class SettingsStore:
         self.notice = ""
         if self.path.exists():
             try:
-                self.value = validated(json.loads(self.path.read_text(encoding="utf-8")))
+                self.value = validated(self.decode(json.loads(self.path.read_text(encoding="utf-8"))))
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 # Do not discard a customer's settings or silently enable a fresh download.
                 raise DownloadError(f"无法读取自动下载配置，请保留文件后检查：{self.path}（{exc}）") from exc
@@ -68,9 +68,15 @@ class SettingsStore:
         updated = dict(self.value)
         updated.update(changes)
         updated = validated(updated)
-        atomic_json(self.path, updated)
+        atomic_json(self.path, self.encode(updated))
         self.value = updated
         return dict(self.value)
+
+    def decode(self, value):
+        return value
+
+    def encode(self, value):
+        return value
 
     def record_cycle(self, result, error=""):
         self.save(last_cycle={"finished_at": datetime.now(CHINA).isoformat(),

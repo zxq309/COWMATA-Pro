@@ -139,7 +139,7 @@ def test_empty_candidate_window_explains_model_setup_and_refreshes_after_import(
     packs = []
     monkeypatch.setattr(module, "available_packs", lambda: packs)
     opened = []
-    monkeypatch.setattr(window, "open_behavior_390", lambda: opened.append(True))
+    monkeypatch.setattr(window, "choose_annotation_models", lambda: opened.append(True))  # 4.3.8 model-folder chooser
     panel = module.CandidateWindow(window)
     try:
         assert "导入" in panel.status.text() and "模型" in panel.status.text()

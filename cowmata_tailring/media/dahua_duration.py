@@ -540,10 +540,11 @@ def build_dahua_duration_index(
     source_path: str | os.PathLike[str],
     packets: DahuaPacketSummary,
     program_scan: DahuaProgramScan | None = None,
+    *, allow_adjacent: bool = True,
 ) -> DahuaDurationIndex:
     source = Path(source_path).resolve()
     source_value, source_size, source_mtime_ns = _source_identity(source)
-    next_source = find_next_recording(source)
+    next_source = find_next_recording(source) if allow_adjacent else None
     adjacent_duration_ms = (
         _adjacent_duration_ms(source, next_source) if next_source is not None else 0
     )

@@ -22,7 +22,7 @@ def test_all_operator_workflows_remain_reachable():
     w = MainWindow()
     try:
         menus = {a.text().split("(")[0]: a.menu() for a in w.menuBar().actions()}
-        assert list(menus) == ["文件", "数据准备", "标注与复核", "数据集构建", "行为识别", "健康与繁殖", "帮助"]
+        assert list(menus) == ["文件", "数据准备", "标注与复核", "帮助"]  # 4.3.8 Annotator: dataset/behaviour/health menus removed
         texts = {a.text() for a in actions(w.menuBar())}
         assert {
             "完整成果…",
@@ -35,7 +35,7 @@ def test_all_operator_workflows_remain_reachable():
             "重做",
             "自动生成候选…",
         } <= texts
-        assert len(w.algorithm_actions) == 21
+        assert len(w.algorithm_actions) == 15  # behaviour checks only
         reachable = set(actions(w.menuBar()))
         assert all(a in reachable for a in w.algorithm_actions.values())
         assert any(a.objectName() == "edgeDataDownloadAction" for a in actions(menus["数据准备"]))

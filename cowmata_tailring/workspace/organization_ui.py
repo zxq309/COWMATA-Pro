@@ -290,7 +290,7 @@ class OrganizationWindow(TaskWindow):
         self._shutdown_timer = QTimer(self)
         self._shutdown_timer.setInterval(100)
         self._shutdown_timer.timeout.connect(self._poll_shutdown)
-        self.setWindowTitle("COWMATA Pro™ · 数据归类")
+        self.setWindowTitle("COWMATA Annotator · 数据归类")
         self.resize(1240, 790)
         self.setMinimumSize(950, 650)
         self.setStyleSheet(
@@ -734,7 +734,8 @@ class OrganizationWindow(TaskWindow):
         from .dahua_ui import DahuaPanel
 
         self.dahua_panel = DahuaPanel(self)
-        self.mode_sheets.addTab(self.dahua_panel, "原始录像转码与归类")
+        self.mode_sheets.insertTab(0, self.dahua_panel, "原始录像转码与归类")
+        self.mode_sheets.setCurrentIndex(0)
 
     def apply_report_snapshot(self):
         from .classification_report import read_snapshot, source_key, summary_text

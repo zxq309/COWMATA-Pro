@@ -21,7 +21,7 @@ class Result(QObject):
 class Recovery(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("COWMATA Pro · 修复旧版更新")
+        self.setWindowTitle("COWMATA Annotator · 修复旧版更新")
         self.resize(760,300)
         self.running=False
         box=QVBoxLayout(self)

@@ -60,10 +60,17 @@ def available_packs(app_root=APP_ROOT):
         result.append({**data, "root": path.parent, "hash": digest_file(path), "app_root": Path(app_root)})
     if Path(app_root).resolve() == APP_ROOT.resolve():
         from cowmata_tailring.algorithms.adapter import available_pack
-        from cowmata_tailring.algorithms.registry import default_home, list_suites
-        pointer = default_home() / 'selected.json'
+        from cowmata_tailring.algorithms.paths import model_home
+        from cowmata_tailring.algorithms.registry import list_suites
+        home = model_home()
+        pointer = home / 'selected.json'
         selected = json.loads(pointer.read_text(encoding='utf-8')) if pointer.is_file() else {}
-        for suite in list_suites():
+        suites = list_suites(home)
+        # 4.3.8: without an explicit selection every behaviour uses the newest suite that contains it.
+        for suite in suites:
+            for m in suite['models']:
+                selected.setdefault(m['code']+':'+suite.get('modality','motion'), suite['version'])
+        for suite in suites:
             models = [m for m in suite['models'] if selected.get(m['code']+':'+suite.get('modality','motion')) == suite['version']]
             if models:
                 pack = available_pack(suite)

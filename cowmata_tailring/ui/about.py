@@ -21,11 +21,12 @@ WEBSITE = "https://www.cowmata.com/"
 RELEASES = "https://github.com/zxq309/COWMATA-Pro/releases"
 ABOUT_HTML = (
     "<p>软件版本：<b>{version}</b><br>构建标识：{build}</p>"
-    "<p>奶牛行为真值标注工作台：九轴与多视角录像同步、候选事件审核、"
-    "可追溯标签导出与历史回看。模型候选不等于人工确认的真值。</p>"
+    "<p>奶牛数据归类与标注工具：数据归类、九轴与多视角录像同步标注、"
+    "调用已训练行为识别模型自动生成标注候选、可追溯标签导出与历史回看。模型候选不等于人工确认的真值。"
+    "模型训练与产犊预测由独立的“科牧特产犊预测算法”完成。</p>"
     "<p>所属公司：{company}<br><a href='{website}'>公司官网</a> · "
     "<a href='mailto:service@cowmata.com'>service@cowmata.com</a></p>"
-    "<p>COWMATA Pro™ 为本软件的商标标识，™ 表示商标声明。"
+    "<p>COWMATA™ 为本软件的商标标识。"
     "公司名称、品牌与公司标识的权利说明见 NOTICE。"
     "源代码保留 MIT 许可证及原署名；第三方组件遵循各自许可证。</p>"
     "<p><a href='{releases}'>查看 GitHub 发布版本与更新说明</a><br>"
@@ -38,7 +39,7 @@ def create_about(parent=None):
     dialog.setWindowTitle(t("关于"))
     dialog.resize(640, 530)
     layout = QVBoxLayout(dialog)
-    title = QLabel("COWMATA Pro™")
+    title = QLabel("COWMATA Annotator")
     title.setStyleSheet("font-size:24px; font-weight:600; color:#436d25; padding:8px")
     layout.addWidget(title)
     body = QTextBrowser()

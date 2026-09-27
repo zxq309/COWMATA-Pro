@@ -18,6 +18,7 @@ from pathlib import Path, PureWindowsPath
 from .core import Cancelled, DownloadError
 from .deduplication import RootSyncLock, _safe
 from .ledger_direct import DirectBridge, clean_environment
+from .paths import DEFAULT_LEDGER_ROOT
 from .settings import atomic_json
 
 SCHEMAS = {
@@ -115,7 +116,9 @@ SCHEMAS = {
     },
 }
 SERVER_DIRECTORY = r"F:\牛舍_现场记录"
-LOCAL_DIRECTORY = r"F:\牛舍\_现场记录"
+# A local mirror is kept in the user's standard COWMATA data area.  The
+# server-side Windows path above is independent and remains configurable.
+LOCAL_DIRECTORY = str(DEFAULT_LEDGER_ROOT)
 DEFAULT_HOST = "61.177.77.222"
 DEFAULT_PORT = 8022
 DEFAULT_USER = "cowmata_upload"

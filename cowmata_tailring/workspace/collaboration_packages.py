@@ -16,7 +16,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 
-from .catalog import assert_not_being_written, digest_file, file_stamp, previous_video_files
+from .catalog import VIDEO_SUFFIXES, assert_not_being_written, digest_file, file_stamp
 from .dataset_access import DatasetLease
 from .farm_layout import CATEGORY_PATHS, COLLABORATION, MARKER, farm_identity, shared_farm
 from .package_paths import check, safe_path
@@ -184,12 +184,11 @@ def _plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', ca
         missing_days = []
         for day in days:
             found = []
-            for path in sorted((root / '录像' / day).rglob('*.mp4')):
-                if views is None or path.parent.name in views:
+            for path in sorted((root / '录像' / day).rglob('*')):
+                if path.is_file() and path.suffix.lower() in VIDEO_SUFFIXES and (views is None or path.parent.name in views):
                     found.append(path)
             if not found:
                 missing_days.append(day)
-            found.extend(p for p in previous_video_files(root / '录像', day) if views is None or p.parent.name in views)
             for path in found:
                 relative = path.relative_to(root).as_posix()
                 safe_path(root, relative)
@@ -239,7 +238,7 @@ def _write_zip(output, manifest, entries, *, cancelled, progress, before_publish
                     if entry.get('stamp') and before != entry['stamp']:
                         raise ValueError('打包前原始数据发生变化，请重新扫描：' + str(path))
                 info = zipfile.ZipInfo(entry['path'])
-                info.compress_type = zipfile.ZIP_STORED if entry['path'].lower().endswith(('.mp4', '.jpg', '.png')) else zipfile.ZIP_DEFLATED
+                info.compress_type = zipfile.ZIP_STORED if Path(entry['path']).suffix.lower() in VIDEO_SUFFIXES | {'.jpg', '.png'} else zipfile.ZIP_DEFLATED
                 info._compresslevel = 1
                 info.file_size = entry['size']
                 digest = hashlib.sha256()
@@ -277,7 +276,7 @@ def _write_zip(output, manifest, entries, *, cancelled, progress, before_publish
 
 
 def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None):
-    from .package_readiness import download_guard, ledger_state, validate_complete
+    from .package_readiness import download_guard, validate_complete
     root = Path(root).resolve(strict=True)
     identity = farm_identity(root)
     outputs = []
@@ -294,49 +293,74 @@ def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None):
             if plan['farm_id'] != identity['farm_id']:
                 raise ValueError('派发方案不属于此牧场')
             _check_unit_files(root, plan['units'])
-            proof = validate_complete(root, plan['units'], [e['path'] for e in plan['entries'] if e['path'].endswith('.mp4')],
+            proof = validate_complete(root, plan['units'], [e['path'] for e in plan['entries'] if Path(e['path']).suffix.lower() in VIDEO_SUFFIXES],
                                       views=plan.get('selected_views'), cancelled=cancelled, probe_cache=probe_cache)
-            if proof['cycle_sha256'] != plan.get('readiness', {}).get('cycle_sha256'):
-                raise ValueError('下载检查点已变化，请重新预览派发方案')
-            if set(proof['video_paths']) != {e['path'] for e in plan['entries'] if e['path'].endswith('.mp4')}:
+            if set(proof['video_paths']) != {e['path'] for e in plan['entries'] if Path(e['path']).suffix.lower() in VIDEO_SUFFIXES}:
                 raise ValueError('录像范围已变化，请重新预览派发方案')
             entries = [dict(e, path=root.name + '/' + e['path'], source=safe_path(root, e['path'])) for e in plan['entries']]
             marker = canonical(identity)
             entries.append(dict(path=root.name + '/' + MARKER, payload=marker, size=len(marker)))
             manifest = {k: copy.deepcopy(v) for k, v in plan.items() if k not in {'entries', 'sensor_paths'}}
-            baseline, evidence_entries = [], {}
-            for relative in plan['sensor_paths']:
-                if '/Motion/' not in relative and '/PPG/' not in relative:
-                    continue
-                label = _annotation_path(root, relative)
-                if label.is_file():
+            # Raw dispatch packages contain only the selected sensor JSON and
+            # video files. Existing annotation/evidence files stay in the
+            # local ledger and must not silently widen package scope.
+            manifest['baseline_annotations'] = []
+            manifest['baseline_evidence'] = []
+            if plan.get('purpose') == 'review':
+                for relative in plan['sensor_paths']:
+                    if '/Motion/' not in relative and '/PPG/' not in relative:
+                        continue
+                    label = _annotation_path(root, relative)
+                    if not label.is_file():
+                        continue
                     doc = read_json(label, {})
+                    # Review labels are JSON too. Keep all label data, while
+                    # marking external pictures unavailable in this raw-only copy.
+                    for event in [*doc['work']['project']['events'], *doc['work'].get('drafts', [])]:
+                        for item in event.get('screenshots', {}).get('items', []):
+                            if item.get('status') == 'captured':
+                                item['status'] = 'not_packaged'
+                                item['message'] = '原始包仅派发 JSON 与视频，证据图保留在原工程'
+                    payload = canonical(doc)
                     rel = label.relative_to(root).as_posix()
-                    baseline.append(rel)
-                    entries.append(dict(path=root.name + '/' + rel, source=label, size=label.stat().st_size, stamp=file_stamp(label)))
-                    evidence_entries.update(_evidence_entries(doc, label, root))
-            for relative, entry in evidence_entries.items():
-                entries.append({**entry, 'path': root.name + '/' + relative})
-            manifest['baseline_annotations'] = baseline
-            manifest['baseline_evidence'] = sorted(evidence_entries)
+                    manifest['baseline_annotations'].append(rel)
+                    entries.append(dict(path=root.name + '/' + rel, payload=payload, size=len(payload)))
             output = home / '原始数据包' / (plan['base_name'] + '_原始.zip')
             def final_check(published_manifest):
                 _check_unit_files(root, plan['units'])
-                for relative in baseline:
-                    label = safe_path(root, relative)
-                    if _validate_document(read_json(label, {}), root, published_manifest) != label:
-                        raise ValueError('标注目录与派发目录树不一致')
                 for entry in entries:
                     if entry.get('source') and file_stamp(Path(entry['source'])) != entry['stamp']:
                         raise ValueError('打包期间源文件发生变化，请重新扫描')
-                current, _ = ledger_state(root)
-                if current.sources != proof['sources']:
-                    raise ValueError('打包期间 CSV 已变化，请重新核对')
             result = _write_zip(output, manifest, entries, cancelled=cancelled, progress=progress, before_publish=final_check)
             atomic_json(_registry(root) / (plan['package_id'] + '.json'),
                         dict(status='ready', manifest=result, output=str(output)), backup=False)
+            _cleanup_replaced_packages(root, plan, output)
             outputs.append(output)
     return outputs
+
+
+def _cleanup_replaced_packages(root, plan, current_output):
+    """Remove only older packages covering the explicitly re-dispatched units."""
+    if not plan.get('replace_previous'):
+        return []
+    keys = {u['key'] for u in plan.get('units', [])}
+    registry = _registry(root)
+    removed = []
+    for record in registry.glob('*.json'):
+        value = read_json(record, {})
+        manifest = value.get('manifest', {})
+        if value.get('status') != 'ready' or manifest.get('package_id') == plan.get('package_id'):
+            continue
+        if not keys.intersection({u.get('key') for u in manifest.get('units', [])}):
+            continue
+        old = Path(value.get('output', ''))
+        if old == Path(current_output):
+            continue
+        if old.suffix.lower() == '.zip' and old.is_file() and old.resolve().is_relative_to((root / COLLABORATION).resolve()):
+            old.unlink()
+            removed.append(str(old))
+        record.unlink(missing_ok=True)
+    return removed
 
 
 def validate_archive(path):
@@ -447,7 +471,7 @@ def open_raw_package(path, destination, *, cancelled=lambda: False, progress=lam
 def _raw_relative(relative, manifest):
     parts = PurePosixPath(relative).parts
     if parts[:1] == ('录像',):
-        return len(parts) == 4 and bool(re.fullmatch(r'\d{4}-\d{2}-\d{2}', parts[1])) and bool(re.fullmatch(r'视角\d{2}', parts[2])) and parts[-1].lower().endswith('.mp4')
+        return len(parts) == 4 and bool(re.fullmatch(r'\d{4}-\d{2}-\d{2}', parts[1])) and bool(re.fullmatch(r'视角\d{2}', parts[2])) and PurePosixPath(parts[-1]).suffix.lower() in VIDEO_SUFFIXES
     for unit in manifest['units']:
         prefix = PurePosixPath(unit['category']).parts
         tail = parts[len(prefix):]

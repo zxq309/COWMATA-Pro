@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import io
 import threading
@@ -13,7 +13,7 @@ from cowmata_tailring.workspace import dahua_tasks as tasks
 def test_two_views_prepare_together_and_archive_independently(incremental, monkeypatch):  # noqa: F811
     farm, job, index, request, sources = incremental
     barrier = threading.Barrier(2, timeout=3)
-    monkeypatch.setattr(tasks, "preparation_workers", lambda: 2, raising=False)
+    monkeypatch.setattr(tasks, "preparation_workers", lambda *a, **k: 2, raising=False)
     def prepare(row, *args):
         barrier.wait()
         return fake_prepared(row, *args)
@@ -77,7 +77,7 @@ def test_lazy_chain_reads_only_needed_blocks_and_rechecks_new_reader():
 
 def test_fast_view_archives_while_slow_view_is_still_preparing(incremental, monkeypatch):  # noqa: F811
     farm, job, index, request, _ = incremental
-    monkeypatch.setattr(tasks, "preparation_workers", lambda: 2)
+    monkeypatch.setattr(tasks, "preparation_workers", lambda *a, **k: 2)
     archived = threading.Event()
     started = threading.Barrier(2, timeout=3)
     first = index["rows"][0]["id"]
@@ -97,7 +97,7 @@ def test_fast_view_archives_while_slow_view_is_still_preparing(incremental, monk
 def test_parallel_pause_joins_workers_and_resume_keeps_first_output(incremental, monkeypatch):  # noqa: F811
     import time
     farm, job, index, request, _ = incremental
-    monkeypatch.setattr(tasks, "preparation_workers", lambda: 2)
+    monkeypatch.setattr(tasks, "preparation_workers", lambda *a, **k: 2)
     first = index["rows"][0]["id"]
     started = threading.Barrier(2, timeout=3)
     stopped = threading.Event()
@@ -154,3 +154,29 @@ def test_progress_summary_lists_simultaneous_views():
 
 def test_default_view_scheduler_starts_all_twenty_channels():
     assert tasks.preparation_workers() == 20
+
+
+def test_physical_recorder_reads_use_explicit_sixteen_way_bound():
+    # Disk mode runs 16 independent sequential view readers. The semaphore is
+    # the hard upper bound, so a busy source cannot create an unbounded queue.
+    assert tasks.preparation_workers({"mode": "disk"}) == 16
+    assert tasks.preparation_workers({"mode": "files"}) == 20
+    assert tasks._source_read_lock._initial_value == tasks.SOURCE_READ_CONCURRENCY <= 2
+
+
+def test_progress_speed_excludes_unfinished_reading_tasks():
+    from cowmata_tailring.workspace.dahua_run_ui import DahuaRunTables
+
+    table = DahuaRunTables()
+    try:
+        table.begin()
+        table.started -= 200
+        table.accept(dict(event_kind="task_record", source_id="done", owner="视角01",
+                          status="done", targets=[], size=100 * 1048576, file_seconds=10))
+        table.accept(dict(event_kind="task_record", source_id="reading", owner="视角02",
+                          status="processing", targets=[], size=0, file_seconds=190))
+        table.flush()
+        # 100 MiB archived over ~200 s of wall-clock time (lanes overlap).
+        assert "0.50 MiB/秒" in table.summary.text()
+    finally:
+        table.close()

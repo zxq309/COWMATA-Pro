@@ -75,8 +75,11 @@ def test_view_relayout_keeps_handles_clock_and_bounded_pool(app):
     assert handles == {name: int(tile.surface.winId()) for name, tile in board.tiles.items()}
     board.select(views[::-1])
     assert len(board.pool) == 8 and board.reference_ms == 100000
-    with pytest.raises(ValueError):
-        board.select(views + ["ninth"])
+    notices = []
+    board.notice.connect(notices.append)
+    before = list(board.selected)
+    board.select(views + ["ninth"])  # 4.3.7: > 8 views is refused without raising into the UI
+    assert board.selected == before and len(board.pool) == 8 and notices
     board.close()
 
 

@@ -10,9 +10,9 @@ from cowmata_tailring.media.timeline import MediaTimelineIndex, TimelineSegment
 
 from .clocks import wall_text
 from .demand import camera_folder
-from .video_names import filename_wall
+from .video_names import adjacent_filename_duration, filename_wall
 
-SIGNATURE = "cowmata-classified-filename-1"
+SIGNATURE = "cowmata-classified-filename-2"
 
 
 def metadata_from_name(path, relative, info, timeline=None):
@@ -23,6 +23,7 @@ def metadata_from_name(path, relative, info, timeline=None):
     if not video:
         raise ValueError("文件中没有视频流")
     duration = None
+    duration_basis = "timeline" if timeline else "header"
     for value in (
         (timeline.duration_ms / 1000 if timeline else None),
         video.get("duration"),
@@ -35,6 +36,15 @@ def metadata_from_name(path, relative, info, timeline=None):
         if math.isfinite(duration) and duration > 0:
             break
         duration = None
+    # Recorder MPEG-PS streams often report a bogus multi-hour header.  A
+    # neighbouring filename gives a bounded browse hint while keeping the
+    # record explicitly pending manual time verification.
+    format_name = str(info.get("format", {}).get("format_name", ""))
+    if not timeline and "mpeg" in format_name and "mp4" not in format_name:
+        hint = adjacent_filename_duration(path)
+        if hint is not None and (duration is None or duration > 6 * 60 * 60 * 1000):
+            duration = hint
+            duration_basis = "adjacent_filename"
     if duration is None:
         raise ValueError("视频时长无法读取，请在数据准备中核对文件")
     frame_ms = 40.0
@@ -81,10 +91,15 @@ def metadata_from_name(path, relative, info, timeline=None):
         ],
         samples=[],
         warnings=[],
-        needs_review=False,
+        needs_review=duration_basis == "adjacent_filename",
         preview="",
         start_display=wall_text(start, filename=True),
+        duration_basis=duration_basis,
     )
+    if duration_basis == "adjacent_filename":
+        result["warnings"] = ["文件名相邻片段仅提供浏览时长；录像机时钟仍需核验"]
+        result["intervals"][0]["verified"] = False
+        result["intervals"][0]["warnings"] = list(result["warnings"])
     if timeline.discontinuities:
         result["needs_review"] = True
         result["warnings"] = ["视频数据包时钟不连续，请在数据准备中核对"]

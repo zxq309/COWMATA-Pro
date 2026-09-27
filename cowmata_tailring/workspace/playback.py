@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import math
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -185,7 +186,7 @@ class VideoTile(QFrame):
         header.addWidget(self.title, 1)
         layout.addLayout(header)
         self.surface = VideoSurface(self)
-        self.surface.clicked.connect(lambda: self.activated.emit(self))
+        self.surface.clicked.connect(self._activate_surface)
         self.surface.doubleClicked.connect(lambda: self.enlarged.emit(self))
         self.frame_view = PausedFrame()
         self.frame_view.doubleClicked.connect(lambda: self.enlarged.emit(self))
@@ -201,6 +202,11 @@ class VideoTile(QFrame):
         self.overlay.setObjectName("videoTransport")
         # A native sibling stays above VLC's embedded native video surface.
         self.overlay.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        # Be explicit because a native VLC sibling otherwise wins hit testing
+        # on some Windows compositor paths even while this overlay is visible.
+        self.overlay.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.overlay.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.overlay.setMouseTracking(True)
         self.overlay.setStyleSheet("""
             QFrame#videoTransport { background: rgba(15, 24, 36, 220); border: 1px solid #60778b; border-radius: 9px; }
             QFrame#videoTransport QToolButton { color: #ffffff; background: transparent; border: 0; border-radius: 5px; padding: 0; margin: 0; min-height: 0; }
@@ -262,10 +268,45 @@ class VideoTile(QFrame):
         timeline_bar.addWidget(self.seek_slider, 1)
         timeline_bar.addWidget(self.seek_clock)
         layout.addLayout(timeline_bar)
+        # A live native surface whose widget was resized can keep a stale
+        # Direct3D swap chain; one rebuild shortly after the layout settles
+        # restores full-frame rendering without touching decode or clocks.
+        self._surface_sync = QTimer(self)
+        self._surface_sync.setSingleShot(True)
+        self._surface_sync.setInterval(300)
+        self._surface_sync.timeout.connect(self._sync_video_output)
+        self._surface_playing = False
+
+    def set_surface_playing(self, live):
+        self._surface_playing = bool(live)
+        if not live:
+            self.request_surface_sync()
+
+    def request_surface_sync(self):
+        if self.engine is not None and not self._surface_playing:
+            self._surface_sync.start()
+
+    def _sync_video_output(self):
+        # Rebuilding the embedded output while the playout runs tears down the
+        # active vout mid-playback and leaves the picture frozen; apply the
+        # rebuild only while the surface is idle (paused frames re-render on
+        # their own and the next play recreates the output anyway).
+        if (self.engine is not None and self.stack.currentWidget() is self.surface
+                and self.surface.isVisible() and not self._surface_playing):
+            refresh = getattr(self.engine, "refresh_video_output", None)
+            if callable(refresh):
+                refresh()
 
     def activate_preview(self):
         if getattr(self, "_preview_only", False) and self.interval:
             self.transportRequested.emit(self, "play", 0)
+
+    def _activate_surface(self):
+        self.activated.emit(self)
+        # A preview still is an actionable transport surface. This fallback
+        # keeps the main view playable when the native VLC child consumes the
+        # click before the small overlay button receives it.
+        self.activate_preview()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and getattr(self, "_preview_only", False):
@@ -321,6 +362,7 @@ class VideoTile(QFrame):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.scale_frame()
+        self.request_surface_sync()
 
     def control_icon(self, icon):
         pixmap = self.style().standardIcon(icon).pixmap(18, 18)
@@ -505,7 +547,8 @@ class VideoBoard(QWidget):
     def select(self, cameras):
         cameras = list(dict.fromkeys(cameras))
         if not 0 <= len(cameras) <= 8:
-            raise ValueError("一次请选择 1–8 个视角")
+            self.notice.emit("一次最多显示 8 路视角；已取消本次选择，请通过视角分页分批打开")
+            return
         for camera in list(self.tiles):
             if camera not in cameras:
                 tile = self.tiles.pop(camera)
@@ -577,6 +620,8 @@ class VideoBoard(QWidget):
 
     def seek(self, reference_ms):
         self.generation += 1
+        for tile in self.pool:
+            tile.priming_failures = 0
         for job in self.frame_jobs:
             job.cancel()
         self.frame_jobs = []
@@ -604,16 +649,22 @@ class VideoBoard(QWidget):
                 preview = hasattr(self, "is_preview") and self.is_preview(tile.camera)
                 tile.engine.pause(not self.playing or preview)
         self.playbackChanged.emit(self.playing)
+        for tile in self.tiles.values():
+            tile.set_surface_playing(self.playing)
         if previous != self.playing:
             self.seek(self.reference_ms)
 
     def set_rate(self, rate):
-        if rate not in {.25, .5, 1, 2, 4}:
+        try:
+            rate = float(rate)
+        except (TypeError, ValueError):
+            rate = float("nan")
+        if not math.isfinite(rate) or rate not in {.25, .5, 1, 2, 4}:
             raise ValueError("播放倍率不支持")
+        # 4.3.7: the requested rate is always applied. 4.3.5/4.3.6 silently kept 1x whenever an
+        # optional compatibility cache had failed, while the rate box showed 4x (bug 4.3.4-1).
         if rate != 1 and any(t.asset_id in self.compatibility_failures for t in self.synchronised_tiles()):
-            self.notice.emit("兼容缓存暂不可用，原片保持 1× 播放；暂停后重新播放可重试缓存。")
-            self.rateChanged.emit(self.rate)
-            return
+            self.notice.emit(f"兼容缓存暂不可用，原片按 {rate:g}× 播放；高倍速下原片可能跳帧，暂停后重新播放可重试缓存。")
         self.rate = rate
         for tile in self.pool:
             if tile.engine:
@@ -627,6 +678,7 @@ class VideoBoard(QWidget):
             except RuntimeError:
                 pass
         tile.ready = False
+        tile.set_surface_playing(False)
 
     def _position(self, camera, tile, *, force=False):
         match = self.timeline.locate(camera, self.reference_ms, prefer=tile.asset_id)
@@ -792,7 +844,11 @@ class VideoBoard(QWidget):
                     pending["seek_at"] = now
             # Vout + displayed-picture progress + decoder time must all agree.
             visible = bool(stats and (stats.displayed_pictures > pending["baseline"] or tile is self.prewarm and stats.decoded_video > 3) and tile.engine.video_output_count())
-            near = (-150 <= current - pending["target"] <= 1800) if self.playing else abs(current - pending["target"]) <= 650
+            # While playing the decoder keeps advancing at the requested rate: allow the time it
+            # has run since the seek (bug 4.3.4-4: at 2x/4x a cold seek ran past the fixed +1.8 s
+            # window, never became ready and looped on "正在准备真实画面…").
+            ahead = 1800 + 1000 * max(1.0, self.rate) * max(0.0, now - pending.get("seek_at", now))
+            near = (-150 <= current - pending["target"] <= ahead) if self.playing else abs(current - pending["target"]) <= 650
             if pending["phase"] in {"seeking", "verifying_frame"} and visible and near:
                 tile.pending = None
                 tile.ready = True
@@ -806,19 +862,24 @@ class VideoBoard(QWidget):
                 self.latencies.append({"camera": tile.camera, "cold": pending["cold"],
                                        "seconds": now - pending["start"], "error_ms": current - pending["target"]})
                 self.latencies = self.latencies[-2000:]
-            elif now - pending["start"] > 25:
+            elif now - pending["start"] > (12 if self.playing else 25):
                 self._pause_tile(tile)
                 tile.pending = None
                 tile.surface.hide()
                 tile.stack.hide()
+                tile.priming_failures = getattr(tile, "priming_failures", 0) + 1
                 tile.status("定位超时，画面未确认到位 · 请重试或减少同时播放路数")
+                if tile.camera == self.main_camera and self.playing:
+                    self.notice.emit(f"{tile.camera} 画面准备超时，已暂停该路；可降低倍速、减少路数或点播放重试")
             return
         if not tile.ready:
             if self.playing and stats and stats.displayed_pictures > tile.last_picture_count:
                 tile.ready = True
                 tile.last_motion_at = now
             else:
-                if self.playing and now - tile.last_seek_at > 4:
+                # Bounded retries: a tile that already timed out twice waits for an explicit
+                # play/seek instead of re-priming every 4 s forever (bug 4.3.4-4).
+                if self.playing and now - tile.last_seek_at > 4 and getattr(tile, "priming_failures", 0) < 2:
                     match = self.timeline.locate(tile.camera, self.reference_ms, prefer=tile.asset_id)
                     if match and match[0].asset_id not in self.blocked_assets:
                         self._request(tile, *match)
@@ -1051,8 +1112,7 @@ class VideoBoard(QWidget):
             # A derived cache is optional. Keep the original source available,
             # and do not repeatedly rebuild the same failed file on every tick.
             self.compatibility_failures.add(interval.asset_id)
-            self.set_rate(1)
-            self.notice.emit("兼容缓存暂不可用，正在尝试原片 1× 播放：" + error)
+            self.notice.emit(f"兼容缓存暂不可用，改用原片按 {self.rate:g}× 播放：" + error)
             self._request(tile, interval, target)
             return
         self._request(tile, interval, target, queued_start=started)

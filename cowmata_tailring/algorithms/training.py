@@ -175,7 +175,7 @@ def train_suite(
         group_count = len(set(groups))
         if group_count < 3:
             raise ValueError("At least three independent validation groups are required")
-        local, thresholds = [], []
+        local, thresholds, fold_curves = [], [], []
         for fold, (train, test) in enumerate(
             GroupKFold(n_splits=min(5, group_count)).split(rr, groups=groups), 1
         ):
@@ -204,6 +204,11 @@ def train_suite(
                 threshold = 0.55
             thresholds.append(threshold)
             model, median, _ = _fit(train_r, train_f, code)
+            try:
+                _, held_curve = _threshold(model, median, [rr[i] for i in test], [ff[i] for i in test], code)
+                fold_curves.append(held_curve)
+            except ValueError:
+                pass
             for i in test:
                 record, feature = rr[i], ff[i]
                 predictions = score_events(
@@ -264,6 +269,17 @@ def train_suite(
             zip(ff[0]["names"], [float(v) for v in model.feature_importances_])
         )
         summary["fold_thresholds"] = thresholds
+        # Held-out operating curve: each fold's model scored only on its own validation records.
+        if fold_curves:
+            summary["threshold_curve"] = [
+                dict(threshold=points[0]["threshold"],
+                     observable_known_recall=float(np.mean([p["observable_known_recall"] for p in points])),
+                     candidates_per_hour=float(np.mean([p["candidates_per_hour"] for p in points])))
+                for points in zip(*fold_curves)]
+        summary["fold_recall"] = [
+            dict(fold=f, known_events=sum(r["known_events"] for r in local if r["fold"] == f),
+                 matched_events=sum(r["matched_events"] for r in local if r["fold"] == f))
+            for f in sorted({r["fold"] for r in local})]
         payload = export_forest(model, ff[0]["names"], median)
         # Ensure the numeric-only deployment produces the same scores as training.
         check = ff[0]["X"][:200]

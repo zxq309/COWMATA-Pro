@@ -272,7 +272,7 @@ class UpdateController(QObject):
             self.notification.deleteLater()
         self._announced_packages.add(identity)
         self.notification = QMessageBox(self.window)
-        self.notification.setWindowTitle(tr("COWMATA Pro™ 有新版本", "COWMATA Pro™ update available"))
+        self.notification.setWindowTitle(tr("COWMATA Annotator 有新版本", "COWMATA Annotator update available"))
         self.notification.setText(tr("发现新版本：", "New version: ") + update["version"] + tr(
             "\n在“帮助 → 关于 → 版本与更新”查看新版下载与进度，可直接升级，无须逐个安装旧版本。不会强制关闭正在标注的工程。",
             "\nOpen Help > About > Version and updates for the latest download and progress. Upgrade directly without installing intermediate releases. Your annotation session stays open."))
@@ -428,7 +428,7 @@ class UpdateController(QObject):
                              cwd=job_dir, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except OSError as exc:
             worker.write_json(job_dir / "error.json", {"error": str(exc)})
-            QMessageBox.critical(self.window, "COWMATA Pro™", str(exc))
+            QMessageBox.critical(self.window, "COWMATA Annotator", str(exc))
 
     def clear_download(self):
         if self.busy or not self.update or self.pending_job:
@@ -438,7 +438,9 @@ class UpdateController(QObject):
         if answer != QMessageBox.StandardButton.Yes:
             return
         directory = worker.safe_path(self.cache / "downloads" / self.update["sha256"])
-        for name in (self.update["name"], self.update["name"] + ".part"):
+        names = [self.update["name"], self.update["name"] + ".part"]
+        names += [self.update["name"] + f".part-{index}" for index in range(16)]
+        for name in names:
             path = worker.member(directory, name)
             path.unlink(missing_ok=True)
         self.setup = None
@@ -471,7 +473,7 @@ class UpdateController(QObject):
             self.dialog.setWindowTitle(tr("版本与更新", "Version and updates"))
             self.dialog.resize(620, 460)
             box = QVBoxLayout(self.dialog)
-            box.addWidget(QLabel("COWMATA Pro™ " + __version__))
+            box.addWidget(QLabel("COWMATA Annotator " + __version__))
             self.info = QLabel()
             self.info.setWordWrap(True)
             box.addWidget(self.info)
@@ -587,11 +589,11 @@ class StartupUpdateController(UpdateController):
 class StartupUpdateDialog(QDialog):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(tr("COWMATA Pro™ 启动更新检查", "COWMATA Pro™ startup update check"))
+        self.setWindowTitle(tr("COWMATA Annotator 启动更新检查", "COWMATA Annotator startup update check"))
         self.setMinimumWidth(530)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         box = QVBoxLayout(self)
-        self.version = QLabel("COWMATA Pro™ " + __version__)
+        self.version = QLabel("COWMATA Annotator " + __version__)
         box.addWidget(self.version)
         instruction = QLabel(tr("发现更新将下载、校验并安装，完成后重新打开软件。\n网络异常或暂不更新，可点击“进入软件”继续使用，无须逐版升级。",
                                 "Updates download, verify and install, then reopen the app.\nOpen the application to work offline or update later; intermediate releases are skipped."))

@@ -52,6 +52,10 @@ class _Decoder(QObject):
                 self.backend.close()
             self.thread().quit()
             return
+        if desired.pop('refresh_output', False):
+            # Video surface rebuild runs on the decoder thread even when idle.
+            if self.backend:
+                self.backend.refresh_video_output()
         if not desired.get('path'):
             return
         try:
@@ -151,6 +155,10 @@ class ThreadedWorkspaceEngine(QObject):
             self.shared['queued'] = True
             self.wake.emit()
         return True
+
+    def refresh_video_output(self):
+        """Rebuild the embedded video surface after a layout change (thread-safe)."""
+        self._send(refresh_output=True)
 
     def _snapshot(self):
         value, desired = self.shared['snapshot'], self.shared['desired']

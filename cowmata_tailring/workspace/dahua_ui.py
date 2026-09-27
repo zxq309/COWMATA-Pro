@@ -73,6 +73,11 @@ class DahuaPanel(QWidget):
         self.disk_button = QPushButton("刷新原盘")
         self.disk_button.clicked.connect(lambda: self.start("disks", {}))
         row.addWidget(self.disk_button)
+        self.wipe_button = QPushButton("立即清盘…")
+        self.wipe_button.setToolTip("将选定的录像机原盘恢复为空白 DHFS 格式：录像索引立即清空，格式保持不变，后续录像即为纯净数据。不可恢复，请谨慎使用。")
+        # clicked(bool) would otherwise arrive as expected_identity=False.
+        self.wipe_button.clicked.connect(lambda _checked=False: self.wipe_confirm())
+        row.addWidget(self.wipe_button)
         outer.addLayout(row)
         self.mode.currentIndexChanged.connect(self.mode_changed)
         self.mode_changed()
@@ -207,6 +212,7 @@ class DahuaPanel(QWidget):
             self.files_button,
             self.folder_button,
             self.disk_button,
+            self.wipe_button,
             self.target,
             self.target_button,
             self.category,
@@ -413,6 +419,7 @@ class DahuaPanel(QWidget):
             request = dict(mode="files", files=self.files)
         self.job = tasks.task_root() / uuid.uuid4().hex
         self.index = None
+        self._resumed_request = None
         self.start("scan", request, self.job)
 
     def selected_mapping(self):
@@ -455,6 +462,13 @@ class DahuaPanel(QWidget):
                 storage_profile=self.storage_profile.currentData(),
                 deadline_seconds=tasks.DEFAULT_DEADLINE_SECONDS,
             )
+            # A resume replays the saved request verbatim while the restored
+            # form still agrees with it; rebuilding from widgets can add
+            # version-newer keys that change the resume signature.
+            resumed = getattr(self, "_resumed_request", None)
+            self._resumed_request = None
+            if resumed is not None and self._same_selection(resumed, options):
+                options = dict(resumed)
             # A new scan is a deliberate new task.  Keep the paused video
             # history available for the explicit resume button, but do not
             # let an old mapping block this fresh selection.
@@ -465,6 +479,63 @@ class DahuaPanel(QWidget):
             self.start("organize", dict(options=options), self.job)
         except (OSError, ValueError) as exc:
             self.status.setText(str(exc))
+
+    @staticmethod
+    def _same_selection(saved, current):
+        defaults = {"scenario": "mixed", "storage_profile": "native", "split_midnight": True,
+                    "json_sources": [], "start": "", "end": ""}
+
+        def semantic(request):
+            value = {k: v for k, v in request.items() if k not in {"deadline_seconds", "fresh_start"}}
+            for key, default in defaults.items():
+                value.setdefault(key, default)
+            return value
+
+        return semantic(saved) == semantic(current)
+
+    def wipe_confirm(self, expected_identity=None):
+        """立即清盘 and the post-classification offer share one flow.
+
+        A read-only survey runs first; the operator then answers a single
+        question. When the question was already answered right after a
+        completed classification, ``expected_identity`` pins the disk that was
+        classified and the wipe starts as soon as the survey confirms it.
+        """
+        if self.running or self.mode.currentIndex() != 1:
+            return
+        disk = self.disk_choice.currentData()
+        if not disk:
+            self.status.setText("请先选择要清盘的录像机原盘")
+            return
+        self._wipe_expected = expected_identity if isinstance(expected_identity, str) and expected_identity else None
+        self.start("wipe_survey", dict(number=disk["number"]))
+
+    @staticmethod
+    def wipe_question(info):
+        size_tb = info["size"] / 1e12
+        return (
+            f"磁盘 {info['model']} · 序列号 {info.get('serial', '')} · {size_tb:.2f} TB\n"
+            f"现有录像索引 {info.get('existing_recordings', '?')} 段。\n\n"
+            "清盘会一次清空此录像机原盘上的全部录像索引（不可恢复），磁盘格式保持不变，"
+            "放回录像机即可继续录制纯净数据。\n\n是否立即清盘？"
+        )
+
+    def confirm_wipe(self, info):
+        expected, self._wipe_expected = getattr(self, "_wipe_expected", None), None
+        if expected is not None:
+            if info["identity"] != expected:
+                QMessageBox.warning(self, "清盘已取消",
+                                    "当前选择的原盘不是刚刚完成归类的那块盘，已取消清盘。请重新选择后再试。")
+                return
+        else:
+            answer = QMessageBox.warning(self, "立即清盘", self.wipe_question(info),
+                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                         QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                self.status.setText("已取消清盘。")
+                return
+        self.status.setText("正在清盘…")
+        self.start("wipe", dict(number=info["number"], identity=info["identity"]))
 
     def restore(self):
         saved = str(self.settings.value("dahua/last_job", "")).strip()
@@ -478,6 +549,7 @@ class DahuaPanel(QWidget):
     def apply_restored_options(self, options):
         if not options:
             return
+        self._resumed_request = dict(options)
         self.target.setText(options["target"])
         self.category.setCurrentIndex(self.category.findData(options["category"]))
         self.scenario.setCurrentIndex(self.scenario.findData(options.get("scenario", "mixed")))
@@ -621,6 +693,9 @@ class DahuaPanel(QWidget):
                        for row in self.run_tables.records.values())
             self.bar.setRange(0, total)
             self.bar.setValue(done)
+            if self.operation == "wipe":
+                QMessageBox.warning(self, "清盘未完成", "清盘未完成：" + self.error
+                                    + "\n\n可直接再次点击“立即清盘…”重试；已归类的录像不受影响。")
         else:
             self.bar.setRange(0, 1)
             self.bar.setValue(1)
@@ -653,16 +728,24 @@ class DahuaPanel(QWidget):
                                 cleanup = tasks.cleanup_completed_sources(
                                     self.index_full, result, confirm_partial=True
                                 )
+                    completed = result.get("status") == "completed"
                     self.status.setText(
-                        (
-                            "归类完成"
-                            if result.get("status") == "completed"
-                            else "所选范围没有可输出录像"
-                        )
+                        ("归类完成" if completed else "所选范围没有可输出录像")
                         + f"；待核对 {len(result.get('issues', []))} 项。原始录像保留。"
                     )
                     if cleanup:
                         self.status.setText(self.status.text() + "；" + cleanup["message"])
+                    if completed:
+                        self._offer_wipe_after_organize(result)
+                elif self.operation == "wipe_survey":
+                    self.confirm_wipe(result["survey"])
+                elif self.operation == "wipe":
+                    wiped = result.get("wipe", {})
+                    text = (f"清盘完成：{wiped.get('partitions', '?')} 个分区已重置为空白录像机格式，"
+                            f"复核 0 条录像；磁盘可立即放回录像机继续录制。")
+                    self.status.setText(text)
+                    QMessageBox.information(self, "清盘完成", text)
+                    self.start("disks", {})
                 elif self.operation == "previews":
                     self.status.setText("缩略图已就绪；同号通道已对应同号视角，可直接开始转码。")
             elif not self.error:
@@ -672,6 +755,25 @@ class DahuaPanel(QWidget):
         self.refresh()
         if continue_task and not self.error:
             QTimer.singleShot(0, self.organize)
+
+    def _offer_wipe_after_organize(self, result):
+        """First announce the finished classification, then ask once about wiping.
+
+        Only a recorder-disk task is offered a wipe, and only for the very
+        disk that was classified; Yes wipes directly without further prompts.
+        """
+        done = sum(len(v.get("outputs", [])) for v in result.get("completed_records", {}).values())
+        QMessageBox.information(self, "数据归类完成",
+                                f"归类已全部完成，共归档 {done} 个视频文件，结果已保存到牧场目录。")
+        disk = (self.index_full or {}).get("disk") if isinstance(self.index_full, dict) else None
+        if self.mode.currentIndex() != 1 or not disk or not disk.get("identity"):
+            return
+        info = dict(disk, existing_recordings=len((self.index_full or {}).get("rows", [])))
+        answer = QMessageBox.question(self, "是否清盘", self.wipe_question(info),
+                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                      QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.wipe_confirm(expected_identity=disk["identity"])
 
     def apply_index(self, index):
         self.index_full = index if isinstance(index, dict) else None
@@ -784,6 +886,10 @@ class DahuaPanel(QWidget):
         self.preview_button.setEnabled(not self.running and bool(self.index))
         self.run_button.setEnabled(not self.running and bool(self.index))
         self.pause_button.setEnabled(self.running)
+        selected_disk = self.disk_choice.currentData()
+        self.wipe_button.setEnabled(
+            not self.running and self.mode.currentIndex() == 1
+            and isinstance(selected_disk, dict) and bool(selected_disk.get("dhfs")))
         self.report_button.setEnabled(bool(self.job))
 
     def open_output(self):

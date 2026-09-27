@@ -95,7 +95,7 @@ def main():
             if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
                 raise SystemExit("Portable model hash mismatch: " + item["name"])
     destination.mkdir(parents=True, exist_ok=False)
-    for name in ("cowmata_tailring", "cowmata_security", "server-upgrade", "runtime", "vendor", "assets"):
+    for name in ("cowmata_tailring", "cowmata_engine", "cowmata_security", "server-upgrade", "runtime", "vendor", "assets"):
         # Exclude upstream test corpora and C++ build objects, not runtime DLLs
         # or our reviewed event algorithms. This also avoids NSIS/MAX_PATH
         # failures on deeply nested sklearn test fixtures and Qt object files.
@@ -106,7 +106,7 @@ def main():
     for name in ("cowmata-security.json", "upload_key.pub", "COWMATA.exe", "START_ANNOTATOR.bat", "修复旧版更新.cmd", "portable_start.py", "使用说明.txt", "README.md", "README.zh-CN.md", "CHANGELOG.md", "CITATION.cff", "CONTRIBUTING.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'operator-guide-395.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'release-395.md', 'release-410.md', 'release-411.md', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md'):
+    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'operator-guide-395.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'release-395.md', 'release-410.md', 'release-411.md', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md', 'DECISION_ENGINE_433.md', 'ENGINE_API_433.md', 'DECISION_RESULTS_433.md', 'DECISION_ENGINE_435.md', 'ENGINE_API_435.md', 'DECISION_ENGINE_437.md', 'LYING_RATIO_ALGORITHM.md', 'heart-rate-algorithm.md', 'spo2-algorithm.md'):
         shutil.copy2(source/'docs'/name, destination/'docs'/name)
     shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
     shutil.copytree(source/'docs/images/guide390', destination/'docs/images/guide390')
@@ -115,6 +115,28 @@ def main():
     (destination/'scripts').mkdir()
     for name in ('recover_update.py','portable_startup_self_test.py','portable_self_test.py','verify_label_history.py','verify_event_models.py','verify_candidate_ui.py','register_event_pack.py','verify_evidence_archive.py','train_mother_dataset.py'):
         shutil.copy2(source/'scripts'/name, destination/'scripts'/name)
+    # 4.3.7 release gate: run the SAME import test the installed updater runs on a staged
+    # package, plus every native extension the engine needs. 4.3.5/4.3.6 shipped a runtime
+    # missing 208 files (numpy.libs OpenBLAS, joblib, sklearn .pyd, onnxruntime tools); every
+    # client update then failed with "新版运行库导入检查失败".
+    import subprocess
+    gate = ("import sys;sys.path.insert(0,sys.argv[1]);"
+            "from cowmata_tailring import __version__;"
+            "from cowmata_tailring.workspace.modern_window import MainWindow;"
+            "from cowmata_tailring.app.update_ui import UpdateController;"
+            "import numpy,scipy.signal,scipy.optimize,sklearn.ensemble,sklearn.metrics,sklearn.isotonic,joblib,"
+            "xgboost,onnxruntime,rapidocr,pandas,PySide6.QtWidgets,PySide6.QtSvg;"
+            "numpy.linalg.inv(numpy.eye(3));"
+            "from cowmata_engine.features import available_features;"
+            "bad=[k for k,m,e in available_features() if m is None];"
+            "assert not bad, bad;"
+            "print(__version__)")
+    check = subprocess.run([str(destination / "runtime/python.exe"), "-I", "-B", "-c", gate, str(destination)],
+                           capture_output=True, timeout=180)
+    for cache in destination.rglob("__pycache__"):
+        shutil.rmtree(cache, ignore_errors=True)
+    if check.returncode:
+        raise SystemExit("Release import gate failed:\n" + check.stderr.decode("utf-8", "replace")[-2000:])
     inventory = []
     for path in sorted(destination.rglob("*")):
         if path.is_file():

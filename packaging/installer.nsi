@@ -20,17 +20,17 @@ Unicode true
 !endif
 SetDatablockOptimize on
 CRCCheck force
-Name "COWMATA Pro™ ${VERSION}"
-BrandingText "COWMATA Pro™ · www.cowmata.com"
+Name "COWMATA Annotator ${VERSION}"
+BrandingText "COWMATA Annotator · www.cowmata.com"
 OutFile "${OUTPUT}"
-InstallDir "$LOCALAPPDATA\Programs\COWMATA Pro™"
+InstallDir "$LOCALAPPDATA\Programs\COWMATA Annotator"
 RequestExecutionLevel user
 SetFont "Microsoft YaHei UI" 9
 ShowInstDetails nevershow
 ShowUninstDetails nevershow
 VIProductVersion "${VERSION}.0"
-VIAddVersionKey "ProductName" "COWMATA Pro™"
-VIAddVersionKey "FileDescription" "COWMATA Pro™ Offline Setup"
+VIAddVersionKey "ProductName" "COWMATA Annotator"
+VIAddVersionKey "FileDescription" "COWMATA Annotator Offline Setup"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "LegalCopyright" "COWMATA contributors"
 
@@ -60,8 +60,8 @@ Page custom LocationCreate LocationLeave
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 
-LangString WelcomeTitle ${LANG_SIMPCHINESE} "安装 COWMATA Pro™"
-LangString WelcomeTitle ${LANG_ENGLISH} "Install COWMATA Pro™"
+LangString WelcomeTitle ${LANG_SIMPCHINESE} "安装 COWMATA Annotator"
+LangString WelcomeTitle ${LANG_ENGLISH} "Install COWMATA Annotator"
 LangString WelcomeBody ${LANG_SIMPCHINESE} "录像与九轴数据同步标注工作台。$\r$\n$\r$\n完整离线安装，已包含运行库，不需要配置 Python；行为与决策模型需手动导入。$\r$\n$\r$\n接下来选择存放位置，安装器会自动创建软件文件夹。"
 LangString WelcomeBody ${LANG_ENGLISH} "Video and nine-axis annotation workstation.$\r$\n$\r$\nRuntimes are included. Import behavior and decision models separately. No Python setup or downloads.$\r$\n$\r$\nSelect a location; Setup creates the application folder."
 LangString LocationTitle ${LANG_SIMPCHINESE} "选择安装位置"
@@ -86,12 +86,12 @@ LangString OccupiedLocation ${LANG_SIMPCHINESE} "这个软件文件夹已包含�
 LangString OccupiedLocation ${LANG_ENGLISH} "The application folder is not empty. Choose another folder name to preserve existing files."
 LangString NoSpace ${LANG_SIMPCHINESE} "磁盘空间不足或目录不可写。请更换存放位置。"
 LangString NoSpace ${LANG_ENGLISH} "Insufficient disk space or the location is not writable. Choose another location."
-LangString FinishTitle ${LANG_SIMPCHINESE} "COWMATA Pro™ 安装完成"
-LangString FinishTitle ${LANG_ENGLISH} "COWMATA Pro™ is installed"
+LangString FinishTitle ${LANG_SIMPCHINESE} "COWMATA Annotator 安装完成"
+LangString FinishTitle ${LANG_ENGLISH} "COWMATA Annotator is installed"
 LangString FinishBody ${LANG_SIMPCHINESE} "运行库已就绪。行为与决策模型在使用时手动导入。$\r$\n$\r$\n可从桌面快捷方式（如已勾选）或开始菜单打开。$\r$\n$\r$\n点击“完成”退出安装向导。"
 LangString FinishBody ${LANG_ENGLISH} "Runtimes are ready. Import behavior and decision models when needed.$\r$\n$\r$\nOpen from Start or the desktop shortcut, if selected.$\r$\n$\r$\nClick Finish to close Setup."
-LangString LaunchText ${LANG_SIMPCHINESE} "启动 COWMATA Pro™"
-LangString LaunchText ${LANG_ENGLISH} "Launch COWMATA Pro™"
+LangString LaunchText ${LANG_SIMPCHINESE} "启动 COWMATA Annotator"
+LangString LaunchText ${LANG_ENGLISH} "Launch COWMATA Annotator"
 LangString InstallFailure ${LANG_SIMPCHINESE} "安装未完成。请检查可用空间和目录权限；原始数据未被修改。"
 LangString InstallFailure ${LANG_ENGLISH} "Installation failed. Check disk space and permissions. Original data was not changed."
 LangString UninstallBusy ${LANG_SIMPCHINESE} "文件正在使用或无法删除。请保存标注、完全退出软件后重试卸载；不要手工强删。"
@@ -160,12 +160,21 @@ Function .onInit
   ${GetParent} "$INSTDIR" $ParentPath
   ${GetFileName} "$INSTDIR" $FolderName
   ${IfNot} ${RunningX64}
-    MessageBox MB_ICONSTOP "COWMATA Pro™ requires Windows 10/11 x64."
+    MessageBox MB_ICONSTOP "COWMATA Annotator requires Windows 10/11 x64."
     Abort
   ${EndIf}
 FunctionEnd
 
 Function LocationCreate
+  ; Silent staging and registration are non-interactive contracts.  Skipping
+  ; the custom location page prevents NSIS from waiting on a hidden dialog
+  ; when the updater invokes /S /STAGE=1 or /REGISTERONLY=1.
+  ${If} $StageOnly == "1"
+    Abort
+  ${EndIf}
+  ${If} $RegisterOnly == "1"
+    Abort
+  ${EndIf}
   !insertmacro MUI_HEADER_TEXT "$(LocationTitle)" "$(LocationBody)"
   nsDialogs::Create 1018
   Pop $0
@@ -337,7 +346,7 @@ Function LocationLeave
   ${EndIf}
 FunctionEnd
 
-Section "COWMATA Pro™" Main
+Section "COWMATA Annotator" Main
   Call ValidateLocation
   ${If} $PathError != ""
     IfSilent +2
@@ -390,18 +399,18 @@ Section "COWMATA Pro™" Main
   ${EndIf}
   register_installation:
   SetOutPath "$INSTDIR"
-  CreateDirectory "$SMPROGRAMS\COWMATA Pro™ ${VERSION}"
-  CreateShortcut "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\COWMATA Pro™.lnk" "$INSTDIR\COWMATA.exe" "" "$INSTDIR\COWMATA.exe" 0
-  CreateShortcut "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
-  nsExec::ExecToStack /TIMEOUT=15000 '"$INSTDIR\COWMATA.exe" --register-shortcut "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\COWMATA Pro™.lnk"'
+  CreateDirectory "$SMPROGRAMS\COWMATA Annotator ${VERSION}"
+  CreateShortcut "$SMPROGRAMS\COWMATA Annotator ${VERSION}\COWMATA Annotator.lnk" "$INSTDIR\COWMATA.exe" "" "$INSTDIR\COWMATA.exe" 0
+  CreateShortcut "$SMPROGRAMS\COWMATA Annotator ${VERSION}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\Uninstall.exe" 0
+  nsExec::ExecToStack /TIMEOUT=15000 '"$INSTDIR\COWMATA.exe" --register-shortcut "$SMPROGRAMS\COWMATA Annotator ${VERSION}\COWMATA Annotator.lnk"'
   Pop $0
   Pop $1
   ${If} $0 != 0
     SetErrors
   ${EndIf}
   ${If} $DesktopEnabled == ${BST_CHECKED}
-    CreateShortcut "$DESKTOP\COWMATA Pro™ ${VERSION}.lnk" "$INSTDIR\COWMATA.exe" "" "$INSTDIR\COWMATA.exe" 0
-    nsExec::ExecToStack /TIMEOUT=15000 '"$INSTDIR\COWMATA.exe" --register-shortcut "$DESKTOP\COWMATA Pro™ ${VERSION}.lnk"'
+    CreateShortcut "$DESKTOP\COWMATA Annotator ${VERSION}.lnk" "$INSTDIR\COWMATA.exe" "" "$INSTDIR\COWMATA.exe" 0
+    nsExec::ExecToStack /TIMEOUT=15000 '"$INSTDIR\COWMATA.exe" --register-shortcut "$DESKTOP\COWMATA Annotator ${VERSION}.lnk"'
     Pop $0
     Pop $1
     ${If} $0 != 0
@@ -411,11 +420,11 @@ Section "COWMATA Pro™" Main
   ; Refresh only this application's changed EXE and shortcut; never reset the
   ; user's global icon cache or restart Explorer during an upgrade.
   System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x1005, w "$INSTDIR\COWMATA.exe", p 0)'
-  System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x1005, w "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\COWMATA Pro™.lnk", p 0)'
+  System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x1005, w "$SMPROGRAMS\COWMATA Annotator ${VERSION}\COWMATA Annotator.lnk", p 0)'
   ${If} $DesktopEnabled == ${BST_CHECKED}
-    System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x1005, w "$DESKTOP\COWMATA Pro™ ${VERSION}.lnk", p 0)'
+    System::Call 'shell32::SHChangeNotify(i 0x2000, i 0x1005, w "$DESKTOP\COWMATA Annotator ${VERSION}.lnk", p 0)'
   ${EndIf}
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\COWMATA-${VERSION}" "DisplayName" "COWMATA Pro™ ${VERSION}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\COWMATA-${VERSION}" "DisplayName" "COWMATA Annotator ${VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\COWMATA-${VERSION}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\COWMATA-${VERSION}" "DisplayIcon" "$INSTDIR\COWMATA.exe,0"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\COWMATA-${VERSION}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
@@ -472,10 +481,10 @@ Section "Uninstall"
   ; Older copies cannot remove registration/shortcuts belonging to a newer copy.
   ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\COWMATA-${VERSION}" "InstallLocation"
   ${If} $0 == $INSTDIR
-    Delete "$DESKTOP\COWMATA Pro™ ${VERSION}.lnk"
-    Delete "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\COWMATA Pro™.lnk"
-    Delete "$SMPROGRAMS\COWMATA Pro™ ${VERSION}\Uninstall.lnk"
-    RMDir "$SMPROGRAMS\COWMATA Pro™ ${VERSION}"
+    Delete "$DESKTOP\COWMATA Annotator ${VERSION}.lnk"
+    Delete "$SMPROGRAMS\COWMATA Annotator ${VERSION}\COWMATA Annotator.lnk"
+    Delete "$SMPROGRAMS\COWMATA Annotator ${VERSION}\Uninstall.lnk"
+    RMDir "$SMPROGRAMS\COWMATA Annotator ${VERSION}"
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\COWMATA-${VERSION}"
   ${EndIf}
   Goto done

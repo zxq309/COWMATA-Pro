@@ -173,6 +173,39 @@ def member(root, relative, *, checked_dirs=None):
     return result
 
 
+JUNK_DIR_PATTERNS = ("%SystemDrive%",)
+
+
+def purge_junk(root):
+    """Remove installer droppings that block the directory swap.
+
+    Windows components and GPU installers occasionally run with the
+    application directory as their working directory and write to
+    unexpanded paths, leaving e.g. a literal percent SystemDrive folder
+    holding a ProgramData cache copy, or NVIDIA Corporation umdlogs,
+    inside the install tree. None of it is user data; deleting it keeps
+    self-update unblocked.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        return []
+    removed = []
+    for entry in sorted(root.iterdir()):
+        if not entry.is_dir() or entry.is_symlink():
+            continue
+        name = entry.name
+        targeted = name in JUNK_DIR_PATTERNS or (name == "NVIDIA Corporation"
+                                                 and (entry / "umdlogs").is_dir())
+        if not targeted:
+            continue
+        try:
+            shutil.rmtree(entry)
+            removed.append(name)
+        except OSError:
+            continue
+    return removed
+
+
 def inventory(root, *, verify=False, manifest_sha=None, progress=lambda *_: None):
     checked_dirs = set()
     root = safe_path(root, checked_dirs=checked_dirs)
@@ -267,6 +300,7 @@ def desktop_enabled(root, version):
 def remove_owned(root):
     """No recursive delete: validate the complete inventory before first unlink."""
     root = safe_path(root)
+    purge_junk(root)
     actual = inventory(root)
     checked_dirs = set()
     for rel in actual:
@@ -346,6 +380,11 @@ def _install_locked(job, *, runner, registration, unregister, restart):
     inventory(root)
     if shutil.disk_usage(root.parent).free < update["unpacked_size"] + 128 * 1024**2:
         raise OSError("磁盘空间不足；旧版保持不变")
+    junk = purge_junk(root)
+    if junk:
+        state = read_json(journal, {})
+        state.update(purged_junk=junk)
+        write_json(journal, state)
     job_dir = safe_path(job["job_dir"])
     if job_dir.is_relative_to(root):
         raise ValueError("Updater must be outside the application directory")
@@ -379,6 +418,9 @@ def _install_locked(job, *, runner, registration, unregister, restart):
         result = runner([setup, "/S", "/STAGE=1", "/D=" + str(stage)], timeout=600)
         if result.returncode:
             raise RuntimeError(f"解包失败 ({result.returncode})，旧版未修改")
+        staged_manifest = stage / "package-manifest.json"
+        if not staged_manifest.is_file():
+            raise RuntimeError("安装包未在暂存目录生成 package-manifest.json；发布资产与更新器不匹配，旧版未修改")
         phase("verifying")
         last_progress = [0.0]
         def progress(current, total, path):
@@ -400,8 +442,12 @@ def _install_locked(job, *, runner, registration, unregister, restart):
         result = runner([stage / "runtime/python.exe", "-I", "-B", "-c", smoke, stage], timeout=90)
         output = result.stdout.decode("utf-8", "replace").strip()
         if result.returncode or version_key(output) != version_key(version):
-            raise RuntimeError("新版运行库导入检查失败；旧版未修改")
+            # Name the failing import so the next failure is diagnosable from error.json alone.
+            detail = (result.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+            reason = next((line.strip() for line in reversed(detail) if "Error" in line), detail[-1].strip() if detail else "")
+            raise RuntimeError("新版运行库导入检查失败；旧版未修改" + (f"（{reason[:240]}）" if reason else ""))
         phase("pre_swap_check")
+        purge_junk(root)
         inventory(root)  # Catch files added during extraction.
         if running_check(root, job_dir, runner, version=old_version):
             raise RuntimeError("软件被重新打开；已取消替换")
@@ -473,14 +519,14 @@ def main():
         write_json(Path(job["job_dir"]) / "result.json", {"phase": "already_updating", "message": str(exc)})
         if os.name == "nt":
             import ctypes
-            ctypes.windll.user32.MessageBoxW(None, str(exc), "COWMATA Pro™ 更新", 0x40)
+            ctypes.windll.user32.MessageBoxW(None, str(exc), "COWMATA Annotator 更新", 0x40)
         return 0
     except Exception as exc:
         write_json(Path(job["job_dir"]) / "error.json", {"error": str(exc)})
         if os.name == "nt":
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, "升级未完成，未强行覆盖。请查看：\n" +
-                str(Path(job["job_dir"]) / "error.json") + "\n\n" + str(exc), "COWMATA Pro™ 更新", 0x10)
+                str(Path(job["job_dir"]) / "error.json") + "\n\n" + str(exc), "COWMATA Annotator 更新", 0x10)
         return 1
 
 

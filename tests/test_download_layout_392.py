@@ -43,26 +43,15 @@ def test_long_plan_scrolls_without_compressing_headers(tmp_path, qt_application)
         dialog.deleteLater()
 
 
-def test_existing_csv_detected_only_for_missing_legacy_default(tmp_path, monkeypatch):
-    import cowmata_tailring.edge_download.pro_settings as module
-    from cowmata_tailring.edge_download.site_records import SCHEMAS
-
-    legacy = tmp_path / "old-default"
-    existing = tmp_path / "existing-records"
-    existing.mkdir()
-    for schema in SCHEMAS.values():
-        (existing / schema["filename"]).write_text("test", encoding="utf-8")
-    monkeypatch.setattr(module, "LOCAL_DIRECTORY", str(legacy))
-    monkeypatch.setattr(module, "SERVER_DIRECTORY", str(existing))
-    defaults = module.settings_defaults()
-    monkeypatch.setattr(module, "settings_defaults", lambda: {**defaults, "ledger_directory": str(legacy)})
-    store = module.ProSettings(tmp_path / "settings")
-    assert store.value["ledger_directory"] == str(existing)
+def test_default_cache_is_installation_relative_and_custom_directory_is_preserved(tmp_path, monkeypatch):
+    from cowmata_tailring.edge_download.pro_settings import ProSettings
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    root = tmp_path / "app"
+    store = ProSettings(tmp_path / "settings", app_root=root)
+    assert store.display_path(store.value["ledger_directory"]) == "../COWMATA Pro 数据/现场台账"
     custom = tmp_path / "custom-records"
     store.save(ledger_directory=str(custom))
-    assert module.ProSettings(tmp_path / "settings").value["ledger_directory"] == str(custom)
-    legacy.mkdir()
-    assert module.ProSettings(tmp_path / "other-settings").value["ledger_directory"] == str(legacy)
+    assert ProSettings(tmp_path / "settings", app_root=root).value["ledger_directory"] == str(custom)
 
 
 def test_default_schedule_is_future_beijing_time_on_every_host(tmp_path, qt_application):

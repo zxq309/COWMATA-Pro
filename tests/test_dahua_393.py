@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import io
@@ -255,7 +255,7 @@ def test_worker_closes_shared_slot_on_success(tmp_path, monkeypatch):
     atomic_json(job / "dahua-request.json", dict(action="previews", groups=[]))
     atomic_json(job / "dahua-index.json", dict(rows=[]))
     slot = ProjectLock(tmp_path / "slot.lock")
-    monkeypatch.setattr(classification_resources, "limit_worker", lambda: {})
+    monkeypatch.setattr(classification_resources, "limit_worker", lambda *a, **k: {})
     monkeypatch.setattr(classification_resources, "acquire_preparation_slot", lambda *a: slot)
     monkeypatch.setattr(dahua_worker.tasks, "disks", lambda: [])
     monkeypatch.setattr(dahua_worker.sys, "argv", ["worker", str(job)])

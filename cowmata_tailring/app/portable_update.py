@@ -166,7 +166,9 @@ def install_locked(job, *, runner, restart=True):
                  "from cowmata_tailring.app.update_ui import UpdateController;print(__version__)")
         result = runner([stage/"runtime/python.exe","-I","-B","-c",smoke,stage],timeout=90)
         if result.returncode or version_key(result.stdout.decode("utf-8","replace").strip()) != version_key(version):
-            raise RuntimeError("新版运行库检查失败，旧版未修改")
+            detail = (result.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+            reason = next((line.strip() for line in reversed(detail) if "Error" in line), detail[-1].strip() if detail else "")
+            raise RuntimeError("新版运行库检查失败，旧版未修改" + (f"（{reason[:240]}）" if reason else ""))
         worker.inventory(root)
         if worker.running_check(root, job_dir, runner, version=old):
             raise RuntimeError("旧版被重新打开，请保存关闭后重试")

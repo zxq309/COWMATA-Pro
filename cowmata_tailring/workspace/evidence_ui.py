@@ -78,7 +78,10 @@ class EvidenceGallery(QScrollArea):
                     caption = QLabel(f"实际帧 {wall_text(item['reference_ms'])} · 偏差 {item['delta_ms']:+.1f} ms\n"
                                      f"{item['width']} × {item['height']} · 点击放大")
                     caption.setWordWrap(True)
-                    if item.get("camera_clock_basis") == "shared_reference_assumed":
+                    if item.get("time_mapping") == "unverified":
+                        caption.setText(caption.text() + "\n⚠ 录像时间映射未核验：截图仅供复核，请核对画面时刻")
+                        caption.setStyleSheet("color:#b35b00")
+                    elif item.get("camera_clock_basis") == "shared_reference_assumed":
                         caption.setText(caption.text() + "\n沿用工程参考时钟，请核对视角是否同步")
                     layout.addWidget(caption)
                 except (OSError, ValueError, KeyError) as exc:
