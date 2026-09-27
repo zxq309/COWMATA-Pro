@@ -4,7 +4,7 @@ import time
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
 
-from cowmata_tailring.algorithms.workbench_ui import AlgorithmWorkbench, CalvingEvidenceWindow
+from cowmata_tailring.ui.algorithms.workbench_ui import AlgorithmWorkbench, CalvingEvidenceWindow
 
 
 def pump_until(predicate):
@@ -56,7 +56,7 @@ def test_closing_management_cancels_owned_worker_before_window_closes(tmp_path, 
             time.sleep(.005)
         stopped.set()
         raise InterruptedError("cancelled")
-    monkeypatch.setattr("cowmata_tailring.algorithms.workbench_ui.run_job", slow)
+    monkeypatch.setattr("cowmata_tailring.ui.algorithms.workbench_ui.run_job", slow)
     owner = QWidget()
     window = AlgorithmWorkbench(owner)
     window.show()

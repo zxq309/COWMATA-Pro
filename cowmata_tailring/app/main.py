@@ -115,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     canvas = QPixmap(520, 130)
     canvas.fill(QColor('#e8f4dc'))
     splash = QSplashScreen(canvas)
-    splash.showMessage('正在启动 COWMATA Pro™…', Qt.AlignmentFlag.AlignCenter, QColor('#203c2a'))
+    splash.showMessage('正在启动 COWMATA Annotator…', Qt.AlignmentFlag.AlignCenter, QColor('#203c2a'))
     splash.show()
     application.processEvents()
 

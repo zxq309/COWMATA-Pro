@@ -572,6 +572,13 @@ class Catalog:
                 from cowmata_tailring.media.timeline import MediaTimelineIndex
                 cached_timeline=MediaTimelineIndex.from_dict(metadata['timeline']) if metadata.get('timeline') else None
                 metadata=metadata_from_name(path,relative,info,cached_timeline)
+            if named and metadata and not metadata.get('manual_readings') and metadata.get('time_engine') == FILENAME_SIGNATURE:
+                # Versioned filename media metadata must be re-inspected once
+                # after a timing-engine upgrade; otherwise stale short Dahua
+                # durations remain authoritative forever.
+                from .video_filename import SIGNATURE as CURRENT_FILENAME_SIGNATURE
+                if metadata.get('version') != CURRENT_FILENAME_SIGNATURE:
+                    metadata = {}
             filename_changed = row['kind']=='video' and not metadata.get('manual_readings') and (
                 named != (metadata.get('time_engine')==FILENAME_SIGNATURE))
             if not metadata or metadata.get("recheck") or filename_changed:
@@ -580,6 +587,8 @@ class Catalog:
                 if previous_camera and row["kind"] == "video":
                     metadata["camera"] = previous_camera
             metadata = bind_location_metadata(metadata, before, relative)
+            if metadata.get('time_engine') == FILENAME_SIGNATURE:
+                metadata['version'] = FILENAME_SIGNATURE
             if cancelled and cancelled():
                 raise InterruptedError("素材检查已暂停")
             if not isinstance(metadata, dict):
@@ -648,6 +657,36 @@ class Catalog:
                 self.db.execute("UPDATE assets SET metadata=json_set(metadata,'$.recheck',1) WHERE id=?", (row["asset_id"],))
                 self.db.execute("UPDATE locations SET state='pending',attempt_at=0,error=? WHERE path=?",
                                 ("视频时间规则已更新，等待读取；人工标签和校准记录保留", row["path"]))
+                queued += 1
+        return queued
+
+    def queue_dahua_timeline_upgrade(self) -> int:
+        """Recheck PS recordings once after the frame-clock upgrade.
+
+        Older releases stored the adjacent-filename guess without byte seek
+        keys for these streams, so paused frames inside the file could not be
+        decoded. Manual clock readings stay authoritative; identity and
+        annotations are never touched.
+        """
+        self._write_check()
+        queued = 0
+        with self.mutex, self.db:
+            for row in self.rows(kind="video"):
+                metadata = row["metadata"]
+                if row["state"] not in {"ready", "review"}:
+                    continue
+                if len(metadata.get("manual_readings", [])) >= 2:
+                    continue
+                fmt = str(metadata.get("format", ""))
+                if "mpeg" not in fmt or "mp4" in fmt:
+                    continue
+                timeline = metadata.get("timeline") or {}
+                if timeline.get("native") or metadata.get("dahua"):
+                    continue
+                self.db.execute("UPDATE assets SET metadata=json_set(metadata,'$.recheck',1) WHERE id=?",
+                                (row["asset_id"],))
+                self.db.execute("UPDATE locations SET state='pending',attempt_at=0,error=? WHERE path=?",
+                                ("大华时间轴规则已更新，等待重建索引；人工标注保留", row["path"]))
                 queued += 1
         return queued
 

@@ -12,7 +12,7 @@ from cowmata_tailring.workspace.farm_layout import initialize_farm
 
 @pytest.fixture
 def incremental(tmp_path, monkeypatch):
-    monkeypatch.setattr(tasks, "preparation_workers", lambda: 1)
+    monkeypatch.setattr(tasks, "preparation_workers", lambda *a, **k: 1)
     monkeypatch.setenv("COWMATA_ACCESS_DIR", str(tmp_path / "locks"))
     farm, job = tmp_path / "farm", tmp_path / "job"
     initialize_farm(farm)
@@ -112,8 +112,9 @@ def test_failed_record_does_not_block_next_and_never_becomes_complete(incrementa
     result = tasks.organize(request, job)
     assert len(list((farm / "录像").rglob("*.mp4"))) == 1
     report = tasks.read_json(job / "dahua-run.json")
-    assert [r["status"] for r in report["records"]] == ["blocked", "done"]
-    assert result["issues"][0]["message"] == "bad clock"
+    # An undecodable recording is retried once, then discarded (no 待核对).
+    assert [r["status"] for r in report["records"]] == ["skipped", "done"]
+    assert "bad clock" in report["records"][0]["message"] and not result["issues"]
 
 
 def test_shared_farm_output_hint_and_open_button_use_same_recording_folder(tmp_path, monkeypatch):
@@ -151,7 +152,7 @@ def test_hardware_failure_falls_back_without_leaving_partial(tmp_path, monkeypat
     from cowmata_tailring.workspace import dahua_media as media
     target = tmp_path / "out.mp4"
     monkeypatch.setattr(media, "available_encoder", lambda *a: "h264_nvenc")
-    def encode(source, path, offset, duration, cancelled, *, encoder="libx264", stage=lambda *a, **k: None):
+    def encode(source, path, offset, duration, cancelled, *, encoder="libx264", stage=lambda *a, **k: None, **_kw):
         path = Path(path)
         path.write_bytes(encoder.encode())
         if encoder != "libx264":
@@ -317,7 +318,7 @@ def test_restore_uses_farm_pending_job_after_last_scan_changed(incremental, monk
     tasks.scan(dict(mode="files", files=[str(p) for p in sources]), new_job)
     tasks.atomic_json(new_job / "dahua-request.json", dict(action="restore", target=str(farm)), backup=False)
     monkeypatch.setattr(dahua_worker.sys, "argv", ["worker", str(new_job)])
-    monkeypatch.setattr(classification_resources, "limit_worker", lambda: {})
+    monkeypatch.setattr(classification_resources, "limit_worker", lambda *a, **k: {})
     assert dahua_worker.main() == 0
     result = tasks.read_json(new_job / "dahua-result.json")
     assert Path(result["job"]) == job

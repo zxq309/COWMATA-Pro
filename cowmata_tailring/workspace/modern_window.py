@@ -9,7 +9,6 @@ from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QActionGroup, QIcon, QPainter
-from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -76,20 +75,19 @@ class MainWindow(ControllerWindow):
         self.resize(1600, 1000)
         self.setMinimumSize(1080, 720)
         self.setStyleSheet(STYLE)
-        self.setWindowTitle("COWMATA Pro")
+        self.setWindowTitle("COWMATA Annotator")
         central = FrostedCanvas()
         self.shell = central
+        # Mica/frosted repainting can cover a native VLC child window while
+        # the layout is changing. Keep the operator preference, but suspend
+        # the effect for the duration of live video playback.
+        self._glass_requested = True
         outer = QVBoxLayout(central)
         outer.setContentsMargins(14, 8, 14, 8)
         outer.setSpacing(7)
         header = QHBoxLayout()
-        brand = QSvgWidget(str(Path(__file__).resolve().parents[2] / "assets/brand/pro-wordmark.svg"))
-        brand.setFixedSize(210, 26)
-        brand.setAccessibleName("COWMATA Pro™")
-        brand.setToolTip("COWMATA Pro™")
-        header.addWidget(brand)
-        self._icon_button("Folder Open", "打开工程", self.choose_project, header)
         self.root_label = ElidingLabel("九轴 / PPG / 温度与多视角录像")
+        self.root_label.setStyleSheet("font-size:12px; color:#315225; padding-left:6px")
         header.addWidget(self.root_label, 1)
         self.source_toggle = self._icon_button("Panel Left", "素材", self.toggle_sources, header)
         self.source_toggle.setCheckable(True)
@@ -118,6 +116,8 @@ class MainWindow(ControllerWindow):
         self._action(files, "保存并退出", self.close, "Alt+F4")
         view.addSeparator()
         self._action(view, "固定 / 收起素材列表", self.toggle_sources, "Ctrl+L")
+        self._action(view, "放大视频（保留波形条）", self.enlarge_video, "Ctrl+E")
+        self._action(view, "波形分屏到独立窗口 / 合并", self.toggle_waveform_window, "Ctrl+Shift+E")
         self._action(view, "显示 / 隐藏标注列表", self.toggle_events)
         self._action(view, "界面与播放设置…", self.presentation_settings)
         tools = self.menuBar().addMenu("数据准备")
@@ -147,17 +147,16 @@ class MainWindow(ControllerWindow):
         edit.addMenu(sync)
         view.setTitle('显示与播放')
         edit.addMenu(view)
-        datasets = self.menuBar().addMenu('数据集构建')
-        for index,title in enumerate(('行为识别数据集','产犊预测数据集','发情预测数据集','怀孕监测数据集','疫病监测数据集')):
-            self._action(datasets,title,lambda _checked=False,tab=index:self.open_dataset_workflow(tab))
-        datasets.addSeparator()
-        datasets.addMenu(self._annotation_exports)
+        # 4.3.8 COWMATA Annotator: dataset building, behaviour training and health/reproduction
+        # decisions moved to the standalone calving-prediction algorithm package.
+        self._annotation_exports.setTitle('导出标注成果')
         self._build_algorithm_menus(edit)
         help_menu = self.menuBar().addMenu("帮助")
         from cowmata_tailring.ui.about import show_about
         self._action(help_menu, "快速开始", self.quick_help, "F1")
         self._action(help_menu, "新手图文教程…", self.open_tutorial)
         self._action(help_menu, "关于", lambda: show_about(self)).setToolTip("软件说明、公司信息、版本号与检查更新")
+        self._simplify_menus(files, tools, edit, sync, view, materials)
         self.menuBar().show()
         for toolbar in self.findChildren(QToolBar):
             self.removeToolBar(toolbar)
@@ -218,13 +217,14 @@ class MainWindow(ControllerWindow):
         self.stage = WorkspaceStage(self.board, self.plot)
         self.board.focusRequested.connect(self.focus_video)
         self.plot.setMinimumSize(300, 160)
-        self.imu_position.setMaximumWidth(140)
+        self.imu_position.setMaximumWidth(230)
         self.imu_position.setToolTip("九轴文件内的位置，不等于服务器收包时间")
-        self.plot.toolbar.addWidget(self.imu_position)
+        self.imu_position.setParent(self.options if hasattr(self, "options") else center)
+        self.imu_position.hide()
         self.plot.toolbar.addWidget(self.link)
         self.alignment_button = self._icon_button("Pin", "一次对齐", self.pin, self.plot.toolbar)
         self.alignment_button.setToolTip("只找一个对应时刻即可完成对齐；点击后可分别拖动录像和九轴。")
-        review.addWidget(self.camera_pages)
+        header.insertWidget(1, self.camera_pages)
         review.addWidget(self.stage, 1)
         review.addWidget(self.alignment_controls)
         self.alignment_label.setStyleSheet("font-size:11px; color:#7b693d")
@@ -264,16 +264,35 @@ class MainWindow(ControllerWindow):
         self.mark_button.setText("动作起止")
         self.mark_button.setToolTip("开始 / 结束当前视频动作；也可使用标签对应的快捷键")
         annotation.addWidget(self.mark_button)
-        self._icon_button("Wand", "自动候选", self.open_candidates, annotation)
+        self.annotation_more = QToolButton()
+        self.annotation_more.setText("更多操作")
+        more_menu = QMenu(self.annotation_more)
+        more_menu.addAction("自动候选", self.open_candidates)
+        more_menu.addAction("界面与播放设置…", self.presentation_settings)
+        more_menu.addAction("加载记录…", self.show_status_details)
+        self.annotation_more.setMenu(more_menu)
+        self.annotation_more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        annotation.addWidget(self.annotation_more)
         self.event_toggle = self._icon_button("Text Bullet List", "标注列表", self.toggle_events, annotation)
         self.event_toggle.setCheckable(True)
         self._icon_button("Save", "保存", self.save_user_annotations, annotation)
         self._button("完成本份…", self.finish_record, annotation).setToolTip("确认整份已检查，选择下一份或保存退出；Ctrl+Enter")
+        self._button("关闭标注", self.close_annotation_session, annotation).setToolTip("保存当前标注并释放工程文件；之后可安全执行数据归类")
         review.addLayout(annotation)
         self.event_status.setStyleSheet("font-size:11px; color:#6b8179")
-        self.event_status.setWordWrap(True)
+        self.event_status.setWordWrap(False)
+        # Keep transient action feedback in the annotation toolbar.  It used
+        # to be parented to the central widget without a layout item; the
+        # first status update then made Qt give the label its default 640x480
+        # geometry, covering the main video, waveform and their controls.
+        self.event_status.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.event_status.setMinimumHeight(0)
+        self.event_status.setMaximumHeight(24)
         action_state = QHBoxLayout()
         action_state.addWidget(self.event_status, 1)
+        self.event_status.setParent(center)
+        self.event_status.hide()
+        self.mark_button.setToolTip(self.event_status.text())
         action_state.addWidget(self.cancel_action_button)
         review.addLayout(action_state)
         self.body.addWidget(center)
@@ -309,7 +328,7 @@ class MainWindow(ControllerWindow):
         details.addWidget(event_button)
         self.event_panel.setMinimumWidth(300)
         self.body.addWidget(self.event_panel)
-        from .algorithm_panel import AlgorithmPanel
+        from cowmata_tailring.ui.algorithms.inspection_panel import AlgorithmPanel
         self.algorithm_panel = AlgorithmPanel(self)
         self.algorithm_panel.exitRequested.connect(self.exit_algorithm)
         self.body.addWidget(self.algorithm_panel)
@@ -355,7 +374,7 @@ class MainWindow(ControllerWindow):
         self.status_details_button = QPushButton("加载记录…")
         self.status_details_button.setToolTip("展开完整状态、路径和加载记录；可选择复制")
         self.status_details_button.clicked.connect(self.show_status_details)
-        self.statusBar().addPermanentWidget(self.status_details_button)
+        self.status_details_button.hide()
         self.set_glass(True)
         self.source_panel.hide()
         self.event_panel.hide()
@@ -368,49 +387,123 @@ class MainWindow(ControllerWindow):
             if isinstance(control, QLineEdit | QTextEdit | QPlainTextEdit | QAbstractSpinBox | QComboBox):
                 control.installEventFilter(self)
 
+    @staticmethod
+    def _find_action(menu, text):
+        for action in menu.actions():
+            if action.text() == text:
+                return action
+            if action.menu() is not None:
+                found = MainWindow._find_action(action.menu(), text)
+                if found is not None:
+                    return found
+        return None
+
+    @staticmethod
+    def _arrange(menu, items):
+        """Reorder a menu; actions are only detached, never deleted."""
+        for action in list(menu.actions()):
+            menu.removeAction(action)
+        for item in items:
+            if item is None:
+                menu.addSeparator()
+            elif isinstance(item, QMenu):
+                menu.addMenu(item)
+            else:
+                menu.addAction(item)
+
+    def _simplify_menus(self, files, tools, edit, sync, view, materials):
+        """4.3.1: one task per menu, at most one submenu level for daily work.
+
+        Duplicates are dropped from the menus (算法管理 == 训练与识别), rare
+        tools are grouped, and behaviour inspection moves to 行为识别. Every
+        handler, shortcut and translation stays; only positions change.
+        """
+        def pick(menu, *texts):
+            return [a for a in (self._find_action(menu, t) for t in texts) if a is not None]
+
+        collaboration, legacy, evidence = self._collaboration_menu, self._legacy_menu, self._evidence_menu
+        raw_package = self._find_action(files, "打开协作原始数据包…")
+        self._arrange(files, [*pick(files, "打开工程…", "打开九轴…", "打开单个视频并配对九轴…", "历史回看…"), None,
+                              *pick(files, "保存", "保存并退出"), None, self._annotation_exports, None, legacy])
+        self._arrange(collaboration, [*([raw_package] if raw_package else []),
+                                      *[a for a in collaboration.actions() if a is not raw_package]])
+        layout = self._find_action(tools, "统一牧场录像目录…")
+        export = self._find_action(tools, "导出标准 MP4 副本…")
+        materials.setTitle("录像索引与核验")
+        index_items = [a for a in materials.actions()]
+        self._arrange(materials, [*([layout, None] if layout else []), *index_items])
+        self._arrange(tools, [*pick(tools, "端侧数据下载…", "数据归类…"), *([export] if export else []), None, materials])
+        labels = QMenu("标签编辑", self)
+        labels.setToolTipsVisible(True)
+        self._label_menu = labels
+        self._arrange(labels, [*pick(edit, "修改所选标签…", "批量修改标签…", "删除所选标注/草稿", "重新标注本份"), None,
+                               *[a for a in evidence.actions() if not a.isSeparator()]])
+        shown = pick(view, "放大视频（保留波形条）", "波形分屏到独立窗口 / 合并", "全屏 / 退出全屏", "退出单路放大")
+        panels = pick(view, "素材列表", "标注列表", "双画面主视角宽度…", "界面与播放设置…")
+        rest = [a for a in view.actions() if not a.isSeparator() and a not in shown and a not in panels]
+        self._arrange(view, [*shown, None, *panels, None, *rest])
+        inspection = self._find_action(edit, "逐项算法检查")
+        self._arrange(edit, [*pick(edit, "自动生成候选…", "用所选九轴区间建立候选"),
+                             *pick(edit, "自动标注模型…"), *([inspection.menu()] if inspection else []), None,
+                             *pick(edit, "完成本份九轴…", "下一份未完成九轴"), None,
+                             *pick(edit, "撤销", "重做"), None, labels, sync, collaboration, view])
+
     def _heading(self, text):
         label = QLabel(text)
         label.setObjectName("sectionTitle")
         return label
 
     def _build_algorithm_menus(self, annotation_menu):
-        from .algorithm_catalog import BEHAVIORS, HEALTH
-        behavior_menu = self.menuBar().addMenu('行为识别')
-        self._action(behavior_menu, '训练与识别…', self.open_behavior_390)
-        self._action(behavior_menu, '打开模型库', self.open_model_library)
-        self._action(annotation_menu, "算法管理", self.open_algorithm_workbench)
+        """4.3.8 Annotator: only annotation aids that *use* trained behaviour models remain."""
+        from .algorithm_catalog import BEHAVIORS
+        model = self._action(annotation_menu, "自动标注模型…", self.choose_annotation_models)
+        model.setToolTip("选择自动生成候选所用的行为识别模型目录（默认自动查找 科牧特_模型\\<最新版本>\\行为识别）")
         self.algorithm_actions = {}
         self.algorithm_group = QActionGroup(self)
         self.algorithm_group.setExclusive(True)
-        for title, specs in (("行为识别", BEHAVIORS), ("健康与繁殖", HEALTH)):
-            if specs is BEHAVIORS:
-                advanced = annotation_menu.addMenu('更多标注工具')
-                menu = advanced.addMenu('逐项算法检查')
-            else:
-                menu = self.menuBar().addMenu(title)
-            menu.setToolTipsVisible(True)
-            for spec in specs:
-                if spec.domain=='health' and spec.code.startswith('PREGNANCY_'):
-                    pregnancy=next((a.menu() for a in menu.actions() if a.text()=='怀孕'),None)
-                    if pregnancy is None:
-                        pregnancy=menu.addMenu('怀孕')
-                    owner_menu=pregnancy
-                else:
-                    owner_menu=menu
-                action = self._action(owner_menu, spec.title, lambda _checked=False, s=spec: self.open_algorithm(s))
-                action.setCheckable(True)
-                action.setToolTip("单摄像头算法检查 · " + ("对应标签 " + spec.code if spec.domain == "behavior" else "四项证据与趋势" if spec.code == "CALVING" else "待接入，不生成健康结论"))
-                self.algorithm_group.addAction(action)
-                self.algorithm_actions[spec.code] = action
-            menu.addSeparator()
-            self._action(menu, "返回标注布局", self.exit_algorithm)
+        menu = annotation_menu.addMenu('逐项算法检查')
+        menu.setToolTipsVisible(True)
+        for spec in BEHAVIORS:
+            action = self._action(menu, spec.title, lambda _checked=False, s=spec: self.open_algorithm(s))
+            action.setCheckable(True)
+            action.setToolTip("单摄像头算法检查 · 对应标签 " + spec.code)
+            self.algorithm_group.addAction(action)
+            self.algorithm_actions[spec.code] = action
+        menu.addSeparator()
+        self._action(menu, "返回标注布局", self.exit_algorithm)
+
+    def choose_annotation_models(self):
+        """Pick the behaviour-model folder used by 自动生成候选 (stored in settings, nothing copied)."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        from cowmata_tailring.algorithms.paths import has_suites, model_home, read_settings, save_settings
+        from cowmata_tailring.algorithms.registry import list_suites
+
+        current = model_home()
+        chosen = QFileDialog.getExistingDirectory(self, "选择行为识别模型目录（含 versions\\…\\suite.json）", str(current))
+        if not chosen:
+            return
+        home = Path(chosen)
+        if (home / "suite.json").is_file() and home.parent.name == "versions":
+            home = home.parent.parent
+        elif not has_suites(home) and has_suites(home / "行为识别"):
+            home = home / "行为识别"
+        if not has_suites(home):
+            QMessageBox.warning(self, "自动标注模型", "该目录下没有可用的行为识别模型（需要 versions\\<版本>\\suite.json）。")
+            return
+        settings = read_settings()
+        settings["model_home"] = str(home.resolve())
+        save_settings(settings)
+        suites = list_suites(home)
+        names = "、".join(sorted({m["code"] for s in suites for m in s["models"]}))
+        self.tell(f"自动标注模型已切换到：{home}（{len(suites)} 个版本；行为：{names}）。下次生成候选时生效。")
 
     def open_behavior_390(self):
         from cowmata_security.qt_ui import guard_action
 
         if not guard_action(self, "behavior"):
             return
-        from cowmata_tailring.algorithms.behavior_ui import BehaviorWindow
+        from cowmata_tailring.ui.algorithms.behavior_ui import BehaviorWindow
         if getattr(self, '_behavior_390', None) is None:
             self._behavior_390 = BehaviorWindow(self)
         self._behavior_390.show()
@@ -441,7 +534,7 @@ class MainWindow(ControllerWindow):
 
         if not guard_action(self, "health"):
             return
-        from cowmata_tailring.algorithms.decision_ui import DecisionWindow as CalvingEvidenceWindow
+        from cowmata_tailring.ui.algorithms.decision_ui import DecisionWindow as CalvingEvidenceWindow
         if getattr(self, "_calving_evidence", None) is None:
             self._calving_evidence = CalvingEvidenceWindow(self)
         self._calving_evidence.show()
@@ -450,7 +543,12 @@ class MainWindow(ControllerWindow):
     def open_algorithm(self, spec):
         from cowmata_security.qt_ui import guard_action
 
-        if not guard_action(self, "behavior"):
+        domain = getattr(spec, "domain", "behavior")
+        if not guard_action(self, domain):
+            return
+        if domain == "health" and spec.code != "CALVING":
+            self.tell("该健康算法尚未接入当前版本的可审核模型入口，不生成健康结论。")
+            self.algorithm_actions[spec.code].setChecked(False)
             return
         if spec.code == "CALVING":
             self.algorithm_actions[spec.code].setChecked(False)
@@ -583,15 +681,19 @@ class MainWindow(ControllerWindow):
         files.addMenu(legacy)
         edit.addMenu(collaboration)
         edit.addMenu(evidence)
+        self._legacy_menu, self._collaboration_menu, self._evidence_menu = legacy, collaboration, evidence
         materials.setTitle("录像索引")
         sync.setTitle("时间同步")
         for menu in (exports, legacy, collaboration, evidence, tools):
             menu.setToolTipsVisible(True)
 
     def set_glass(self, enabled):
-        self.shell.set_effects(enabled)
-        self.setStyleSheet(STYLE + (GLASS_STYLE if enabled else ""))
-        self.material_result = apply_mica(int(self.winId()), enabled)
+        self._glass_requested = bool(enabled)
+        playing = bool(getattr(getattr(self, "board", None), "playing", False))
+        effective = self._glass_requested and not playing
+        self.shell.set_effects(effective)
+        self.setStyleSheet(STYLE + (GLASS_STYLE if effective else ""))
+        self.material_result = apply_mica(int(self.winId()), effective)
         if self.catalog:
             self.dirty = True
 
@@ -733,7 +835,7 @@ class MainWindow(ControllerWindow):
         self.coverage_label.setToolTip(text)
         self.coverage_label.setVisible(bool(self.motion) and not text.startswith("当前参考时刻有录像覆盖"))
         if text.startswith("录像仍在索引"):
-            self.coverage_label.setText("当前时刻暂未匹配录像 · 仍有未检索素材，可在「数据准备 → 更多数据准备工具 → 录像索引」继续检索")
+            self.coverage_label.setText("当前时刻暂未匹配录像 · 仍有未检索素材，可在「数据准备 → 录像索引与核验」继续检索")
 
     def refresh_action_state(self, *_):
         super().refresh_action_state()
@@ -750,7 +852,8 @@ class MainWindow(ControllerWindow):
             "4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n"
             "5. 标注自动按日期保存；在「数据集构建」生成行为数据集或分享标注片段。\n\n"
             "未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n"
-            "未检索不等于无录像。未找到时可用「数据准备 → 更多数据准备工具 → 录像索引 → 扩大当前检索」。\n"
+            "未检索不等于无录像。未找到时可用「数据准备 → 录像索引与核验 → 扩大当前检索」。\n"
+            "看不清牛身记号：Ctrl+E 放大视频（保留波形条，F11 全屏）；Ctrl+Shift+E 把波形分屏到第二块屏幕。\n"
             "更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。")
 
     def toggle_events(self):
@@ -767,6 +870,20 @@ class MainWindow(ControllerWindow):
         self.layout_buttons.button("ABC".index(mode)).setChecked(True)
         if persist and self.catalog:
             self.dirty = True
+
+    def enlarge_video(self):
+        """Video wide enough to read cow marks, waveform kept as a strip."""
+        if getattr(self, "_algorithm_restore", None) is not None:
+            self.tell("算法检查期间保持单视角布局；返回标注布局后可放大视频。")
+            return
+        if self.stage.mode != "C":
+            self.stage.video_focus = True
+            self.set_presentation("C")
+        else:
+            self.stage.toggle_video_focus()
+
+    def toggle_waveform_window(self):
+        self.stage.toggle_waveform_window()
 
     def presentation_settings(self):
         self.options.show()
@@ -793,7 +910,7 @@ class MainWindow(ControllerWindow):
             self.dirty = True
 
     def resize_wave(self, i):
-        self.stage.wave_ratio = [.32, .42, .52][i]
+        self.stage.wave_ratio = [.44, .55, .65][i]
         self.stage.arrange()
         if self.catalog:
             self.dirty = True
@@ -875,6 +992,8 @@ class MainWindow(ControllerWindow):
             self._retry_close(300)
             return
         super().closeEvent(event)
+        if event.isAccepted():
+            self.stage.dock_waveform()
         if event.isAccepted() and panel is not None:
             panel.timer.stop()
         if event.isAccepted() and organize is not None:
@@ -882,4 +1001,12 @@ class MainWindow(ControllerWindow):
 
     def playback_changed(self, playing):
         super().playback_changed(playing)
+        # Native VLC surfaces must remain opaque while their parent is live;
+        # otherwise the Mica repaint can leave a stale/frozen rectangle over
+        # the left part of the main view and intercept its transport button.
+        if hasattr(self, "shell"):
+            effective = self._glass_requested and not playing
+            self.shell.set_effects(effective)
+            self.setStyleSheet(STYLE + (GLASS_STYLE if effective else ""))
+            self.material_result = apply_mica(int(self.winId()), effective)
         self.play_button.setToolTip("空格播放 / 暂停；输入文字时不会触发标注快捷键")

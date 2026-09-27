@@ -81,7 +81,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("COWMATA Pro")
+        self.setWindowTitle("COWMATA Annotator")
         self.resize(1600, 1000)
         self.catalog = None
         self.worker = None
@@ -820,6 +820,30 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.worker = self.catalog = None
         self.board.select([])
 
+    def close_annotation_session(self):
+        """Save and release the current project before downstream organization."""
+        if not self.catalog:
+            self.tell("当前没有打开的工程")
+            return
+        if self.active_event:
+            self.tell("请先结束或取消当前动作，再关闭标注")
+            return
+        self.cancel_alignment()
+        def released(message):
+            if self.catalog is None:
+                self.board.catalog = None
+                self.current_row = self.motion = self.work = None
+                self.source_available = False
+                self.motion_cache.clear()
+                self.events.setRowCount(0)
+                self.cameras.clear()
+                self.cow.clear()
+                self.root_label.setText("标注已关闭，可从文件菜单打开工程")
+                self.tell("标注已保存并关闭，播放器和工程占用已释放，可进行数据归类。")
+            else:
+                self.tell(message)
+        self.pause_for_organization(released)
+
     def _release_retired(self, worker, catalog):
         if worker.thread.is_alive():
             QTimer.singleShot(100, lambda: self._release_retired(worker, catalog))
@@ -1153,8 +1177,10 @@ class MainWindow(AlignmentMixin, QMainWindow):
         if (not self.motion or not self.work) and not timeline.intervals:
             matched = []
         elif str(self.devices.currentData()) not in self._manual_view_devices:
-            if getattr(self,'_daily_auto_views',False):
-                matched=camera_names[:8]
+            # 4.3.7 (bug 4.3.4-2/6): never auto-check many views. Opening or switching a device
+            # starts with ONE covered view; the operator adds views or uses the 8-view pages.
+            if getattr(self,'_daily_auto_views',False) and not matched:
+                matched=(covered or camera_names)[:1]
             elif not matched or covered and not any(c in covered for c in matched):
                 matched = (covered or camera_names)[:1]
         previous = matched
@@ -1180,6 +1206,32 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 tile.status(self.board.coverage_message(camera))
         if self.motion and not self.board.reference_ms and timeline.bounds():
             self.board.seek(self.work.clock.map(self.imu_ms))
+        if not (self.motion and self.work and self.work.clock.anchors):
+            # Video-first browsing (no calibrated IMU record) still needs the
+            # on-demand index; anchor it to the playhead or the first named
+            # recording of the selected views so tiles stop waiting forever.
+            self._request_browse_window()
+
+    def _request_browse_window(self):
+        if not self.worker or not self.board.selected:
+            return
+        from .demand import camera_folder
+        from .video_names import filename_wall
+
+        anchor = self.board.reference_ms
+        if not anchor > 0:
+            chosen = set(self.board.selected)
+            starts = [t for t in (filename_wall(Path(r["path"]).name)
+                                  for r in self.rows
+                                  if r["kind"] == "video" and r["state"] in {"pending", "invalid"}
+                                  and camera_folder(r["path"]) in chosen)
+                      if t is not None]
+            if not starts:
+                return
+            anchor = min(starts)
+        settings = copy.deepcopy(self.settings)
+        settings["priority_reference_ms"] = anchor
+        self.worker.request("window", (anchor - 300_000, anchor + 300_000, settings))
 
     def refresh_records(self, *_):
         device = self.devices.currentData()
@@ -1389,7 +1441,9 @@ class MainWindow(AlignmentMixin, QMainWindow):
             remembered = self.settings.get("device_views", {}).get(str(self.devices.currentData()), self.settings.get("selected_cameras", []))
             wanted = selected + [c for c in remembered if c not in visible]
             self.settings.setdefault("device_views", {})[str(self.devices.currentData())] = wanted[:8]
-            self.settings["selected_cameras"] = wanted[:8]
+            # The global fallback is only a first-open hint; storing the full multi-view choice
+            # there made every newly switched device inherit all views (bug 4.3.4-2).
+            self.settings["selected_cameras"] = wanted[:1]
         self.dirty = True
 
     def set_layout(self, index):
@@ -1540,6 +1594,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.layout_choice.setCurrentIndex(profile.get("layout", self.settings.get("layout", 0)))
             self.board.two_view_ratio = profile.get("two_view_ratio", 50)
             self.board.set_main(profile.get("main", self.settings.get("main_camera", self.board.main_camera)))
+        metadata = row.get("metadata") or {}
         self.work.project.source.update({"name": Path(row["path"]).name, "path": row["path"], "asset_id": row["asset_id"],
                                          "kind": getattr(motion, "kind", metadata.get("kind", "imu")),
                                          "project_root_hint":str(self.catalog.root),
@@ -1722,6 +1777,14 @@ class MainWindow(AlignmentMixin, QMainWindow):
         if self.worker and self.work and abs(value - getattr(self, "_index_playhead", -1e30)) >= 5000:
             self._index_playhead = value
             self.worker.request("playhead", value)
+        elif (self.worker and not (self.work and self.work.clock.anchors)
+              and value > 0 and abs(value - getattr(self, "_index_playhead", -1e30)) >= 5000):
+            # Without a calibrated IMU record nothing else drives the demand
+            # index; follow the video playhead so browsing stays decodable.
+            self._index_playhead = value
+            settings = copy.deepcopy(self.settings)
+            settings["priority_reference_ms"] = value
+            self.worker.request("window", (value - 300_000, value + 300_000, settings))
         if not self.wall_input.hasFocus():
             self.wall_input.setText(wall_text(value))
         bounds = self.board.timeline.bounds()
@@ -2829,7 +2892,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             if not window.confirm_pending():
                 return
             window.path = Path(path)
-            window.setWindowTitle("COWMATA Pro™ · 复核与修改 · " + window.path.name)
+            window.setWindowTitle("COWMATA Annotator · 复核与修改 · " + window.path.name)
             window.begin_load(self.catalog.root if self.catalog else None)
         else:
             window = HistoryWindow(path, self.catalog.root if self.catalog else None, reusable=True)

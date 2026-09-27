@@ -61,7 +61,13 @@ def main():
     progress = progress_writer(request["progress"])
 
     action = request["action"]
-    if action == 'inspect390':
+    if action == 'engine433':
+        from cowmata_engine.api import handle
+        cancel_file = request.get('cancel_file')
+        response = handle(request['engine'], progress=progress, raise_errors=True,
+                          cancelled=lambda: bool(cancel_file) and Path(cancel_file).exists())
+        result = response['result']
+    elif action == 'inspect390':
         from cowmata_tailring.algorithms.inputs import scan_inputs
         result = scan_inputs(request['dataset'], training=request.get('training',False), progress=progress)
     elif action == 'folder_predict393':
@@ -81,6 +87,17 @@ def main():
     elif action == 'recognize390':
         from cowmata_tailring.algorithms.recognition import recognize
         result = recognize(request['root'],request['suite'],request['code'],request['output'],request['cache'],progress=progress)
+    elif action == "candidate_scan":
+        from cowmata_tailring.algorithms.candidate_service import run_candidate_scan
+        from cowmata_tailring.algorithms.registry import read_suite
+        pack = dict(read_suite(request["suite"]))
+        pack["hash"] = read_suite(request["suite"])["hash"]
+        result = run_candidate_scan(pack, request["records"], request["output"], request["cache"],
+                                    cancelled=lambda: False, progress=progress)
+    elif action == "behavior_predict":
+        from cowmata_tailring.algorithms.behavior_dispatch import predict_behavior
+        result = predict_behavior(request["code"], request["source"], request["model_dir"],
+                                  threshold=request.get("threshold"))
     elif action == "predict":
         suite = read_suite(request["suite"])
         feature = load_features(request["record"], request["cache"])

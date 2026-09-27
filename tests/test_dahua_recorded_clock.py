@@ -100,7 +100,7 @@ def test_conversion_preserves_measured_frames_and_audio_offset(tmp_path, monkeyp
     result = media._encode("sample.dav", tmp_path / "out.mp4", 1000, 2000, timing=timing)
     assert result["settings"]["verified_video_frames"] == 50
     assert "setpts=N*40/(1000*TB)" in commands[0][commands[0].index("-vf") + 1]
-    assert commands[0][commands[0].index("-af") + 1] == "asetpts=N/SR/TB+40/(1000*TB)"
+    assert commands[0][commands[0].index("-af") + 1].endswith("asetpts=N/SR/TB+40/(1000*TB)")
     assert commands[0][commands[0].index("-fps_mode") + 1] == "passthrough"
     assert "-progress" in commands[1]
     monkeypatch.setattr(
@@ -135,7 +135,7 @@ def test_preparation_uses_validated_counter_and_preserves_clock_evidence(tmp_pat
     )
     monkeypatch.setattr(tasks, "probe", lambda *a, **k: dict(video=dict(width=640, height=360)))
     monkeypatch.setattr(
-        tasks, "recorded_clock", lambda *a: dict(duration=1, packets=25, recovery=timing)
+        tasks, "recorded_clock", lambda *a, **k: dict(duration=1, packets=25, recovery=timing)
     )
     monkeypatch.setattr(
         tasks,

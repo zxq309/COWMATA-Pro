@@ -108,9 +108,11 @@ def capture_frames(root, rows, settings, clock, context, imu_ms, cameras, *, can
                     camera_mapping_revision=maps[camera].revision if camera in maps else "uncalibrated",
                     camera_clock_basis="saved_mapping" if camera in maps and maps[camera].anchors else "shared_reference_assumed",
                     video_revision=hashlib.sha256(json.dumps(row["metadata"].get("intervals", []), sort_keys=True).encode()).hexdigest())
+        # 4.3.7 (bug 4.3.4-3): an unverified time mapping no longer drops the view. The frame is
+        # still extracted from the original video and flagged, because the bundle is human-review
+        # evidence only (algorithm_input=False); the operator sees which views need checking.
+        item["time_mapping"] = "verified" if interval.verified else "unverified"
         try:
-            if not interval.verified:
-                raise ValueError("录像时间映射尚未核验")
             path = safe_relative(root, interval.path)
             assert_not_being_written(path)
             before = file_stamp(path)
@@ -143,7 +145,7 @@ def capture_frames(root, rows, settings, clock, context, imu_ms, cameras, *, can
         except (OSError, ValueError, RuntimeError) as exc:
             return {**item, "reason": str(exc)}, None
 
-    # Two bounded original-frame decoders, independent of preview/8-player load.
+    # Bounded original-frame decoders, independent of preview/8-player load.
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="evidence-frame") as pool:
         results = list(pool.map(capture, cameras))
     bundle = {"schema": 1, "purpose": "human_review_only", "algorithm_input": False,

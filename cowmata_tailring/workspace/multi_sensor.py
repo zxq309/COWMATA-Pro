@@ -146,8 +146,32 @@ def check_related_identity(data, identity, file):
         raise ValueError("当前牛号待核对，未合并带有其他牛号的记录")
 
 
+def oximetry_note(signals):
+    """One-line SpO2 / pulse summary of the PPG records shown in the PPG sheet."""
+    from cowmata_tailring.algorithms.spo2_signal import analyse_ppg
+    results = []
+    for signal in signals:
+        try:
+            results.append(analyse_ppg(signal))
+        except (ValueError, TypeError, KeyError):
+            continue
+    if not results:
+        return ""
+    spo2 = [r["spo2_percent"] for r in results if r["spo2_percent"] is not None and r["quality"] in ("good", "fair")]
+    hr = [r["heart_rate_bpm"] for r in results if r["heart_rate_bpm"] is not None]
+    pi = [r["perfusion_index_percent"] for r in results if r["perfusion_index_percent"] is not None]
+    parts = [f"血氧 {float(np.median(spo2)):.1f} %（{len(spo2)}/{len(results)} 份质量合格，厂商曲线未经牛血气标定）"
+             if spo2 else f"血氧：{len(results)} 份 PPG 均未通过质量门控（运动/接触不良），不报数值"]
+    if hr:
+        parts.append(f"脉率 {float(np.median(hr)):.0f} bpm")
+    if pi:
+        parts.append(f"灌注指数 {float(np.median(pi)):.2f} %")
+    return " · ".join(parts) + "；"
+
+
 def load_related(primary, root, cow_id, cancelled=lambda: False, allowed=None):
     allowed = set(allowed or KINDS)
+    oximetry = [primary] if getattr(primary, "kind", "imu") == "ppg" else []
     base = split_series([PlotSeries(**s) for s in primary.plot_series()])
     for key in KINDS:
         if key not in allowed:
@@ -158,6 +182,8 @@ def load_related(primary, root, cow_id, cancelled=lambda: False, allowed=None):
         identity = legacy_curve_identity(primary, cow_id) or identity
     if identity.get("status") != "display_only" and (not cow_id or identity.get("status") != "ready" or identity.get("cow_id") != str(cow_id)):
         result["messages"] = {k: "牛号或设备绑定待核对，未自动关联其他记录" for k in KINDS}
+        if oximetry:
+            result["messages"]["ppg"] = oximetry_note(oximetry) + result["messages"]["ppg"]
         return result
     source_obj = json.loads(Path(primary.source_path).read_text(encoding="utf-8-sig"))
     try:
@@ -214,6 +240,8 @@ def load_related(primary, root, cow_id, cancelled=lambda: False, allowed=None):
                         continue
                     if file_stamp(file) != before:
                         raise ValueError("读取期间文件变化")
+                    if kind == "ppg":
+                        oximetry.append(signal)
                     for item in signal.plot_series():
                         if item["key"] == "temperature":
                             continue
@@ -277,6 +305,8 @@ def load_related(primary, root, cow_id, cancelled=lambda: False, allowed=None):
         if not base[key] and observed[key]:
             note = f"找到 {observed[key]} 份同设备记录，但与当前记录采样时段不重叠；保留真实缺口。" + note
         result["messages"].setdefault(key, note)
+    if oximetry and "ppg" in allowed:
+        result["messages"]["ppg"] = oximetry_note(oximetry) + result["messages"]["ppg"]
     if result["issues"]:
         for key in KINDS:
             result["messages"][key] += f"；{len(result['issues'])} 项来源问题未强行合并"

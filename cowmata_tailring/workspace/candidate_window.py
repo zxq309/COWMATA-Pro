@@ -66,8 +66,9 @@ class CandidateWindow(TaskWindow):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         model_actions = QHBoxLayout()
-        self.model_setup_button = QPushButton("导入或训练行为模型…")
-        self.model_setup_button.clicked.connect(lambda: self.owner.open_behavior_390())
+        self.model_setup_button = QPushButton("选择行为识别模型目录…")
+        self.model_setup_button.setToolTip("模型由 科牧特_产犊预测算法 的行为识别训练生成；默认自动查找 科牧特_模型\\<最新版本>\\行为识别")
+        self.model_setup_button.clicked.connect(self._choose_models)
         model_actions.addWidget(self.model_setup_button)
         self.refresh_button = QPushButton("刷新可用模型")
         self.refresh_button.clicked.connect(self.refresh_packs)
@@ -103,6 +104,12 @@ class CandidateWindow(TaskWindow):
         self.timer.timeout.connect(self.check_context)
         self.timer.start()
         self.refresh_results()
+
+    def _choose_models(self):
+        chooser = getattr(self.owner, "choose_annotation_models", None)
+        if chooser is not None:
+            chooser()
+        self.refresh_packs()
 
     def bind_label_keys(self):
         labels = self.owner.work.project.labels if self.owner.work else []
@@ -142,7 +149,7 @@ class CandidateWindow(TaskWindow):
                 self.models.addItem(model["title"], model["id"])
         self.start_button.setEnabled(bool(self.packs) and not self.running)
         if not self.packs:
-            self.status.setText("尚未启用当前数据类型的行为模型。请点“导入或训练行为模型”，在识别页导入 suite.json；返回后即可扫描。人工标注可继续使用。")
+            self.status.setText("尚未找到当前数据类型的行为模型。请点“选择行为识别模型目录…”导入 科牧特_模型\<版本>\行为识别；即可扫描。人工标注可继续使用。")
 
     def check_context(self):
         self.bind_label_keys()

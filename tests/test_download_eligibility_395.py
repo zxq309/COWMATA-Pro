@@ -214,9 +214,10 @@ def test_download_checkpoint_records_only_completed_ranges(tmp_path):
         Client.error = error
         if error == 'fatal':
             with pytest.raises(RuntimeError):
-                run_csv_job(job, threading.Event(), client_factory=Client)
+                run_csv_job(job, threading.Event(), client_factory=Client, force=True)
         else:
-            run_csv_job(job, threading.Event(), client_factory=Client)
+            # force re-lists the finished day so the failure path is exercised.
+            run_csv_job(job, threading.Event(), client_factory=Client, force=True)
         state = json.loads(state_path.read_text(encoding='utf-8'))
         assert state['status'] == status
         assert state['verified_ranges'] == ranges

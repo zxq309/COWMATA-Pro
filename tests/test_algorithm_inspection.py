@@ -30,15 +30,7 @@ def window():
 def test_menu_order_and_one_to_one_codes(window, tmp_path, monkeypatch):
     monkeypatch.setenv("COWMATA_ALGORITHM_HOME", str(tmp_path / "models"))
     titles = [a.text().split("(")[0] for a in window.menuBar().actions()]
-    assert titles == [
-        "文件",
-        "数据准备",
-        "标注与复核",
-        "数据集构建",
-        "行为识别",
-        "健康与繁殖",
-        "帮助",
-    ]
+    assert titles == ["文件", "数据准备", "标注与复核", "帮助"]  # 4.3.8 Annotator
     assert len({s.code for s in BEHAVIORS}) == 15
     labels = {label["code"] for label in DEFAULT_LABELS}
     assert {s.code for s in BEHAVIORS} <= labels
@@ -53,7 +45,7 @@ def test_menu_order_and_one_to_one_codes(window, tmp_path, monkeypatch):
     assert sum(bool(bindings(s, available_packs())) for s in BEHAVIORS) == 6  # Generic legacy tail models cannot bind to posture-specific labels.
 
 
-@pytest.mark.parametrize("spec", BEHAVIORS + HEALTH)
+@pytest.mark.parametrize("spec", BEHAVIORS)  # 4.3.8: health checks left the Annotator
 def test_every_algorithm_locks_one_view_and_returns_layout(window, spec):
     window.board.select(["A", "B", "C"])
     window.set_presentation("B")

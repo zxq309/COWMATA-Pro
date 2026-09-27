@@ -98,7 +98,22 @@ def test_one_per_camera_same_reference_original_frames_and_bounded_decoding(view
     assert not bundle["algorithm_input"] and not bundle["human_checked"]
 
 
-@pytest.mark.parametrize("failure", ["missing", "changing", "far_frame", "unverified", "gap"])
+def test_unverified_mapping_is_captured_but_flagged(views):
+    """4.3.7 (bug 4.3.4-3): an unverified time index no longer drops the view silently.
+
+    The frame comes from the original file at the mapped instant and is flagged, because the
+    bundle is human-review evidence only; missing/changing/far/gap views stay unavailable.
+    """
+    _, _, _, rows = views
+    row = next(r for r in rows if r["metadata"].get("camera") == "3")
+    row["metadata"]["intervals"][0]["verified"] = False
+    bundle, blobs = capture(views)
+    item = bundle["items"][3]
+    assert item["status"] == "captured" and item["time_mapping"] == "unverified"
+    assert bundle["algorithm_input"] is False and len(blobs) == 8
+
+
+@pytest.mark.parametrize("failure", ["missing", "changing", "far_frame", "gap"])
 def test_unavailable_view_never_gets_a_fabricated_picture(views, failure):
     root, _, _, rows = views
     row = next(r for r in rows if r["metadata"].get("camera") == "3")

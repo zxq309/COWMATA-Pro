@@ -119,7 +119,7 @@ class DatasetRecordsWindow(TaskWindow):
                 if window.future is not None or not window.confirm_pending():
                     return
                 window.path=Path(path)
-                window.setWindowTitle('COWMATA Pro™ · 复核与修改 · '+window.path.name)
+                window.setWindowTitle('COWMATA Annotator · 复核与修改 · '+window.path.name)
                 window.begin_load(None)
             window.show()
             window.raise_()
@@ -226,8 +226,11 @@ class DatasetBuildWindow(TaskWindow):
         self.task_changed()
     def task_changed(self,*_):
         spec=TASKS[self.task.currentData()]
-        self.setWindowTitle('COWMATA Pro™ · '+spec[0])
-        self.layout_hint.setText(spec[1]+' / 行为 / Motion 或 PPG / Raw、Label\n文件名：设备-耳标-现场标记_采集日期_采集时间_raw.json / label.json')
+        self.setWindowTitle('COWMATA Annotator · '+spec[0])
+        if self.task.currentData() in {'decision', 'comprehensive'}:
+            self.layout_hint.setText(spec[1]+' / 因果特征窗口 / 决策表 / 综合决策 CSV\n真值：FETAL_PART_FIRST_VISIBLE → CALF_FULLY_EXPELLED；账本时间只作近似审计')
+        else:
+            self.layout_hint.setText(spec[1]+' / 行为 / Motion 或 PPG / Raw、Label\n文件名：设备-耳标-现场标记_采集日期_采集时间_raw.json / label.json')
         if not self.running:
             self.model.replace([])
             self.output=''
@@ -254,7 +257,9 @@ class DatasetBuildWindow(TaskWindow):
             if self.owner.dirty:
                 self.status.setText('当前标注尚未保存，请处理保存问题后再构建。')
                 return
-        request=dict(action='paired_build',sources=sources,target=self.target.text().strip(),task=self.task.currentData(),layout='current')
+        task = self.task.currentData()
+        action = 'dataset_export' if task in {'decision', 'comprehensive'} else 'paired_build'
+        request=dict(action=action,sources=sources,target=self.target.text().strip(),task=task,layout='current')
         self.job=(Path(os.environ.get('LOCALAPPDATA',str(Path.home())))/'COWMATA Annotator/dataset-jobs'/uuid.uuid4().hex).resolve()
         self.job.mkdir(parents=True)
         (self.job/'request.json').write_text(json.dumps(request,ensure_ascii=False),encoding='utf-8')

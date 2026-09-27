@@ -357,6 +357,87 @@ class DHFSReader:
     def extract(self, row, destination):
         return normalize_chunks(self.chunks(row), destination, self.cancelled)
 
+    def sweep(self, rows, deliver, *, done=None, max_read=32 * 1024**2, max_gap=4, on_done=None):
+        """Read several recordings with one ascending pass over the platter.
+
+        A recorder interleaves every channel's 2 MiB fragments, so reading one
+        recording at a time seeks once per fragment, and sixteen concurrent
+        readers thrash the head. Here each needed fragment is read exactly once
+        in physical order, adjacent fragments (and gaps of up to ``max_gap``
+        foreign fragments) merged into reads of at most ``max_read`` bytes.
+
+        ``deliver(row, chunk)`` receives each row's payload in chain order and
+        returns False once that row stops accepting data; ``deliver(row, exc)``
+        reports a validation failure. Fully delivered row ids are added to
+        ``done`` and reported to ``on_done(row)`` at once, so a recording can be
+        converted while the sweep continues. Rows whose chain is not ascending
+        are returned unread so the caller can extract them one by one.
+        """
+        done = set() if done is None else done
+        plans, fallback, expected = {}, [], {}
+        for row in rows:
+            part = self.partitions[row["partition"]]
+            try:
+                chain, last_size = self.chain(part, row["descriptor"])
+                fingerprint = hashlib.sha256(b"".join(self.descriptor(part, i) for i in chain)).hexdigest()
+                if fingerprint != row["fingerprint"]:
+                    raise ValueError("录像索引已经变化，请重新扫描")
+            except (ValueError, OSError) as exc:
+                deliver(row, exc)
+                continue
+            if any(later <= earlier for earlier, later in zip(chain, chain[1:])):
+                fallback.append(row)
+                continue
+            expected[row["id"]] = len(chain)
+            for position, index in enumerate(chain):
+                size = last_size if position == len(chain) - 1 else part["fragment"]
+                plans.setdefault(row["partition"], []).append((index, position, size, row))
+        failed, delivered = set(), {}
+        for number in sorted(plans):
+            part = self.partitions[number]
+            fragment = part["fragment"]
+            span_limit = max(1, max_read // fragment)
+            items = sorted(plans[number], key=lambda item: (item[0], item[1]))
+            start = 0
+            while start < len(items):
+                check(self.cancelled)
+                end = start + 1
+                while (end < len(items) and items[end][0] - items[end - 1][0] <= max_gap + 1
+                       and items[end][0] - items[start][0] < span_limit):
+                    end += 1
+                group = [item for item in items[start:end] if item[3]["id"] not in failed]
+                start = end
+                if not group:
+                    continue
+                first = group[0][0]
+                data = _read_at(self.stream, part["video"] + first * fragment,
+                                (group[-1][0] - first + 1) * fragment)
+                for index, position, size, row in group:
+                    if row["id"] in failed:
+                        continue
+                    offset = (index - first) * fragment
+                    raw = data[offset:offset + size]
+                    if size == fragment:
+                        tail = raw[-4096:]
+                        if (
+                            u32(tail, 4) != 0x31755713
+                            or u32(tail, 28) != row["descriptor"]
+                            or u32(tail, 8) != (1 if position == 0 else 2)
+                        ):
+                            failed.add(row["id"])
+                            deliver(row, ValueError("录像片尾结构不受支持或属于其他录像"))
+                            continue
+                        raw = raw[:-4096]
+                    if deliver(row, raw) is False:
+                        failed.add(row["id"])
+                        continue
+                    delivered[row["id"]] = delivered.get(row["id"], 0) + 1
+                    if delivered[row["id"]] == expected[row["id"]]:
+                        done.add(row["id"])
+                        if on_done is not None:
+                            on_done(row)
+        return fallback
+
 
 class ChunkReader:
     def __init__(self, chunks):
@@ -394,7 +475,7 @@ def normalize_chunks(chunks, destination, cancelled=lambda: False):
     count, video_count, start, end = 0, 0, None, None
     digest = hashlib.sha256()
     channels, packet_types = set(), set()
-    with open(destination, "xb") as out:
+    with open(destination, "xb", buffering=1024**2) as out:
         while True:
             check(cancelled)
             header = prefix or stream.read(24)

@@ -52,6 +52,23 @@ def resource_budget(snapshot=None):
     return Budget(heavy_workers=1 if constrained else 2, copy_workers=2 if constrained else 3)
 
 
+def video_budget(snapshot=None):
+    """Recorder import is mostly I/O plus bursts of hardware/CPU encoding.
+
+    The generic 35 % hard cap throttled sixteen converters (and their CPU
+    fallback encodes) to a third of a large workstation. The worker already
+    runs at below-normal priority, so interactive annotation keeps the CPU
+    whenever it needs it; small machines keep the conservative cap.
+    """
+    snapshot = snapshot or resource_snapshot()
+    budget = resource_budget(snapshot)
+    if snapshot["logical_cpus"] >= 24 and snapshot["available_bytes"] >= 32 * _GIB:
+        return Budget(heavy_workers=budget.heavy_workers, copy_workers=budget.copy_workers, cpu_percent=90)
+    if snapshot["logical_cpus"] >= 12 and snapshot["available_bytes"] >= 16 * _GIB:
+        return Budget(heavy_workers=budget.heavy_workers, copy_workers=budget.copy_workers, cpu_percent=70)
+    return budget
+
+
 def limit_worker(budget=None):
     """Called only in the private worker. Children inherit its affinity and job."""
     budget = budget or resource_budget()

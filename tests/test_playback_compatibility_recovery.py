@@ -103,14 +103,21 @@ def test_stale_cache_failure_cannot_replace_current_seek(player):
     assert board.reference_ms == 22000
 
 
-def test_failed_cache_returns_native_ps_to_normal_speed(player):
+def test_failed_cache_keeps_the_requested_rate_and_says_so(player):
+    """4.3.7 (bug 4.3.4-1): the operator's rate is honoured on the original video.
+
+    The annotation clock follows the ACTUAL main decoder time (tick), so a fast original
+    stays synchronised with the IMU; the operator is told frames may be skipped.
+    """
     board, tile, _ = player
+    notices = []
+    board.notice.connect(notices.append)
     board.set_rate(4)
     board._compatibility_ready((board.generation, tile, tile.interval, 12000,
                                 time.perf_counter(), "cache disk unavailable"))
-    assert board.rate == 1, "Unpaced native PS must not inherit a remux-only fast playback rate"
+    assert board.rate == 4 and any("4×" in n for n in notices)
     board.set_rate(2)
-    assert board.rate == 1, "Fast rates must stay blocked until a verified cache becomes available"
+    assert board.rate == 2 and any("跳帧" in n for n in notices)
 
 
 def test_paused_frame_prepares_one_cache_shared_by_play_and_latest_seek(player, monkeypatch):

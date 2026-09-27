@@ -1,0 +1,7 @@
+{
+  "schema": "cowmata-paths-1",
+  "algorithm_home": "set COWMATA_ALGORITHM_HOME",
+  "data_home": "set COWMATA_DATA_HOME",
+  "dataset_home": "set COWMATA_DATASET_HOME",
+  "portable_data": "COWMATA_PORTABLE_DATA=1"
+}

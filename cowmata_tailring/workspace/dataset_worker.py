@@ -56,6 +56,13 @@ def main():
             from cowmata_tailring.workspace.dataset_pipeline import build_algorithm_datasets
             result = build_algorithm_datasets(request['sources'],request['target'],historical=request.get('historical'),
                 allow_proxy=request.get('allow_proxy',False),progress=progress,cancelled=cancelled)
+            snapshot = {
+                'schema': 'dataset-build-434', 'phase': 'complete',
+                'counts': {'total': 0, 'done': 0, 'reused': 0, 'errors': 0, 'pending': 0, 'processing': 0},
+                'rows': [], 'seconds': 0.0, 'csv_path': str(Path(request['target']) / 'dataset-manifest.json'),
+            }
+            atomic_json(job / 'dataset-snapshot.json', snapshot)
+            print(json.dumps({'event': 'snapshot', 'path': str(job / 'dataset-snapshot.json')}, ensure_ascii=True), flush=True)
         else:
             raise ValueError('Unknown dataset operation')
         atomic_json(job/'result.json',result)

@@ -463,6 +463,8 @@ class Result:
     canceled: bool = False
     pending: int = 0
     recycled: int = 0
+    # Past device-days already completed in an earlier round and not re-listed.
+    settled: int = 0
 
 
 def run_job(job, cancel, log=lambda message: None, progress=lambda done, total: None,

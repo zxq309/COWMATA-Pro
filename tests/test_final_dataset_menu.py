@@ -10,13 +10,10 @@ def test_dataset_menu_separate_and_pregnancy_has_three_stages():
         names = list(menus)
         assert "数据整理" not in names
         assert any(a.text() == "数据归类…" for a in menus["数据准备"].actions())
-        assert names.index("数据集构建") + 1 == names.index("行为识别")
-        assert names.index("行为识别") + 1 == names.index("健康与繁殖")
+        assert not {"数据集构建", "行为识别", "健康与繁殖"} & set(names)  # 4.3.8 Annotator
         assert not any(
             "旧标签" in a.text() or "算法数据集" in a.text() for a in menus["数据准备"].actions()
         )
-        pregnancy = next(a.menu() for a in menus["健康与繁殖"].actions() if a.text() == "怀孕")
-        assert [a.text() for a in pregnancy.actions()] == ["孕早期", "孕中期", "孕晚期"]
         window.open_organization(1)
         assert not hasattr(window._organization_window, "legacy_dataset_button")
         window._organization_window.close()

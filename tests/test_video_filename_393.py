@@ -142,6 +142,25 @@ def test_named_legacy_mp4_reads_native_duration_without_ocr(tmp_path, monkeypatc
     assert value["intervals"][0]["wall_start"] == filename_wall(path)
 
 
+def test_named_legacy_mp4_uses_adjacent_filename_span_for_browsing(tmp_path, monkeypatch):
+    first = tmp_path / "2026-08-18_16-05-16.mp4"
+    following = tmp_path / "2026-08-18_16-39-16.mp4"
+    first.write_bytes(b"legacy PS in mp4 extension")
+    following.write_bytes(b"next legacy PS in mp4 extension")
+    info = media_info()
+    info["streams"][0].pop("duration")
+    info["format"] = {"format_name": "mpeg", "duration": "74410.0"}
+    monkeypatch.setattr(probe, "probe_media", lambda *a, **k: info)
+    monkeypatch.setattr(probe, "read_native_index", lambda *a, **k: None)
+
+    value = inspector(tmp_path).video(first, "d" * 64)
+
+    assert value["duration_ms"] == 34 * 60 * 1000
+    assert value["needs_review"]
+    assert not value["intervals"][0]["verified"]
+    assert value["duration_basis"] == "adjacent_filename"
+
+
 def test_cached_discontinuous_timing_is_not_certified_by_filename(tmp_path):
     from cowmata_tailring.media.timeline import (
         MediaTimelineIndex,
