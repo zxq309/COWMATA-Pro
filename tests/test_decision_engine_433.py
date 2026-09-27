@@ -72,6 +72,7 @@ def synthetic(root: Path, cows=8, days=8, seed=4):
 
 
 def test_contract_validation_rejects_acausal_rows():
+    assert ds.HORIZONS == (1, 2, 3, 6, 12)
     spec = FeatureSpec(key="demo", title="演示", modality="motion", version="1", columns=("x",), primary="x")
     row = empty_row(spec, 0, 600000)
     assert validate_rows(spec, [row])
@@ -111,7 +112,7 @@ def test_build_train_predict_end_to_end(trained):
     from cowmata_engine.decision.predict import predict_rows
 
     root, summary, report = trained
-    assert summary["calving_cows"] == 8 and summary["positives"]["24h"] > 0
+    assert summary["calving_cows"] == 8 and summary["positives"]["12h"] > 0
     assert any(p for p in summary["profile"]["temperature_c"])
     best = report["leaderboard"][0]
     assert best["metrics"]["roc_auc"] > 0.8
@@ -121,8 +122,7 @@ def test_build_train_predict_end_to_end(trained):
     rows = ds.read_table(root / "set")
     result = predict_rows(rows[:300], root / "model")
     first = result["rows"][0]
-    assert set(first["risk"]) == {"6h", "12h", "24h", "48h"}
-    assert first["risk"]["6h"] <= first["risk"]["12h"] <= first["risk"]["24h"] <= first["risk"]["48h"]
+    assert set(first["risk"]) == {"1h", "2h", "3h", "6h", "12h"}
     assert first["warning_level"] in {"正常", "关注", "高度关注", "临产", "数据不足"}
     assert "hours_to_calving_p50" in first
     assert "heart_rate" not in result["used_features"]

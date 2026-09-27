@@ -16,7 +16,7 @@ ALGORITHMS = {
     "expert_rules": dict(title="专家规则打分（文献先验 + Platt 校准）", family="知识驱动",
                          note="按文献方向对各特征相对本牛基线的 z 分数加权；只学习 2 个校准参数，小样本最稳"),
     "baseline_deviation": dict(title="本牛基线偏离度（多变量异常检测）", family="统计过程控制",
-                               note="各主特征 72 h 稳健 z 分数的均方根，类似 Hotelling T²；无需知道方向"),
+                               note="各主特征近 6 h 偏离度的均方根，输入只来自产犊前 12 h 窗口"),
     "logistic": dict(title="L2 逻辑回归", family="广义线性模型", note="可解释系数；缺失值中位数填补 + 缺失指示"),
     "decision_tree": dict(title="决策树 CART", family="树模型", note="深度 ≤5，规则可读"),
     "random_forest": dict(title="随机森林", family="Bagging 集成", note="300 棵树，按牛分组验证"),
@@ -28,18 +28,18 @@ ALGORITHMS = {
 }
 DEFAULT_ALGORITHMS = ("expert_rules", "baseline_deviation", "logistic", "decision_tree", "random_forest",
                       "extra_trees", "adaboost", "xgboost", "stacking")
-MODEL_SCHEMA = "cowmata-decision-model-4.3.4"
+MODEL_SCHEMA = "cowmata-decision-model-4.3.5"
 
 # Literature priors: (direction, weight, derivation, scale). direction +1 = rises before calving,
 # -1 = falls, 0 = |deviation|. signal = direction * value / scale, clipped to [0, 8].
 PRIORS = {
-    "temperature": (-1, 1.0, "z72", 1.0),        # 产前 12–24 h 体温下降 0.3–0.5 °C
+    "temperature": (-1, 1.0, "6h", 1.0),         # 产前 12 h 体温下降 0.3–0.5 °C
     "straining_ratio": (+1, 1.5, "1h", 0.02),    # 努责只在娩出前数小时出现；远离产犊 98% 窗为 0，用 1 h 占比
-    "activity": (+1, 0.6, "z72", 1.0),           # 产前 6–12 h 不安、走动增加
-    "lying_ratio": (0, 0.6, "z72", 1.0),         # 躺卧回合增多、躺卧时长变化方向因牛而异
-    "gyro_spectral_entropy": (0, 0.5, "z72", 1.0),  # 尾部运动复杂度（抬尾、摆尾）变化
-    "heart_rate": (+1, 0.4, "z72", 1.0),         # 分娩期心率升高
-    "spo2": (0, 0.2, "z72", 1.0),                # 证据弱，只作辅助
+    "activity": (+1, 0.6, "6h", 1.0),            # 产前 6–12 h 不安、走动增加
+    "lying_ratio": (0, 0.6, "6h", 1.0),          # 躺卧回合增多、躺卧时长变化方向因牛而异
+    "gyro_spectral_entropy": (0, 0.5, "6h", 1.0),  # 尾部运动复杂度（抬尾、摆尾）变化
+    "heart_rate": (+1, 0.4, "6h", 1.0),          # 分娩期心率升高
+    "spo2": (0, 0.2, "6h", 1.0),                 # 证据弱，只作辅助
 }
 
 

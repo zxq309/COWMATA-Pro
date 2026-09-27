@@ -34,7 +34,7 @@ from .models import (
 )
 
 HOUR_MS = 3_600_000
-MANIFEST_SCHEMA = "cowmata-decision-4.3.4"
+MANIFEST_SCHEMA = "cowmata-decision-4.3.5"
 LEVELS = (
     (0.80, "临产", "12 小时内极可能产犊：安排专人看护，准备助产"),
     (0.50, "高度关注", "进入围产关注窗口：增加巡栏频次，复核视频与努责证据"),
@@ -295,7 +295,7 @@ def _uses(column, keys, column_keys):
     return column_keys.get(column) in keys or column_keys.get(column) == "context"
 
 
-def train_decision(dataset, output, *, algorithms=DEFAULT_ALGORITHMS, horizon=24, horizons=HORIZONS,
+def train_decision(dataset, output, *, algorithms=DEFAULT_ALGORITHMS, horizon=12, horizons=HORIZONS,
                    folds=5, persistence=2, features=None, require=None, progress=lambda *_: None,
                    cancelled=lambda: False):
     """Train and evaluate. ``features`` limits model inputs to these feature keys; ``require``

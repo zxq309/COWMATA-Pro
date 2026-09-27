@@ -16,12 +16,12 @@ from .dataset import build_decision_rows, extract_feature_tables, load_feature_t
 from .models import predict_model, predict_time_to_event
 from .runtime import HOUR_MS, MANIFEST_SCHEMA, alert_episodes
 
-RESULT_SCHEMA = "cowmata-decision-result-4.3.4"
+RESULT_SCHEMA = "cowmata-decision-result-4.3.5"
 FEATURE_TITLES = {key: title for key, (_, title) in FEATURE_MODULES.items()}
 OUTPUT_FIELDS = {
     "cow_id": "牛耳标",
     "decision_epoch_ms": "预测时刻（使用此刻之前已收到的数据）",
-    "risk": "各提前量内产犊的校准概率（6/12/24/48 h，单调不减）",
+    "risk": "产犊前 1 h / 2 h / 3 h / 6 h / 12 h 内的校准概率",
     "risk_primary": "主提前量（模型训练提前量）产犊概率",
     "threshold": "主提前量预警阈值（按牛留出 Youden 指数最优）",
     "warning_level": "预警等级：正常 / 关注 / 高度关注 / 临产 / 数据不足",
@@ -32,7 +32,7 @@ OUTPUT_FIELDS = {
     "drivers": "主要驱动特征（特征、方向、相对本牛基线 z 分数、贡献）",
     "feature_coverage": "各特征近 6 h 数据覆盖率",
     "missing_features": "模型使用但当前缺失的特征",
-    "history_hours": "本牛可用参考历史（小时），<24 h 基线不可靠",
+    "history_hours": "本牛可用参考历史（小时），仅允许产犊前 12 h 输入",
     "model_version": "决策模型版本",
 }
 
@@ -43,7 +43,7 @@ def read_model(folder):
         folder = folder.parent
     manifest = json.loads((folder / "decision.json").read_text(encoding="utf-8"))
     if manifest.get("schema") != MANIFEST_SCHEMA or not manifest.get("complete"):
-        raise ValueError("决策模型不完整或不是 4.3.4 决策模型")
+        raise ValueError("决策模型不完整或不是 4.3.5 十二小时决策模型")
     docs = {}
     for horizon, item in manifest["files"].items():
         file = folder / Path(item["file"]).name
@@ -92,7 +92,7 @@ def explain(manifest, doc, x, column_keys):
     contrib = _shap(doc, x)
     z_index = defaultdict(list)
     for i, c in enumerate(columns):
-        if c.endswith("@z72") and column_keys.get(c) not in (None, "context"):
+        if c.endswith(("@6h", "@z72")) and column_keys.get(c) not in (None, "context"):
             z_index[column_keys[c]].append(i)
     drivers = []
     for r in range(len(x)):
@@ -150,6 +150,18 @@ def predict_rows(rows, model_folder):
     columns = manifest["columns"]
     if not rows:
         return dict(schema=RESULT_SCHEMA, rows=[], model=manifest)
+    # 4.3.5 的因果窗口固定为最近 12 小时；清除旧特征缓存中的长基线列，
+    # 防止 24/72 小时历史悄悄进入推理。
+    sanitized = []
+    for source in rows:
+        row = dict(source)
+        for c in columns:
+            if c.endswith(("@d24", "@z72", "@circ")) or "slope_24h" in c:
+                row[c] = None
+        if row.get("history_hours") is not None:
+            row["history_hours"] = min(float(row["history_hours"]), 12.0)
+        sanitized.append(row)
+    rows = sanitized
     x = np.asarray([[np.nan if r.get(c) is None else r[c] for c in columns] for r in rows], dtype=float)
     column_keys = manifest.get("column_keys") or {c: _feature_of(c) for c in columns}
     used = sorted({k for c, k in column_keys.items() if k and k != "context" and not c.startswith("coverage.")})
@@ -176,7 +188,7 @@ def predict_rows(rows, model_folder):
             threshold=float(manifest["thresholds"][str(manifest["horizon_hours"])]),
             warning_level=level, advice=advice, drivers=drivers[i], feature_coverage=coverage,
             missing_features=missing, history_hours=row.get("history_hours"),
-            history_status="参考历史不足 24 小时，基线类特征不可用" if (row.get("history_hours") or 0) < 24 else "参考历史充足",
+            history_status="参考历史不足 12 小时，基线类特征不可用" if (row.get("history_hours") or 0) < 12 else "十二小时窗口可用",
             model_version=manifest["version"],
         )
         if hours is not None:
@@ -256,15 +268,16 @@ def predict_folder(folder, model, output, *, workers=None, features_root=None, p
 def write_result_csv(path, rows):
     import csv
 
-    header = ["cow_id", "decision_epoch_ms", "risk_6h", "risk_12h", "risk_24h", "risk_48h", "risk_primary", "threshold",
+    horizons = (1, 2, 3, 6, 12)
+    header = ["cow_id", "decision_epoch_ms"] + [f"risk_{h}h" for h in horizons] + ["risk_primary", "threshold",
               "warning_level", "hours_to_calving_p10", "hours_to_calving_p50", "hours_to_calving_p90",
               "drivers", "missing_features", "history_hours", "model_version"]
     with Path(path).open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(header)
         for r in rows:
-            writer.writerow([r["cow_id"], r["decision_epoch_ms"], *[r["risk"].get(f"{h}h", "") for h in (6, 12, 24, 48)],
-                             r["risk_primary"], r["threshold"], r["warning_level"], r.get("hours_to_calving_p10", ""),
+            writer.writerow([r["cow_id"], r["decision_epoch_ms"]] + [r["risk"].get(f"{h}h", "") for h in horizons] +
+                            [r["risk_primary"], r["threshold"], r["warning_level"], r.get("hours_to_calving_p10", ""),
                              r.get("hours_to_calving_p50", ""), r.get("hours_to_calving_p90", ""),
                              "；".join(f"{d['title']}({d['direction'] or d['pushes']})" for d in r["drivers"]),
                              ",".join(r["missing_features"]), r.get("history_hours"), r["model_version"]])

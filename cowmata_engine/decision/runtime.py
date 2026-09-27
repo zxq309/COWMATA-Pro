@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 
 HOUR_MS = 3_600_000
-MANIFEST_SCHEMA = "cowmata-decision-4.3.4"
+MANIFEST_SCHEMA = "cowmata-decision-4.3.5"
 
 
 def alert_episodes(times, prob, threshold, *, persistence=2, gap_ms=HOUR_MS):

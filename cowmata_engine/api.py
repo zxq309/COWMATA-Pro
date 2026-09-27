@@ -53,7 +53,7 @@ def _train(request, progress, cancelled):
 
     return train_decision(request["dataset"], request["output"],
                           algorithms=tuple(request.get("algorithms") or DEFAULT_ALGORITHMS),
-                          horizon=int(request.get("horizon", 24)), folds=int(request.get("folds", 5)),
+                          horizon=int(request.get("horizon", 12)), folds=int(request.get("folds", 5)),
                           persistence=int(request.get("persistence", 2)), features=request.get("features"),
                           require=request.get("require"), progress=progress, cancelled=cancelled)
 

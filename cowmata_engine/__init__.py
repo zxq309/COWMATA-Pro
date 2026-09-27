@@ -5,4 +5,4 @@ through :mod:`cowmata_engine.api` (JSON in, JSON out) or ``python -m cowmata_eng
 """
 
 ENGINE_API = "cowmata-engine-1"
-__version__ = "4.3.4"
+__version__ = "4.3.5"

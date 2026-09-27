@@ -221,7 +221,7 @@ def build_fusion(root, suites, output, cache, *, codes=None, selections=None, pr
     return result
 
 
-def attach_outcomes(rows, ledger_path, horizon_hours=24):
+def attach_outcomes(rows, ledger_path, horizon_hours=12):
     births = {}
     with Path(ledger_path).open(encoding="utf-8-sig", newline="") as stream:
         for row in csv.DictReader(stream):
@@ -313,7 +313,7 @@ def train_decision(
     ledger_path,
     output,
     algorithm="xgboost",
-    horizon_hours=24,
+    horizon_hours=12,
     *,
     progress=lambda *_: None,
 ):
@@ -328,8 +328,8 @@ def train_decision(
     from sklearn.model_selection import GroupKFold
 
     validate_contract(evidence.get("temperature_contract"))
-    if horizon_hours not in (6, 12, 24, 48):
-        raise ValueError("预测提前量无效")
+    if horizon_hours not in (1, 2, 3, 6, 12):
+        raise ValueError("预测提前量必须为 1、2、3、6 或 12 小时")
     labeled = attach_outcomes(evidence["rows"], ledger_path, horizon_hours)
     if not labeled:
         raise ValueError("没有可用的产犊时间与事前证据；未登记产犊的牛不能自动当作负例")

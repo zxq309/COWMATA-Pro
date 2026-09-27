@@ -35,7 +35,7 @@ from cowmata_tailring.ui.algorithms.charts import BarChart, LineChart
 from cowmata_tailring.ui.algorithms.workbench_ui import JobWindow, dataset_default, fill, table
 from cowmata_tailring.workspace.storage import atomic_json
 
-HORIZON_CHOICES = (6, 12, 24, 48)
+HORIZON_CHOICES = (1, 2, 3, 6, 12)
 LEVEL_COLORS = {"临产": "#c23b4a", "高度关注": "#d0742c", "关注": "#b08a12", "正常": "#3f9c3a", "数据不足": "#8b8b8b"}
 
 
@@ -74,7 +74,7 @@ def path_line(owner, form, label, initial="", *, kind="dir", pattern="JSON (*.js
 METRIC_TEXT = """
 <h3>一、推理输出（每头牛、每个整点预测时刻）</h3>
 <ul>
-<li><b>6 / 12 / 24 / 48 小时内产犊概率</b>：按牛留出后等渗校准的概率，四个提前量单调不减。</li>
+<li><b>产犊前 1 / 2 / 3 / 6 / 12 小时概率</b>：按牛留出后等渗校准的五个提前量；输入严格限制为 T0 前 12 小时。</li>
 <li><b>预警等级与建议</b>：正常 / 关注 / 高度关注 / 临产 / 数据不足；阈值取按牛留出 Youden 指数最优点，连续 2 个整点超过阈值才形成一次预警。</li>
 <li><b>预计距产犊小时数</b>：分位数梯度提升给出 P10 / P50 / P90，经共形校正（CQR）使 80% 区间在留出数据上实际覆盖 80%。</li>
 <li><b>主要驱动特征</b>：XGBoost（或堆叠中的 XGBoost）用精确 TreeSHAP 贡献；其他算法按相对本牛基线的 z 分数排序。</li>
@@ -84,7 +84,7 @@ METRIC_TEXT = """
 <ul>
 <li><b>窗口级</b>：ROC AUC（含按牛自助法 95% 置信区间）、PR AUC、Brier、Log loss、ECE 校准误差、灵敏度、特异度、精确率、阴性预测值、F1、MCC、混淆矩阵。</li>
 <li><b>事件级（牧场真正关心）</b>：产犊检出率、首次有效预警提前量（中位数与四分位）、提前量外的误报次数 / 牛·天。</li>
-<li><b>剩余时间</b>：72 h 与 24 h 内预测的平均绝对误差、80% 区间实际覆盖率。</li>
+<li><b>剩余时间</b>：12 h 内预测的平均绝对误差、80% 区间实际覆盖率。</li>
 <li><b>可视化</b>：ROC、PR、校准曲线、风险随距产犊时间变化、XGBoost 逐轮训练/验证损失、学习曲线、特征组置换重要性、单列重要性、提前量分布、各特征产前规律曲线（中位数 + 四分位带）。</li>
 </ul>
 <h3>三、综合研判后去掉或不输出的指标</h3>
@@ -185,7 +185,7 @@ class DecisionWindow(JobWindow):
         cowrow.addWidget(self.cow, 1)
         layout.addLayout(cowrow)
         split = QSplitter(Qt.Orientation.Vertical)
-        self.folder_table = table(["牛耳标", "预测时刻", "6h 概率", "12h 概率", "24h 概率", "48h 概率", "预警等级",
+        self.folder_table = table(["牛耳标", "预测时刻", "1/2/3/6/12h 概率", "预警等级",
                                    "预计距产犊 h（P10–P50–P90）", "主要驱动", "缺失特征 / 参考历史", "模型版本"])
         split.addWidget(self.folder_table)
         charts = QTabWidget()
@@ -253,7 +253,7 @@ class DecisionWindow(JobWindow):
         bl.addLayout(pick)
         tabs = QTabWidget()
         self.profile_chart = LineChart(xlabel="距产犊（小时，负数为产前）", ylabel="近 1 小时均值")
-        self.univariate_table = table(["输入列", "单独区分度 AUC", "产前方向", "覆盖率", "24h 内中位数", "24h 外中位数"])
+        self.univariate_table = table(["输入列", "单独区分度 AUC", "产前方向", "覆盖率", "12h 内中位数", "12h 外中位数"])
         tabs.addTab(self.profile_chart, "产前规律（中位数 + 四分位带）")
         tabs.addTab(self.univariate_table, "单特征区分度")
         bl.addWidget(tabs, 1)
@@ -271,7 +271,7 @@ class DecisionWindow(JobWindow):
         self.horizon = QComboBox()
         for h in HORIZON_CHOICES:
             self.horizon.addItem(f"{h} 小时内产犊", h)
-        self.horizon.setCurrentIndex(2)
+        self.horizon.setCurrentIndex(4)
         form.addRow("主预测提前量", self.horizon)
         self.folds = QSpinBox()
         self.folds.setRange(3, 20)
@@ -549,8 +549,7 @@ class DecisionWindow(JobWindow):
             ["提前量中位 / 四分位 h", e["lead_time_median_h"], e["lead_time_iqr_h"]],
             ["误报 / 牛·天", e["false_alerts_per_cow_day"],
              f"提前量外 {e['exposure_cow_days']} 牛·天，连续 {e['persistence_hours']} 小时算一次预警"],
-            *([["剩余时间 MAE（72 h 内）", tte.get("mae_hours_within_72h"), "小时"],
-               ["剩余时间 MAE（24 h 内）", tte.get("mae_hours_within_24h"), "小时"],
+            *([["剩余时间 MAE（12 h 内）", tte.get("mae_hours_within_12h", tte.get("mae_hours_within_24h")), "小时"],
                ["80% 区间覆盖率", tte.get("interval80_coverage"), "理想值 0.8"]] if tte and "error" not in tte else []),
         ])
 
@@ -610,7 +609,8 @@ class DecisionWindow(JobWindow):
         self.prediction = result
         rows = result["rows"]
         fill(self.folder_table, [[
-            r["cow_id"], self.at(r["decision_epoch_ms"]), *[pct(r["risk"].get(f"{h}h")) for h in HORIZON_CHOICES],
+            r["cow_id"], self.at(r["decision_epoch_ms"]),
+            " / ".join(f"{h}h={pct(r['risk'].get(f'{h}h'))}" for h in HORIZON_CHOICES),
             r["warning_level"],
             (f"{r['hours_to_calving_p10']}–{r['hours_to_calving_p50']}–{r['hours_to_calving_p90']}"
              if r.get("hours_to_calving_p50") is not None else "—"),
@@ -644,7 +644,7 @@ class DecisionWindow(JobWindow):
         from PySide6.QtGui import QColor
 
         for i in range(self.folder_table.rowCount()):
-            item = self.folder_table.item(i, 6)
+            item = self.folder_table.item(i, 3)
             if item and item.text() in LEVEL_COLORS:
                 item.setForeground(QColor(LEVEL_COLORS[item.text()]))
 
@@ -657,7 +657,7 @@ class DecisionWindow(JobWindow):
             return
         hours = [(r["decision_epoch_ms"] - rows[0]["decision_epoch_ms"]) / 3_600_000 for r in rows]
         ticks = [(hours[i], self.at(rows[i]["decision_epoch_ms"])) for i in range(0, len(rows), max(1, len(rows) // 6))]
-        self.risk_chart.set_data(f"牛 {cow} · 各提前量产犊概率", [
+        self.risk_chart.set_data(f"牛 {cow} · 产犊前 12 小时内多提前量概率", [
             (f"{h} h 内", [(x, r["risk"][f"{h}h"]) for x, r in zip(hours, rows) if r["risk"].get(f"{h}h") is not None])
             for h in HORIZON_CHOICES], hlines=[("主提前量阈值", rows[0]["threshold"])], yrange=(0, 1), xticks=ticks)
         if rows[0].get("hours_to_calving_p50") is not None:

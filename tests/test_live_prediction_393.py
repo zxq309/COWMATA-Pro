@@ -36,7 +36,7 @@ def model(root):
         sha256=hashlib.sha256(blob).hexdigest(),
         feature_coverage=[1] * len(FEATURES),
         behavior_models=[],
-        horizon_hours=24,
+        horizon_hours=12,
         threshold=0.5,
         feature_importance={},
         metrics={},
@@ -77,7 +77,7 @@ def test_folder_needs_no_ledger_and_accepts_flat_json_cow_id(tmp_path):
     assert result["rows"][-1]["temperature_c"] == pytest.approx(38.55)
     assert result["input"]["mode"] == "folder" and result["input"]["sensor_records"] == 1
     assert p.read_bytes() == before and result["coverage"][0]["span_hours"] < 1
-    assert result["rows"][0]["history_status"] == "参考历史不足24小时"
+    assert result["rows"][0]["history_status"] == "参考历史不足12小时"
     assert (tmp_path / "out/数据覆盖.csv").is_file() and (
         tmp_path / "out/连续预警时段.csv"
     ).is_file()

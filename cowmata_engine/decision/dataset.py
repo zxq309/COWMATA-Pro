@@ -37,12 +37,12 @@ DERIVATIONS = {
     "slope6h": "近 6 小时斜率（每小时）",
     "circ": "近 1 小时相对前 3 天同一时段的日节律残差",
 }
-HORIZONS = (6, 12, 24, 48)
+HORIZONS = (1, 2, 3, 6, 12)
 IDENTITY = ("cow_id", "device_id", "field_mark")
 EXCLUDED_DIRS = {".edge-download", "标注工程", ".git", "__pycache__", "Label", ".label-history",
                  "归类附属文件", "科牧特_协作标注"}
 CHINA_OFFSET_H = 8
-TABLE_SCHEMA = "cowmata-decision-table-4.3.4"
+TABLE_SCHEMA = "cowmata-decision-table-4.3.5"
 
 
 # ----------------------------------------------------------------------------- scanning
@@ -445,14 +445,16 @@ def attach_truth(rows, calvings, *, horizons=HORIZONS, lookback_days=10):
                 row[f"y_{h}h"] = None
         else:
             hours = found["hours_to_calving"]
+            within_window = 0.0 <= hours <= 12.0
             row.update(hours_to_calving=round(hours, 4), calving_epoch_ms=int(found["calving_epoch_ms"]),
                        calving_start_epoch_ms=int(found["calving_start_epoch_ms"]),
                        calving_end_epoch_ms=int(found["calving_end_epoch_ms"]),
                        calving_interval_ms=int(found["calving_interval_ms"]),
                        label_source=found["label_source"], label_quality=found["label_quality"],
-                       training_eligible=bool(found["training_eligible"]))
+                       training_eligible=bool(found["training_eligible"] and within_window),
+                       calving_window_eligible=within_window)
             for h in horizons:
-                row[f"y_{h}h"] = int(hours <= h)
+                row[f"y_{h}h"] = int(hours <= h) if within_window else None
     return rows
 
 
@@ -481,10 +483,12 @@ def model_columns(rows):
     """
     skip = {"cow_id", "devices", "decision_epoch_ms", "hours_to_calving", "calving_epoch_ms",
             "calving_start_epoch_ms", "calving_end_epoch_ms", "calving_interval_ms",
-            "label_source", "label_quality", "training_eligible", "history_hours", "features_present"}
+            "label_source", "label_quality", "training_eligible", "calving_window_eligible",
+            "history_hours", "features_present"}
     keys = []
     for row in rows[:1]:
-        keys = [k for k in row if k not in skip and not k.startswith(("y_", "coverage."))]
+        keys = [k for k in row if k not in skip and not k.startswith(("y_", "coverage."))
+                and not k.endswith(("@d24", "@z72", "@circ")) and "slope_24h" not in k]
     return keys
 
 
@@ -524,7 +528,7 @@ def profile(rows, *, bins_h=6, span_h=168):
     return result
 
 
-def univariate(rows, horizon=24):
+def univariate(rows, horizon=12):
     """AUC of each input column alone for the chosen horizon (direction-free, 0.5–1)."""
     from sklearn.metrics import roc_auc_score
 
@@ -575,7 +579,7 @@ def build_dataset(*, output, features_root=None, raw_root=None, ledger=None, cal
     table_file = output / "decision_table.csv"
     header = ["cow_id", "devices", "decision_epoch_ms", "history_hours", "features_present",
               "hours_to_calving", "calving_epoch_ms", "calving_start_epoch_ms", "calving_end_epoch_ms",
-              "calving_interval_ms", "label_source", "label_quality", "training_eligible",
+              "calving_interval_ms", "label_source", "label_quality", "training_eligible", "calving_window_eligible",
               *[f"y_{h}h" for h in horizons],
               *coverage_columns, *columns]
     with table_file.open("w", encoding="utf-8-sig", newline="") as stream:
@@ -584,8 +588,10 @@ def build_dataset(*, output, features_root=None, raw_root=None, ledger=None, cal
         for row in decision:
             writer.writerow({k: "" if row.get(k) is None else row.get(k) for k in header})
     labelled = [r for r in decision if r.get("hours_to_calving") is not None]
+    window_labelled = [r for r in labelled if r.get("calving_window_eligible")]
     summary = dict(
         schema=TABLE_SCHEMA, table=table_file.name, rows=len(decision), labelled_rows=len(labelled),
+        training_window_hours=12, window_labelled_rows=len(window_labelled),
         truth_policy="annotation_interval_preferred", gold_label_rows=sum(1 for r in labelled if r.get("label_quality") == "gold"),
         cows=len({r["cow_id"] for r in decision}), calving_cows=len({r["cow_id"] for r in labelled}),
         calvings=sum(len(v) for v in calvings.values()),
@@ -618,7 +624,7 @@ def read_table(path):
         for raw in csv.DictReader(stream):
             row = {}
             for k, v in raw.items():
-                if k in ("cow_id", "devices", "label_source", "label_quality", "training_eligible"):
+                if k in ("cow_id", "devices", "label_source", "label_quality", "training_eligible", "calving_window_eligible"):
                     row[k] = v or None
                 else:
                     row[k] = _number(v)

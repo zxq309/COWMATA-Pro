@@ -128,7 +128,7 @@ def temporal_summary(rows):
                 intervals.append([a,b])
             effective += extra * max(row.get('motion_coverage') or 0, row.get('ppg_coverage') or 0)
             row['history_span_hours'] = max(0, (a-first)/3600000) if row['cow_id'] else 0
-            row['history_status'] = '参考历史不足24小时' if row['history_span_hours'] < 24 else '参考跨度已达24小时，完整性见数据覆盖'
+            row['history_status'] = '参考历史不足12小时' if row['history_span_hours'] < 12 else '参考跨度已达12小时，完整性见数据覆盖'
             row['forecast_start_ms'] = row['decision_epoch_ms']
             row['forecast_end_ms'] = row['decision_epoch_ms'] + row['horizon_hours']*3600000
         span = (last-first)/3600000
@@ -136,7 +136,7 @@ def temporal_summary(rows):
         summaries.append(dict(cow_id=key[0],device_id=key[1],start_epoch_ms=first,end_epoch_ms=last,
             span_hours=round(span,3),effective_signal_hours=round(effective/3600000,3),
             largest_gap_hours=round(max(gaps,default=0),3),windows=len(group),
-            recommendation='建议连续3至7天；不足24小时标记参考历史不足'))
+            recommendation='建议连续3至7天；不足12小时标记参考历史不足'))
         current = None
         for row in sorted(group,key=lambda r:r['decision_epoch_ms']):
             if row['warning_level'] != '关注并复核':
@@ -171,8 +171,8 @@ def predict_folder(folder, model_path, output, cache, model_home, *, progress=la
     result.update(coverage=coverage, alert_windows=alerts)
     result['input'] = dict(mode='folder',path=str(Path(folder).resolve()),json_files=count,
         sensor_records=len(index['records']),temperature_records=len(temperatures),
-        elapsed_seconds=round(time.monotonic()-started,3),recommended_history_hours=72,
-        reference_history_hours=24,horizon_hours=model['horizon_hours'],
+        elapsed_seconds=round(time.monotonic()-started,3),recommended_history_hours=12,
+        reference_history_hours=12,horizon_hours=model['horizon_hours'],
         interpretation='按采样窗口回放，在服务器收包后预测；各窗口只使用当时已收到的历史基线。预警窗口不是已确认产犊时刻。')
     atomic_json(output/'综合决策结果.json',result)
     write_table(output/'综合决策结果.csv',result['rows'])
