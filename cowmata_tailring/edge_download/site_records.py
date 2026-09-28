@@ -129,9 +129,18 @@ def read_csv(content, sheet):
     if len(content) > MAX_CSV:
         raise DownloadError("现场记录 CSV 超过 64 MiB")
     reader = csv.DictReader(io.StringIO(content.decode("utf-8-sig"), newline=""), strict=True)
-    if reader.fieldnames != SCHEMAS[sheet]["fields"]:
-        raise DownloadError(SCHEMAS[sheet]["filename"] + " 表头不符合上传器 1.3.1")
+    fields = SCHEMAS[sheet]["fields"]
+    names = reader.fieldnames or []
+    # Contract: every known column must exist exactly once; columns added by a newer
+    # uploader are ignored instead of blocking the whole ledger refresh.
+    missing = [f for f in fields if f not in names]
+    duplicated = sorted({f for f in names if names.count(f) > 1})
+    if missing or duplicated:
+        detail = ("缺少列：" + "、".join(missing)) if missing else ("重复列：" + "、".join(duplicated))
+        raise DownloadError(SCHEMAS[sheet]["filename"] + " 表头与现场台账上传器格式不一致，" + detail)
     rows = list(reader)
+    if names != fields:
+        rows = [{f: row.get(f) for f in fields} | ({None: row[None]} if None in row else {}) for row in rows]
     ids = set()
     for row in rows:
         if None in row or any(v is None or "\0" in v or len(v) > 65536 for v in row.values()):
@@ -365,6 +374,10 @@ def records_state_directory(folder):
     return local / "COWMATA-Pro" / "site-records" / key
 
 
+def backup_path(state_root, sheet, content):
+    return Path(state_root) / "csv-backups" / f"{sheet}-{hashlib.sha256(content).hexdigest()[:40]}.csv"
+
+
 def _record_changes(previous, rows, sheet):
     if previous is None:
         return dict(added=len(rows), updated=0, removed=0, baseline="new")
@@ -410,7 +423,8 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
         for sheet in changed:
             old = previous[sheet]
             if old is not None:
-                dest = backup / hashlib.sha256(old).hexdigest() / SCHEMAS[sheet]["filename"]
+                # Flat, short name: nested 64-hex folders pushed the path past Windows MAX_PATH.
+                dest = backup_path(state_root, sheet, old)
                 if not _safe(state_root, dest, missing=True):
                     raise DownloadError("现场记录备份路径包含链接")
                 _write(dest, old)

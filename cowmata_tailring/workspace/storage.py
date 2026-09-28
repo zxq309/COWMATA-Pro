@@ -98,7 +98,7 @@ def atomic_json(path: Path, value: Any, *, backup=True, indent=2) -> None:
                 shutil.copy2(path, recovery)
         _replace_with_retry(name, path)
         if path.name == "资源索引.json":
-            from .maintenance import remember_project
+            from .project_registry import remember_project
             remember_project(path.parent)
     finally:
         if os.path.exists(name):

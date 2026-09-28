@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import ALGORITHM_VERSION, EVENT_CODE
+from .constants import ALGORITHM_VERSION, EVENT_CODE
 from .candidates import DEFAULT_PARAMS, add_children, generate
 from .features import add_session_relative, candidate_features, feature_names, session_stats
 from .io import load_recording

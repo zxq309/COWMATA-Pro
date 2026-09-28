@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 from ..models import predict_forest
-from . import signal
+import cowmata_tailring.algorithms.straining.signal as signal
 from .candidates import candidate_features, candidate_names
 
 

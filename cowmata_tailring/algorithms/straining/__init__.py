@@ -5,10 +5,8 @@ candidate bout with bout-level evidence. Inference needs numpy/scipy only; train
 scikit-learn and exports numeric trees (no pickle).
 """
 
-ALGORITHM = "straining-pulse-train"
-BUNDLE_SCHEMA = "cowmata-straining-bundle-1"
-CODE = "STRAINING_BOUT"
-
-from .model import detect, detect_file, load_bundle  # noqa: E402
+# Constants live in .constants so submodules never import this package while it initialises.
+from .constants import ALGORITHM, BUNDLE_SCHEMA, CODE
+from .model import detect, detect_file, load_bundle
 
 __all__ = ["ALGORITHM", "BUNDLE_SCHEMA", "CODE", "detect", "detect_file", "load_bundle"]

@@ -276,7 +276,7 @@ def _write_zip(output, manifest, entries, *, cancelled, progress, before_publish
 
 
 def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None):
-    from .package_readiness import download_guard, validate_complete
+    from .package_readiness import download_guard, ledger_state, validate_complete
     root = Path(root).resolve(strict=True)
     identity = farm_identity(root)
     outputs = []
@@ -327,6 +327,8 @@ def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None):
                     entries.append(dict(path=root.name + '/' + rel, payload=payload, size=len(payload)))
             output = home / '原始数据包' / (plan['base_name'] + '_原始.zip')
             def final_check(published_manifest):
+                if (root / '.edge-download/csv-cycle.json').exists():
+                    ledger_state(root)
                 _check_unit_files(root, plan['units'])
                 for entry in entries:
                     if entry.get('source') and file_stamp(Path(entry['source'])) != entry['stamp']:

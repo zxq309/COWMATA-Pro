@@ -28,9 +28,10 @@ from .farm_layout import CATEGORY_PATHS
 
 
 def eligible(unit, purpose, allow_repackage=False):
+    complete = not ({'Motion', 'PPG', 'Temp'} - set(unit.get('modalities') or ()))
     if purpose == 'review':
-        return bool(unit.get('annotated_records'))
-    return unit['annotation_status'] != 'done' and (allow_repackage or not unit['dispatches'])
+        return complete and bool(unit.get('annotated_records'))
+    return complete and unit['annotation_status'] != 'done' and (allow_repackage or not unit['dispatches'])
 
 
 class PackageSheet(QWidget):

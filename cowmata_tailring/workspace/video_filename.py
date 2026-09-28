@@ -76,6 +76,7 @@ def metadata_from_name(path, relative, info, timeline=None):
         header_duration=info.get("format", {}).get("duration"),
         timeline=timeline.to_dict(),
         time_engine=SIGNATURE,
+        version=SIGNATURE,
         time_basis="classified_filename",
         filename_anchor=Path(path).name,
         filename_wall_ms=start,

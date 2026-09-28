@@ -8,9 +8,9 @@ import time
 from contextlib import ExitStack
 from pathlib import Path
 
+import cowmata_tailring.workspace.project_registry as project_registry
+from .project_registry import remember_project  # noqa: F401  (public name kept here)
 from .storage import ProjectLock, atomic_json, recovery_path
-
-_projects: set[Path] = set()
 
 
 def clean_version_cache(root, meta, version):
@@ -87,17 +87,6 @@ def _timeline_cache_types():
         ('packet-timelines', '.timeline.json', MediaTimelineIndex.from_dict),
         ('dahua-timelines', '.dahua-duration.json', DahuaDurationIndex.from_dict),
     )
-
-
-def remember_project(path):
-    """Only remember explicit project roots touched by this process."""
-    try:
-        path = Path(path).absolute()
-        if path.resolve() == path and ((path / '.cowmata-farm.json').is_file()
-                                      or (path / '资源索引.json').is_file()):
-            _projects.add(path)
-    except OSError:
-        pass  # Optional housekeeping must never prevent opening/saving data.
 
 
 def _plain(path, root):
@@ -192,7 +181,7 @@ def cleanup_session():
     """Called after the GUI has saved and drained its workers on normal exit."""
     from .dataset_access import _active, _locked_registry
     results = {}
-    for root in sorted(_projects):
+    for root in sorted(project_registry._projects):
         results[str(root)] = clean_project(root)
     try:
         root, lock = _locked_registry()

@@ -19,7 +19,8 @@ import numpy as np
 
 from ..metrics import evaluate_events
 from ..models import export_forest, predict_forest
-from . import BUNDLE_SCHEMA, CODE, signal
+import cowmata_tailring.algorithms.straining.signal as signal
+from .constants import BUNDLE_SCHEMA, CODE
 from .candidates import candidate_features, candidate_names
 from .regularity import CONTEXT_CODES, drift, regularity_report
 

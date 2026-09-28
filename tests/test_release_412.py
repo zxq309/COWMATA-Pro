@@ -1,4 +1,4 @@
-import json,time,zipfile
+import base64,json,struct,time,zipfile
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
@@ -15,9 +15,17 @@ def test_selected_date_package_preserves_exact_tree_and_bytes(tmp_path,monkeypat
     for day in ['2026-08-17','2026-08-18']:
         for kind in ['Motion','PPG','Temp']:
             rel=f'产犊/{kind}/{day}/546C50CA07FA-23077-E/{day}_17-01-33.json'
-            payload=json.dumps({'device':'old-device','cow_id':99999,'example':'原样保留'}).encode()
+            stamp=int(__import__('datetime').datetime.fromisoformat(day).replace(tzinfo=__import__('cowmata_tailring.edge_download.core', fromlist=['CHINA']).CHINA).timestamp()*1000)
+            if kind=='Motion':
+                payload=json.dumps({'device':'546C50CA07FA','cow_id':'23077','create_time':stamp,'version':2,'imu':base64.b64encode(struct.pack('<I9h',0,*([1]*9))).decode()}).encode()
+            elif kind=='PPG':
+                payload=json.dumps({'device':'546C50CA07FA','cow_id':'23077','create_time':stamp,'sample_rate_hz':50,'data':base64.b64encode(struct.pack('<H',1)).decode()}).encode()
+            else:
+                payload=json.dumps({'device':'546C50CA07FA','cow_id':'23077','create_time':stamp,'data':38.5}).encode()
             p=root/rel;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(payload);paths[rel]=payload
         p=root/f'录像/{day}/视角01/{day}_00-00-00.mp4';p.parent.mkdir(parents=True);p.write_bytes(b'unchanged video');paths[p.relative_to(root).as_posix()]=p.read_bytes()
+    from cowmata_tailring.workspace import package_readiness
+    monkeypatch.setattr(package_readiness, 'video_span', lambda *_: (0, 99999999999999))
     units=[u for u in packages.inventory(root,'产犊') if u['day']=='2026-08-17']
     plans=packages.plan_dispatch_groups(root,[units])
     out=packages.dispatch(root,plans)[0]

@@ -72,7 +72,8 @@ def test_glass_background_cache_and_fallback(app):
     assert w.cache.cacheKey() == first
     w.set_effects(False)
     w.grab()
-    assert not w.effects_enabled and w.cache.cacheKey() != first
+    # Fallback lets the stylesheet paint the page; a solid cached fill would occlude it (beige overlay bug).
+    assert not w.effects_enabled and w.cache is None
     result = apply_mica(int(w.winId()), False)
     assert result["enabled"] is False
     w.close()

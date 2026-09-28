@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import ALGORITHM_VERSION, SCHEMA
+from .constants import ALGORITHM_VERSION, SCHEMA
 from .candidates import DEFAULT_PARAMS
 from .dataset import build_candidates, label_candidates, scan_dataset
 from .evaluate import assign_folds, best_threshold, event_metrics

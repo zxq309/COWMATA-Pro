@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from . import EVENT_CODE
+from .constants import EVENT_CODE
 from .dataset import match_rule, overlap
 
 

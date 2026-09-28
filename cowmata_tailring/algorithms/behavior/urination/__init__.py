@@ -14,10 +14,8 @@ a numeric forest (JSON, no pickle) scores each candidate against defecation,
 tail raising, straining, posture changes and background motion.
 """
 
-SCHEMA = "cowmata-urination-2"
-ALGORITHM_VERSION = "2.1.0"
-EVENT_CODE = "URINATION"
-EVENT_TITLE = "排尿"
+# Constants live in .constants so submodules never import this package while it initialises.
+from .constants import ALGORITHM_VERSION, EVENT_CODE, EVENT_TITLE, SCHEMA
 
 from .detector import detect_file, detect_recording, load_bundle
 from .train import train

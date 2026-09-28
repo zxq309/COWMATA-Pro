@@ -185,7 +185,18 @@ class PresentationVideoBoard(AdaptiveVideoBoard):
                 width = max(1, (w-gap*(columns-1))/columns)
                 height = max(1, (h-gap*(rows-1))/rows-69)
                 return min(width, height*16/9)**2*9/16
-            columns = max(range(1, count+1), key=picture_area)
+            # Grid review needs legible tiles: prefer layouts keeping every tile >= 200x140 device px,
+            # and never more than 4 columns for 6+ views (the old max-area pick produced thin strips).
+            dpr = max(1.0, self.devicePixelRatioF())
+            candidates = []
+            max_columns = min(count, 4 if count >= 6 else count)
+            for candidate in range(1, max_columns + 1):
+                rows_for_candidate = math.ceil(count / candidate)
+                cell_w_for_candidate = (w - gap * (candidate - 1)) // candidate
+                cell_h_for_candidate = (h - gap * (rows_for_candidate - 1)) // rows_for_candidate
+                if cell_w_for_candidate * dpr >= 200 and cell_h_for_candidate * dpr >= 140:
+                    candidates.append(candidate)
+            columns = max(candidates or range(1, max_columns + 1), key=picture_area)
             rows = max(1, math.ceil(len(self.selected) / columns))
             cell_w, cell_h = (w - gap * (columns - 1)) // columns, (h - gap * (rows - 1)) // rows
             positions = {camera: ((i % columns) * (cell_w + gap), (i // columns) * (cell_h + gap),
@@ -504,6 +515,9 @@ class WorkspaceStage(QWidget):
             if getattr(self.board, "expanded", None):
                 # Single enlarged view: waveform becomes a strip, video gets the height.
                 wave_h = min(available, max(160, int(h * self.FOCUS_WAVE_RATIO * .75)))
+            elif self.mode == "B":
+                # Grid mode must keep native video tiles large enough for review.
+                wave_h = min(available, max(160, int(h * 0.38)))
             else:
                 wave_h = min(available, max(240, int(h * self.wave_ratio)))
             self.video.setGeometry(0, 0, w, h - wave_h - 8)

@@ -76,7 +76,7 @@ def _check(root, paths, kind, owner=None):
             if state in {"completed", "no_output"}:
                 path.unlink(missing_ok=True)
                 continue
-            if state == "paused" and kind in {"annotation", "review", "maintenance", "organize"}:
+            if state == "paused" and kind in {"annotation", "review", "maintenance"}:
                 continue
         if kind not in {"review", "maintenance"} and owner not in {pending.get("task_id"), pending.get("owner_id")} and any(overlaps(a, b) for a in paths for b in pending.get("paths", [])):
             raise OSError("此目录有未完成的整理任务，请在数据整理窗口继续原任务：" + pending["job"])
@@ -112,7 +112,7 @@ class DatasetLease:
             self.path.write_text(json.dumps({"id": self.id, "kind": kind, "paths": paths,
                                              "pid": os.getpid()}, ensure_ascii=False), encoding="utf-8")
             if kind != "maintenance":
-                from .maintenance import remember_project
+                from .project_registry import remember_project
                 for path in paths:
                     remember_project(Path(path))
         except Exception:
