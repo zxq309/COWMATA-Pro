@@ -14,12 +14,12 @@ def test_three_views_and_grouped_more_menu(isolated_store, qt_application):  # n
     class Plan:
         issues = []
         local_status = {2: dict(state="downloaded", files=5), 3: dict(state="missing", files=0),
-                        4: dict(state="partial", files=2), 5: dict(state="invalid", files=0),
+                        4: dict(state="partial", files=2), 5: dict(state="excluded", files=0),
                         6: dict(state="today", files=0), 7: dict(state="current", files=4)}
 
         def preview(self):
             return [row(2, 20, "AAAA"), row(3, 18, "BBBB"), row(4, 21, "CCCC"),
-                    row(5, 22, "DDDD", "excluded", "九轴无效，不下载此条记录的三类数据"),
+                    row(5, 22, "DDDD", "excluded", "首次读取时已结束，不新建历史下载任务"),
                     row(6, 24, "EEEE"), row(7, 19, "FFFF")]
 
     dialog = ProDownloadDialog(store=isolated_store)
@@ -38,7 +38,7 @@ def test_three_views_and_grouped_more_menu(isolated_store, qt_application):  # n
         top = [a.text() for a in dialog.more_menu.actions() if not a.isSeparator()]
         assert top == ["运行记录…", "问题清单与备注", "台账与连接", "打开目录"]
         nested = {a.text(): [b.text() for b in a.menu().actions()] for a in dialog.more_menu.actions() if a.menu()}
-        assert "检测服务器连接" in nested["台账与连接"] and "仅刷新三个 CSV" in nested["台账与连接"]
-        assert dialog.ledger_button.text() == "仅刷新三个 CSV" and dialog.probe_button.text() == "检测服务器连接"
+        assert "检测服务器连接" in nested["台账与连接"] and "仅刷新台账" in nested["台账与连接"]
+        assert dialog.ledger_button.text() == "仅刷新台账" and dialog.probe_button.text() == "检测服务器连接"
     finally:
         dialog.deleteLater()

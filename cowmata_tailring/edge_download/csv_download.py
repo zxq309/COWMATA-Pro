@@ -38,7 +38,7 @@ def save_record(job, plan, kind, data, *, replace=False):
     if wear is None:
         raise DownloadError("台账未授权下载：" + reason)
     category = wear.category
-    owner = wear.identity.folder_name if wear else data["device"].upper() + "-待核对"
+    owner = (plan.record_folder(wear) if hasattr(plan, "record_folder") else wear.identity.folder_name)
     folder = checked_path(
         job.farm, Path(category) / MODALITIES[kind] / stamp.strftime("%Y-%m-%d") / owner
     )
@@ -95,6 +95,11 @@ def _ledger_signature(plan, device, lo, hi):
     for wear in plan.by_device.get(device, []):
         if wear.start < hi and (wear.end is None or lo < wear.end):
             status, _ = plan.eligibility(wear)
+            if hasattr(plan, "keys"):
+                rows.append([plan.keys[wear.row], wear.identity.cow_id,
+                             max(lo, wear.start).isoformat(), min(hi, wear.end or hi).isoformat(),
+                             status, wear.end_issue])
+                continue
             rows.append([wear.source, wear.row, wear.identity.folder_name, wear.category,
                          wear.start.isoformat(), wear.end.isoformat() if wear.end else "", status])
     return hashlib.sha256(json.dumps(sorted(rows), ensure_ascii=False).encode()).hexdigest()
@@ -113,13 +118,15 @@ def _local_signature(db, root, device, lo, hi):
 
 def run_csv_job(
     job, cancel, log=lambda message: None, progress=lambda done, total: None, client_factory=Client,
-    *, only=None, force=False, now=None,
+    *, only=None, force=False, now=None, prediction=True,
 ):
     """Download the ledger-authorised range up to 00:00 today (Beijing).
 
     ``only`` restricts the round to the given plan records (a date or rows
     picked in the window); ``force`` re-downloads them from the server even if
     local copies exist, keeping a byte-exact backup of every replaced file.
+    ``prediction=False`` retains the explicit legacy historical-download API.
+    The application uses the default ongoing-wearing workflow.
     """
     from .download_status import clear_done, clip_ranges, day_cutoff, mark_done, settled
 
@@ -128,9 +135,16 @@ def run_csv_job(
     root = Path(job.farm)
     root.mkdir(parents=True, exist_ok=True)
     with RootSyncLock(root, cancel):
-        plan = CsvPlan(job.ledger_directory)
+        from .prediction import PredictionPlan
+        plan = PredictionPlan(job.ledger_directory, root) if prediction else CsvPlan(job.ledger_directory)
         if not plan.ready:
-            raise DownloadError("必须先完整核对三份现场 CSV；本轮未开始下载")
+            raise DownloadError("必须先核对样本试验台账 CSV；本轮未开始下载" if prediction
+                                else "必须先完整核对三份现场 CSV；本轮未开始下载")
+        if cancel.is_set():
+            result.canceled = True
+            return result
+        if prediction:
+            plan.persist()
         from cowmata_tailring.workspace.farm_layout import CATEGORY_PATHS, initialize_farm
 
         from .download_cycle import record_cycle
@@ -184,6 +198,19 @@ def run_csv_job(
                     db.commit()
                 local = LocalRecords(root, db, cancel, log)
                 local.refresh()
+                if prediction:
+                    from .download_status import ensure_table
+                    ensure_table(db)
+                    # The scan covers the whole data root even when only one
+                    # record was selected. Do not export stale completion for
+                    # another cow whose local originals were deleted/changed.
+                    for dev, first, last, ledger_sig, local_sig in db.execute(
+                            "SELECT device,lo,hi,ledger,local FROM done_ranges").fetchall():
+                        lo, hi = datetime.fromisoformat(first), datetime.fromisoformat(last)
+                        if (local_sig != _local_signature(db, root, dev, lo, hi)
+                                or ledger_sig != _ledger_signature(plan, dev, lo, hi)):
+                            clear_done(db, dev, lo, hi)
+                    db.commit()
                 windows = []
                 for device, lo, hi in ranges:
                     while lo < hi:
@@ -195,10 +222,17 @@ def run_csv_job(
                     if not force and settled(db, device, lo, end, ledger_sig,
                                              _local_signature(db, root, device, lo, end)):
                         result.settled += 1
+                        if prediction:
+                            plan.verified_ranges.append(dict(device=device, start=lo.isoformat(), end=end.isoformat()))
                         log(f"已完成，跳过：{device} {lo:%Y-%m-%d}（{number}/{len(windows)}）")
                         progress(number, len(windows))
                         continue
                     failures = result.failed
+                    if prediction:
+                        # Once local files or authorization changed, an old
+                        # completion marker cannot survive a failed repair.
+                        clear_done(db, device, lo, end)
+                        db.commit()
                     log(f"正在下载 {device} {lo:%Y-%m-%d}（{number}/{len(windows)}）")
                     try:
                         items = client.listing(Target(device), lo, end, ("motion", "pulse", "temp"))
@@ -210,7 +244,7 @@ def run_csv_job(
                             seen.add(key)
                             try:
                                 existing = None if force else local.find_uid(kind, actual_device, uid, lo, end)
-                                if existing is not None:
+                                if existing is not None and not prediction:
                                     result.skipped += 1
                                     log(
                                         "已存在，跳过下载：" + existing.relative_to(root).as_posix()
@@ -220,12 +254,18 @@ def run_csv_job(
                                     "SELECT path,sha,ledger FROM files WHERE key=?", (key,)
                                 ).fetchone()
                                 data = None
+                                if prediction and existing is not None and cached and not force:
+                                    raw = existing.read_bytes()
+                                    if hashlib.sha256(raw).hexdigest() == cached[1]:
+                                        data = json.loads(raw)
+                                    # A valid-looking but changed local record
+                                    # must be checked against the server again.
                                 if cached and not force:
                                     previous = checked_path(root, cached[0])
                                     if previous.is_file():
                                         raw = previous.read_bytes()
                                         if hashlib.sha256(raw).hexdigest() == cached[1]:
-                                            if local.remember(previous, kind):
+                                            if local.remember(previous, kind) and not prediction:
                                                 result.skipped += 1
                                                 continue
                                             data = json.loads(raw)
@@ -247,7 +287,7 @@ def run_csv_job(
                                 if wear is None:
                                     raise DownloadError("台账未授权保存：" + reason)
                                 existing = local.find_data(kind, data)
-                                if existing is not None:
+                                if existing is not None and (not prediction or existing.is_relative_to(root / "待预测")):
                                     file, saved = existing, False
                                     wear, reason = plan.resolve_download(
                                         actual_device, actual, data.get("cow_id", "")
@@ -295,10 +335,16 @@ def run_csv_job(
                         # while its ledger records and local files stay unchanged.
                         mark_done(db, device, lo, end, ledger_sig, _local_signature(db, root, device, lo, end))
                         db.commit()
+                        if prediction:
+                            plan.verified_ranges.append(dict(device=device, start=lo.isoformat(), end=end.isoformat()))
                     progress(number, len(windows))
                 log(f"本轮下载完成：{len(windows)} 个设备日，已完成跳过 {result.settled}；数据截至 {end_limit:%Y-%m-%d %H:%M}")
             except Cancelled:
                 result.canceled = True
             finally:
-                db.close()
+                try:
+                    if prediction:
+                        plan.persist(db, cutoff=cutoff)
+                finally:
+                    db.close()
     return result

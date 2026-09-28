@@ -138,18 +138,18 @@ def test_unknown_calving_outcome_is_a_note_and_does_not_block_plan(tmp_path):
 
 def payloads():
     return {sheet: csv_content(sheet, **({
-        "牛号": "23077-E", "佩戴开始": "2026-08-18 00:00:00", "佩戴结束": "2026-08-19 00:00:00",
-        "监测目的": "产犊监测", "数据分类": "calving", "产犊开始": "2026-08-18 08:00:00",
-        "产犊结束": "2026-08-18 09:00:00", "九轴": "有效", "脉搏": "有效", "温度": "有效",
+        "牛号": "23077-E", "佩戴开始": "2026-08-18 00:00:00", "佩戴结束": "",
+        "监测目的": "产犊监测", "数据分类": "calving", "产犊开始": "",
+        "产犊结束": "", "九轴": "", "脉搏": "", "温度": "",
     } if sheet == "samples" else {})) for sheet in SCHEMAS}
 
 
-@pytest.mark.parametrize("fail_refresh", [False, True])
-def test_one_click_fetches_all_csv_before_downloading_and_keeps_cache_on_failure(
-        isolated_store, qt_application, monkeypatch, fail_refresh):
+@pytest.mark.parametrize("failed_sheet", [None, "samples", "equipment"])
+def test_one_click_uses_primary_ledger_and_preserves_auxiliary_cache(
+        isolated_store, qt_application, monkeypatch, failed_sheet):
     from cowmata_tailring.edge_download import pro_dialog as ui
     from cowmata_tailring.edge_download.csv_download import run_csv_job
-    from cowmata_tailring.edge_download.csv_targets import CsvPlan
+    from cowmata_tailring.edge_download.prediction import PredictionPlan
     store = isolated_store
     store.value.update(sync_ledger=False, download_mode="scheduled",
                        start_time="2026-08-18T00:00:00+08:00", end_time="2026-08-19T00:00:00+08:00")
@@ -163,13 +163,13 @@ def test_one_click_fetches_all_csv_before_downloading_and_keeps_cache_on_failure
         def __init__(self, *args): pass
         def pull(self, sheet):
             calls.append(sheet)
-            if fail_refresh and sheet == "equipment":
+            if failed_sheet == sheet:
                 raise OSError("test connection unavailable")
             return content[sheet]
     raw_client = client_for([("motion", record("motion")), ("pulse", record("pulse"))], downloads)
     def run(job, *args):
         assert calls == list(SCHEMAS)
-        assert CsvPlan(job.ledger_directory).ready
+        assert PredictionPlan(job.ledger_directory, root=job.farm).ready
         return run_csv_job(job, *args, client_factory=raw_client)
     def factory(values, operation, parent):
         operations.append(operation)
@@ -184,13 +184,15 @@ def test_one_click_fetches_all_csv_before_downloading_and_keeps_cache_on_failure
         spin(qt_application, lambda: not dialog.running)
         assert operations == ["all"]
         assert not dialog.timer.isActive()
-        if fail_refresh:
+        if failed_sheet == "samples":
             assert not downloads
             assert "刷新未完成" in dialog.csv_receipt.text()
         else:
             assert len(downloads) == 2
             assert store.value["last_cycle"]["saved"] == 2
-            assert len(list(Path(store.value["data_root"]).glob("产犊/*/*/*/*.json"))) == 2
+            assert len(list(Path(store.value["data_root"]).glob("待预测/*/*/*/*.json"))) == 2
+            if failed_sheet == "equipment":
+                assert "未刷新，保留本地旧表" in dialog.csv_receipt.text()
         for sheet, schema in SCHEMAS.items():
             assert (ledger / schema["filename"]).read_bytes() == content[sheet]
     finally:
@@ -231,13 +233,13 @@ def test_incomplete_ledger_rows_are_ignored_from_the_visible_download_plan(isola
                         "start": "2026-01-01T00:00:00+08:00", "end": "",
                         "category": "待核对", "warnings": ""}
             return [row("样本试验台账.csv", "eligible", 2, "ready", "A"),
-                    row("样本试验台账.csv", "pending", 3, "待补全：九轴", "B"),
-                    row("样本试验台账.csv", "excluded", 4, "温度无效", "C"),
+                    row("样本试验台账.csv", "pending", 3, "佩戴开始缺失", "B"),
+                    row("样本试验台账.csv", "excluded", 4, "首次读取时已结束，不新建历史下载任务", "C"),
                     row("扬大测试设备台账.csv", "reference", 5, "reference", "D")]
     try:
         dialog.receive_plan(Plan(), "")
         assert [row["device"] for row in dialog.plan_records] == ["A", "C"]
-        assert "待补全已忽略 1" in dialog.plan_label.text()
+        assert "设备号/佩戴时间待核对 1" in dialog.plan_label.text()
         assert all(item["row"] != 3 for item in dialog.csv_issues)
     finally:
         dialog.deleteLater()

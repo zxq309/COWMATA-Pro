@@ -11,7 +11,7 @@ MARKER = ".cowmata-farm.json"
 SCHEMA = "cowmata-farm-v1"
 RECORDINGS = "录像"
 COLLABORATION = "科牧特_协作标注"
-CATEGORY_PATHS = ("产犊", "发情", "怀孕/孕早期", "怀孕/孕中期", "怀孕/孕晚期", "正常", "疫病", "待核对", "未分类")
+CATEGORY_PATHS = ("产犊", "发情", "怀孕/孕早期", "怀孕/孕中期", "怀孕/孕晚期", "正常", "疫病", "待核对", "未分类", "待预测")
 
 
 def farm_identity(root):

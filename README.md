@@ -1,4 +1,6 @@
-# COWMATA Annotator 4.3.8
+# COWMATA Annotator 4.3.9
+
+4.3.9 新增以样本台账为核心的佩戴中预测下载：未填佩戴结束的记录先下载，补结束后收尾，补产犊后更新预测台账。原始数据与 CSV 保存在独立“待预测”目录。见 [操作说明](docs/release-439.md)。
 
 **奶牛尾环数据归类与标注工具**：端侧数据下载与归类、九轴与多视角录像同步标注、调用已训练的行为识别模型**自动生成标注候选**、人工复核与可追溯导出。
 
@@ -29,9 +31,9 @@
 
 ## 安装与升级
 
-- 安装包 `COWMATA-Annotator-4.3.8-Setup.exe`（NSIS，用户级，默认 `%LOCALAPPDATA%\Programs\COWMATA Annotator`）；
-- 便携包 `COWMATA-Annotator-4.3.8-Portable.zip`（解压后双击 `COWMATA.exe`）；
-- 源码包 `COWMATA-Annotator-4.3.8-Source.zip`。
+- 安装包 `COWMATA-Pro-4.3.9-Setup.exe`（NSIS，用户级，默认 `%LOCALAPPDATA%\Programs\COWMATA Annotator`）；
+- 便携包 `COWMATA-Pro-4.3.9-Portable.zip`（解压后双击 `COWMATA.exe`）；
+- 源码包 `COWMATA-Pro-4.3.9-Source.zip`。附件保留 COWMATA-Pro 前缀，以兼容现有客户端更新入口。
 - 从 COWMATA Pro 4.3.4 及以后版本在线升级：更新器识别 `COWMATA-Annotator-*` 资产并校验 SHA-256，原安装目录原地升级。
 
 历史说明：[4.3.7 README](docs/project/README-4.3.7.md) · [更新记录](CHANGELOG.md) · [新手图文教程](docs/operator-guide-395.html)

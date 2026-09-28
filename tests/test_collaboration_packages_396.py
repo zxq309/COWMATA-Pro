@@ -75,7 +75,7 @@ def farm(tmp_path, monkeypatch):
             return []
     run_csv_job(Job('http://example.test', root, '产犊', (), ('motion', 'pulse', 'temp'),
                     datetime(2026, 9, 17, tzinfo=CHINA), datetime(2026, 9, 19, tzinfo=CHINA), ledger),
-                threading.Event(), client_factory=EmptyClient)
+                threading.Event(), client_factory=EmptyClient, prediction=False)
     def fake_probe(path, cancelled):
         start = datetime.strptime(path.stem, '%Y-%m-%d_%H-%M-%S').replace(tzinfo=CHINA).timestamp() * 1000
         return start, start + 3000
