@@ -14,11 +14,12 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+from cowmata_tailring.workspace.device_identity import DeviceIdentity
+
 from .core import CHINA, DownloadError, checked_path
 from .csv_targets import FILES, Wear, cow_identity, is_outcome_text, parse_time
 from .settings import atomic_json
 from .site_records import _write
-from cowmata_tailring.workspace.device_identity import DeviceIdentity
 
 CATEGORY = "待预测"
 STATE = ".edge-download/prediction-tracking.json"
@@ -287,7 +288,7 @@ class PredictionPlan:
             return
         from .download_status import covered, load_done
         done = load_done(db) if db is not None else {}
-        for key, entry in self.entries.items():
+        for _key, entry in self.entries.items():
             lo = parse_time(entry["start"])
             hi = parse_time(entry.get("end"))
             if db is not None:

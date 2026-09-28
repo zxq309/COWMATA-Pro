@@ -1929,13 +1929,13 @@
     },
     {
       "path": "cowmata_tailring/edge_download/prediction.py",
-      "size": 20693,
-      "sha256": "877544aa8525acac4c25481baaca5e4915f58b4013498f840ddbc59ca433ff9c"
+      "size": 20695,
+      "sha256": "c0649aad8aa7e219e3496eec05ab372bf28c206ef28c5fda76280254d2363bae"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_dialog.py",
       "size": 75045,
-      "sha256": "503e03a05018915340a004f40d6df00cb334abadd2c35106e0b87e8a8bd5c0c9"
+      "sha256": "1bc05e694d12f1f8fa8ea309ccc904768ceb0dd4b51cad146860ebc880846fb8"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_settings.py",
@@ -4894,13 +4894,13 @@
     },
     {
       "path": "tests/test_prediction_download.py",
-      "size": 19886,
-      "sha256": "e2d3b5816cd0b3e0fea0d32aaa9d7f4cefa2160f4903c9de41dd5a334258a1a7"
+      "size": 19885,
+      "sha256": "ec13f81386f92da7b298a1a550ca76c7c771ebcb4487a2227518524a06fde83d"
     },
     {
       "path": "tests/test_prediction_ledger_ui.py",
-      "size": 10258,
-      "sha256": "913c456954451fd416d1b96781c08e042e4a0cb28f27578857ad7f183a582094"
+      "size": 10259,
+      "sha256": "4fd50cb5ec1803cade69a8d327c8455606eb50fb260a56ac93e51af90e793c64"
     },
     {
       "path": "tests/test_prediction_receipt395.py",

@@ -42,9 +42,9 @@ from cowmata_tailring.ui.task_window import TaskWindow
 from .connection import ensure_connection
 from .core import CHINA, Cancelled, Job
 from .csv_download import run_csv_job
-from .prediction import PredictionPlan
 from .download_notes import NotesStore, notes_path
 from .download_status import STATES, day_cutoff, record_day
+from .prediction import PredictionPlan
 from .pro_settings import ProSettings
 from .raw_connection import raw_connection
 from .site_records import SCHEMAS, LedgerClient, refresh_records
