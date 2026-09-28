@@ -1,4 +1,4 @@
-# COWMATA Annotator 4.3.8
+# COWMATA Annotator 4.3.9
 
 说明统一维护在 [README.md](README.md)。
 

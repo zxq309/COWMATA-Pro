@@ -170,9 +170,9 @@ def test_download_cache_hash_and_raw_intake(tmp_path):
         start + timedelta(hours=2),
         ledger,
     )
-    first = run_csv_job(job, threading.Event(), client_factory=Fake)
+    first = run_csv_job(job, threading.Event(), client_factory=Fake, prediction=False)
     assert first.saved == 1 and first.failed == 0
-    second = run_csv_job(job, threading.Event(), client_factory=Fake)
+    second = run_csv_job(job, threading.Event(), client_factory=Fake, prediction=False)
     assert second.skipped + second.settled == 1 and len(calls) == 1
     raw = next((root / "产犊/Motion").rglob("*.json"))
     assert raw.parent.name == "546C50CA07E5-21314-D2"
@@ -180,7 +180,7 @@ def test_download_cache_hash_and_raw_intake(tmp_path):
     index = scan_inputs(root)
     assert len(index["records"]) == 1 and not index["issues"], index["issues"]
     raw.write_text("{}")
-    third = run_csv_job(job, threading.Event(), client_factory=Fake)
+    third = run_csv_job(job, threading.Event(), client_factory=Fake, prediction=False)
     assert third.saved == 1 and len(calls) == 2
     assert list((root / ".edge-download/recovery").iterdir())
 

@@ -24,7 +24,7 @@ from .transport import urlopen
 
 CHINA = timezone(timedelta(hours=8))
 MODALITIES = {'motion': 'Motion', 'pulse': 'PPG', 'temp': 'Temp'}
-CATEGORIES = ('产犊', '发情', '正常', '疫病', '怀孕', '待核对', '怀孕/孕早期', '怀孕/孕中期', '怀孕/孕晚期', '未分类')
+CATEGORIES = ('产犊', '发情', '正常', '疫病', '怀孕', '待核对', '怀孕/孕早期', '怀孕/孕中期', '怀孕/孕晚期', '未分类', '待预测')
 
 
 class DownloadError(ValueError):
@@ -278,7 +278,7 @@ class Client:
         # Explicit user-provided ear tag is allowed for old device-only endpoints.
         # Identity inferred from CSV/query belongs in the plan, never in raw JSON.
         if not (historical or cow):
-            self.log('记录无历史牛号，按设备下载并归入待核对目录')
+            self.log('原始记录未包含历史牛号，将按设备和本地台账核对归属')
         data.pop('url', None)
         validate_payload(data, kind)
         return data

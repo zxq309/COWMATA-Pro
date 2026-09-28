@@ -97,7 +97,7 @@ def test_existing_organized_file_skips_detail_before_download(tmp_path, kind, mo
     original = json.dumps(doc, indent=2).encode()
     old.write_bytes(original)
     calls = []
-    result = run_csv_job(job, threading.Event(), client_factory=client_for([(kind, doc)], calls))
+    result = run_csv_job(job, threading.Event(), client_factory=client_for([(kind, doc)], calls), prediction=False)
     assert (result.saved, result.skipped, result.failed, calls) == (0, 1, 0, [])
     assert old.read_bytes() == original
     assert list(job.farm.glob("*/*/*/*/*.json")) == [old]
@@ -110,7 +110,7 @@ def test_motion_and_ppg_uids_are_separate_and_missing_only_is_fetched(tmp_path):
     old.parent.mkdir(parents=True)
     old.write_text(json.dumps(docs[0][1]))
     calls = []
-    result = run_csv_job(job, threading.Event(), client_factory=client_for(docs, calls))
+    result = run_csv_job(job, threading.Event(), client_factory=client_for(docs, calls), prediction=False)
     assert (result.saved, result.skipped, result.failed) == (1, 1, 0)
     assert calls == [("pulse", 33179)]
     new = job.farm / "产犊/PPG/2026-08-18" / (DEVICE + "-23077-E") / "2026-08-18_00-41-42.json"
@@ -122,11 +122,11 @@ def test_csv_revision_never_copies_existing_raw_file(tmp_path):
     doc = record("motion")
     calls = []
     fake = client_for([("motion", doc)], calls)
-    assert run_csv_job(job, threading.Event(), client_factory=fake).saved == 1
+    assert run_csv_job(job, threading.Event(), client_factory=fake, prediction=False).saved == 1
     old = next(job.farm.glob("产犊/Motion/*/*/*.json"))
     original = old.read_bytes()
     fixture_job(tmp_path, "healthy", "正常监测")
-    result = run_csv_job(job, threading.Event(), client_factory=fake)
+    result = run_csv_job(job, threading.Event(), client_factory=fake, prediction=False)
     assert (result.saved, result.skipped, len(calls)) == (0, 1, 1)
     assert old.read_bytes() == original
     assert not list(job.farm.glob("正常/Motion/*/*/*.json"))
@@ -315,12 +315,12 @@ def test_changed_file_is_repaired_and_missing_file_is_downloaded_again(tmp_path)
     docs = [("motion", record("motion")), ("pulse", record("pulse"))]
     calls = []
     fake = client_for(docs, calls)
-    assert run_csv_job(job, threading.Event(), client_factory=fake).saved == 2
+    assert run_csv_job(job, threading.Event(), client_factory=fake, prediction=False).saved == 2
     motion = next(job.farm.glob("产犊/Motion/*/*/*.json"))
     pulse = next(job.farm.glob("产犊/PPG/*/*/*.json"))
     motion.write_bytes(b"{}")
     pulse.unlink()
-    result = run_csv_job(job, threading.Event(), client_factory=fake)
+    result = run_csv_job(job, threading.Event(), client_factory=fake, prediction=False)
     assert (result.saved, result.failed, len(calls)) == (2, 0, 4)
     assert json.loads(motion.read_bytes()) == docs[0][1]
     assert json.loads(pulse.read_bytes()) == docs[1][1]
@@ -338,10 +338,10 @@ def test_legacy_without_uid_is_not_duplicated_after_detail_check(tmp_path):
     old.write_text(json.dumps(old_doc))
     calls = []
     fake = client_for([("pulse", doc)], calls)
-    result = run_csv_job(job, threading.Event(), client_factory=fake)
+    result = run_csv_job(job, threading.Event(), client_factory=fake, prediction=False)
     assert (result.saved, result.skipped, len(calls)) == (0, 1, 1)
     # 4.2.7: the finished day is skipped without listing the server again.
-    again = run_csv_job(job, threading.Event(), client_factory=fake)
+    again = run_csv_job(job, threading.Event(), client_factory=fake, prediction=False)
     assert again.skipped + again.settled == 1
     assert len(calls) == 1
 

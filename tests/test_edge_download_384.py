@@ -436,7 +436,7 @@ def test_worker_keeps_csv_success_when_motion_connection_fails(tmp_path, qt_appl
         raise DownloadError("missing motion authorization")
 
     worker = SyncWorker(
-        values, connector=connector, refresher=lambda *args: dict(changed=3, counts={})
+        values, connector=connector, refresher=lambda *args, **kwargs: dict(changed=3, counts={})
     )
     worker.completed.connect(reports.append)
     worker.start()
@@ -479,7 +479,8 @@ def test_host_close_waits_for_new_worker_and_stops_timer(tmp_path, qt_applicatio
     store.value.update(values_for(tmp_path))
     store.value.update(auto_enabled=False)
 
-    def refresh(values, cancel, log):
+    def refresh(values, cancel, log, *, primary_only):
+        assert primary_only
         cancel.wait(5)
         raise Cancelled()
 

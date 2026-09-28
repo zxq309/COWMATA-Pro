@@ -16,6 +16,7 @@ class LocalRecords:
                    'path TEXT PRIMARY KEY, signature TEXT, kind TEXT, device TEXT, uid TEXT, '
                    'stamp INTEGER, sha TEXT, fingerprint TEXT)')
         db.execute('CREATE INDEX IF NOT EXISTS local_raw_uid ON local_raw_records(kind,device,uid)')
+        db.execute('CREATE INDEX IF NOT EXISTS local_raw_period ON local_raw_records(device,stamp)')
         db.execute('CREATE INDEX IF NOT EXISTS local_raw_fingerprint ON local_raw_records(kind,fingerprint)')
 
     def remember(self, file, kind):

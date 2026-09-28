@@ -73,7 +73,7 @@ def test_invalid_motion_or_temp_never_queried(tmp_path, field):
     def no_network(*args):
         pytest.fail("Excluded rows must not instantiate network clients")
 
-    result = run_csv_job(job, threading.Event(), client_factory=no_network)
+    result = run_csv_job(job, threading.Event(), client_factory=no_network, prediction=False)
     assert result.saved == 0
 
 
@@ -127,7 +127,8 @@ def test_refresh_failure_never_runs_downloader(tmp_path):
 
     calls, reports = [], []
 
-    def failed_refresh(*args):
+    def failed_refresh(*args, primary_only):
+        assert primary_only
         raise OSError("CSV server unavailable")
 
     worker = SyncWorker(
@@ -145,13 +146,13 @@ def test_plan_read_does_not_block_window_or_timer(tmp_path, qt_application, monk
     from cowmata_tailring.edge_download import pro_dialog
     from cowmata_tailring.edge_download.pro_settings import ProSettings
 
-    original = pro_dialog.CsvPlan
+    original = pro_dialog.PredictionPlan
 
-    def slow_plan(folder):
+    def slow_plan(folder, root=None):
         time.sleep(0.3)
-        return original(folder)
+        return original(folder, root=root)
 
-    monkeypatch.setattr(pro_dialog, "CsvPlan", slow_plan)
+    monkeypatch.setattr(pro_dialog, "PredictionPlan", slow_plan)
     store = ProSettings(tmp_path / "settings")
     store.value["ledger_directory"] = str(ledgers(tmp_path / "ledger"))
     start = time.monotonic()
@@ -205,7 +206,7 @@ def test_download_checkpoint_records_only_completed_ranges(tmp_path):
             if self.error == 'fatal':
                 raise RuntimeError('unexpected test failure')
             return []
-    run_csv_job(job, threading.Event(), client_factory=Client)
+    run_csv_job(job, threading.Event(), client_factory=Client, prediction=False)
     state = json.loads(state_path.read_text(encoding='utf-8'))
     assert state['status'] == 'complete'
     ranges = state['verified_ranges']
@@ -214,10 +215,10 @@ def test_download_checkpoint_records_only_completed_ranges(tmp_path):
         Client.error = error
         if error == 'fatal':
             with pytest.raises(RuntimeError):
-                run_csv_job(job, threading.Event(), client_factory=Client, force=True)
+                run_csv_job(job, threading.Event(), client_factory=Client, force=True, prediction=False)
         else:
             # force re-lists the finished day so the failure path is exercised.
-            run_csv_job(job, threading.Event(), client_factory=Client, force=True)
+            run_csv_job(job, threading.Event(), client_factory=Client, force=True, prediction=False)
         state = json.loads(state_path.read_text(encoding='utf-8'))
         assert state['status'] == status
         assert state['verified_ranges'] == ranges
@@ -237,7 +238,7 @@ def test_csv_modified_during_download_does_not_mark_ready(tmp_path):
             with (folder / FILES[0]).open('a', encoding='utf-8') as stream:
                 stream.write('\n')
             return []
-    run_csv_job(job, threading.Event(), client_factory=Client)
+    run_csv_job(job, threading.Event(), client_factory=Client, prediction=False)
     state = json.loads((job.farm / '.edge-download/csv-cycle.json').read_text(encoding='utf-8'))
     assert state['status'] == 'outdated' and state['verified_ranges'] == []
 

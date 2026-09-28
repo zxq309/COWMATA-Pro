@@ -42,7 +42,8 @@ def record_cycle(job, plan, result):
     finally:
         current = None
         try:
-            current = CsvPlan(job.ledger_directory)
+            current = (type(plan)(job.ledger_directory, job.farm) if hasattr(plan, "verified_ranges")
+                       else CsvPlan(job.ledger_directory))
         except (OSError, ValueError):
             pass
         unchanged = current is not None and current.ready and current.sources == plan.sources
@@ -51,7 +52,8 @@ def record_cycle(job, plan, result):
         state['status'] = ('canceled' if result.canceled else 'failed' if not success or result.failed
                            else 'outdated' if not unchanged else 'complete')
         if state['status'] == 'complete':
-            ranges = [dict(device=device, start=lo.isoformat(), end=hi.isoformat())
-                      for device, lo, hi in plan.bounds(job.start, job.end)]
+            ranges = (plan.verified_ranges if hasattr(plan, "verified_ranges") else
+                      [dict(device=device, start=lo.isoformat(), end=hi.isoformat())
+                       for device, lo, hi in plan.bounds(job.start, job.end)])
             state['verified_ranges'] = merged_ranges([*state['verified_ranges'], *ranges])
         atomic_json(path, state)

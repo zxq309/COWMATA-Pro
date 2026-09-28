@@ -33,7 +33,7 @@ def test_round_ends_at_midnight_and_today_is_left_for_tomorrow(tmp_path):
     def no_network(*_):
         raise AssertionError("today's data must not be requested")
 
-    result = run_csv_job(job, threading.Event(), logs.append, client_factory=no_network, now=now)
+    result = run_csv_job(job, threading.Event(), logs.append, client_factory=no_network, now=now, prediction=False)
     assert result.saved == 0
     assert any("留到明天下载" in line for line in logs)
 
@@ -42,7 +42,7 @@ def test_finished_day_is_skipped_without_listing_and_progress_reaches_the_end(tm
     folder = ledgers(tmp_path / "ledger")
     job = job_for(tmp_path, folder)
     documents = [("motion", sensor_record("motion"))]
-    first = run_csv_job(job, threading.Event(), client_factory=client_for(documents, []))
+    first = run_csv_job(job, threading.Event(), client_factory=client_for(documents, []), prediction=False)
     assert first.saved == 1
 
     class NoListing:
@@ -56,7 +56,7 @@ def test_finished_day_is_skipped_without_listing_and_progress_reaches_the_end(tm
             raise AssertionError("a finished, unchanged day must not be listed again")
 
     steps = []
-    second = run_csv_job(job, threading.Event(), progress=lambda *a: steps.append(a), client_factory=NoListing)
+    second = run_csv_job(job, threading.Event(), progress=lambda *a: steps.append(a), client_factory=NoListing, prediction=False)
     assert second.settled == 1 and second.failed == 0
     assert steps and steps[-1][0] == steps[-1][1], "progress must reach its end"
 
@@ -65,14 +65,14 @@ def test_forced_redownload_replaces_changed_local_file_and_keeps_backup(tmp_path
     folder = ledgers(tmp_path / "ledger")
     job = job_for(tmp_path, folder)
     original = sensor_record("motion")
-    run_csv_job(job, threading.Event(), client_factory=client_for([("motion", original)], []))
+    run_csv_job(job, threading.Event(), client_factory=client_for([("motion", original)], []), prediction=False)
     file = downloaded_files(tmp_path / "farm")[0]
     changed = dict(original, imu=original["imu"][:-4] + "AQI=")
     file.write_text(json.dumps(changed), encoding="utf-8")
     record = next(r for r in CsvPlan(folder).preview() if r["source"] == FILES[0])
     calls = []
     result = run_csv_job(job, threading.Event(), client_factory=client_for([("motion", original)], calls),
-                         only=[record], force=True)
+                         only=[record], force=True, prediction=False)
     assert calls, "a forced download asks the server again"
     assert result.failed == 0 and result.saved == 1
     assert json.loads(file.read_text(encoding="utf-8")) == original
@@ -100,7 +100,7 @@ def test_only_selected_records_are_requested(tmp_path):
             return []
 
     record = next(r for r in CsvPlan(folder).preview() if r["source"] == FILES[0] and r["device"] == other)
-    run_csv_job(job, threading.Event(), client_factory=Recorder, only=[record])
+    run_csv_job(job, threading.Event(), client_factory=Recorder, only=[record], prediction=False)
     assert asked and all(other in value for value in asked)
     assert not any(DEVICE in value for value in asked)
 
@@ -142,11 +142,11 @@ def test_dialog_lists_dates_newest_unfinished_first_and_colours_states(isolated_
     class Plan:
         issues = []
         local_status = {2: dict(state="downloaded", files=5), 3: dict(state="missing", files=0),
-                        4: dict(state="missing", files=0), 5: dict(state="invalid", files=0)}
+                        4: dict(state="missing", files=0), 5: dict(state="excluded", files=0)}
 
         def preview(self):
             return [row(2, 20, "AAAA"), row(3, 18, "BBBB"), row(4, 21, "CCCC"),
-                    row(5, 22, "DDDD", "excluded", "九轴无效，不下载此条记录的三类数据")]
+                    row(5, 22, "DDDD", "excluded", "首次读取时已结束，不新建历史下载任务")]
 
     dialog = ProDownloadDialog(store=isolated_store)
     try:
@@ -159,8 +159,8 @@ def test_dialog_lists_dates_newest_unfinished_first_and_colours_states(isolated_
         assert labels["AAAA"].text() == "已下载"
         assert labels["AAAA"].background().color().name() == status.STATES["downloaded"][1]
         assert labels["BBBB"].background().color().name() == status.STATES["missing"][1]
-        assert labels["DDDD"].text() == "不下载 · 传感器无效"
-        assert "已下载 1" in dialog.plan_label.text() and "传感器无效 1" in dialog.plan_label.text()
+        assert labels["DDDD"].text() == "不下载"
+        assert "已下载 1" in dialog.plan_label.text() and "不新建或已结束 1" in dialog.plan_label.text()
         dialog.day_table.selectRow(2)
         assert [dialog.plan_table.item(i, 2).text() for i in range(dialog.plan_table.rowCount())] == ["BBBB"]
         started = []

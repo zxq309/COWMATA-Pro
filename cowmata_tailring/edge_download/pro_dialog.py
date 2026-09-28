@@ -42,7 +42,7 @@ from cowmata_tailring.ui.task_window import TaskWindow
 from .connection import ensure_connection
 from .core import CHINA, Cancelled, Job
 from .csv_download import run_csv_job
-from .csv_targets import CsvPlan
+from .prediction import PredictionPlan
 from .download_notes import NotesStore, notes_path
 from .download_status import STATES, day_cutoff, record_day
 from .pro_settings import ProSettings
@@ -88,9 +88,8 @@ class SyncWorker(QThread):
             elif self.operation == "probe":
                 try:
                     client = self.client_factory(values, self.cancel, self.message.emit)
-                    for sheet in SCHEMAS:
-                        client.pull(sheet)
-                    self.status.emit("ledger", "连接正常，三个 CSV 的内容和校验均通过")
+                    client.pull("samples")
+                    self.status.emit("ledger", "连接正常，核心样本台账内容和校验通过")
                 except Cancelled:
                     raise
                 except Exception as exc:
@@ -100,7 +99,7 @@ class SyncWorker(QThread):
                     with raw_connection(values, self.cancel, self.message.emit, self.connector):
                         from .core import Client
 
-                        plan = CsvPlan(values["ledger_directory"])
+                        plan = PredictionPlan(values["ledger_directory"], root=values["data_root"])
                         if not plan.by_device:
                             raise ValueError("请先刷新 CSV，才能用台账设备检测数据接口")
                         from datetime import timezone
@@ -129,11 +128,14 @@ class SyncWorker(QThread):
                 if values["sync_ledger"] or self.operation == "ledger":
                     report["ledger_attempted"] = True
                     try:
-                        report["ledger"] = self.refresher(values, self.cancel, self.message.emit)
+                        report["ledger"] = self.refresher(
+                            values, self.cancel, self.message.emit, primary_only=True
+                        )
                         self.ledger_refreshed.emit(report["ledger"])
                         self.status.emit(
                             "ledger",
-                            "核验完成，更新 " + str(report["ledger"]["changed"]) + " 个 CSV",
+                            "核心样本台账核验完成，更新 " + str(report["ledger"]["changed"]) + " 个 CSV"
+                            + ("；辅助台账有刷新警告" if report["ledger"].get("warnings") else ""),
                         )
                     except Cancelled:
                         raise
@@ -209,7 +211,7 @@ class PlanWorker(QObject):
     def start(self):
         def read():
             try:
-                plan = CsvPlan(self.folder)
+                plan = PredictionPlan(self.folder, root=self.data_root)
                 result = (plan, "")
             except (OSError, ValueError, TypeError) as exc:
                 result = (None, str(exc))
@@ -496,7 +498,7 @@ class ProDownloadDialog(TaskWindow):
             check = QCheckBox(label)
             check.setChecked(True)
             check.setEnabled(False)
-            check.setToolTip("样本通过核对后统一下载三类数据，包括 PPG")
+            check.setToolTip("佩戴记录符合下载条件后统一下载三类数据；有效性评价不阻止下载")
             self.kind_checks[key] = check
             modalities.addWidget(check)
         quick.addLayout(modalities)
@@ -507,8 +509,9 @@ class ProDownloadDialog(TaskWindow):
         self.summary = QLabel()
         self.summary.setWordWrap(True)
         self.rules_text = (
-            "每轮核对三份台账：五项已填写，且九轴、温度有效才下载。"
-            "非产犊的“/”算已填写；产犊须有效起止时间。"
+            "以样本试验台账为核心：设备号为 12 位十六进制、佩戴开始有效、佩戴结束为空时自动新建下载任务。"
+            "已跟踪记录补上佩戴结束后，补齐结束前数据再停止；首次读取已有结束的历史记录不新建任务。"
+            "产犊时间和九轴、脉搏、温度有效性不阻止下载。待预测数据单独保存，并生成 CSV 清单。"
             "当天数据仍在实时上传，留到第二天下载；已完成的往日数据不再重复查询。"
         )
         self.rules = QLabel(self.rules_text)
@@ -601,7 +604,7 @@ class ProDownloadDialog(TaskWindow):
             self.scheduled_at.setDateTime(QDateTime.fromString(text, "yyyy-MM-dd HH:mm:ss"))
         form.addRow("定时启动（北京时间）", self.scheduled_at)
         form = add_page("现场记录与账号")
-        self.sync_ledger = QCheckBox("每轮先从服务器刷新三个 CSV")
+        self.sync_ledger = QCheckBox("每轮先刷新核心样本台账，同时同步辅助台账")
         self.sync_ledger.setChecked(self.store.value["sync_ledger"])
         form.addRow(self.sync_ledger)
         self.ledger_username = QLineEdit()
@@ -696,7 +699,7 @@ class ProDownloadDialog(TaskWindow):
         self.search.setMaximumWidth(220)
         self.search.textChanged.connect(self.render_plan)
         plan_heading.addWidget(self.search)
-        # Three views only; the finer states (部分 / 今日 / 传感器无效 / 不下载)
+        # Three views only; the finer states (部分 / 今日 / 不下载)
         # are shown by the colour and text of the first column, not by filters.
         self.plan_filter = QComboBox()
         for label, value in [
@@ -787,7 +790,7 @@ class ProDownloadDialog(TaskWindow):
         ledger_menu = self.more_menu.addMenu("台账与连接")
         ledger_menu.addAction("重新读取本地 CSV", self.refresh_plan)
         self.ledger_button = ledger_menu.addAction(
-            "仅刷新三个 CSV", lambda: self.start_task("ledger")
+            "仅刷新台账", lambda: self.start_task("ledger")
         )
         self.probe_button = ledger_menu.addAction(
             "检测服务器连接", lambda: self.start_task("probe")
@@ -1093,7 +1096,7 @@ class ProDownloadDialog(TaskWindow):
         else:
             self.status.setText("正在下载…")
         if operation == "ledger" or (operation == "all" and values["sync_ledger"]):
-            self.csv_receipt.setText("正在从服务器读取并核验三个 CSV…")
+            self.csv_receipt.setText("正在核验核心样本台账，同时刷新辅助台账…")
             self.csv_receipt.setStyleSheet("")
             self.csv_receipt.show()
         self.progress_bar.setRange(0, 0)
@@ -1112,7 +1115,14 @@ class ProDownloadDialog(TaskWindow):
     def receive_ledger_receipt(self, result):
         checked = datetime.fromtimestamp(result.get("checked_at", datetime.now(CHINA).timestamp()), CHINA)
         lines = ["CSV 刷新完成 · " + checked.strftime("%Y-%m-%d %H:%M:%S") + "（北京时间）"]
+        warnings = result.get("warnings", {})
         for sheet, schema in SCHEMAS.items():
+            if sheet in warnings:
+                lines.append(schema["filename"] + "：未刷新，保留本地旧表（如有）；" + warnings[sheet])
+                continue
+            if sheet not in result.get("counts", {}):
+                lines.append(schema["filename"] + "：本轮未核验")
+                continue
             diff = result.get("changes", {}).get(sheet)
             count = result.get("counts", {}).get(sheet, 0)
             if diff is None:
@@ -1127,7 +1137,10 @@ class ProDownloadDialog(TaskWindow):
                     detail = "首次读取；" + detail
             lines.append(schema["filename"] + "：" + detail)
         self.csv_receipt.setText("\n".join(lines))
-        self.csv_receipt.setStyleSheet("background: #edf6e7; color: #294622; padding: 6px;")
+        self.csv_receipt.setStyleSheet(
+            "background: #fff0e5; color: #8a321b; padding: 6px;" if warnings
+            else "background: #edf6e7; color: #294622; padding: 6px;"
+        )
         self.csv_receipt.show()
         self.refresh_info_line()
         self.append("\n".join(lines))
@@ -1190,7 +1203,7 @@ class ProDownloadDialog(TaskWindow):
         self._round_notice_signature = signature
         lines = [f"本轮下载结束：新增 {result.saved} · 已存在 {result.skipped} · 失败 {result.failed}"]
         if result.pending:
-            lines.append(f"待补齐 {result.pending}（台账补全后下轮自动补）")
+            lines.append(f"待核对 {result.pending}（设备号或佩戴时间修正后下轮重试）")
         if result.failed or errors:
             lines.append("有失败批次或失败步骤，可点击下方按钮重试：")
             lines += errors[:5]
@@ -1242,7 +1255,7 @@ class ProDownloadDialog(TaskWindow):
         if self.plan_worker is not None:
             self.plan_reload = True
             return
-        self.plan_label.setText("正在后台核对三份 CSV…")
+        self.plan_label.setText("正在后台核对核心样本台账和已跟踪的佩戴记录…")
         try:
             folder = self.store.resolve_path(self.ledger_directory.text())
         except (ValueError, OSError) as exc:
@@ -1283,11 +1296,14 @@ class ProDownloadDialog(TaskWindow):
         self.local_state = dict(getattr(plan, "local_status", {}) or {})
         counts = Counter(r["eligibility"] for r in self.plan_records)
         states = Counter(self._state(r) for r in self.plan_records)
+        active = sum(r["eligibility"] == "eligible" and not r.get("end") for r in self.plan_records)
+        closing = sum(r["eligibility"] == "eligible" and bool(r.get("end")) for r in self.plan_records)
         done = states["downloaded"] + states["current"]
         self.plan_label.setText(
             f"样本 {len(all_sample_records)} · 可下载 {counts['eligible']}"
+            f"（佩戴中 {active} · 已结束收尾 {closing}）"
             f"（已下载 {done} · 部分 {states['partial']} · 未下载 {states['missing']} · 今日 {states['today']}）"
-            f" · 不下载 {counts['excluded']}（传感器无效 {states['invalid']}）· 待补全已忽略 {ignored}"
+            f" · 不新建或已结束 {counts['excluded']} · 设备号/佩戴时间待核对 {ignored}"
         )
         # Only format/identity errors form the problem list; merely missing
         # values stay hidden as pending rows and never mix into it.
@@ -1317,9 +1333,9 @@ class ProDownloadDialog(TaskWindow):
         """Local state of one record; without a scan, eligible rows count as missing."""
         info = self.local_state.get(record["row"])
         if info:
-            return info["state"]
+            return "excluded" if info["state"] == "invalid" else info["state"]
         if record["eligibility"] == "excluded":
-            return "invalid" if "无效" in str(record.get("reason", "")) else "excluded"
+            return "excluded"
         return "missing" if record["eligibility"] == "eligible" else record["eligibility"]
 
     def _matches(self, record, selected):
@@ -1581,12 +1597,9 @@ class ProDownloadDialog(TaskWindow):
         window.activateWindow()
 
     def open_manual(self):
-        if self.manual_dialog is None:
-            from .dialog import DownloadDialog
-
-            self.manual_dialog = DownloadDialog(self)
-        self.manual_dialog.show()
-        self.manual_dialog.raise_()
+        """Keep older Pro callers on the same primary-ledger download rules."""
+        self.mode.setCurrentIndex(self.mode.findData("manual"))
+        self.open_configuration()
 
     def show(self):
         super().show()
