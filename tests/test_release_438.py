@@ -83,6 +83,6 @@ def test_annotator_branding_and_ledger_onset_shift():
     from cowmata_engine.decision.labels import LEDGER_ONSET_OFFSET_MS, merge_calvings
     from cowmata_tailring import __version__
 
-    assert __version__ == "4.3.8"
+    assert tuple(map(int, __version__.split("."))) >= (4, 3, 8)  # Annotator line; later releases keep the contract
     item = merge_calvings({"7": [10_000_000]}, {})["7"][0]
     assert item["start_epoch_ms"] == 10_000_000 - LEDGER_ONSET_OFFSET_MS and item["training_eligible"] is False

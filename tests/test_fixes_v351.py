@@ -19,6 +19,8 @@ def organizer(tmp_path, monkeypatch):
     settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
     monkeypatch.setattr(organization_ui, "QSettings", lambda: settings)
     dialog = organization_ui.OrganizationWindow(owner)
+    if hasattr(dialog, "mode_sheets"):
+        dialog.mode_sheets.setCurrentIndex(1)
     dialog.tabs.setCurrentIndex(1)
     dialog.scenario.setCurrentIndex(1)
     dialog.show()

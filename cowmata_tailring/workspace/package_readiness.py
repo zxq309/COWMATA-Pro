@@ -78,12 +78,57 @@ def covered(start, end, intervals):
     return False
 
 
+def _sensor_kind(relative):
+    parts = Path(relative).parts
+    if len(parts) < 5:
+        raise ValueError('原始资料路径格式不完整：' + str(relative))
+    folder = parts[1]
+    mapping = {'Motion': 'motion', 'PPG': 'pulse', 'Temp': 'temp'}
+    if folder not in mapping:
+        raise ValueError('未知原始资料类型：' + str(relative))
+    return folder, mapping[folder]
+
+
+def _read_sensor(root, relative, unit):
+    path = Path(root) / relative
+    folder, kind = _sensor_kind(relative)
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(data, dict):
+            raise ValueError('JSON root is not an object')
+        validate_payload(data, kind)
+    except Exception as exc:
+        raise ValueError('原始数据校验失败：' + relative) from exc
+    try:
+        identity = parse_device_folder(unit['owner'])
+    except ValueError as exc:
+        raise ValueError('设备目录身份无效：' + unit['owner']) from exc
+    device = str(data.get('device') or data.get('device_id') or '').upper()
+    cow = str(data.get('cow_id') or data.get('animal_number') or data.get('animalNumber') or '').strip()
+    if device and device != identity.device_id:
+        raise ValueError('JSON 设备编号与目录不一致：' + relative)
+    if cow and cow != identity.cow_id:
+        raise ValueError('JSON 牛号与目录不一致：' + relative)
+    when = record_datetime(data, kind)
+    if when.date().isoformat() != unit['day']:
+        raise ValueError('记录采集日期与目录不一致：' + relative)
+    return folder, when
+
+
 def validate_complete(root, units, videos, *, views=None, cancelled=lambda: False, probe_cache=None):
     """Snapshot the explicitly selected date folders without reclassifying data."""
     from .package_paths import check, safe_path
     root = Path(root)
+    if (root / '.edge-download/csv-cycle.json').exists():
+        ledger_state(root)
     sensor_hashes, warnings = {}, []
+    required = {'Motion', 'PPG', 'Temp'}
+    spans_by_day = {}
     for unit in units:
+        modalities = set(unit.get('modalities') or ())
+        if required - modalities:
+            raise ValueError('缺少原始资料：' + unit['key'] + ' · ' + ', '.join(sorted(required - modalities)))
+        seen, times = set(), []
         for relative in unit['paths']:
             check(cancelled)
             path = safe_path(root, relative)
@@ -92,19 +137,40 @@ def validate_complete(root, units, videos, *, views=None, cancelled=lambda: Fals
             raw = path.read_bytes()
             if before != file_stamp(path):
                 raise ValueError('核验期间源文件发生变化：' + str(path))
+            folder, when = _read_sensor(root, relative, unit)
+            seen.add(folder)
+            times.append(when.timestamp() * 1000)
             sensor_hashes[relative] = hashlib.sha256(raw).hexdigest()
+        if required - seen:
+            raise ValueError('缺少原始资料：' + unit['key'] + ' · ' + ', '.join(sorted(required - seen)))
+        if times:
+            spans_by_day.setdefault(unit['day'], []).append((min(times), max(times) + 1000))
     days = {u['day'] for u in units}
     videos = set(videos)
+    probe_cache = {} if probe_cache is None else probe_cache
+    video_dir = '录像'
     for day in days:
-        for path in (root / '录像' / day).rglob('*'):
+        for path in (root / video_dir / day).rglob('*'):
             if path.is_file() and path.suffix.lower() in VIDEO_SUFFIXES and (views is None or path.parent.name in views):
                 videos.add(path.relative_to(root).as_posix())
-        if not any(v.startswith('录像/' + day + '/') for v in videos):
-            warnings.append('所选日期无录像目录或视频：' + str(root / '录像' / day))
+    if not videos:
+        raise ValueError('缺少所选日期录像：' + str(root / video_dir / sorted(days)[0]))
+    video_intervals = {day: [] for day in days}
     for relative in sorted(videos):
         check(cancelled)
         path = safe_path(root, relative)
         assert_not_being_written(path)
+        day = Path(relative).parts[1] if len(Path(relative).parts) > 1 else ''
+        if day in video_intervals:
+            key = (str(path), file_stamp(path))
+            if key not in probe_cache:
+                probe_cache[key] = video_span(path, cancelled)
+            video_intervals[day].append(probe_cache[key])
+    for day, spans in spans_by_day.items():
+        intervals = video_intervals.get(day, [])
+        for start, end in spans:
+            if not intervals or not covered(start, end, intervals):
+                raise ValueError('录像未覆盖所选传感器时段：' + day)
     return dict(validation_scope='selected_directory', sensor_sha256=sensor_hashes, video_paths=sorted(videos),
                 warnings=warnings, checked_at=datetime.now(CHINA).isoformat(),
                 sensor_files=len(sensor_hashes), video_files=len(videos))

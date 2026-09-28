@@ -296,7 +296,7 @@ class Catalog:
         if any((root / name).exists() for name in ("annotations", "video_corrections", "evidence", "exports")):
             return
         owned = {"index.sqlite", "index.sqlite-journal", "index.sqlite-wal", "index.sqlite-shm",
-                 "writer.lock", "ocr_profiles.json", "ocr_profiles.json.bak"}
+                 "writer.lock", ".cache-version.json", "ocr_profiles.json", "ocr_profiles.json.bak"}
         failed = False
         for folder in (root / "previews", root):
             if not folder.exists() or folder.is_symlink() or getattr(folder, "is_junction", lambda: False)():

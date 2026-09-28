@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import EVENT_CODE, SCHEMA
+from .constants import EVENT_CODE, SCHEMA
 from .candidates import DEFAULT_PARAMS, add_children, generate
 from .evaluate import nms_keep
 from .features import add_session_relative, candidate_features, session_stats

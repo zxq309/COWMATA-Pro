@@ -66,8 +66,8 @@ def test_day_scan_does_not_visit_other_dates_or_mark_them_missing(tmp_path, monk
     cat.close()
 
 
-def test_both_open_buttons_use_picker_and_exports_live_in_dataset_menu(monkeypatch):
-    from PySide6.QtWidgets import QAbstractButton, QApplication
+def test_open_action_uses_picker_and_current_menus_are_present(monkeypatch):
+    from PySide6.QtWidgets import QApplication
 
     from cowmata_tailring.workspace.modern_window import MainWindow
 
@@ -76,11 +76,13 @@ def test_both_open_buttons_use_picker_and_exports_live_in_dataset_menu(monkeypat
     monkeypatch.setattr(MainWindow, "choose_project", lambda self: calls.append("picker"))
     window = MainWindow()
     menus = {a.text().split("(")[0]: a.menu() for a in window.menuBar().actions()}
-    next(a for a in menus["文件"].actions() if a.text() == "打开工程…").trigger()
-    next(b for b in window.findChildren(QAbstractButton) if b.toolTip() == "打开工程").click()
-    assert calls == ["picker", "picker"]
-    assert not any(a.text() == "导出" for a in menus["文件"].actions())
-    assert [a.text() for a in menus["数据集构建"].actions() if not a.isSeparator() and not a.menu()] == ["行为识别数据集", "产犊预测数据集", "发情预测数据集", "怀孕监测数据集", "疫病监测数据集"]
+    next(a for a in menus["\u6587\u4ef6"].actions() if a.text() == "\u6253\u5f00\u5de5\u7a0b\u2026").trigger()
+    assert calls == ["picker"]
+    assert not any(a.text() == "\u5bfc\u51fa" for a in menus["\u6587\u4ef6"].actions())
+    assert "\u6570\u636e\u51c6\u5907" in menus and "\u6807\u6ce8\u4e0e\u590d\u6838" in menus and "\u5e2e\u52a9" in menus
+    assert "\u6570\u636e\u96c6\u6784\u5efa" not in menus and "\u884c\u4e3a\u8bc6\u522b" not in menus and "\u5065\u5eb7\u4e0e\u7e41\u6b96" not in menus
+    prep_actions = [a.text() for a in menus["\u6570\u636e\u51c6\u5907"].actions() if not a.isSeparator()]
+    assert "\u6570\u636e\u5f52\u7c7b\u2026" in prep_actions and "\u5f55\u50cf\u7d22\u5f15\u4e0e\u6838\u9a8c" in prep_actions
     window.close()
     app.processEvents()
 

@@ -21,6 +21,7 @@ from cowmata_tailring.edge_download.ledger import LedgerPlan, parse_csv_ledger
 from cowmata_tailring.edge_download.site_records import (
     SCHEMAS,
     decode_reply,
+    backup_path,
     read_csv,
     records_state_directory,
     refresh_records,
@@ -120,13 +121,9 @@ def test_refresh_reuses_bytes_and_backs_up_all_changed_csv(tmp_path, monkeypatch
     previous = dict(payload)
     payload["samples"] = csv_content("samples", **{"数据分类": "healthy"})
     assert refresh_records(values, threading.Event(), client_factory=Client)["changed"] == 1
-    backup = (
-        records_state_directory(folder)
-        / "csv-backups"
-        / hashlib.sha256(previous["samples"]).hexdigest()
-        / SCHEMAS["samples"]["filename"]
-    )
+    backup = backup_path(records_state_directory(folder), "samples", previous["samples"])
     assert backup.read_bytes() == previous["samples"]
+    assert len(str(backup)) < len(str(records_state_directory(folder))) + 70
     assert {p.name for p in folder.iterdir()} == {v["filename"] for v in SCHEMAS.values()}
     for sheet in SCHEMAS:
         assert (folder / SCHEMAS[sheet]["filename"]).read_bytes() == payload[sheet]
@@ -655,3 +652,17 @@ def test_pre_cancel_does_not_open_raw_direct_connection(tmp_path, monkeypatch):
     with pytest.raises(Cancelled):
         with module.raw_connection(values, cancel, lambda msg: None):
             pass
+
+def test_ledger_csv_contract_tolerates_newer_columns_and_names_missing_ones():
+    data = csv_content("equipment")
+    text = data.decode("utf-8-sig").splitlines()
+    widened = ("\n".join([text[0] + ",新增列"] + [line + ",x" for line in text[1:]]) + "\n").encode("utf-8-sig")
+    rows = read_csv(widened, "equipment")
+    assert rows and list(rows[0]) == SCHEMAS["equipment"]["fields"]
+    header = SCHEMAS["equipment"]["fields"]
+    trimmed = io.StringIO(newline="")
+    writer = csv.DictWriter(trimmed, fieldnames=[f for f in header if f != "遗失设备"], extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(csv.DictReader(io.StringIO(data.decode("utf-8-sig"))))
+    with pytest.raises(DownloadError, match="遗失设备"):
+        read_csv(trimmed.getvalue().encode("utf-8-sig"), "equipment")

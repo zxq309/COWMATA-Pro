@@ -95,7 +95,7 @@ def test_missing_legacy_drive_is_backed_up_without_rewriting_source(isolated_sto
 def test_standalone_downloader_retains_absolute_settings_contract(tmp_path):
     store = SettingsStore(tmp_path / "standalone", tmp_path / "raw")
     store.save()
-    assert json.loads(store.path.read_text())["data_root"] == str(tmp_path / "raw")
+    assert json.loads(store.path.read_text(encoding="utf-8"))["data_root"] == str(tmp_path / "raw")
 
 
 def test_equipment_merged_excel_date_uses_derived_catalog_date_without_error(tmp_path):

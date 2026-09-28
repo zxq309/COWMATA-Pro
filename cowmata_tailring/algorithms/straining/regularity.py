@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import signal
+import cowmata_tailring.algorithms.straining.signal as signal
 
 CONTEXT_CODES = ("LYING_TAIL_WAGGING", "STANDING_TAIL_WAGGING", "URINATION", "DEFECATION")
 

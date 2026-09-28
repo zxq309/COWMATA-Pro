@@ -18,7 +18,7 @@ def configure(tmp_path, monkeypatch):
     return app, owner, ui.DatasetBuildWindow(owner)
 
 
-def test_five_dataset_tasks_send_independent_requests(monkeypatch, tmp_path):
+def test_dataset_tasks_send_independent_requests(monkeypatch, tmp_path):
     app, owner, dialog = configure(tmp_path, monkeypatch)
     jobs = []
     monkeypatch.setattr(
@@ -28,12 +28,13 @@ def test_five_dataset_tasks_send_independent_requests(monkeypatch, tmp_path):
     )
     dialog.sources.setPlainText(str(tmp_path / "farm"))
     dialog.target.setText(str(tmp_path / "datasets"))
-    for task in ["behavior", "calving", "estrus", "pregnancy", "disease"]:
+    for task in ui.TASKS:
         dialog.set_task(task)
         dialog.submit()
-        assert jobs[-1]["task"] == task and jobs[-1]["action"] == "paired_build"
+        expected_action = "dataset_export" if task in {"decision", "comprehensive"} else "paired_build"
+        assert jobs[-1]["task"] == task and jobs[-1]["action"] == expected_action
         assert jobs[-1]['layout'] == 'current'
-    assert dialog.task.count() == 5 and not hasattr(dialog, "tabs")
+    assert dialog.task.count() == len(ui.TASKS) and not hasattr(dialog, "tabs")
     dialog.close()
     owner.close()
     app.processEvents()

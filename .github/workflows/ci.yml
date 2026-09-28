@@ -50,7 +50,7 @@ jobs:
           python -m pip install -e ".[dev]" "pytest==8.3.5"
 
       - name: Lint
-        run: ruff check cowmata_tailring tests
+        run: ruff check cowmata_tailring cowmata_engine tests
 
       - name: Test Linux with Qt xcb
         if: runner.os == 'Linux'

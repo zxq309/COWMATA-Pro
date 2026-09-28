@@ -105,7 +105,7 @@ def test_exit_cleans_only_registered_projects_and_preserves_resume(tmp_path, mon
     from cowmata_tailring.app.main import run_event_loop
     monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'app'))
     monkeypatch.setenv('COWMATA_ACCESS_DIR', str(tmp_path / 'access'))
-    monkeypatch.setattr(maintenance, '_projects', set())
+    monkeypatch.setattr(maintenance.project_registry, '_projects', set())
     root = tmp_path / 'farm'; cache = root / '.归类缓存' / ('c' * 32)
     cache.mkdir(parents=True)
     (root / '资源索引.json').write_text('{"records": []}', encoding='utf-8')

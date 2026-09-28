@@ -60,7 +60,7 @@ def fit_linear(X, y):
     from sklearn.linear_model import LogisticRegression
     from sklearn.preprocessing import StandardScaler
     scale = StandardScaler().fit(x)
-    clf = LogisticRegression(C=0.5, max_iter=5000, class_weight="balanced", multi_class="auto").fit(scale.transform(x), y)
+    clf = LogisticRegression(C=0.5, max_iter=5000, class_weight="balanced").fit(scale.transform(x), y)
     return dict(median=med[INV_IDX].tolist(), mean=scale.mean_.tolist(), scale=scale.scale_.tolist(),
                 coef=clf.coef_.tolist(), intercept=clf.intercept_.tolist(),
                 features=[FEATURE_NAMES[i] for i in INV_IDX], classes=clf.classes_.tolist())

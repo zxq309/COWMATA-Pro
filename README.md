@@ -1,4 +1,4 @@
-# COWMATA Annotator 4.3.8
+# COWMATA Annotator 4.3.9
 
 **奶牛尾环数据归类与标注工具**：端侧数据下载与归类、九轴与多视角录像同步标注、调用已训练的行为识别模型**自动生成标注候选**、人工复核与可追溯导出。
 
@@ -27,12 +27,19 @@
 
 候选不是真值，需人工确认；胎儿可见 / 犊牛娩出两类为实验模型，必须看视频确认。读取模型目录不会在其中写入缓存。
 
+## 现场台账（上传器）
+
+端侧数据下载读取的三张台账 CSV，由独立的“COWMATA 现场台账”上传器（当前 1.4.6）写到服务器。
+
+- 1.4.6 起，上传器按列名识别 Excel 表头：兼容全角/半角、空格和换行、旧列名、换列、表头下移和表外辅助列，不再因“设备管理表头不完全匹配”拒收原格式台账。
+- 本软件读取服务器 CSV 时要求已知列齐全，允许新版上传器新增的列；缺列时提示具体列名。
+
 ## 安装与升级
 
-- 安装包 `COWMATA-Annotator-4.3.8-Setup.exe`（NSIS，用户级，默认 `%LOCALAPPDATA%\Programs\COWMATA Annotator`）；
-- 便携包 `COWMATA-Annotator-4.3.8-Portable.zip`（解压后双击 `COWMATA.exe`）；
-- 源码包 `COWMATA-Annotator-4.3.8-Source.zip`。
-- 从 COWMATA Pro 4.3.4 及以后版本在线升级：更新器识别 `COWMATA-Annotator-*` 资产并校验 SHA-256，原安装目录原地升级。
+- 安装包 `COWMATA-Pro-4.3.9-Setup.exe`（NSIS，用户级，默认 `%LOCALAPPDATA%\Programs\COWMATA Annotator`）；
+- 便携包 `COWMATA-Pro-4.3.9-Portable.zip`（解压后双击 `COWMATA.exe`）；
+- 源码包 `COWMATA-Pro-4.3.9-Source.zip`。发布包沿用 `COWMATA-Pro-` 前缀，软件内名称仍为 COWMATA Annotator。
+- 从 COWMATA Pro 4.3.4 及以后版本在线升级：更新器识别 `COWMATA-Pro-*` / `COWMATA-Annotator-*` 资产并校验 SHA-256，原安装目录原地升级。
 
 历史说明：[4.3.7 README](docs/project/README-4.3.7.md) · [更新记录](CHANGELOG.md) · [新手图文教程](docs/operator-guide-395.html)
 
