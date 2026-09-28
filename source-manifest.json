@@ -1,5 +1,5 @@
 {
-  "version": "4.3.8",
+  "version": "4.3.9",
   "product": "COWMATA Annotator",
   "files": [
     {
@@ -34,8 +34,8 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "size": 2609,
-      "sha256": "207b2ea1837a3a1589f54a428de29027786cb4b747260565591e20774abcdd84"
+      "size": 2594,
+      "sha256": "56234f699b5903516613c65d0b7d9e9f393b39f35f72c767b7ff72a9926bf0c6"
     },
     {
       "path": ".github/workflows/release-transfer.yml",
@@ -49,8 +49,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 71368,
-      "sha256": "49cd1cb64a79f936f3c21f2b19e6b91238aed4b94ed86b78eb5a7ef3d127dc33"
+      "size": 71573,
+      "sha256": "4cd0450b3dc562a79f10e6f6f8fcd2a9babfe046d40ca8d1b79e9eaacf3e5f51"
     },
     {
       "path": "CITATION.cff",
@@ -74,13 +74,13 @@
     },
     {
       "path": "README.md",
-      "size": 2769,
-      "sha256": "485f4f61ee3f1b5f45132adeb8532d80a74536003e69f899c3bbc21278596b81"
+      "size": 3083,
+      "sha256": "cc4ca0aefb14a91e6e19a71381f0805cef2b7a18b6742f14f9b72846e7349f38"
     },
     {
       "path": "README.zh-CN.md",
       "size": 136,
-      "sha256": "e007c3d90704ff11da3392494eb3d07609b2b0c7d0f15470ab923c27735148bc"
+      "sha256": "c716146fabf2053a6944e7f80e2b84aec07d64ba5d0ab100fb94525c8c75e7d8"
     },
     {
       "path": "SECURITY.md",
@@ -1099,43 +1099,43 @@
     },
     {
       "path": "cowmata_engine/__init__.py",
-      "size": 324,
-      "sha256": "5693ce29b7fc12932983a7af32019b663f555156a08bd408f8a91140e82ab0d3"
+      "size": 317,
+      "sha256": "3b6144125a58f7284694fe6360440d7661612c183f1f31facba65dbbe01dc99d"
     },
     {
       "path": "cowmata_engine/__main__.py",
-      "size": 1969,
-      "sha256": "4cea22f5179fcfeb15372d672f03fdb5054d780d83b63c86bb44c38f9cf5dd47"
+      "size": 1920,
+      "sha256": "b5179c4014a99f46ef89a6ec03b160b129f482afc330b8982e441dc40a75ed33"
     },
     {
       "path": "cowmata_engine/api.py",
-      "size": 6486,
-      "sha256": "052aa270d928455be03877027fb922b5e6b98838160b5c6ac5b57a3fa0389d67"
+      "size": 6333,
+      "sha256": "095e282f65dafc1c0eeda868646bb0103b03de698fccfb14c84975edd0469104"
     },
     {
       "path": "cowmata_engine/behavior/__init__.py",
-      "size": 1501,
-      "sha256": "c05b0bb52e67fe795874593df567d3ab8394ecef3cc1518ddcad556538da4489"
+      "size": 1465,
+      "sha256": "a365ca9d4b793e67df3c53a2239fe977c4f6d5821cbb6bbd951eb93ff89841b4"
     },
     {
       "path": "cowmata_engine/decision/__init__.py",
-      "size": 78,
-      "sha256": "15a83fa6f34731a881c7e2ff081ff2b8e3006a09f14b56e1fbdbe337b916ac6b"
+      "size": 77,
+      "sha256": "053777b219c3520e0f9dde8ef01b907accd4e84e769d5b666fd77f17893b8be2"
     },
     {
       "path": "cowmata_engine/decision/dataset.py",
-      "size": 30831,
-      "sha256": "214a5201627c9276a3dc03a902ea8f4862646bf7d48f95e149d88a41394b3585"
+      "size": 30200,
+      "sha256": "eab9805d12c4aedf189c3546832666de86d39f07466051888c7c34b898ee6f26"
     },
     {
       "path": "cowmata_engine/decision/labels.py",
-      "size": 9715,
-      "sha256": "625791702b7ab935b364ccd2fae7ef356f86e17067f4cf869b072fa618bb3554"
+      "size": 9512,
+      "sha256": "9ea935afdf5025063f306bd5d1d333303d4fb180cf6fcf5f41551a3099f54120"
     },
     {
       "path": "cowmata_engine/decision/models.py",
-      "size": 20824,
-      "sha256": "2466eed515259f85438d8b935cfca34692711e78aebe6a40898d6f4b17f1f124"
+      "size": 20408,
+      "sha256": "16a1c26a65c597ba881bea153a9c45afd9aee1148e944ba4d2fc1c4f57c9b552"
     },
     {
       "path": "cowmata_engine/decision/models_inference.py",
@@ -1144,8 +1144,8 @@
     },
     {
       "path": "cowmata_engine/decision/predict.py",
-      "size": 17823,
-      "sha256": "9c86f6cfac0f1adc22860a2b0360fa2e57dd6f4e2703a269c205e1a42968c52c"
+      "size": 17512,
+      "sha256": "b58ae46ed7cd0e878bc6bb4cc6e3a45de0de16d5bcfdc48611d76c72fb4349b4"
     },
     {
       "path": "cowmata_engine/decision/runtime.py",
@@ -1154,38 +1154,38 @@
     },
     {
       "path": "cowmata_engine/decision/train.py",
-      "size": 28733,
-      "sha256": "f7698b7181624d9e3c58a61b6d85b1a25a76113459d11e1a5981626b99898661"
+      "size": 28204,
+      "sha256": "2ae2dc9cdb11a3d07c15939bad2bcede25e6049067db989bb8aa4cbf3d427e7a"
     },
     {
       "path": "cowmata_engine/decision/train438.py",
-      "size": 25779,
-      "sha256": "6446819a1375d38d8fad5b61da579a5a90066f0990fdd534aadb928356e66e0e"
+      "size": 25347,
+      "sha256": "f15440f8ad7a5312d13dcd00f931d3997b5b00408973721806740ce1743648cd"
     },
     {
       "path": "cowmata_engine/features/__init__.py",
-      "size": 2758,
-      "sha256": "72626051a82bd3de01cb999683f086e54863b380e23a566af74c2cbe7180123b"
+      "size": 2695,
+      "sha256": "312403b1e1352121d3226759f19674d40e6db1c09568ee0aa0a360897865885d"
     },
     {
       "path": "cowmata_engine/features/activity.py",
-      "size": 11941,
-      "sha256": "8f419fdd70e1dd7794b402c36a802f28ed124e4e0a0e3ee1961f7e7016af204b"
+      "size": 11704,
+      "sha256": "1645884db0b529f39c275d229f0335f72e4f084485b43608753d495b1c3ed995"
     },
     {
       "path": "cowmata_engine/features/base.py",
-      "size": 4783,
-      "sha256": "dd30bf528729a871016d6a8ab3d147dbf502b5b921166eda2c75d1386e30a77f"
+      "size": 4676,
+      "sha256": "d33576f2559664ffda06eeca298f9b508a64f7c83b38b5fa1ac93a5f8f2956ff"
     },
     {
       "path": "cowmata_engine/features/behavior_events.py",
-      "size": 6638,
-      "sha256": "538165802f2127cd1db8af38b19777cc79aa38efcaa9b32ff0b012d13a6e4384"
+      "size": 6502,
+      "sha256": "d773a5110fa5cb13c5dc196ddcf0d007ef422ee9b6212d6425e51295d3fc9fc3"
     },
     {
       "path": "cowmata_engine/features/gyro_spectral_entropy.py",
-      "size": 11960,
-      "sha256": "0ae7f734ff3709f8521c0051affcaeb427b54709e241101e1ceccc404d1b6336"
+      "size": 11717,
+      "sha256": "0fffd24caa3ed3be84e468837630a3d8e9a6f58434371e64f41320f47efddd22"
     },
     {
       "path": "cowmata_engine/features/heart_rate.py",
@@ -1194,8 +1194,8 @@
     },
     {
       "path": "cowmata_engine/features/lying_ratio.py",
-      "size": 6190,
-      "sha256": "55ed444c9b3aa235cf4e4dc3176fb77960f7c4eae824a11db10156afe6ef0894"
+      "size": 6052,
+      "sha256": "9354929ea4fffb3d4aa853e9eba37d700f94c0d2efff2df22ff9fa2a1d5259f3"
     },
     {
       "path": "cowmata_engine/features/ppg_pulse.py",
@@ -1209,18 +1209,18 @@
     },
     {
       "path": "cowmata_engine/features/straining_ratio.py",
-      "size": 12187,
-      "sha256": "dc79d993c9f143a7692c8fcee314b6db1caa798f1f4bd84148e40fd52fd58b5b"
+      "size": 12186,
+      "sha256": "d9d51fa571f0c50ecd00b0c2282b4081b4df34b8c96374d3b7b346d3acd98494"
     },
     {
       "path": "cowmata_engine/features/temperature.py",
-      "size": 9539,
-      "sha256": "bf82995b76e9239477c766b0e8ed663c973fb4898878a09de53052493d00429f"
+      "size": 9348,
+      "sha256": "cf26aaea3188a6e7bf8fcebf094f90b3677de41d4577ba7846c0cddcb284668a"
     },
     {
       "path": "cowmata_engine/server.py",
-      "size": 3612,
-      "sha256": "5efc5cbb581f31a32ca678bc31aefaaeaadd6d5ab482a36560a578c079563cf2"
+      "size": 3524,
+      "sha256": "5b52a868e98ff2b5c86cd2a7e3e18c424b8740f79d1eda8668c811d9664a8266"
     },
     {
       "path": "cowmata_security/TRANSPORT.md",
@@ -1314,8 +1314,8 @@
     },
     {
       "path": "cowmata_tailring/__init__.py",
-      "size": 198,
-      "sha256": "b6a6c7ac20886258225bfc495fd388c325846c68debd81032c242d47fad5dce9"
+      "size": 207,
+      "sha256": "82bec8b623d205fede271e20bc48b734f329e54130692b898b2bd59d6f817d9f"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -1459,8 +1459,8 @@
     },
     {
       "path": "cowmata_tailring/algorithms/decision.py",
-      "size": 22875,
-      "sha256": "71ba03b5f71bdffaa3ff5156655ca079d2d5fc03874fe69d1ff3829896053ac8"
+      "size": 22340,
+      "sha256": "1abb32efcc9b5412810a5fdea76d85393174a172b1d5d1b58aa1ead948329855"
     },
     {
       "path": "cowmata_tailring/algorithms/decision_ui.py",
@@ -1479,23 +1479,23 @@
     },
     {
       "path": "cowmata_tailring/algorithms/fpfv.py",
-      "size": 11041,
-      "sha256": "d77e6c403d899b3adf8503bb4e627ccde2e6ea3e9e78698c6136981bfcb2c1c9"
+      "size": 10815,
+      "sha256": "855b410fff8d43bd95299244a6fac9abf3592a3dda8c8ac98d0b107d56599003"
     },
     {
       "path": "cowmata_tailring/algorithms/fpfv_features.py",
-      "size": 8297,
-      "sha256": "2fc6484767447d0f7dda08b7c0269ae5d0856b906f745c0ba54cb12520497fef"
+      "size": 8135,
+      "sha256": "e42d465fcd15b2cfde665468b499ae9dbab3e6662709fbb8a1bc48638335dc55"
     },
     {
       "path": "cowmata_tailring/algorithms/heart_rate.py",
-      "size": 21044,
-      "sha256": "26caec46ad9c09a8d108b101d6a77cd950f7ff3596da6f4089e62058dacf1810"
+      "size": 20635,
+      "sha256": "e40bcbab0dd83f9f7ad87013339cbaf0f6fcf44789ecc7c770aa1637e81c6070"
     },
     {
       "path": "cowmata_tailring/algorithms/heart_rate_signal.py",
-      "size": 12773,
-      "sha256": "e6ee6fce239ff7e945830967bd748201aa15ac0e89d80b3f8da6fa3bc78becd3"
+      "size": 12479,
+      "sha256": "2c132e51998d81b0fd8c7a8f26d3ff260cd585de354fa621c00b9fef4941d837"
     },
     {
       "path": "cowmata_tailring/algorithms/inputs.py",
@@ -1514,8 +1514,8 @@
     },
     {
       "path": "cowmata_tailring/algorithms/live_prediction.py",
-      "size": 10277,
-      "sha256": "1dc7f5d2d3eba8b90abd12a787064024865b0194a366f7408413b234740f96c6"
+      "size": 10096,
+      "sha256": "937cf71dc916092df0b7b390137356237073581b7e7aa9e1915edca4acdf9418"
     },
     {
       "path": "cowmata_tailring/algorithms/lying_occupancy.py",
@@ -1564,8 +1564,8 @@
     },
     {
       "path": "cowmata_tailring/algorithms/runner.py",
-      "size": 1708,
-      "sha256": "71a055ace0ef3feaa85ba76dbe543afd271d2900eb5315d4173e460ef872d373"
+      "size": 1671,
+      "sha256": "1e6a75ab51ef55ff6d9fbff9de02f465552fdc30ab09aaecb2cd729b465fd03d"
     },
     {
       "path": "cowmata_tailring/algorithms/spo2_features.py",
@@ -1729,8 +1729,8 @@
     },
     {
       "path": "cowmata_tailring/app/main.py",
-      "size": 6299,
-      "sha256": "25f12acb1965fb969fb7110f57d00d3a15dd3ef1fc5be6048607ea55f27cadd6"
+      "size": 6166,
+      "sha256": "c69e874500530d0ee0312cd07a49827023537e160e6960715f56ef79a0625002"
     },
     {
       "path": "cowmata_tailring/app/mixins/__init__.py",
@@ -1794,8 +1794,8 @@
     },
     {
       "path": "cowmata_tailring/app/update_worker.py",
-      "size": 25537,
-      "sha256": "a3b94e5fbf8ba0a40aa21041ee66f38fcf9807aaafe17b225b0020171bfcca68"
+      "size": 25003,
+      "sha256": "f048ae68c0fe1c8e106bafce9e4d831e4ef4a4c3add8a5ceb14eb917e08fddbb"
     },
     {
       "path": "cowmata_tailring/app/windows_identity.py",
@@ -1854,13 +1854,13 @@
     },
     {
       "path": "cowmata_tailring/edge_download/core.py",
-      "size": 25478,
-      "sha256": "147f482c727f89ffdb6a811ffaff44a223960a2c79018006bf9361b4afb01c94"
+      "size": 25503,
+      "sha256": "d7ff03a7d2c59b32f8377a687f4021f53d31b2a3b1ddca5d1e4f931ee80db6de"
     },
     {
       "path": "cowmata_tailring/edge_download/csv_download.py",
-      "size": 15205,
-      "sha256": "0415642c7eb8ff62dc6ce0e4d6463a5b397734c3cd15338f9d9869ca8b078f02"
+      "size": 18226,
+      "sha256": "bf96949667d163e75bd77ef7fe11384057ff18a30ae95e946499fedb727dc221"
     },
     {
       "path": "cowmata_tailring/edge_download/csv_targets.py",
@@ -1879,8 +1879,8 @@
     },
     {
       "path": "cowmata_tailring/edge_download/download_cycle.py",
-      "size": 2365,
-      "sha256": "7cf3101508dbad8962278b6fc8b3fa39ca7e12b4e294ed82b143192b195c087f"
+      "size": 2561,
+      "sha256": "ba0bf39a749ccd050d6083e48afe7030a5f3ab808350299e48d95ab060a9291b"
     },
     {
       "path": "cowmata_tailring/edge_download/download_notes.py",
@@ -1919,8 +1919,8 @@
     },
     {
       "path": "cowmata_tailring/edge_download/local_records.py",
-      "size": 5511,
-      "sha256": "1f6ddcb09dd994c87a1b0bb80df771e5c721e56c7dde8c21cc4ac5266392017c"
+      "size": 5612,
+      "sha256": "a3b4904d3e169bd8e414f9e968cdd8cc73d1792302f902356642b013b0ffcb05"
     },
     {
       "path": "cowmata_tailring/edge_download/paths.py",
@@ -1928,9 +1928,14 @@
       "sha256": "1c6aa9dee2bf2bd62a0d6b2ca92ec4d461315d79544f97ff8a37d3403f6dea8b"
     },
     {
+      "path": "cowmata_tailring/edge_download/prediction.py",
+      "size": 20695,
+      "sha256": "c0649aad8aa7e219e3496eec05ab372bf28c206ef28c5fda76280254d2363bae"
+    },
+    {
       "path": "cowmata_tailring/edge_download/pro_dialog.py",
-      "size": 73776,
-      "sha256": "743b98fabea991ed8743ffeda247acfa0fce0991ed9645694926620a98f734ff"
+      "size": 75045,
+      "sha256": "1bc05e694d12f1f8fa8ea309ccc904768ceb0dd4b51cad146860ebc880846fb8"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_settings.py",
@@ -1949,8 +1954,8 @@
     },
     {
       "path": "cowmata_tailring/edge_download/site_records.py",
-      "size": 17942,
-      "sha256": "efe58616c95ddd1ea9179803a908c2975fcc4e8d8e77b310718deaf421610783"
+      "size": 19235,
+      "sha256": "df5b7c58c8a734c0ba3786342a5d7bef41e2f1b9b2bc560da9bcefeb2057b9db"
     },
     {
       "path": "cowmata_tailring/edge_download/transport.py",
@@ -2279,13 +2284,13 @@
     },
     {
       "path": "cowmata_tailring/ui/algorithms/charts.py",
-      "size": 10233,
-      "sha256": "ebda16f5527af829afc8d2cd2d7ff4fc438f79fe01348dcc06509eb58d44cf68"
+      "size": 10020,
+      "sha256": "d62b947c814f7c7bb58201791b41e69c78e9d7b60fc525f3a642f28fb072df2a"
     },
     {
       "path": "cowmata_tailring/ui/algorithms/decision_ui.py",
-      "size": 51586,
-      "sha256": "bb8d330ad26c8ed1d6d26a2a317812764eda200b8b4f85c9e889432fbad43193"
+      "size": 50740,
+      "sha256": "65724ad0a72ae1d8af2d5672cc5533cd6252b7b08e40debc7259e8e730bb51d6"
     },
     {
       "path": "cowmata_tailring/ui/algorithms/inspection_panel.py",
@@ -2394,8 +2399,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/behavior_dataset.py",
-      "size": 10073,
-      "sha256": "6044e384f0407c95ac5bfc3e0f6fb26e5603eed9b45530614d95e3fce57777fa"
+      "size": 9807,
+      "sha256": "e1f852c468433dbd0d97853c5c7ae32a8504d15b43d0511252dad3559511b7a6"
     },
     {
       "path": "cowmata_tailring/workspace/camera_pages.py",
@@ -2434,13 +2439,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/collaboration_packages.py",
-      "size": 42270,
-      "sha256": "8edd94b32ebc1ef2691251c897e071f1134fa06054b32d149af14b165d592e59"
+      "size": 41556,
+      "sha256": "835f1e490e7f35a666f53b0975754888bc9d25ded16cee1f4131a545961acbd0"
     },
     {
       "path": "cowmata_tailring/workspace/collaboration_ui.py",
-      "size": 19879,
-      "sha256": "3fc392f700ffbeeb6054f206ae9c0a5849ff534dd3a8a58f2fc4a852194ca0bd"
+      "size": 19506,
+      "sha256": "fa150a18fc7965d5d0d0cd81c105c97c72057088b9df9b7e89281a52135c4254"
     },
     {
       "path": "cowmata_tailring/workspace/compatibility.py",
@@ -2454,8 +2459,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dahua_media.py",
-      "size": 44940,
-      "sha256": "462dbff088b1d1f54dbec5dd9d82f8c075a687a2b2910089761e0d2c0f152daa"
+      "size": 43969,
+      "sha256": "6cf186864a00063f93f6f52733482986e0c3cab47ce984302a8ee5636c1b450f"
     },
     {
       "path": "cowmata_tailring/workspace/dahua_parallel.py",
@@ -2514,8 +2519,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dataset_build_ui.py",
-      "size": 16693,
-      "sha256": "9e3ad490b8c961a6c6ea1c7f712df92c1e468a9412aa7618b677b43eec711213"
+      "size": 16330,
+      "sha256": "ef89026fcc51ecf1f0c96dfc5d020c17efca3d3c957c22c6bd1be06658612feb"
     },
     {
       "path": "cowmata_tailring/workspace/dataset_incremental.py",
@@ -2524,8 +2529,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dataset_pipeline.py",
-      "size": 4704,
-      "sha256": "6728cf2795d830296a376e1b1164736eac994506b83f5680ffb1690c6daddd04"
+      "size": 4624,
+      "sha256": "e5cc0491fca195be530567f39e35320b785f5153e6ee981d00425e79de58ea63"
     },
     {
       "path": "cowmata_tailring/workspace/dataset_train_worker.py",
@@ -2534,8 +2539,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dataset_worker.py",
-      "size": 4359,
-      "sha256": "80874efae319f5f524bf8756787d36eb00468fa4bb69feb5c756ed19981f4fde"
+      "size": 4294,
+      "sha256": "6290e0332bbad251f37aefb888026bb43e3d292d215c68af84fde27a13aed8ed"
     },
     {
       "path": "cowmata_tailring/workspace/decision_dataset.py",
@@ -2559,8 +2564,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/dispatch_planner_ui.py",
-      "size": 11401,
-      "sha256": "962ecb258055efbe0878afb15fb87e6dbb329b0a5e61af07b82c0d7d769ebce5"
+      "size": 11164,
+      "sha256": "c3bf5e42617664ceacb410f617ff0992aaa2dc000c0ac7128ffaf4cf0f94cab5"
     },
     {
       "path": "cowmata_tailring/workspace/docx_intake.py",
@@ -2569,13 +2574,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/event_models.py",
-      "size": 9537,
-      "sha256": "e54d205281227b08e3d816c0e3995e4893f748015b401ed6d901ccf8e4ac4fe5"
+      "size": 9348,
+      "sha256": "bd7a1460545be1bd1f29b0feef080ffddf09bbc8aff370a475b5dc4476101ea3"
     },
     {
       "path": "cowmata_tailring/workspace/event_worker.py",
-      "size": 2721,
-      "sha256": "b0b6dfa31ee7d58ab62973b0547fbf23546dfbfd82039349b8ccb24c2f3f50f4"
+      "size": 2664,
+      "sha256": "9c1e7e836ea0249ab38748e93ebbbebd72e5069a8d79cd10ade736ff0b77a99b"
     },
     {
       "path": "cowmata_tailring/workspace/evidence.py",
@@ -2589,8 +2594,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/farm_layout.py",
-      "size": 2765,
-      "sha256": "48e2e1bfecb3420982ecee31ff4a995d5d5c07c8f287627aefd81ced082c0ba2"
+      "size": 2778,
+      "sha256": "8d46932834ccf70cc440f9b0d231f3f29721f238328104ede02f428a5dcb06c9"
     },
     {
       "path": "cowmata_tailring/workspace/farm_migration.py",
@@ -2659,13 +2664,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/materials.py",
-      "size": 4172,
-      "sha256": "299f62fef8dac58cf93b5657454826e1abde6b84f7a48ffcf5c9cf944d624943"
+      "size": 4080,
+      "sha256": "8631295c10c5edc2a65f45a3960ab1b37187a9813a11b6ea5951a0b5aebf71f5"
     },
     {
       "path": "cowmata_tailring/workspace/modern_window.py",
-      "size": 55193,
-      "sha256": "4aed45e3bb4ec6549cd44fc494f1f0b7f7c532bd7e5355a67239e3f602e01118"
+      "size": 54181,
+      "sha256": "f6dac7cd062fb6186d7f868007ff9f186ccc4c64df0d19971e5252e4f1fed4f8"
     },
     {
       "path": "cowmata_tailring/workspace/mother_dataset.py",
@@ -2714,8 +2719,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/package_readiness.py",
-      "size": 4892,
-      "sha256": "849da3b58264fc80ea324cda1678e7a5a688d068cbad42805963e3274db10e33"
+      "size": 4782,
+      "sha256": "05202794b21f553a8f204ae5f462dea9bc42386dd9cc2c3ab4af66bd933f379c"
     },
     {
       "path": "cowmata_tailring/workspace/paired_dataset.py",
@@ -2724,8 +2729,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/playback.py",
-      "size": 58978,
-      "sha256": "b3633ad977948933f4b77628be6991717757b92804ce1567b3ed36c8aea19da6"
+      "size": 57812,
+      "sha256": "50d1998c5f87ae884265a078785f8ecc70253f75be02dae6e14d892c01d34b5e"
     },
     {
       "path": "cowmata_tailring/workspace/ppg_intake.py",
@@ -2754,8 +2759,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/resource_import.py",
-      "size": 51479,
-      "sha256": "8f8e8284604b4e3b31348cbeeb8483c508f740a942dff54913090694a20f3ef8"
+      "size": 50664,
+      "sha256": "0c447db68450293fa1c30ef33d7094319c681b3f66731b3f64e1f4490e7e7bfe"
     },
     {
       "path": "cowmata_tailring/workspace/resource_layout.py",
@@ -2779,8 +2784,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/signal_panel.py",
-      "size": 29384,
-      "sha256": "c9cccf44df2a3b57781e7b0aac3839c00225ad8b747ff817251cd2e1468bdf16"
+      "size": 28795,
+      "sha256": "7406bc100d4323dccde43ea33bc2d48f89879d973d1e786453c6b7cb214c6de4"
     },
     {
       "path": "cowmata_tailring/workspace/standalone.py",
@@ -2804,8 +2809,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/threaded_engine.py",
-      "size": 9320,
-      "sha256": "125987064328da014771bd226f43bf86f45bb240dbcbed7c2c10f2da6c30ff6c"
+      "size": 9096,
+      "sha256": "3d5d8a2c5c21a1e4310e0458e10bc837f7e789b65b0ac7d60f22b52e943d8b87"
     },
     {
       "path": "cowmata_tailring/workspace/video_discovery.py",
@@ -2854,8 +2859,8 @@
     },
     {
       "path": "docs/DECISION_ENGINE_433.md",
-      "size": 6501,
-      "sha256": "b90bf8affa7889368068676864d757fbaf49b9ed08a0183034cc6493f55e51ca"
+      "size": 6413,
+      "sha256": "5f9b47106e5995a14b3ad32e0d9805c5a697cead952935d742fcdf0714abacbf"
     },
     {
       "path": "docs/DECISION_ENGINE_435.md",
@@ -2869,13 +2874,13 @@
     },
     {
       "path": "docs/DECISION_RESULTS_433.md",
-      "size": 4926,
-      "sha256": "8e6509cf2925671d1e090991e621e246d9ae90fb2c058eb2c3ad0497ec7fdae4"
+      "size": 4848,
+      "sha256": "e8867239908ae189bb25dadb8e59edcabcfbf5424486994bcdbd2d1a80b5d74b"
     },
     {
       "path": "docs/ENGINE_API_433.md",
-      "size": 7027,
-      "sha256": "b4be091963e8b0e2c6d062c4936ea1da0b54f863c462638d0dffd9b6e85ef17d"
+      "size": 6925,
+      "sha256": "689dc2aa6e7901365bc66b796d72e631d791a353c13e1e84f12e2390f0fc0ba2"
     },
     {
       "path": "docs/ENGINE_API_435.md",
@@ -2884,13 +2889,13 @@
     },
     {
       "path": "docs/FPFV_ALGORITHM.md",
-      "size": 7566,
-      "sha256": "2755c8fc5aee6ee6a0ccb2df9e77d5e8e93ed4fd529169e81d724d854bbd328a"
+      "size": 7464,
+      "sha256": "a113497c7880ebd0200232d94230abba2c088f4c9aa1696542ed1bbc3ff400e5"
     },
     {
       "path": "docs/LYING_RATIO_ALGORITHM.md",
-      "size": 3089,
-      "sha256": "cb75604dc63fa0cbda7d761b1e0daad3be03e900d7426a2d2e785606c2bce6af"
+      "size": 3033,
+      "sha256": "67dfd6623ae5e9d308bc97a881c98ca0ec00fbfed1bdaeb8f22eb46ca95fd6d3"
     },
     {
       "path": "docs/SHARED_SIGNALS_393.md",
@@ -2924,8 +2929,8 @@
     },
     {
       "path": "docs/calving-prediction-393.md",
-      "size": 994,
-      "sha256": "b3120707abefd462a2715a38b5117086500b629ec079507cd9e67dd15509ba32"
+      "size": 985,
+      "sha256": "6c6bd89b766ab796b95a7ccc1347fe4081cd54f2c2545767a578599b5960232f"
     },
     {
       "path": "docs/capture-timing.md",
@@ -3069,8 +3074,8 @@
     },
     {
       "path": "docs/heart-rate-algorithm.md",
-      "size": 5936,
-      "sha256": "3888616d11cd0bcdecbf069cf80ca000945dc01d763f2db1aa98c6b538036a03"
+      "size": 5844,
+      "sha256": "ac58fa64a840d27ac965c0cf30f53deee00de58e5d987bdbe2c02635e3717172"
     },
     {
       "path": "docs/images/collaboration-dispatch-396.jpg",
@@ -3524,8 +3529,8 @@
     },
     {
       "path": "docs/project/README-4.3.7.md",
-      "size": 20449,
-      "sha256": "3332db12dbc2efc6daa65388d01f168a9057009f0236b92ebe6e7d4824811ae8"
+      "size": 20109,
+      "sha256": "7da1b969dbe4d161763396c865ab693a453988f65b8a6baa7b78ccba1ab6f327"
     },
     {
       "path": "docs/project/architecture-428.md",
@@ -3803,6 +3808,11 @@
       "sha256": "66a6c4d814c4b792ebf3d3828c305d4aba2fe75a9774bff2494e9456a36df373"
     },
     {
+      "path": "docs/release-439.md",
+      "size": 3075,
+      "sha256": "6d7f29202d349e718739788e7edfd07cdbadbb4426c82cdfae4653503a2f3fbe"
+    },
+    {
       "path": "docs/release-notes-v2.2.0.md",
       "size": 5827,
       "sha256": "bc8f0b9acec046baabfba72bce4b404d69af8995322a9cacac6d01663b0b6f79"
@@ -3814,8 +3824,8 @@
     },
     {
       "path": "docs/spo2-algorithm.md",
-      "size": 2505,
-      "sha256": "34a5b34c7d9bce6a68add376f9830d414de31dbf43cd22326bd59496fff785de"
+      "size": 2475,
+      "sha256": "886f08c0d473cd36f913ced36e5d2faffae86533adbbc1e7ae275581c6d0083d"
     },
     {
       "path": "docs/straining-algorithm.md",
@@ -3939,8 +3949,8 @@
     },
     {
       "path": "packaging/installer.nsi",
-      "size": 21089,
-      "sha256": "aaf34609010b3518e3ddb1f5d9123cf7bb065e8e592b359a9aedf2c97e79560f"
+      "size": 21304,
+      "sha256": "39d48a6b7d6f9277570b01864256a94316a0f81d6428e1aa8bc32ceb80b64fd5"
     },
     {
       "path": "packaging/offline_upgrade.py",
@@ -4004,8 +4014,8 @@
     },
     {
       "path": "scripts/build_portable.py",
-      "size": 11011,
-      "sha256": "1e395f63ff75b97cd128c519daee210db1ed089de83c3f64b3f8010711b21aeb"
+      "size": 10932,
+      "sha256": "70225494233375f7e8ca57cde789599d7c4144d568c5b3fad49ae6d1b950b32e"
     },
     {
       "path": "scripts/build_quick_start_pdf.py",
@@ -4254,8 +4264,8 @@
     },
     {
       "path": "server-upgrade/install_receiver.py",
-      "size": 4454,
-      "sha256": "14e73920bc252d3e2fae983f399b3d6977041998a48634e416f850da6b85963e"
+      "size": 4392,
+      "sha256": "ea96ca5aaac586c22a73d958a69c99975286078e2e3e18f986c68903acfba53d"
     },
     {
       "path": "server-upgrade/ledger_core.py",
@@ -4269,8 +4279,8 @@
     },
     {
       "path": "server-upgrade/ledger_sheets.py",
-      "size": 15438,
-      "sha256": "a132203c14455fa26d60b91d197b8b34aec8db480c82c395d3927511f8809496"
+      "size": 15224,
+      "sha256": "19f5d0e6f1eee8421f5577a6bca51b720855bdf4eee481b70216bffc3d5d099c"
     },
     {
       "path": "server-upgrade/receiver.py",
@@ -4434,8 +4444,8 @@
     },
     {
       "path": "tests/test_collaboration_packages_396.py",
-      "size": 16417,
-      "sha256": "4d79a923dc4de8f0a04df673b147c0778dd6aece0987edaac12459e2ac4d3a82"
+      "size": 16435,
+      "sha256": "411772bf77ba31bba847d1f0ccc33ca53bc5834d0a68af38349f2242daa73e7c"
     },
     {
       "path": "tests/test_compatibility_audio.py",
@@ -4464,8 +4474,8 @@
     },
     {
       "path": "tests/test_dahua_incremental_archive.py",
-      "size": 19349,
-      "sha256": "09760d128d3c5af3193002c30f90a4e2366a65ccf165555dd85ff1f267c871c1"
+      "size": 18951,
+      "sha256": "772ffaeb7bf3f404f7abf8d276c572c3cdb8c898e9e4afb9cd3b9f23861870f4"
     },
     {
       "path": "tests/test_dahua_live_progress.py",
@@ -4479,13 +4489,13 @@
     },
     {
       "path": "tests/test_dahua_parallel.py",
-      "size": 7710,
-      "sha256": "bc3447bcfc3155d06425cdd359a22c980385b74336a325899d990e13d2651984"
+      "size": 7709,
+      "sha256": "980cfa5fed9cd513dfce7ca326584d0b92f9f62de475eb9e6dc3b95b611de727"
     },
     {
       "path": "tests/test_dahua_pipeline_421.py",
-      "size": 3619,
-      "sha256": "b715946d09c23af8d4168957097f75f4c96d9dc8174c9455c1d678c147b207b2"
+      "size": 3616,
+      "sha256": "3d1dbe313f01731569538f7450c089d42bb1872d8b913deb8fda6a9a47a47f74"
     },
     {
       "path": "tests/test_dahua_recorded_clock.py",
@@ -4514,8 +4524,8 @@
     },
     {
       "path": "tests/test_dahua_sweep_427.py",
-      "size": 18190,
-      "sha256": "6ea4431e67e89db147ff18f130a2623899dffff2459b95f22ca1fdc866bf5a43"
+      "size": 17996,
+      "sha256": "c30434dffa0e99c81bc640f341c3d1204abd6fa68ccdedf3b13f57f57de711ba"
     },
     {
       "path": "tests/test_dahua_wipe_431.py",
@@ -4539,8 +4549,8 @@
     },
     {
       "path": "tests/test_decision_engine_433.py",
-      "size": 11764,
-      "sha256": "9c057e1f4c66b130e6e347c67c9a83f3b27be08c0a64c4bb8358aa51e9dbf78e"
+      "size": 11529,
+      "sha256": "a848c7042052c0a25afba86189aed217e7953119afd4f481bb358abd07095043"
     },
     {
       "path": "tests/test_device_identity.py",
@@ -4564,13 +4574,13 @@
     },
     {
       "path": "tests/test_download_427.py",
-      "size": 11014,
-      "sha256": "bc9c039449e8973bb926738e5d32ead315d7ca9cf4e668d88a9190c8eea3a1ae"
+      "size": 11114,
+      "sha256": "5043e33b0c6a12055ae4b3a446dbcfca67a340b6226a6518a04048fbe294eaff"
     },
     {
       "path": "tests/test_download_eligibility_395.py",
-      "size": 11230,
-      "sha256": "fddd39b42657bed7c137e40c558438342357860b132ce990a18ba428feb1fdd2"
+      "size": 11114,
+      "sha256": "0973d54c1dd0dfe9d28a694a55a3876cb5f2d55e9ac529d53116ea2c26e191f4"
     },
     {
       "path": "tests/test_download_layout_392.py",
@@ -4584,18 +4594,18 @@
     },
     {
       "path": "tests/test_download_repair_391.py",
-      "size": 16200,
-      "sha256": "ccfe63d48b232d40711aaaadb7950bcabcfb4c3196169d1e9fd58c99e80ab3cb"
+      "size": 15913,
+      "sha256": "5d8e1678596b62e40a097d611126d5b0f1d480405beada63c58bff93c9632ef7"
     },
     {
       "path": "tests/test_download_simple_431.py",
-      "size": 2537,
-      "sha256": "3b2332956ceae1a45060a2b31522678c1a55454b8fe630f4b8fe33ef57e219b8"
+      "size": 2534,
+      "sha256": "024c969110865d651d519b47ba6063374427f376584542a95293de03bc245b6e"
     },
     {
       "path": "tests/test_downloader_completion_422.py",
-      "size": 20267,
-      "sha256": "21b168cf14b29d3019aa1e8dbf866ffc1a7f1d36b7ea9222ff604319d98a323b"
+      "size": 19970,
+      "sha256": "0699ac6fe8c073959fccf3629554d70e54119caef6bd505e9236f743476d07ad"
     },
     {
       "path": "tests/test_draft_evidence_396.py",
@@ -4614,8 +4624,8 @@
     },
     {
       "path": "tests/test_edge_download_384.py",
-      "size": 23718,
-      "sha256": "d6e0d6d4b54f51a654f421411c413edefbdc65246fb35d0cc4162e199fadd5c9"
+      "size": 23773,
+      "sha256": "f0f4b0113b3b6f08c112b77fc4d2a67414ca8ca840d705e368dba470236e242d"
     },
     {
       "path": "tests/test_event_models.py",
@@ -4659,23 +4669,23 @@
     },
     {
       "path": "tests/test_feature_activity_433.py",
-      "size": 5907,
-      "sha256": "e5c392e5cf1b4e24f907ac77508a58a32d3d1223f0c0d9ec7ac31aed65ac38f3"
+      "size": 5786,
+      "sha256": "89bc5e49f1f78acce8444a4d5d78318c264e442cd8ef7c993c3fe3b33176b799"
     },
     {
       "path": "tests/test_feature_gyro_spectral_entropy_433.py",
-      "size": 5295,
-      "sha256": "446a391a4a241b17445f6a2b4bb60af9ae6afdf2caa65ed9dac27f94b0d85d80"
+      "size": 5175,
+      "sha256": "cf8def8386f411e8343fe13d80a75d4a6110396546144f76385ab77b342cf131"
     },
     {
       "path": "tests/test_feature_lying_ratio_433.py",
-      "size": 6520,
-      "sha256": "d69c3a478c2873ee74031c9637d0027ec8f031d83019394a7206123fb9ace5ed"
+      "size": 6377,
+      "sha256": "ef0a54c74bfc5d7d31c6c839bf7b33e1fe10332f86f8b2bb1e489ca941b750f6"
     },
     {
       "path": "tests/test_feature_spo2_433.py",
-      "size": 8834,
-      "sha256": "27f312279112717af0e5823ea2b1d4948ad148b882187a9e716df5f0d9e936b9"
+      "size": 8636,
+      "sha256": "0b4fcb167157a511ef50dc9453cfe6559f53a855e1c4ae4c45dec1b6dd46c303"
     },
     {
       "path": "tests/test_feature_straining_ratio_433.py",
@@ -4704,8 +4714,8 @@
     },
     {
       "path": "tests/test_fpfv_algorithm_427.py",
-      "size": 4285,
-      "sha256": "945f081fce6a12d83fdeb509d7ee531b5d2ad542b1d736029cc10411b54c5132"
+      "size": 4196,
+      "sha256": "0db877b5cb7049fd2d1b892528bcd8d88d5b24a20066703a28abd9284c128c4d"
     },
     {
       "path": "tests/test_frame_cache.py",
@@ -4714,8 +4724,8 @@
     },
     {
       "path": "tests/test_heart_rate_433.py",
-      "size": 8681,
-      "sha256": "3fcd05e98192802c1d717af8656427070ea7b1058391f26e15a6d40fb09388cb"
+      "size": 8501,
+      "sha256": "24c2de473a8fe60242c19200f3360ae78236313ef30e21be8bb0a881078be8fb"
     },
     {
       "path": "tests/test_hikvision_duration_gate.py",
@@ -4794,8 +4804,8 @@
     },
     {
       "path": "tests/test_live_prediction_393.py",
-      "size": 7526,
-      "sha256": "c877daaa0956b286a5ebf5329322261aa453027d248546f5fc6ea2151739fd96"
+      "size": 7320,
+      "sha256": "e6f5b8affea3a21a2cdb30b795594cdbd583cceaa5b50219d89611e34448f7e4"
     },
     {
       "path": "tests/test_live_selection_v380.py",
@@ -4883,6 +4893,16 @@
       "sha256": "06973f306eb9430d6c366403c3aec12dd5c38a6f416fdf8561b7ba3d1138087b"
     },
     {
+      "path": "tests/test_prediction_download.py",
+      "size": 19885,
+      "sha256": "ec13f81386f92da7b298a1a550ca76c7c771ebcb4487a2227518524a06fde83d"
+    },
+    {
+      "path": "tests/test_prediction_ledger_ui.py",
+      "size": 10259,
+      "sha256": "4fd50cb5ec1803cade69a8d327c8455606eb50fb260a56ac93e51af90e793c64"
+    },
+    {
       "path": "tests/test_prediction_receipt395.py",
       "size": 5957,
       "sha256": "217fc6c8ec6389eef14179eec71a928b03831ff38f60c49962c1c70750646507"
@@ -4919,13 +4939,13 @@
     },
     {
       "path": "tests/test_relative_download_412.py",
-      "size": 12675,
-      "sha256": "e0765242ebc152b8312c3e0634518dfb7341595cc6c9a2aac5f4b0b0b7717c29"
+      "size": 12817,
+      "sha256": "f7d09e1700e88d1fb1eefbbc43dff9ad7cba9615630288938ec2e899375b5e2b"
     },
     {
       "path": "tests/test_release_390.py",
-      "size": 18767,
-      "sha256": "d2913c0e461abf4c652b6ff753b15dd7462429621653d340c6645641fa76cfae"
+      "size": 18363,
+      "sha256": "24da525b35415cfe09d09ca34fddddf17e6db920ef376ec95b6c0736fde07705"
     },
     {
       "path": "tests/test_release_412.py",
@@ -5254,8 +5274,8 @@
     },
     {
       "path": "upload_key.pub",
-      "size": 112,
-      "sha256": "bfb6dbfb3fc42bfb80fb8237ef963ab88be0ab8277c75e907e174c71219e17ec"
+      "size": 111,
+      "sha256": "c883037a30f6658f0944459f9dc309a864f0f649a27ed98d80fbe9e748fb1d70"
     }
   ]
 }

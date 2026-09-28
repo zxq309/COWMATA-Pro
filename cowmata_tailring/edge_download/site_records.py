@@ -1,4 +1,4 @@
-"""Read-only Ledger 1.3.1 protocol and verified, recoverable three-CSV refresh."""
+"""Read-only ledger protocol and verified, recoverable CSV refresh."""
 
 from __future__ import annotations
 
@@ -381,8 +381,26 @@ def _record_changes(previous, rows, sheet):
     )
 
 
-def refresh_records(values, cancel, log=lambda message: None, client_factory=LedgerClient):
-    """Fetch and validate all three files before touching the local mirror. Never upload."""
+def _authorization_failure(exc):
+    """Transport rejections may arrive as a DownloadError rather than PermissionError."""
+    return isinstance(exc, PermissionError) or any(
+        word in str(exc).casefold()
+        for word in (
+            "授权", "登录", "会话", "密钥", "authentication", "permission denied",
+            "access denied", "unauthorized", "forbidden", "host key",
+        )
+    )
+
+
+def refresh_records(
+    values, cancel, log=lambda message: None, client_factory=LedgerClient, *, primary_only=False
+):
+    """Refresh a validated mirror. By default all three sheets are one transaction.
+
+    Prediction callers may require only samples. Auxiliary fetch/validation failures
+    then preserve their local copies and are returned as explicit warnings; samples,
+    authentication, cancellation and local write failures still abort the refresh.
+    """
     folder = Path(values["ledger_directory"])
     if not folder.is_absolute() or folder == Path(folder.anchor):
         raise DownloadError("现场记录必须放在专用的绝对路径文件夹")
@@ -391,7 +409,7 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
     state_root.mkdir(parents=True, exist_ok=True)
     with RootSyncLock(state_root, cancel):
         client = client_factory(values, cancel, log)
-        contents, previous, rows, changes = {}, {}, {}, {}
+        contents, previous, rows, changes, warnings = {}, {}, {}, {}, {}
         for sheet, schema in SCHEMAS.items():
             p = folder / schema["filename"]
             if not _safe(folder, p, missing=True):
@@ -399,10 +417,21 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
             previous[sheet] = p.read_bytes() if p.exists() else None
             if cancel.is_set():
                 raise Cancelled()
-            contents[sheet] = client.pull(sheet)
-            rows[sheet] = read_csv(contents[sheet], sheet)
+            try:
+                content = client.pull(sheet)
+                parsed = read_csv(content, sheet)
+            except Cancelled:
+                raise
+            except (DownloadError, OSError, UnicodeError, csv.Error) as exc:
+                if not primary_only or sheet == "samples" or _authorization_failure(exc):
+                    raise
+                warnings[sheet] = str(exc)
+                log(schema["filename"] + " 刷新未完成，保留本地旧表；预测名单使用样本试验台账：" + str(exc))
+                continue
+            contents[sheet] = content
+            rows[sheet] = parsed
             changes[sheet] = _record_changes(previous[sheet], rows[sheet], sheet)
-        changed = [s for s in SCHEMAS if previous[s] != contents[s]]
+        changed = [s for s in contents if previous[s] != contents[s]]
         if cancel.is_set():
             raise Cancelled()
         # Keep a content-addressed backup outside the three business filenames.
@@ -432,7 +461,7 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
                     else:
                         _write(dest, previous[sheet])
             raise
-        counts = {s: len(rows[s]) for s in SCHEMAS}
+        counts = {s: len(rows[s]) for s in rows}
         checked_at = time.time()
         state = state_root / "last-csv-sync.json"
         if not _safe(state_root, state, missing=True):
@@ -442,18 +471,20 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
             dict(
                 updated_at=checked_at,
                 changes=changes,
+                warnings=warnings,
                 server_directory=values["ledger_server_directory"],
                 files={
                     s: dict(sha256=hashlib.sha256(contents[s]).hexdigest(), count=counts[s])
-                    for s in SCHEMAS
+                    for s in contents
                 },
             ),
         )
         log(
             "现场记录已核验："
-            + "；".join(SCHEMAS[s]["filename"] + " " + str(counts[s]) + " 条" for s in SCHEMAS)
+            + "；".join(SCHEMAS[s]["filename"] + " " + str(counts[s]) + " 条" for s in contents)
             + "。更新 "
             + str(len(changed))
             + " 个文件。"
         )
-        return dict(changed=len(changed), counts=counts, changes=changes, checked_at=checked_at)
+        return dict(changed=len(changed), counts=counts, changes=changes,
+                    checked_at=checked_at, warnings=warnings)

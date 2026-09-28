@@ -206,7 +206,7 @@ def test_normal_records_download_while_bad_rows_are_only_reported(tmp_path):
     job = job_for(tmp_path, folder)
     documents = [("motion", sensor_record("motion", OTHER_DEVICE))]
     calls = []
-    result = run_csv_job(job, threading.Event(), client_factory=client_for(documents, calls))
+    result = run_csv_job(job, threading.Event(), client_factory=client_for(documents, calls), prediction=False)
     assert result.saved == 1 and result.failed == 0
     files = downloaded_files(tmp_path / "farm")
     assert files and not any(truncated in str(p) or thirteen in str(p) for p in files)
@@ -242,7 +242,7 @@ def test_outcome_text_is_a_note_and_downloads_by_wearing_range(tmp_path):
 
     job = job_for(tmp_path, folder)
     documents = [("temp", sensor_record("temp", DEVICE, uid=77001))]
-    result = run_csv_job(job, threading.Event(), client_factory=client_for(documents, []))
+    result = run_csv_job(job, threading.Event(), client_factory=client_for(documents, []), prediction=False)
     assert result.saved == 1 and result.failed == 0
     files = downloaded_files(tmp_path / "farm")
     assert files and any("待核对" in str(p) for p in files)
@@ -349,17 +349,17 @@ def test_corrected_ledger_downloads_previously_skipped_data_without_duplicates(t
     def no_network(*args):
         pytest.fail("pending rows must not open raw connections")
 
-    first = run_csv_job(job, threading.Event(), client_factory=no_network)
+    first = run_csv_job(job, threading.Event(), client_factory=no_network, prediction=False)
     assert first.saved == 0 and first.pending >= 1
     stale = CsvPlan(folder).fingerprint
 
     ledgers(folder, samples=[sample_row()])  # field fix synced through the uploader
     assert CsvPlan(folder).fingerprint != stale
-    second = run_csv_job(job, threading.Event(), client_factory=client_for(documents, []))
+    second = run_csv_job(job, threading.Event(), client_factory=client_for(documents, []), prediction=False)
     assert second.saved == 1 and second.failed == 0
 
     calls = []
-    third = run_csv_job(job, threading.Event(), client_factory=client_for(documents, calls))
+    third = run_csv_job(job, threading.Event(), client_factory=client_for(documents, calls), prediction=False)
     assert third.saved == 0 and third.skipped + third.settled >= 1 and calls == []
     assert len(downloaded_files(tmp_path / "farm")) == 1
 
@@ -378,14 +378,14 @@ def test_failed_cycle_is_not_recorded_as_downloaded_and_later_completes(tmp_path
             raise DownloadError("network down")
 
     job = job_for(tmp_path, folder)
-    result = run_csv_job(job, threading.Event(), client_factory=Exploding)
+    result = run_csv_job(job, threading.Event(), client_factory=Exploding, prediction=False)
     assert result.failed >= 1 and result.saved == 0
     cycle = json.loads(
         (tmp_path / "farm" / ".edge-download" / "csv-cycle.json").read_text(encoding="utf-8"))
     assert cycle["status"] == "failed" and cycle["verified_ranges"] == []
     # After the outage the same click completes the missing data.
     documents = [("motion", sensor_record("motion"))]
-    fixed = run_csv_job(job, threading.Event(), client_factory=client_for(documents, []))
+    fixed = run_csv_job(job, threading.Event(), client_factory=client_for(documents, []), prediction=False)
     assert fixed.saved == 1
 
 
@@ -454,7 +454,8 @@ def test_refresh_failure_keeps_cached_csv_and_skips_this_cycle(tmp_path):
 
     calls = []
 
-    def offline(*args):
+    def offline(*args, primary_only):
+        assert primary_only
         raise OSError("offline")
 
     worker = SyncWorker({**values, "sync_ledger": True},

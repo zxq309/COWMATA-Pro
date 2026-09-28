@@ -398,6 +398,9 @@ Section "COWMATA Annotator" Main
     Goto install_done
   ${EndIf}
   register_installation:
+  ; Match the downloader's installation-relative defaults; existing data stays intact.
+  CreateDirectory "$INSTDIR\..\COWMATA Pro 数据\下载数据"
+  CreateDirectory "$INSTDIR\..\COWMATA Pro 数据\现场台账"
   SetOutPath "$INSTDIR"
   CreateDirectory "$SMPROGRAMS\COWMATA Annotator ${VERSION}"
   CreateShortcut "$SMPROGRAMS\COWMATA Annotator ${VERSION}\COWMATA Annotator.lnk" "$INSTDIR\COWMATA.exe" "" "$INSTDIR\COWMATA.exe" 0
