@@ -89,8 +89,8 @@
     },
     {
       "path": "START_ANNOTATOR.bat",
-      "size": 596,
-      "sha256": "695412ba086856ec63331285e97a6d707eb154e9ea1ed514fce1a44193a10983"
+      "size": 614,
+      "sha256": "9abc98412c2e8243ee2c3eb6f6edb9fc428a5568fa03ef0a275b0b8480dc64fd"
     },
     {
       "path": "assets/README.md",
@@ -4044,18 +4044,18 @@
     },
     {
       "path": "scripts/install.bat",
-      "size": 840,
-      "sha256": "c86d2bf2cc069b6fc9aa178b7bde3c07b9f2f932483171689a9e07a1522c08aa"
+      "size": 865,
+      "sha256": "f1d545b4f5ab13697979dd0f29c9098a16405dfba3af69c5e0be565e5de741c5"
     },
     {
       "path": "scripts/launch-debug.bat",
-      "size": 630,
-      "sha256": "6483ee290347f8849b8632bbcff5b8989e8f02b341d4e29944fa2c3c5d53dce1"
+      "size": 651,
+      "sha256": "c8fb92e5518bdbba7fdb4f90208a69362f45ee140bb0c3c3c917c4baf93f1c32"
     },
     {
       "path": "scripts/launch.bat",
-      "size": 733,
-      "sha256": "f1cc73e8c328d582e3cc7df195cbc90995fba78ceaf4ea53628c9661040d9df9"
+      "size": 754,
+      "sha256": "9a3ae491011cc74539b7c41d6c0ee03064722c1a973c52bd04351b98669c6695"
     },
     {
       "path": "scripts/launch.sh",
