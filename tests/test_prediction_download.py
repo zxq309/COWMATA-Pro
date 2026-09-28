@@ -13,7 +13,6 @@ from cowmata_tailring.edge_download.core import CHINA, Cancelled, DownloadError,
 from cowmata_tailring.edge_download.csv_download import run_csv_job
 from cowmata_tailring.edge_download.prediction import PredictionPlan
 
-
 START = datetime(2026, 9, 25, tzinfo=CHINA)
 DEVICE = "0C3D5EA22E1F"
 OTHER = "546C50CA07FA"

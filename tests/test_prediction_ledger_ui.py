@@ -7,11 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from test_edge_download_384 import csv_content, values_for
 
 from cowmata_tailring.edge_download import site_records
 from cowmata_tailring.edge_download.core import Cancelled, DownloadError
 from cowmata_tailring.edge_download.site_records import SCHEMAS, refresh_records
-from test_edge_download_384 import csv_content, values_for
 
 
 @pytest.fixture
@@ -208,6 +208,7 @@ def test_preview_passes_the_selected_data_root_to_prediction_plan(tmp_path, monk
 
 def test_receipt_distinguishes_auxiliary_warning_from_verified_data(qt_application):
     from PySide6.QtWidgets import QLabel
+
     from cowmata_tailring.edge_download.pro_dialog import ProDownloadDialog
 
     logged = []
