@@ -13,6 +13,9 @@ def dispatch(authority, request, peer='local'):
     if action == 'credentials':return authority.credentials(token)
     if action == 'batch_create':return authority.batch_create(token,request.get('count',10))
     if action == 'remove_account':return authority.remove_account(token,request.get('account'))
+    if action == 'create_account':
+        if not hasattr(authority,'create_account'):raise Denied('请先迁移为三列账号表')
+        return authority.create_account(token,request.get('account'))
     if action == 'redeem' and getattr(authority,'requires_password',False):
         return authority.redeem(request.get('account'),request.get('code'),request.get('product'),peer,request.get('device_label','Desktop'),password=request.get('password'))
     if action == 'redeem':

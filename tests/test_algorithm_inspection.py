@@ -30,7 +30,7 @@ def window():
 def test_menu_order_and_one_to_one_codes(window, tmp_path, monkeypatch):
     monkeypatch.setenv("COWMATA_ALGORITHM_HOME", str(tmp_path / "models"))
     titles = [a.text().split("(")[0] for a in window.menuBar().actions()]
-    assert titles == ["文件", "数据准备", "标注与复核", "帮助"]  # 4.3.8 Annotator
+    assert titles == ["文件", "编辑", "上传", "下载", "标注", "工具", "帮助"]
     assert len({s.code for s in BEHAVIORS}) == 15
     labels = {label["code"] for label in DEFAULT_LABELS}
     assert {s.code for s in BEHAVIORS} <= labels

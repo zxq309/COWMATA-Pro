@@ -24,6 +24,7 @@ CATEGORY_NAMES = (
     "怀孕/孕晚期",
     "疫病",
     "正常",
+    "待产犊",
     "待核对",
 )
 
@@ -325,6 +326,7 @@ CSV_CATEGORIES = {
     "pregnancy_mid": "怀孕/孕中期",
     "pregnancy_late": "怀孕/孕晚期",
     "calving": "产犊",
+    "pending_calving": "待产犊",
     "disease": "疫病",
     "review": "待核对",
     "unclassified": "未分类",
@@ -332,7 +334,16 @@ CSV_CATEGORIES = {
 
 
 def csv_category(row):
-    """Honor explicit uploader classification; fill missing/unclassified from purpose."""
+    """Same rule as the uploader: the calving columns decide 产犊 / 孕晚期 / 待产犊.
+
+    The stored 数据分类 may come from an older uploader, so a sample row is
+    re-derived from its own fields; other rows fall back to the stored value.
+    """
+    if "产犊开始" in row and "佩戴开始" in row:
+        from cowmata_tailring.ledger.ledger_core import classify_record
+        category = CSV_CATEGORIES.get(classify_record(row)[0], "未分类")
+        if category != "未分类":
+            return category
     value = str(row.get("数据分类") or "").strip()
     category = CSV_CATEGORIES.get(value, value if value in CSV_CATEGORIES.values() else "未分类")
     if category != "未分类":

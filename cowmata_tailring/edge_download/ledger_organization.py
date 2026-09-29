@@ -51,8 +51,9 @@ def organize(root, plan, db, cancel, log):
     if db.execute('SELECT 1 FROM ledger_pass_v1 WHERE fingerprint=?', (marker,)).fetchone():
         return 0
     moved = 0
-    for category in CATEGORY_NAMES:
-        base = _safe(root, root/category/'Motion', missing=True)
+    # Motion, PPG and Temp of one wearing always move together (e.g. 待产犊 → 产犊).
+    for category, modality in [(c, m) for c in CATEGORY_NAMES for m in ('Motion', 'PPG', 'Temp')]:
+        base = _safe(root, root/category/modality, missing=True)
         if not base.is_dir():
             continue
         for path in list(base.rglob('*.json')):

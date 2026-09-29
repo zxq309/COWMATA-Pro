@@ -123,8 +123,50 @@ def initialize_registry(path,product,items,owner='admin'):
         ctypes.windll.kernel32.SetFileAttributesW(str(state.parent),2)
     with ManagedStore(path,product).transaction():pass
 
+ACCOUNT_PATTERN=r'[a-z][a-z0-9_]{2,31}'
+# No 0/O, 1/l/I: passwords are read aloud and typed from paper.
+PASSWORD_ALPHABET='ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
+
+def new_password(length=8):
+    while True:
+        value=''.join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
+        if any(c.isupper() for c in value) and any(c.islower() for c in value) and any(c.isdigit() for c in value):
+            return value
+
+def new_code():
+    return 'CW-'+secrets.token_urlsafe(24)
+
 def new_credential(account):
-    return {'account':account,'password':'Cw!'+secrets.token_urlsafe(12),'code':'CW-'+secrets.token_urlsafe(24)}
+    return {'account':account,'password':'Cw!'+secrets.token_urlsafe(12),'code':new_code()}
+
+def named_credential(account):
+    return {'account':account,'password':new_password(),'code':new_code()}
+
+def mirror_credentials(path,product,*,add=None,remove=None):
+    """Apply one owner-approved change to a sibling product registry.
+
+    The Annotator and the standalone uploader keep separate registries; a named
+    account created in one must sign in to both with the same password and
+    one-time key. Existing rows are never overwritten; a same-named row with other
+    credentials (e.g. legacy operator05 in both registries, different people) is a
+    'conflict' and is neither replaced nor removed. ``remove`` is the removed row.
+    """
+    same=lambda a,b:a['password']==b['password'] and a['code']==b['code']
+    with ManagedStore(path,product).transaction() as rows:
+        owner=find(rows,'setting','owner')['value']
+        if add is not None:
+            existing=next((r for r in rows.credentials if r['account']==add['account']),None)
+            if existing is not None:return 'unchanged' if same(existing,add) else 'conflict'
+            if len(rows.credentials)>=1000:raise ValueError('账号总数最多1000个')
+            rows.credentials.append(dict(add))
+            return 'added'
+        if remove is not None:
+            existing=next((r for r in rows.credentials if r['account']==remove['account']),None)
+            if existing is None:return 'unchanged'
+            if remove['account']==owner or not same(existing,remove):return 'conflict'
+            rows.credentials[:]=[r for r in rows.credentials if r['account']!=remove['account']]
+            return 'removed'
+    return 'unchanged'
 
 class SimpleAuthority:
     requires_password=True
@@ -216,6 +258,16 @@ class SimpleAuthority:
                 name='operator'+str(index).zfill(2);used.add(name);rows.credentials.append(new_credential(name))
             self.engine._audit(rows,actor['name'],'batch-create',str(count))
             return {'credentials':[dict(r) for r in rows.credentials]}
+    def create_account(self,token,account):
+        if not isinstance(account,str) or not re.fullmatch(ACCOUNT_PATTERN,account.strip()):raise ValueError('账号须为3至32位小写字母、数字或下划线，并以字母开头')
+        account=account.strip()
+        with self.store.transaction() as rows:
+            actor=self.engine._identity(rows,token,admin=True)
+            if any(r['account']==account for r in rows.credentials):raise ValueError('账号已存在：'+account)
+            if len(rows.credentials)>=1000:raise ValueError('账号总数最多1000个')
+            item=named_credential(account);rows.credentials.append(item)
+            self.engine._audit(rows,actor['name'],'create-account',account)
+            return {'created':dict(item),'credentials':[dict(r) for r in rows.credentials]}
     def remove_account(self,token,account):
         with self.store.transaction() as rows:
             actor=self.engine._identity(rows,token,admin=True);owner=find(rows,'setting','owner')['value']

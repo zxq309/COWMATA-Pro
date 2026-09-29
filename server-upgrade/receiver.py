@@ -39,6 +39,13 @@ def validate_record(row,fields=FIELDS):
     if row["已删除"] not in ("0","1"): raise ValueError("删除状态无效")
 def equivalent(a,b):
     return content_fingerprint(a)==content_fingerprint(b)
+def refresh_pending(target):
+    """Regenerate 待产犊台账.csv; a failure here never fails the accepted sync."""
+    try:
+        from ledger_pending import refresh
+        refresh(target)
+    except Exception as exc:
+        sys.stderr.write("待产犊台账未更新："+str(exc)+"\n")
 def handle(request,target=DEFAULT_TARGET,schema=None,allow_delete=True):
     sheet_id=request.get("sheet_id","samples") if isinstance(request,dict) else ""
     if sheet_id!=(schema.id if schema else "samples"):raise ValueError("Sheet与服务器目标不匹配")
@@ -93,6 +100,10 @@ def handle(request,target=DEFAULT_TARGET,schema=None,allow_delete=True):
         for row in records:index(row)
         for change in changes:
             row=dict(change["record"]);key=row["记录ID"];old=existing.get(key)
+            if schema is None and row.get("已删除")!="1":
+                # Derived columns follow the shared rule (待产犊/产犊/孕晚期), whatever client version sent them.
+                from ledger_core import classify_record,directory
+                row["数据分类"]=classify_record(row)[0];row["归类目录"]=directory(row)
             if not old and not change["base"]:
                 same=fingerprints.get(fingerprint(row),set())
                 candidates=same or events.get(identity(row),set())
@@ -120,14 +131,19 @@ def handle(request,target=DEFAULT_TARGET,schema=None,allow_delete=True):
                 fingerprints.get(fingerprint(old),set()).discard(key)
                 events.get(identity(old),set()).discard(key)
             else:inserted+=1
+            if schema is None and row.get("已删除")!="1":
+                from ledger_core import classify_record,directory
+                row["数据分类"]=classify_record(row)[0];row["归类目录"]=directory(row)
             row["版本"]=str(uuid.uuid4());existing[key]=row;accepted.append(key);modified=True;index(row)
         content=encode(existing.values())
         if len(content)>64*1024*1024:raise ValueError("服务器CSV容量超过64MB，本次未写入")
         if modified:
             atomic_write(target,content)
+            if schema is None:refresh_pending(target)
             # Acknowledgement refers to bytes re-read after the atomic replacement.
             content=target.read_bytes()
         elif existed: content=target.read_bytes()
+        if schema is None and existed and not (target.parent/"待产犊台账.csv").exists():refresh_pending(target)
         return {"version":2,"ok":True,"target":str(target),"sha256":sha(content),"content":base64.b64encode(content).decode("ascii"),"accepted":accepted,"conflicts":conflicts,"count":len(existing),"aliases":aliases,"delta":{"received":len(changes),"inserted":inserted,"updated":updated,"unchanged":unchanged,"merged_cells":merged_cells,"overwritten_cells":overwritten_cells}}
 def dispatch(request,config,peer="unknown"):
     from ledger_accounts import Accounts,AccessError

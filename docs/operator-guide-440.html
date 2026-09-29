@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>COWMATA Annotator 4.4.0 · 新手图文教程</title>
+<style>
+:root{--green:#8ADD66;--green-d:#4E9A2F;--teal:#35AFC8;--ink:#1C2530;--sub:#6B7685;--line:#E3E7ED;--bg:#F5F7FA}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,"PingFang SC","Microsoft YaHei UI","Segoe UI",sans-serif}
+header{background:#fff;border-bottom:1px solid var(--line);padding:40px 24px 28px;text-align:center}
+header h1{margin:0;font-size:30px;font-weight:700;letter-spacing:.5px}
+header p{margin:6px 0 0;color:var(--sub)}
+nav{position:sticky;top:0;z-index:2;background:rgba(255,255,255,.86);backdrop-filter:blur(16px);border-bottom:1px solid var(--line);display:flex;justify-content:center;gap:4px;padding:8px;flex-wrap:wrap}
+nav a{color:var(--ink);text-decoration:none;padding:5px 14px;border-radius:8px;font-size:14px}
+nav a:hover{background:#EEF1F5}
+main{max-width:1040px;margin:0 auto;padding:24px}
+section{background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px 28px;margin:20px 0}
+h2{margin:0 0 4px;font-size:21px}
+h2 small{color:var(--teal);font-weight:600;margin-right:8px}
+.lead{color:var(--sub);margin:0 0 16px}
+ol,ul{padding-left:22px;margin:8px 0}
+li{margin:4px 0}
+img{display:block;max-width:100%;border:1px solid var(--line);border-radius:10px;margin:14px auto}
+.menus{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;align-items:start}
+.menus figure{margin:0;text-align:center;font-size:13px;color:var(--sub)}
+.menus img{margin:0 auto 6px;max-height:420px}
+kbd{font:12px/1 "Segoe UI",sans-serif;background:#EEF1F5;border:1px solid #DDE2E9;border-bottom-width:2px;border-radius:5px;padding:2px 6px}
+.pill{display:inline-block;padding:1px 10px;border-radius:999px;background:#EAF7E3;color:var(--green-d);font-size:13px;font-weight:600}
+.note{border-left:3px solid var(--teal);background:#F1FAFC;padding:8px 14px;border-radius:0 8px 8px 0;color:#24505B}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left}
+th{color:var(--sub);font-weight:600}
+footer{text-align:center;color:var(--sub);font-size:13px;padding:24px}
+</style>
+</head>
+<body>
+<header>
+<h1>COWMATA Annotator</h1>
+<p>4.4.0 · 新手图文教程</p>
+</header>
+<nav>
+<a href="#login">登录</a><a href="#menus">菜单</a><a href="#s1">1 打开工程</a><a href="#s2">2 上传</a><a href="#s3">3 下载</a><a href="#s4">4 标注</a><a href="#s5">5 工具</a><a href="#accounts">账号</a><a href="#keys">快捷键</a>
+</nav>
+<main>
+
+<section id="login">
+<h2>登录</h2>
+<p class="lead">一个账号，同时用于标注、上传和下载。</p>
+<img src="operator-guide-440-assets/02-login.png" alt="登录" width="420">
+<ol>
+<li>选择 <b>操作员</b> 或 <b>管理员</b>。</li>
+<li>输入账号、密码；操作员在新电脑首次登录时再填一次性密钥。</li>
+<li>点 <b>登录</b>。</li>
+</ol>
+</section>
+
+<section id="menus">
+<h2>菜单</h2>
+<p class="lead">按一天的工作顺序排列：文件 → 编辑 → 上传 → 下载 → 标注 → 工具 → 帮助。</p>
+<img src="operator-guide-440-assets/01-main.png" alt="主界面">
+<div class="menus">
+<figure><img src="operator-guide-440-assets/menu-1.png" alt="文件">文件</figure>
+<figure><img src="operator-guide-440-assets/menu-2.png" alt="编辑">编辑</figure>
+<figure><img src="operator-guide-440-assets/menu-3.png" alt="上传">上传</figure>
+<figure><img src="operator-guide-440-assets/menu-4.png" alt="下载">下载</figure>
+<figure><img src="operator-guide-440-assets/menu-5.png" alt="标注">标注</figure>
+<figure><img src="operator-guide-440-assets/menu-6.png" alt="工具">工具</figure>
+<figure><img src="operator-guide-440-assets/menu-7.png" alt="帮助">帮助</figure>
+</div>
+</section>
+
+<section id="s1">
+<h2><small>1</small>打开工程</h2>
+<ol>
+<li><b>文件 → 打开工程…</b> <kbd>Ctrl</kbd>+<kbd>O</kbd>。</li>
+<li>选择牧场、类别和日期。</li>
+<li>工作自动保存；<b>文件 → 关闭工程</b> <kbd>Ctrl</kbd>+<kbd>W</kbd>。</li>
+</ol>
+</section>
+
+<section id="s2">
+<h2><small>2</small>上传台账</h2>
+<p class="lead"><b>上传 → 台账</b> <kbd>Ctrl</kbd>+<kbd>U</kbd>。原“现场台账上传器”的全部功能，已内置。</p>
+<img src="operator-guide-440-assets/04-ledger.png" alt="台账">
+<ol>
+<li><b>导入</b>：选择 Excel 或 CSV。</li>
+<li>核对表格；双击单元格可修改。</li>
+<li><b>同步</b>：上传到服务器。</li>
+</ol>
+<p>底部四张表：样本试验台账、产犊登记、设备台账、<span class="pill">待产犊</span>。</p>
+<img src="operator-guide-440-assets/05-pending.png" alt="待产犊">
+<table>
+<tr><th>产犊开始 / 结束</th><th>归类</th></tr>
+<tr><td>均为空</td><td>待产犊（尚未产犊）</td></tr>
+<tr><td>时间在佩戴期内</td><td>产犊</td></tr>
+<tr><td>“/”，或产犊在拆除设备之后</td><td>孕晚期</td></tr>
+<tr><td>只填一项、先后颠倒、格式错误；死胎 / 难产 / 产后监测却未填时间</td><td>待核对</td></tr>
+</table>
+<p class="note">补填产犊时间并同步后，该牛自动从“待产犊”移到“产犊”或“孕晚期”，服务器上的 待产犊台账.csv 同步更新。</p>
+</section>
+
+<section id="s3">
+<h2><small>3</small>下载数据</h2>
+<p class="lead"><b>下载 → 端侧数据…</b> <kbd>Ctrl</kbd>+<kbd>D</kbd>。按台账下载九轴、PPG、温度。</p>
+<img src="operator-guide-440-assets/06-download.png" alt="下载">
+<ul>
+<li><b>更新台账并下载</b>：先读取最新台账，再下载。</li>
+<li>待产犊的牛：佩戴期间持续下载。</li>
+<li>台账分类变化后，三类数据一起移到新目录。</li>
+</ul>
+<p><b>下载 → 数据归类</b>：录像转码与归类、常规归类、继续上次归类。</p>
+<img src="operator-guide-440-assets/07-organize.png" alt="数据归类">
+</section>
+
+<section id="s4">
+<h2><small>4</small>标注</h2>
+<ol>
+<li>左侧选一份记录。</li>
+<li><b>标注 → 自动生成候选…</b>，或拖选波形后 <b>用所选区间建立候选</b>。</li>
+<li>对照视频修正起止；<b>编辑 → 修改标签…</b>。</li>
+<li><b>标注 → 完成本份…</b> <kbd>Ctrl</kbd>+<kbd>Enter</kbd>。</li>
+</ol>
+<p class="note">模型候选不是真值，需人工确认。</p>
+</section>
+
+<section id="s5">
+<h2><small>5</small>工具</h2>
+<ul>
+<li><b>时间同步</b>：精细校准、相机校准。</li>
+<li><b>录像</b>：统一录像目录、导出标准 MP4、索引与核验。</li>
+<li><b>视图</b>：放大视频 <kbd>Ctrl</kbd>+<kbd>E</kbd>、波形分屏、全屏 <kbd>F11</kbd>。</li>
+<li><b>设置…</b> <kbd>Ctrl</kbd>+<kbd>,</kbd></li>
+</ul>
+</section>
+
+<section id="accounts">
+<h2>账号</h2>
+<p class="lead"><b>帮助 → 账号 → 用户与密钥…</b>（管理员）。</p>
+<img src="operator-guide-440-assets/03-accounts.png" alt="账号">
+<ol>
+<li>输入新用户名（小写字母开头，如 zhangsan）。</li>
+<li>点 <b>添加用户</b>：自动生成 8 位密码和一次性密钥，并已复制。</li>
+<li>把三项发给本人；密钥用于首次激活电脑，之后只需账号和密码。</li>
+</ol>
+</section>
+
+<section id="keys">
+<h2>快捷键</h2>
+<table>
+<tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>打开工程</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>保存</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>U</kbd></td><td>台账</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>端侧数据</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd></td><td>撤销 / 重做</td><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>查找记录</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>完成本份</td><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>放大视频</td></tr>
+<tr><td><kbd>F1</kbd></td><td>快速开始</td><td><kbd>Ctrl</kbd>+<kbd>Q</kbd></td><td>退出</td></tr>
+</table>
+</section>
+</main>
+<footer>杨凌园上园智能科技有限公司 · <a href="https://www.cowmata.com/">cowmata.com</a></footer>
+</body>
+</html>
