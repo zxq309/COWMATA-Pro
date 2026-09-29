@@ -1,11 +1,12 @@
-﻿COWMATA Annotator 4.3.9（发布包 COWMATA-Pro-4.3.9）
+﻿COWMATA Annotator 4.4.0（发布包 COWMATA-Pro-4.4.0）
 
-安装版：运行 COWMATA-Pro-4.3.9-Setup.exe，默认安装到 %LOCALAPPDATA%\Programs\COWMATA Annotator。
-便携版：完整解压 ZIP，双击 COWMATA.exe。已包含全部运行依赖，无需安装 Python 或 Qt。
+安装版：运行 COWMATA-Pro-4.4.0-Setup.exe，默认安装到 %LOCALAPPDATA%\Programs\COWMATA Annotator。
+便携版：完整解压 ZIP，双击 COWMATA.exe。已包含全部运行依赖。
 升级：已安装的 4.3.x 在“帮助 → 关于 → 检查更新”原地升级，工程、标注与设置保留。
 
-菜单：文件 / 数据准备 / 标注与复核 / 帮助。
-自动标注默认查找 科牧特_模型\<最新版本>\行为识别；也可在“标注与复核 → 自动标注模型…”中选择目录。候选需人工确认。
-端侧数据下载读取的三张台账由“COWMATA 现场台账”上传器（1.4.6 及以后）写到服务器。
+菜单：文件 / 编辑 / 上传 / 下载 / 标注 / 工具 / 帮助。
+上传：内置现场台账（样本试验台账、产犊登记、设备台账、待产犊）。
+下载：端侧数据与数据归类，与上传使用同一分类规则。
+新手图文教程：帮助 → 新手图文教程…
 
 更新说明见 CHANGELOG.md。本目录不含现场资料、账号或已训练业务模型。

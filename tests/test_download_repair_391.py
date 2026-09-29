@@ -15,7 +15,7 @@ START = datetime(2026, 8, 18, tzinfo=CHINA)
 DEVICE = "546C50CA07FA"
 
 
-def fixture_job(tmp_path, category="calving", purpose="产犊监测"):
+def fixture_job(tmp_path, category="calving", purpose="产犊监测", calving=("2026-08-18 08:00:00", "2026-08-18 09:00:00")):
     ledger = tmp_path / "ledger"
     ledger.mkdir(exist_ok=True)
     row = dict(
@@ -26,8 +26,8 @@ def fixture_job(tmp_path, category="calving", purpose="产犊监测"):
         数据分类=category,
         监测目的=purpose,
         已删除="0",
-        产犊开始="2026-08-18 08:00:00",
-        产犊结束="2026-08-18 09:00:00",
+        产犊开始=calving[0],
+        产犊结束=calving[1],
         九轴="有效",
         脉搏="有效",
         温度="有效",
@@ -125,11 +125,11 @@ def test_csv_revision_never_copies_existing_raw_file(tmp_path):
     assert run_csv_job(job, threading.Event(), client_factory=fake).saved == 1
     old = next(job.farm.glob("产犊/Motion/*/*/*.json"))
     original = old.read_bytes()
-    fixture_job(tmp_path, "healthy", "正常监测")
+    fixture_job(tmp_path, "pregnancy_late", "孕后期监测", calving=("/", "/"))
     result = run_csv_job(job, threading.Event(), client_factory=fake)
     assert (result.saved, result.skipped, len(calls)) == (0, 1, 1)
     assert old.read_bytes() == original
-    assert not list(job.farm.glob("正常/Motion/*/*/*.json"))
+    assert not list(job.farm.glob("怀孕/孕晚期/Motion/*/*/*.json"))
 
 
 def test_new_name_is_seconds_only_and_same_second_collision_is_reported(tmp_path):
@@ -152,21 +152,22 @@ def test_new_name_is_seconds_only_and_same_second_collision_is_reported(tmp_path
         ("孕后期监测", "怀孕/孕晚期"),
         ("孕早期监测", "怀孕/孕早期"),
         ("孕中期监测", "怀孕/孕中期"),
-        ("产犊监测", "产犊"),
-        ("产后监测", "产犊"),
-        ("难产", "产犊"),
-        ("死胎", "产犊"),
+        ("产犊监测", "怀孕/孕晚期"),
+        ("产后监测", "怀孕/孕晚期"),
+        ("难产", "怀孕/孕晚期"),
+        ("死胎", "怀孕/孕晚期"),
         ("疫病监测", "疫病"),
     ],
 )
-@pytest.mark.parametrize("category", ["", "unclassified"])
-def test_purpose_fallback_matches_uploader_131(tmp_path, purpose, want, category):
-    job = fixture_job(tmp_path, category, purpose)
+@pytest.mark.parametrize("category", ["", "unclassified", "calving"])
+def test_purpose_with_no_calving_matches_uploader_440(tmp_path, purpose, want, category):
+    # 4.4.0: '/' = no calving while worn; the stored category never overrides the calving columns.
+    job = fixture_job(tmp_path, category, purpose, calving=("/", "/"))
     assert CsvPlan(job.ledger_directory).wears[0].category == want
 
 
-def test_uploader_review_is_not_reclassified_by_monitoring_purpose(tmp_path):
-    job = fixture_job(tmp_path, "review", "正常监测")
+def test_partial_calving_time_stays_review_whatever_the_stored_category(tmp_path):
+    job = fixture_job(tmp_path, "calving", "产犊监测", calving=("2026-08-18 08:00:00", ""))
     plan = CsvPlan(job.ledger_directory)
     assert plan.wears[0].category == "待核对"
     assert not list(plan.bounds(START, START + timedelta(days=1)))

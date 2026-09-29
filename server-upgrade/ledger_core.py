@@ -9,7 +9,9 @@ BUSINESS = ["序号","牛号","预产期","设备号","佩戴开始","佩戴结�
 EXTRA = ["记录日期","牧场","数据分类","现场标记","归类目录","核对提示","来源","原始单元格","时间说明"]
 META = ["记录ID","版本","修改时间","已删除"]
 FIELDS = BUSINESS + EXTRA + META
-CATEGORIES = {"healthy":"正常","estrus":"发情","pregnancy":"怀孕","pregnancy_early":"怀孕/孕早期","pregnancy_mid":"怀孕/孕中期","pregnancy_late":"怀孕/孕晚期","calving":"产犊","disease":"疫病","review":"待核对","unclassified":"未分类"}
+CATEGORIES = {"healthy":"正常","estrus":"发情","pregnancy":"怀孕","pregnancy_early":"怀孕/孕早期","pregnancy_mid":"怀孕/孕中期","pregnancy_late":"怀孕/孕晚期","calving":"产犊","pending_calving":"待产犊","disease":"疫病","review":"待核对","unclassified":"未分类"}
+PREGNANCY_PURPOSES = frozenset({"产犊","产犊监测","产后监测","难产","死胎","孕后期","孕后期监测","孕晚期","孕晚期监测"})
+OUTCOME_PURPOSES = frozenset({"产后监测","难产","死胎"})
 PURPOSES = ["孕后期监测","产犊监测","产后监测","难产","死胎","正常监测","发情监测","孕早期监测","孕中期监测","疫病监测"]
 VALIDITY = ["","待判定","有效","无效","/"]
 DEFAULTS = {"host":"61.177.77.222","port":8022,"user":"cowmata_upload","server_file":r"F:\牛舍_现场记录\样本试验台账.csv","farm":"扬大_高邮牧场","wearer":"刘彦平","annotator":"张强","auto_sync":False,"sync_seconds":30,"minimize_to_tray":True}
@@ -25,32 +27,50 @@ def category_for(purpose):
     return {"孕后期监测":"pregnancy_late","孕早期监测":"pregnancy_early","孕中期监测":"pregnancy_mid","产犊监测":"calving","产后监测":"calving","难产":"calving","死胎":"calving","发情监测":"estrus","疫病监测":"disease","正常监测":"healthy"}.get(purpose,"")
 
 def classify_record(row):
-    """Derived directory classification only; never modify original monitoring purpose."""
+    """Derived directory classification only; never modify original monitoring purpose.
+
+    Calving start/end are the outcome columns:
+      both blank           -> 待产犊 (not calved yet; pure out-of-sample cohort),
+                              except outcome purposes (死胎/难产/产后监测) -> 待核对
+      '/' (no calving)     -> 孕晚期 (no calving while the device was worn)
+      times inside wearing -> 产犊
+      calved after removal -> 孕晚期 (the worn period had no calving)
+    Malformed or contradictory values stay 待核对 with a reason.
+    """
     purpose=str(row.get('监测目的','')).strip()
-    def stamp(key):
+    def text(key):
         value=str(row.get(key,'') or '').strip()
         if key in ('配种开始','配种结束'):
             try:value=json.loads(row.get('原始单元格') or '{}').get('__extra__',{}).get(key,value)
             except (ValueError,AttributeError):pass
+        return str(value or '').strip()
+    def stamp(key):
+        value=text(key)
         if value in ('','/'):return None
         try:return datetime.fromisoformat(value).replace(tzinfo=None)
         except ValueError:raise ValueError(key+'时间格式待核对')
+    pregnancy_related=purpose in PREGNANCY_PURPOSES
     try:
         start,end=stamp('佩戴开始'),stamp('佩戴结束')
         birth,finish=stamp('产犊开始'),stamp('产犊结束')
         if birth or finish:
             if not birth or not finish:return 'review','产犊开始与结束时间未完整填写'
-            if start and end and start<=birth<=finish<=end:return 'calving','产犊开始和结束均位于设备佩戴期间'
-            return 'review','产犊时间不在完整佩戴区间内'
+            if finish<birth:return 'review','产犊结束早于产犊开始'
+            if start and start<=birth and (end is None or finish<=end):return 'calving','产犊开始和结束均位于设备佩戴期间'
+            if start and end and birth>end:return 'pregnancy_late','产犊发生在设备拆除之后，佩戴期间未产犊'
+            return 'review','产犊时间不在佩戴区间内'
+        if '/' in (text('产犊开始'),text('产犊结束')) and pregnancy_related:
+            return 'pregnancy_late','产犊时间填写“/”：佩戴期间未产犊'
         mating_start,mating_end=stamp('配种开始'),stamp('配种结束')
         if mating_start or mating_end:
             if mating_start and mating_end and mating_start<=mating_end:return 'pregnancy_late','配种区间完整且未记录产犊开始或结束（按指定规则）'
             return 'review','配种开始与结束不完整或先后顺序有误'
     except ValueError as error:return 'review',str(error)
-    explicit={'产犊':'calving','产犊监测':'calving','发情':'estrus','发情监测':'estrus','正常':'healthy','正常监测':'healthy','正常对照':'healthy','疫病':'disease','疫病监测':'disease','疾病监测':'disease','怀孕':'pregnancy','怀孕监测':'pregnancy','孕早期':'pregnancy_early','孕早期监测':'pregnancy_early','孕中期':'pregnancy_mid','孕中期监测':'pregnancy_mid','孕后期':'pregnancy_late','孕后期监测':'pregnancy_late','孕晚期':'pregnancy_late','孕晚期监测':'pregnancy_late'}
-    code=explicit.get(purpose,'unclassified')
-    if code=='calving' or purpose in ('产后监测','难产','死胎'):return 'review','未记录完整产犊时间，不能认定佩戴期间产犊'
-    return code,'按原表明确监测目的归类；未以佩戴时间替代配种时间'
+    # A recorded outcome (stillbirth, dystocia, postpartum) means the cow has calved: blank times are an error.
+    if purpose in OUTCOME_PURPOSES:return 'review','已记录分娩结局“'+purpose+'”，但产犊开始、结束未填写'
+    if pregnancy_related:return 'pending_calving','产犊开始、结束均未填写：尚未产犊'
+    explicit={'发情':'estrus','发情监测':'estrus','正常':'healthy','正常监测':'healthy','正常对照':'healthy','疫病':'disease','疫病监测':'disease','疾病监测':'disease','怀孕':'pregnancy','怀孕监测':'pregnancy','孕早期':'pregnancy_early','孕早期监测':'pregnancy_early','孕中期':'pregnancy_mid','孕中期监测':'pregnancy_mid'}
+    return explicit.get(purpose,'unclassified'),'按原表明确监测目的归类；未以佩戴时间替代配种时间'
 
 def clean_name(value):
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value).strip(" .") or "未填写"
@@ -108,6 +128,8 @@ SYNC_FIELDS=BUSINESS+["记录日期","牧场","数据分类","现场标记","核
 def content_fingerprint(row):
     values={f:str(row.get(f,"") or "").strip() for f in SYNC_FIELDS}
     values["已删除"]=values["已删除"] or "0"
+    # 数据分类 is derived from the calving columns; a stale stored value is never a difference.
+    if values["已删除"]!="1":values["数据分类"]=classify_record(row)[0]
     values["设备号"]=values["设备号"].upper().replace(":","").replace("-","")
     for field in ["预产期","记录日期","佩戴开始","佩戴结束","产犊开始","产犊结束"]:
         try:values[field]=normalize_time(values[field],field in ("预产期","记录日期"))
@@ -225,6 +247,7 @@ CREATE TABLE IF NOT EXISTS logs(id INTEGER PRIMARY KEY AUTOINCREMENT,at TEXT NOT
             errors=self.issues(item)
             if errors: raise ValueError("；".join(errors))
             item["核对提示"]=""
+        if not self.schema and item.get("已删除")!="1":item["数据分类"]=classify_record(item)[0]
         item["归类目录"]=self.directory(item)
         item["已删除"]=item["已删除"] or "0"
         if old and self.fingerprint(item)==self.fingerprint(json.loads(old["body"])):

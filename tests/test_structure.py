@@ -43,7 +43,12 @@ def _package_of(path: Path) -> str:
 def _local_imports(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     out: set[str] = set()
-    for node in ast.walk(tree):
+    nodes = ast.walk(tree)
+    if "ledger" in path.parts:
+        # Vendored uploader (4.4.0) keeps its upstream layout: its few back-references are
+        # deferred imports inside functions, which cannot form an import-time cycle.
+        nodes = (n for top in tree.body if not isinstance(top, (ast.FunctionDef, ast.ClassDef)) for n in ast.walk(top))
+    for node in nodes:
         if isinstance(node, ast.ImportFrom):
             if node.level:  # relative import
                 base = _package_of(path)

@@ -146,6 +146,11 @@ def sample_eligibility(row):
     invalid = [key for key in ("九轴", "温度") if str(row.get(key, "")).strip() == "无效"]
     if invalid:
         return "excluded", "、".join(invalid) + "无效，不下载此条记录的三类数据"
+    if str(row.get("核对提示", "") or "").strip():
+        return "pending", "台账核对提示：" + str(row.get("核对提示")).strip()
+    if csv_category(row) == "待产犊":
+        # Not calved yet: keep downloading while worn for pure out-of-sample prediction.
+        return "eligible", "待产犊：佩戴期间持续下载九轴、PPG、温度"
     missing = [key for key in REQUIRED_FIELDS if not str(row.get(key, "")).strip()]
     if missing:
         return "pending", "待补全：" + "、".join(missing)
@@ -554,7 +559,9 @@ class CsvPlan:
         eligible_ids = {w.identity for w in eligible}
         if any(w.identity not in eligible_ids for w in active):
             return None, "此时段与其他牛号的记录重叠，需现场核对"
-        wear, reason = self.resolve(device, stamp, raw_cow)
+        # Only confirmed rows decide the category; an unfinished row of the same cow (4.4.0: now
+        # re-derived, so it may differ, e.g. 孕晚期 vs 产犊) must not turn the period into 待核对.
+        wear, reason = self.resolve(device, stamp, raw_cow, among=eligible)
         if wear is None or wear.source != FILES[0]:
             return None, reason or "身份或分类未明确"
         # An outcome row keeps its own 待核对/未分类 label; the outcome note,
@@ -563,11 +570,12 @@ class CsvPlan:
             return None, "分类待核对，暂不下载"
         return wear, reason
 
-    def resolve(self, device, stamp, raw_cow=""):
+    def resolve(self, device, stamp, raw_cow="", among=None):
         candidates = [
             w
             for w in self.by_device.get(device_id(device), [])
             if w.start <= stamp and (w.end is None or stamp < w.end)
+            and (among is None or w.source != FILES[0] or any(w is x for x in among))
         ]
         if raw_cow:
             try:

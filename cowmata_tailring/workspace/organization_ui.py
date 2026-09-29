@@ -46,7 +46,7 @@ from cowmata_tailring.ui.task_window import TaskWindow
 from .data_category import CATEGORIES, PREGNANCY_STAGES
 from .dataset_access import ensure_available, overlaps
 from .organization import VIEWS
-from .theme import STYLE
+from .theme import SEGMENTED, STYLE
 
 
 def task_root():
@@ -293,11 +293,7 @@ class OrganizationWindow(TaskWindow):
         self.setWindowTitle("COWMATA Annotator · 数据归类")
         self.resize(1240, 790)
         self.setMinimumSize(950, 650)
-        self.setStyleSheet(
-            STYLE + "QTabWidget::pane {border:1px solid #d7e4d0; background:white;}"
-            "QTabBar::tab {padding:10px 25px; background:#eaf3e4;}"
-            "QTabBar::tab:selected {background:#8add66; color:#20351c; font-weight:700;}"
-        )
+        self.setStyleSheet(STYLE + SEGMENTED)  # 4.4.0: same segmented control as 上传 · 台账
         icon = Path(__file__).resolve().parents[2] / "assets/fluent/folder_open.svg"
         self.setWindowIcon(QIcon(str(icon)))
         outer = QVBoxLayout(self)

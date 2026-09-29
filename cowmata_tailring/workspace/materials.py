@@ -54,17 +54,17 @@ class FrostedCanvas(QWidget):
         if self.cache is None or self.cache.devicePixelRatio() != dpr:
             self.cache = QPixmap(round(self.width() * dpr), round(self.height() * dpr))
             self.cache.setDevicePixelRatio(dpr)
-            self.cache.fill(QColor("#f3f7f0"))
+            self.cache.fill(QColor("#f5f7fa"))
             p = QPainter(self.cache)
             gradient = QLinearGradient(0, 0, self.width(), self.height())
-            gradient.setColorAt(0, QColor("#e5f1d8"))
-            gradient.setColorAt(.5, QColor("#f4f8ef"))
-            gradient.setColorAt(1, QColor("#e2f1f4"))
+            gradient.setColorAt(0, QColor("#eef6ea"))
+            gradient.setColorAt(.5, QColor("#f5f7fa"))
+            gradient.setColorAt(1, QColor("#eaf5f8"))
             p.fillRect(self.rect(), gradient)
             for x, y, radius, color in ((.15, .1, .7, "#8add66"), (.92, .7, .55, "#35afc8")):
                 glow = QRadialGradient(self.width() * x, self.height() * y, self.width() * radius)
                 center = QColor(color)
-                center.setAlpha(85)
+                center.setAlpha(46)
                 glow.setColorAt(0, center)
                 glow.setColorAt(1, QColor(255, 255, 255, 0))
                 p.fillRect(self.rect(), glow)
@@ -76,17 +76,18 @@ class FrostedCanvas(QWidget):
 
 GLASS_STYLE = """
 QWidget {background:transparent;}
-QFrame#sourcePanel, QFrame#eventPanel, QFrame#algorithmPanel {background:rgba(255,255,255,235); border:1px solid #d7e4d0; border-radius:12px;}
-QWidget#signalCard {background:white;}
-QPushButton, QToolButton {background:rgba(255,255,255,208); border-color:rgba(160,192,181,145);}
-QPushButton#primary {background:#8add66; color:#20351c; border-color:#69b24e;}
-QPushButton#primary:disabled {background:#edf0e9; color:#849080; border-color:#d9dfd2;}
-QPushButton:checked {background:#dff3d1; color:#294514;}
-QListWidget, QTableWidget {background:rgba(255,255,255,220);}
-QMenu, QDialog {background:#f3f7f5;}
-QMenuBar {background:#eaf3e4; color:#20332a; border-bottom:1px solid #ccdcbc;}
-QMenuBar::item {background:transparent; color:#20332a;}
-QMenuBar::item:selected, QMenuBar::item:pressed {background:white; border-color:#92c142;}
-QStatusBar {background:#eaf3e4; color:#315225;}
-QComboBox QAbstractItemView {background:#f7faf4; color:#20332a;}
+QFrame#sourcePanel, QFrame#eventPanel, QFrame#algorithmPanel {background:rgba(255,255,255,232); border:1px solid rgba(221,226,233,220); border-radius:12px;}
+QWidget#signalCard {background:#FFFFFF;}
+QPushButton, QToolButton {background:rgba(255,255,255,215); border-color:rgba(205,212,221,200);}
+QPushButton#primary {background:#8ADD66; color:#153A0C; border-color:#7ACD57;}
+QPushButton#primary:disabled {background:#F0F2F5; color:#A1AAB5; border-color:#E6E9EE;}
+QPushButton:checked, QToolButton:checked {background:#DDF1F6; color:#0E5F70; border-color:#9BD3E0;}
+QListWidget, QTableWidget {background:rgba(255,255,255,225);}
+QMenu {background:#FFFFFF;}
+QDialog {background:#F5F7FA;}
+QMenuBar {background:rgba(251,252,253,235); color:#1C2530; border-bottom:1px solid #E3E7ED;}
+QMenuBar::item {background:transparent; color:#1C2530;}
+QMenuBar::item:selected, QMenuBar::item:pressed {background:#E9EDF2;}
+QStatusBar {background:rgba(245,247,250,235); color:#6B7785;}
+QComboBox QAbstractItemView {background:#FFFFFF; color:#1C2530;}
 """

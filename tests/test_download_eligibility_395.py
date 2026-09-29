@@ -247,7 +247,7 @@ def test_uploader_review_blocks_download_even_with_complete_sensor_fields(tmp_pa
                      产犊开始='/', 产犊结束='/', 核对提示='佩戴区间需要核对')
     plan = CsvPlan(folder)
     sample = next(r for r in plan.preview() if r['source'] == FILES[0])
-    assert sample['category'] == '待核对'
+    assert sample['category'] == '怀孕/孕晚期'  # derived from the calving columns ('/')
     assert sample['eligibility'] == 'pending'
     assert list(plan.bounds(START, START + timedelta(days=1))) == []
     assert plan.resolve_download(DEVICE, START, '23077-E')[0] is None
@@ -267,11 +267,11 @@ def test_complete_calving_interval_uses_uploader_category_over_original_purpose(
         '产犊/Temp/2026-08-18/546C50CA07FA-23077-E/2026-08-18_00-00-00.json')
 
 
-def test_review_becomes_downloadable_only_after_uploader_reclassifies(tmp_path):
-    folder = ledgers(tmp_path / 'ledger', 数据分类='review')
+def test_review_becomes_downloadable_only_after_calving_times_are_complete(tmp_path):
+    folder = ledgers(tmp_path / 'ledger', 数据分类='calving', 产犊结束='')
     previous = CsvPlan(folder)
     assert list(previous.bounds(START, START + timedelta(days=1))) == []
-    ledgers(folder, 数据分类='calving')
+    ledgers(folder, 数据分类='review')
     current = CsvPlan(folder)
     assert current.fingerprint != previous.fingerprint
     assert list(current.bounds(START, START + timedelta(days=1)))

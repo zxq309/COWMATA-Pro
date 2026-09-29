@@ -93,7 +93,8 @@ class Tests(unittest.TestCase):
         self.assertTrue(d.password.isVisible())
         self.assertFalse(d.code.isVisible())
         self.assertFalse(d.form.labelForField(d.code).isVisible())
-        self.assertEqual([b.text() for b in d.findChildren(QPushButton)], ["忘记密码", "登录"])
+        # 4.4.0: segmented role switch + one primary action.
+        self.assertEqual([b.text() for b in d.findChildren(QPushButton)], ["操作员", "管理员", "忘记密码", "登录"])
         self.assertFalse(d.remember.isChecked())
         self.assertFalse(d.automatic.isChecked())
         d.reject()
@@ -145,18 +146,19 @@ class Tests(unittest.TestCase):
         d.set_busy(False)
         d.reject()
 
-    def test_table_headers_and_batch_count(self):
+    def test_table_headers_and_named_account(self):
         s = FakeSession()
         d = m.AdminDialog(session=s)
         wait(d)
         self.assertEqual(
-            [d.table.horizontalHeaderItem(i).text() for i in range(3)], ["账号", "密码", "授权码"]
+            [d.table.horizontalHeaderItem(i).text() for i in range(3)], ["账号", "密码", "一次性密钥"]
         )
         self.assertEqual(d.table.item(0, 2).text(), "")
-        d.count.setValue(37)
-        d.batch_create()
+        self.assertFalse(hasattr(d, "count"))
+        d.new_account.setText("  ZhangSan ")
+        d.add_account()
         wait(d)
-        self.assertIn(("batch_create", {"count": 37}), s.calls)
+        self.assertIn(("create_account", {"account": "zhangsan"}), s.calls)
         d.reject()
 
     def test_cannot_remove_self(self):

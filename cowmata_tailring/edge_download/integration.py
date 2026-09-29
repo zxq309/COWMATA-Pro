@@ -14,13 +14,25 @@ class DownloadIntegration(QObject):
         tools_menu.addAction(self.action)
         window.installEventFilter(self)
 
-    def open(self):
+    def ensure(self):
+        """Create the dialog without showing it (menu commands, logs, settings)."""
         if self.dialog is None:
             from .pro_dialog import ProDownloadDialog
             self.dialog = ProDownloadDialog(self.window, refresh_on_open=True)
+        return self.dialog
+
+    def open(self):
+        self.ensure()
         self.dialog.show()
         self.dialog.raise_()
         self.dialog.activateWindow()
+
+    def run(self, call, show=True):
+        """Open (optionally) and run one dialog command; the dialog owns all state and guards."""
+        dialog = self.ensure()
+        if show:
+            self.open()
+        call(dialog)
 
     def eventFilter(self, watched, event):
         # Qt may deliver final events while Python attributes are being cleared.

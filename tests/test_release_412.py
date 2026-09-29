@@ -42,7 +42,7 @@ def test_compact_controls_and_close_annotation_releases_lease(tmp_path):
     catalog=Catalog(tmp_path);window.catalog=catalog;window.board.catalog=catalog
     buttons=window.centralWidget().findChildren(QPushButton)
     assert not any(b.text()=='打开工程' and b.isVisible() for b in buttons)
-    assert any(b.text()=='关闭标注' for b in buttons)
+    assert any(b.text()=='关闭' for b in buttons)  # 4.4.0 short label; tooltip names the action
     assert window.plot.layout().indexOf(window.plot.sheets)>window.plot.layout().indexOf(window.plot.wave_scroll)
     assert window.stage.wave_ratio>=.5
     window.close_annotation_session()

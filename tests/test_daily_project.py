@@ -78,11 +78,12 @@ def test_open_action_uses_picker_and_current_menus_are_present(monkeypatch):
     menus = {a.text().split("(")[0]: a.menu() for a in window.menuBar().actions()}
     next(a for a in menus["\u6587\u4ef6"].actions() if a.text() == "\u6253\u5f00\u5de5\u7a0b\u2026").trigger()
     assert calls == ["picker"]
-    assert not any(a.text() == "\u5bfc\u51fa" for a in menus["\u6587\u4ef6"].actions())
-    assert "\u6570\u636e\u51c6\u5907" in menus and "\u6807\u6ce8\u4e0e\u590d\u6838" in menus and "\u5e2e\u52a9" in menus
-    assert "\u6570\u636e\u96c6\u6784\u5efa" not in menus and "\u884c\u4e3a\u8bc6\u522b" not in menus and "\u5065\u5eb7\u4e0e\u7e41\u6b96" not in menus
-    prep_actions = [a.text() for a in menus["\u6570\u636e\u51c6\u5907"].actions() if not a.isSeparator()]
-    assert "\u6570\u636e\u5f52\u7c7b\u2026" in prep_actions and "\u5f55\u50cf\u7d22\u5f15\u4e0e\u6838\u9a8c" in prep_actions
+    export = next(a.menu() for a in menus["文件"].actions() if a.text() == "导出")
+    assert [a.text() for a in export.actions()] == ["完整成果…", "所选片段…", "训练数据…"]
+    assert list(menus) == ["文件", "编辑", "上传", "下载", "标注", "工具", "帮助"]
+    download = [a.text() for a in menus["下载"].actions() if not a.isSeparator()]
+    tools = [a.text() for a in menus["工具"].actions() if not a.isSeparator()]
+    assert "数据归类" in download and "录像" in tools
     window.close()
     app.processEvents()
 

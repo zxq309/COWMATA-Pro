@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer
-from PySide6.QtGui import QActionGroup, QIcon, QPainter
+from PySide6.QtGui import QActionGroup, QIcon, QKeySequence, QPainter
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QApplication,
@@ -86,8 +86,8 @@ class MainWindow(ControllerWindow):
         outer.setContentsMargins(14, 8, 14, 8)
         outer.setSpacing(7)
         header = QHBoxLayout()
-        self.root_label = ElidingLabel("九轴 / PPG / 温度与多视角录像")
-        self.root_label.setStyleSheet("font-size:12px; color:#315225; padding-left:6px")
+        self.root_label = ElidingLabel("未打开工程")
+        self.root_label.setStyleSheet("font-size:12px; color:#6B7785; padding-left:6px")
         header.addWidget(self.root_label, 1)
         self.source_toggle = self._icon_button("Panel Left", "素材", self.toggle_sources, header)
         self.source_toggle.setCheckable(True)
@@ -106,88 +106,39 @@ class MainWindow(ControllerWindow):
             self.layout_buttons.addButton(button, i)
             header.addWidget(button)
         self.layout_buttons.idClicked.connect(lambda i: self.set_presentation("ABC"[i]))
-        menus = [action.menu() for action in self.menuBar().actions()]
-        files, materials, sync, edit, view = menus
-        self.menuBar().clear()
-        for menu, title in ((files, "文件"),):
-            menu.setTitle(title)
-            self.menuBar().addMenu(menu)
-        files.addSeparator()
-        self._action(files, "保存并退出", self.close, "Alt+F4")
-        view.addSeparator()
-        self._action(view, "固定 / 收起素材列表", self.toggle_sources, "Ctrl+L")
-        self._action(view, "放大视频（保留波形条）", self.enlarge_video, "Ctrl+E")
-        self._action(view, "波形分屏到独立窗口 / 合并", self.toggle_waveform_window, "Ctrl+Shift+E")
-        self._action(view, "显示 / 隐藏标注列表", self.toggle_events)
-        self._action(view, "界面与播放设置…", self.presentation_settings)
-        tools = self.menuBar().addMenu("数据准备")
-        self._organize_menus(files, materials, sync, edit, view, tools)
-        tools.addMenu(materials)
-        self._action(tools, "数据归类…", lambda: self.open_organization(1))
-        self._action(tools, "导出标准 MP4 副本…", self.export_standard_video)
-        from cowmata_tailring.edge_download import install_menu as install_edge_download
-        downloader = install_edge_download(self, tools)
-        classify = next(a for a in tools.actions() if a.text() == '数据归类…')
-        secondary = [a for a in tools.actions() if a not in {downloader.action, classify} and not a.isSeparator()]
-        for action in list(tools.actions()):
-            tools.removeAction(action)
-        tools.addAction(downloader.action)
-        tools.addAction(classify)
-        extra_preparation = tools.addMenu('更多数据准备工具')
-        for action in secondary:
-            extra_preparation.addAction(action)
-        edit.setTitle('标注与复核')
-        self.menuBar().addMenu(edit)
-        candidate = next(a for a in edit.actions() if a.text() == '自动生成候选…')
-        edit.removeAction(candidate)
-        edit.insertAction(edit.actions()[0], candidate)
-        self._action(edit, '修改所选标签…', self.edit_selected)
-        self._action(edit, '批量修改标签…', self.bulk_relabel)
-        self._action(edit, '用所选九轴区间建立候选', self.mark_selection)
-        edit.addMenu(sync)
-        view.setTitle('显示与播放')
-        edit.addMenu(view)
-        # 4.3.8 COWMATA Annotator: dataset building, behaviour training and health/reproduction
-        # decisions moved to the standalone calving-prediction algorithm package.
-        self._annotation_exports.setTitle('导出标注成果')
-        self._build_algorithm_menus(edit)
-        help_menu = self.menuBar().addMenu("帮助")
-        from cowmata_tailring.ui.about import show_about
-        self._action(help_menu, "快速开始", self.quick_help, "F1")
-        self._action(help_menu, "新手图文教程…", self.open_tutorial)
-        self._action(help_menu, "关于", lambda: show_about(self)).setToolTip("软件说明、公司信息、版本号与检查更新")
-        self._simplify_menus(files, tools, edit, sync, view, materials)
+        self._build_menubar()
         self.menuBar().show()
         for toolbar in self.findChildren(QToolBar):
             self.removeToolBar(toolbar)
             toolbar.deleteLater()
         outer.addLayout(header)
-        self.banner.setStyleSheet("background:#e1eeea; color:#3d645e; padding:5px 9px; border-radius:6px; font-size:11px")
+        self.banner.setStyleSheet("background:#DDF1F6; color:#0E5F70; padding:6px 10px; border-radius:8px; font-size:12px")
         self.banner.setParent(central)
         self.banner.setWordWrap(True)
         self.banner.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         outer.addWidget(self.banner)
         self.banner.hide()
-        self.coverage_label.setStyleSheet("color:#9a6132; font-size:11px")
+        self.coverage_label.setStyleSheet("color:#B7791F; font-size:12px")
         outer.addWidget(self.coverage_label)
 
         self.body = QSplitter(Qt.Orientation.Horizontal)
         self.source_panel = QFrame()
         self.source_panel.setObjectName("sourcePanel")
         sources = QVBoxLayout(self.source_panel)
-        sources.addWidget(self._heading("设备与传感器记录"))
-        legend = QLabel('<span style="color:#075bb5">▶ 正在标注</span>　<span style="color:#915514">● 未完成</span><br>'
-                        '<span style="color:#617277">○ 未开始</span>　<span style="color:#217044">✓ 已完成</span>')
-        legend.setToolTip("切换记录自动保存并恢复上次位置；只有明确点击完成才变为已完成。")
+        sources.addWidget(self._heading("记录"))
+        legend = QLabel('<span style="color:#239BB3">▶ 标注中</span>　<span style="color:#B7791F">● 未完成</span>　'
+                        '<span style="color:#A1AAB5">○ 未开始</span>　<span style="color:#4E9A2F">✓ 完成</span>')
+        legend.setStyleSheet("font-size:12px")
+        legend.setToolTip("切换记录自动保存；点击完成才标记为完成")
         sources.addWidget(legend)
         sources.addWidget(self.devices)
         self.date_choice = QComboBox()
-        self.date_choice.addItem("全部采集日期", "")
+        self.date_choice.addItem("全部日期", "")
         self.date_choice.setToolTip("按真实覆盖日期筛选，包含从前日延续到当日的九轴记录；视频仍按时间区间匹配。")
         self.date_choice.currentIndexChanged.connect(self.filter_records)
         sources.addWidget(self.date_choice)
         self.record_search = QLineEdit()
-        self.record_search.setPlaceholderText("搜索文件名 / 查看进度")
+        self.record_search.setPlaceholderText("搜索")
         self.record_search.setClearButtonEnabled(True)
         self.record_search.textChanged.connect(self.filter_records)
         sources.addWidget(self.record_search)
@@ -195,15 +146,16 @@ class MainWindow(ControllerWindow):
         sources.addWidget(self.cow)
         sources.addWidget(self.identity_label)
         sources.addWidget(self.data_category)
-        self.ppg_placeholder = QLabel("九轴 / PPG / 温度按页签查看，共用行为标签")
+        self.ppg_placeholder = QLabel("")
         self.ppg_placeholder.setWordWrap(True)
+        self.ppg_placeholder.hide()
         self.ppg_placeholder.setToolTip("按同牛、同设备和真实采集时间关联；缺失保留为空，切页保留标签与缩放。")
         sources.addWidget(self.ppg_placeholder)
-        sources.addWidget(self._heading("视角 · 勾选并拖动排序"))
+        sources.addWidget(self._heading("视角"))
         sources.addWidget(self.cameras, 2)
         source_actions = QHBoxLayout()
         self._button("刷新", self.refresh_sources, source_actions)
-        self._button("索引核验", self.source_manager, source_actions)
+        self._button("核验", self.source_manager, source_actions)
         sources.addLayout(source_actions)
         self.source_panel.setMinimumWidth(220)
         self.source_panel.setMaximumWidth(360)
@@ -227,7 +179,7 @@ class MainWindow(ControllerWindow):
         header.insertWidget(1, self.camera_pages)
         review.addWidget(self.stage, 1)
         review.addWidget(self.alignment_controls)
-        self.alignment_label.setStyleSheet("font-size:11px; color:#7b693d")
+        self.alignment_label.setStyleSheet("font-size:12px; color:#B7791F")
         review.addWidget(self.alignment_label)
         self.alignment_label.hide()
         review.addWidget(self.video_slider)
@@ -252,7 +204,7 @@ class MainWindow(ControllerWindow):
         transport.addStretch(1)
         self.wall_input.setAccessibleName("跳转到日期时间")
         self.wall_input.setToolTip("输入日期和时间后按 Enter 或点击跳转，例如 2026-08-03 12:44:58")
-        self.wall_input.setStyleSheet("QLineEdit {background:white; border:2px solid #638b42; border-radius:6px; padding:5px 8px; color:#20351c;} QLineEdit:focus {border-color:#238197;}")
+        self.wall_input.setStyleSheet("QLineEdit {background:white; border:1px solid #DDE2E9; border-radius:8px; padding:5px 8px; color:#1C2530;} QLineEdit:focus {border-color:#35AFC8;}")
         self.wall_input.setMaximumWidth(235)
         self.wall_input.setMinimumWidth(205)
         transport.addWidget(self.wall_input)
@@ -265,7 +217,7 @@ class MainWindow(ControllerWindow):
         self.mark_button.setToolTip("开始 / 结束当前视频动作；也可使用标签对应的快捷键")
         annotation.addWidget(self.mark_button)
         self.annotation_more = QToolButton()
-        self.annotation_more.setText("更多操作")
+        self.annotation_more.setText("更多")
         more_menu = QMenu(self.annotation_more)
         more_menu.addAction("自动候选", self.open_candidates)
         more_menu.addAction("界面与播放设置…", self.presentation_settings)
@@ -276,10 +228,10 @@ class MainWindow(ControllerWindow):
         self.event_toggle = self._icon_button("Text Bullet List", "标注列表", self.toggle_events, annotation)
         self.event_toggle.setCheckable(True)
         self._icon_button("Save", "保存", self.save_user_annotations, annotation)
-        self._button("完成本份…", self.finish_record, annotation).setToolTip("确认整份已检查，选择下一份或保存退出；Ctrl+Enter")
-        self._button("关闭标注", self.close_annotation_session, annotation).setToolTip("保存当前标注并释放工程文件；之后可安全执行数据归类")
+        self._button("完成", self.finish_record, annotation).setToolTip("完成本份（Ctrl+Enter）")
+        self._button("关闭", self.close_annotation_session, annotation).setToolTip("保存并关闭工程（Ctrl+W）")
         review.addLayout(annotation)
-        self.event_status.setStyleSheet("font-size:11px; color:#6b8179")
+        self.event_status.setStyleSheet("font-size:12px; color:#6B7785")
         self.event_status.setWordWrap(False)
         # Keep transient action feedback in the annotation toolbar.  It used
         # to be parented to the central widget without a layout item; the
@@ -300,15 +252,15 @@ class MainWindow(ControllerWindow):
         self.event_panel = QFrame()
         self.event_panel.setObjectName("eventPanel")
         details = QVBoxLayout(self.event_panel)
-        details.addWidget(self._heading("标注与视频草稿"))
+        details.addWidget(self._heading("标注"))
         self.events.setAlternatingRowColors(True)
         self.events.verticalHeader().hide()
         for col, width in enumerate((75, 110, 145, 145, 100, 170)):
             self.events.setColumnWidth(col, width)
         details.addWidget(self.events, 1)
         boundary_actions = QHBoxLayout()
-        self._button("九轴起止微调", self.refine_selected, boundary_actions)
-        self._button("编辑起止", self.edit_selected, boundary_actions)
+        self._button("微调", self.refine_selected, boundary_actions).setToolTip("九轴起止微调")
+        self._button("编辑", self.edit_selected, boundary_actions).setToolTip("编辑起止")
         details.addLayout(boundary_actions)
         event_actions = QMenu(self)
         for title, explanation, handler in (("生成候选", "先打开九轴记录，选择标签并拖选波形区间，再生成候选；候选需要人工复核", self.mark_selection),
@@ -322,7 +274,7 @@ class MainWindow(ControllerWindow):
             action.setToolTip(explanation)
         event_actions.setToolTipsVisible(True)
         event_button = QToolButton()
-        event_button.setText("所选标注操作")
+        event_button.setText("操作")
         event_button.setMenu(event_actions)
         event_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         details.addWidget(event_button)
@@ -340,12 +292,12 @@ class MainWindow(ControllerWindow):
         outer.addWidget(self.body, 1)
         # Infrequent options retain the exact controller widgets/connections.
         self.options = TaskWindow(self)
-        self.options.setWindowTitle("界面与播放设置")
+        self.options.setWindowTitle("设置")
         options = QVBoxLayout(self.options)
-        options.addWidget(self._heading("播放与索引"))
+        options.addWidget(self._heading("播放"))
         options.addWidget(self.strict)
         options.addWidget(self.compatibility)
-        self.glass = QCheckBox("磨砂玻璃质感 / 系统 Mica（支持时）")
+        self.glass = QCheckBox("磨砂玻璃")
         self.glass.setChecked(True)
         self.glass.toggled.connect(self.set_glass)
         options.addWidget(self.glass)
@@ -369,7 +321,7 @@ class MainWindow(ControllerWindow):
         self.setCentralWidget(central)
         self.statusBar().removeWidget(self.index_status)
         self.index_status.deleteLater()
-        self.index_status = ElidingLabel("打开工程即可逐份开始")
+        self.index_status = ElidingLabel("就绪")
         self.statusBar().addPermanentWidget(self.index_status, 1)
         self.status_details_button = QPushButton("加载记录…")
         self.status_details_button.setToolTip("展开完整状态、路径和加载记录；可选择复制")
@@ -411,66 +363,256 @@ class MainWindow(ControllerWindow):
             else:
                 menu.addAction(item)
 
-    def _simplify_menus(self, files, tools, edit, sync, view, materials):
-        """4.3.1: one task per menu, at most one submenu level for daily work.
+    def _build_menubar(self):
+        """4.4.0 menu bar, in the order of an operator's day.
 
-        Duplicates are dropped from the menus (算法管理 == 训练与识别), rare
-        tools are grouped, and behaviour inspection moves to 行为识别. Every
-        handler, shortcut and translation stays; only positions change.
+        文件 → 编辑 → 上传（台账）→ 下载（端侧数据 + 数据归类）→ 标注 → 工具 → 帮助.
+        Controller actions are re-homed, never recreated, so handlers, shortcuts
+        and enablement stay identical; ``self._menu_unplaced`` must stay empty.
         """
-        def pick(menu, *texts):
-            return [a for a in (self._find_action(menu, t) for t in texts) if a is not None]
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
 
-        collaboration, legacy, evidence = self._collaboration_menu, self._legacy_menu, self._evidence_menu
-        raw_package = self._find_action(files, "打开协作原始数据包…")
-        self._arrange(files, [*pick(files, "打开工程…", "打开九轴…", "打开单个视频并配对九轴…", "历史回看…"), None,
-                              *pick(files, "保存", "保存并退出"), None, self._annotation_exports, None, legacy])
-        self._arrange(collaboration, [*([raw_package] if raw_package else []),
-                                      *[a for a in collaboration.actions() if a is not raw_package]])
-        layout = self._find_action(tools, "统一牧场录像目录…")
-        export = self._find_action(tools, "导出标准 MP4 副本…")
-        materials.setTitle("录像索引与核验")
-        index_items = [a for a in materials.actions()]
-        self._arrange(materials, [*([layout, None] if layout else []), *index_items])
-        self._arrange(tools, [*pick(tools, "端侧数据下载…", "数据归类…"), *([export] if export else []), None, materials])
-        labels = QMenu("标签编辑", self)
-        labels.setToolTipsVisible(True)
-        self._label_menu = labels
-        self._arrange(labels, [*pick(edit, "修改所选标签…", "批量修改标签…", "删除所选标注/草稿", "重新标注本份"), None,
-                               *[a for a in evidence.actions() if not a.isSeparator()]])
-        shown = pick(view, "放大视频（保留波形条）", "波形分屏到独立窗口 / 合并", "全屏 / 退出全屏", "退出单路放大")
-        panels = pick(view, "素材列表", "标注列表", "双画面主视角宽度…", "界面与播放设置…")
-        rest = [a for a in view.actions() if not a.isSeparator() and a not in shown and a not in panels]
-        self._arrange(view, [*shown, None, *panels, None, *rest])
-        inspection = self._find_action(edit, "逐项算法检查")
-        self._arrange(edit, [*pick(edit, "自动生成候选…", "用所选九轴区间建立候选"),
-                             *pick(edit, "自动标注模型…"), *([inspection.menu()] if inspection else []), None,
-                             *pick(edit, "完成本份九轴…", "下一份未完成九轴"), None,
-                             *pick(edit, "撤销", "重做"), None, labels, sync, collaboration, view])
+        from cowmata_tailring.edge_download import install_menu as install_edge_download
+        from cowmata_tailring.ledger.host import SHEETS, LedgerHost
+        from cowmata_tailring.ui.about import show_about
+
+        from .collaboration_ui import open_dialog
+
+        bar = self.menuBar()
+        found = {}
+
+        def collect(menu):
+            for action in menu.actions():
+                if action.menu() is not None:
+                    collect(action.menu())
+                elif not action.isSeparator():
+                    found[action.text()] = action
+
+        for action in bar.actions():
+            if action.menu() is not None:
+                collect(action.menu())
+        bar.clear()
+        retired = found.pop("数据集构建…", None)  # moved to the calving-prediction package in 4.3.8
+        if retired is not None:
+            retired.deleteLater()
+
+        def menu(parent, title):
+            child = parent.addMenu(title)
+            child.setToolTipsVisible(True)
+            return child
+
+        def take(target, original, title=None, shortcut=None):
+            action = found.pop(original)
+            action.setText(title or original)
+            action.setToolTip(original)
+            action.setStatusTip(original)
+            if shortcut:
+                action.setShortcut(QKeySequence(shortcut))
+            target.addAction(action)
+            return action
+
+        # 文件 — the project and its outputs.
+        files = menu(bar, "文件")
+        take(files, "打开数据工程…", "打开工程…")
+        take(files, "打开指定九轴 JSON…", "打开九轴…")
+        take(files, "打开单个视频并配对九轴…", "打开视频…")
+        self._action(files, "打开协作数据包…", lambda: open_dialog(self, "open"))
+        take(files, "打开历史标注回看…", "历史回看…")
+        files.addSeparator()
+        take(files, "保存人工成果", "保存")
+        exports = menu(files, "导出")
+        self._annotation_exports = exports
+        take(exports, "导出当前成果…", "完整成果…")
+        take(exports, "导出所选九轴片段（含标签）…", "所选片段…")
+        take(exports, "训练与兼容格式（批量导出）…", "训练数据…")
+        files.addSeparator()
+        self._action(files, "关闭工程", self.close_annotation_session, "Ctrl+W")
+        self._action(files, "退出", self.close, "Ctrl+Q")
+
+        # 编辑 — undo and label edits.
+        edit = menu(bar, "编辑")
+        take(edit, "撤销")
+        take(edit, "重做")
+        edit.addSeparator()
+        self._action(edit, "修改标签…", self.edit_selected)
+        self._action(edit, "批量修改…", self.bulk_relabel)
+        take(edit, "删除所选标注/草稿", "删除")
+        edit.addSeparator()
+        self._action(edit, "查找记录", self.find_record, "Ctrl+F")
+
+        # 上传 — the field ledger (uploader), signed by this login.
+        self._ledger_host = LedgerHost(self)
+        ledger = self._ledger_host
+        upload = menu(bar, "上传")
+        self._action(upload, "台账", ledger.open, "Ctrl+U")
+        upload.addSeparator()
+        self._action(upload, "导入表格…", lambda: ledger.run("import_dialog"))
+        self._action(upload, "同步修改", lambda: ledger.run("sync", True))
+        self._action(upload, "刷新服务器", lambda: ledger.run("refresh_server"))
+        upload.addSeparator()
+        self._action(upload, "新建记录…", lambda: ledger.run("new_record"))
+        self._action(upload, "核对冲突…", lambda: ledger.run("review_pending_conflicts"))
+        self._action(upload, "统计报告…", lambda: ledger.run("report_dialog"))
+        self._action(upload, "导出 CSV…", lambda: ledger.run("export_dialog"))
+        sheets = menu(upload, "表")
+        for index, title in enumerate(SHEETS):
+            self._action(sheets, title, lambda _checked=False, i=index: ledger.show_sheet(i))
+        upload.addSeparator()
+        self._action(upload, "上传设置…", lambda: ledger.run("settings_dialog"))
+
+        # 下载 — edge data for the ledger, then organise it into the farm project.
+        download = menu(bar, "下载")
+        downloader = install_edge_download(self, download)
+        self._downloader = downloader
+        downloader.action.setText("端侧数据…")
+        downloader.action.setShortcut(QKeySequence("Ctrl+D"))
+        self._action(download, "更新台账并下载", lambda: downloader.run(lambda d: d.update_and_download()))
+        self._action(download, "停止下载", lambda: downloader.run(lambda d: d.pause(), show=False))
+        download.addSeparator()
+        organize = menu(download, "数据归类")
+        self._action(organize, "录像转码与归类…", lambda: self.open_organization(1, mode=0))
+        self._action(organize, "常规归类…", lambda: self.open_organization(1, mode=1))
+        organize.addSeparator()
+        self._action(organize, "继续上次归类", lambda: self._organization_command("resume_task"))
+        self._action(organize, "归类记录…", lambda: self._organization_command("export_report"))
+        self._action(organize, "打开归类目录", lambda: self._organization_command("open_destination"))
+        download.addSeparator()
+        self._action(download, "下载设置…", lambda: downloader.run(lambda d: d.open_configuration(), show=False))
+        records = menu(download, "下载记录")
+        self._action(records, "运行记录…", lambda: downloader.run(lambda d: d.log_dialog.show(), show=False))
+        self._action(records, "问题清单…", lambda: downloader.run(lambda d: d.show_csv_issues(), show=False))
+        self._action(records, "备注记录…", lambda: downloader.run(lambda d: d.show_notes_window(), show=False))
+        self._action(download, "检测连接", lambda: downloader.run(lambda d: d.start_task("probe")))
+        self._action(download, "打开下载目录", lambda: downloader.run(
+            lambda d: QDesktopServices.openUrl(QUrl.fromLocalFile(str(d.store.resolve_path(d.directory.text())))), show=False))
+
+        # 标注 — everything needed while labelling one record.
+        annotate = menu(bar, "标注")
+        take(annotate, "新版事件候选预测…", "自动生成候选…")
+        self._action(annotate, "用所选区间建立候选", self.mark_selection)
+        self._build_algorithm_menus(menu(annotate, "逐项检查"))
+        model = self._action(annotate, "自动标注模型…", self.choose_annotation_models)
+        model.setToolTip("行为识别模型目录")
+        annotate.addSeparator()
+        take(annotate, "完成本份九轴…", "完成本份…")
+        take(annotate, "下一份未完成九轴", "下一份", "Ctrl+PgDown")
+        take(annotate, "将本份重新标为进行中", "重新标注本份")
+        annotate.addSeparator()
+        take(annotate, "确认所选草稿为九轴真值", "确认为真值")
+        take(annotate, "留存多视角证据图（每视角一张）…", "留存证据图…")
+        annotate.addSeparator()
+        team = menu(annotate, "协作")
+        self._collaboration_menu = team
+        for mode, title in (("dispatch", "派发原始数据包…"), ("returns", "生成标注数据包…"), ("receive", "接收标注数据包…")):
+            self._action(team, title, lambda _checked=False, m=mode: open_dialog(self, m))
+        team.addSeparator()
+        take(team, "接收多人标注成果…", "接收成果…")
+        take(team, "多人协作与回传设置…", "回传设置…")
+
+        # 工具 — shared utilities: time sync, recordings, view, diagnostics.
+        tools = menu(bar, "工具")
+        timing = menu(tools, "时间同步")
+        take(timing, "九轴同步锚点与未确认区间…", "精细校准…")
+        take(timing, "当前主视角相机时钟校准…", "相机校准…")
+        take(timing, "跳到下一个录像覆盖时段", "下一录像时段")
+        recordings = menu(tools, "录像")
+        self._action(recordings, "统一录像目录…", lambda: open_dialog(self, "layout"))
+        self._action(recordings, "导出标准 MP4…", self.export_standard_video)
+        recordings.addSeparator()
+        take(recordings, "刷新 / 复制完成，重新检查", "刷新素材")
+        take(recordings, "继续扩大当前时段检索", "扩大检索")
+        take(recordings, "后台完整索引（可选、耗时）", "完整索引…")
+        take(recordings, "暂停后台检索", "暂停检索")
+        recordings.addSeparator()
+        take(recordings, "素材与时间核验…", "素材核验…")
+        take(recordings, "新增唯一拷贝批次…", "新建拷贝批次…")
+        take(recordings, "全文件内容核验（耗时）", "内容核验…")
+        take(recordings, "录像归档副本核验（不删除原片）…", "归档核验…")
+        view = menu(tools, "视图")
+        self._action(view, "放大视频", self.enlarge_video, "Ctrl+E")
+        self._action(view, "波形分屏", self.toggle_waveform_window, "Ctrl+Shift+E")
+        take(view, "全屏 / 退出全屏", "全屏", "F11")
+        take(view, "退出单路放大")
+        view.addSeparator()
+        self._action(view, "素材列表", self.toggle_sources, "Ctrl+L")
+        self._action(view, "标注列表", self.toggle_events)
+        take(view, "双画面主视角宽度…", "双画面宽度…")
+        take(view, "显示完整九轴记录", "完整九轴")
+        tools.addSeparator()
+        take(tools, "性能与索引诊断…", "性能诊断…")
+        take(tools, "切换硬件 / 软件解码（下次打开工程生效）", "切换硬件解码")
+        legacy = menu(tools, "旧版兼容")
+        self._legacy_menu = legacy
+        take(legacy, "导入旧单视频工程…")
+        take(legacy, "打开旧版单视频窗口")
+        tools.addSeparator()
+        self._action(tools, "设置…", self.presentation_settings, "Ctrl+,")
+
+        # 帮助 — learning, account, about.
+        help_menu = menu(bar, "帮助")
+        self._action(help_menu, "快速开始", self.quick_help, "F1")
+        self._action(help_menu, "新手图文教程…", self.open_tutorial)
+        help_menu.addSeparator()
+        self.account_menu = menu(help_menu, "账号")
+        help_menu.addSeparator()
+        self._action(help_menu, "关于", lambda: show_about(self))
+        self._menu_unplaced = sorted(found)
+
+    def menu_inventory(self):
+        """Every reachable command as (menu path, text) for audits and tests."""
+        rows = []
+
+        def visit(menu, path):
+            for action in menu.actions():
+                if action.isSeparator():
+                    continue
+                if action.menu() is not None:
+                    visit(action.menu(), path + (action.text(),))
+                else:
+                    rows.append((path, action.text()))
+
+        for action in self.menuBar().actions():
+            if action.menu() is not None:
+                visit(action.menu(), (action.text(),))
+        return rows
+
+    def find_record(self):
+        if not self.source_panel.isVisible():
+            self.toggle_sources()
+        self.record_search.setFocus()
+        self.record_search.selectAll()
+
+    def open_organization(self, tab=0, mode=None):
+        super().open_organization(tab)
+        window = self._organization_window
+        if mode is not None and hasattr(window, "mode_sheets"):
+            window.mode_sheets.setCurrentIndex(mode)
+
+    def _organization_command(self, name):
+        self.open_organization(1, mode=1)
+        getattr(self._organization_window, name)()
 
     def _heading(self, text):
         label = QLabel(text)
         label.setObjectName("sectionTitle")
         return label
 
-    def _build_algorithm_menus(self, annotation_menu):
-        """4.3.8 Annotator: only annotation aids that *use* trained behaviour models remain."""
+    def _build_algorithm_menus(self, menu):
+        """Per-behaviour single-camera checks that use trained models (never train)."""
         from .algorithm_catalog import BEHAVIORS
-        model = self._action(annotation_menu, "自动标注模型…", self.choose_annotation_models)
-        model.setToolTip("选择自动生成候选所用的行为识别模型目录（默认自动查找 科牧特_模型\\<最新版本>\\行为识别）")
         self.algorithm_actions = {}
         self.algorithm_group = QActionGroup(self)
         self.algorithm_group.setExclusive(True)
-        menu = annotation_menu.addMenu('逐项算法检查')
         menu.setToolTipsVisible(True)
         for spec in BEHAVIORS:
             action = self._action(menu, spec.title, lambda _checked=False, s=spec: self.open_algorithm(s))
             action.setCheckable(True)
-            action.setToolTip("单摄像头算法检查 · 对应标签 " + spec.code)
+            action.setToolTip(spec.code)
             self.algorithm_group.addAction(action)
             self.algorithm_actions[spec.code] = action
         menu.addSeparator()
-        self._action(menu, "返回标注布局", self.exit_algorithm)
+        self._action(menu, "返回标注", self.exit_algorithm)
 
     def choose_annotation_models(self):
         """Pick the behaviour-model folder used by 自动生成候选 (stored in settings, nothing copied)."""
@@ -618,74 +760,13 @@ class MainWindow(ControllerWindow):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         path = Path(__file__).resolve().parents[2] / "docs/quick-start-illustrated.pdf"
-        current = Path(__file__).resolve().parents[2] / 'docs/operator-guide-396.html'
+        current = Path(__file__).resolve().parents[2] / 'docs/operator-guide-440.html'
         if current.is_file():
             path = current
         if path.is_file():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
         else:
             self.quick_help()
-
-    def _organize_menus(self, files, materials, sync, edit, view, tools):
-        """One-level categories; existing actions retain handlers and shortcuts."""
-        exports = QMenu('标注分享与片段', self)
-        self._annotation_exports=exports
-        legacy = QMenu("旧版兼容", self)
-        collaboration = QMenu("多人协作", self)
-        evidence = QMenu("标注与证据", self)
-        for menu in (files, materials, sync, edit, view):
-            for action in list(menu.actions()):
-                original = action.text()
-                if menu is files and original=='数据集构建…':
-                    menu.removeAction(action)
-                    action.deleteLater()
-                    continue
-                action.setToolTip(original)
-                action.setStatusTip(original)
-                target = None
-                if original.startswith(("导出当前", "导出所选", "训练与兼容")):
-                    target = exports
-                elif "旧" in original:
-                    target = legacy
-                elif "多人" in original:
-                    target = collaboration
-                elif "候选预测" in original:
-                    target = edit
-                elif menu is edit and any(word in original for word in ("真值", "证据")):
-                    target = evidence
-                if target:
-                    menu.removeAction(action)
-                    target.addAction(action)
-                short = {
-                    "打开数据工程…": "打开工程…", "打开指定九轴 JSON…": "打开九轴…",
-                    "保存人工成果": "保存", "打开历史标注回看…": "历史回看…",
-                    "导出当前成果…": "完整成果…", "导出所选九轴片段（含标签）…": "所选片段…",
-                    "训练与兼容格式（批量导出）…": "训练数据…", "接收多人标注成果…": "接收成果…",
-                    "多人协作与回传设置…": "回传设置…", "继续扩大当前时段检索": "扩大当前检索",
-                    "后台完整索引（可选、耗时）": "完整索引…", "暂停后台检索": "暂停检索",
-                    "刷新 / 复制完成，重新检查": "刷新素材", "素材与时间核验…": "素材核验…",
-                    "新增唯一拷贝批次…": "新建拷贝批次…", "全文件内容核验（耗时）": "内容核验…",
-                    "录像归档副本核验（不删除原片）…": "归档核验…",
-                    "九轴同步锚点与未确认区间…": "精细校准（可选）…", "当前主视角相机时钟校准…": "相机校准…",
-                    "新版事件候选预测…": "自动生成候选…", "将本份重新标为进行中": "重新标注本份",
-                    "固定 / 收起素材列表": "素材列表", "显示 / 隐藏标注列表": "标注列表",
-                    "性能与索引诊断…": "性能诊断…"}.get(original)
-                if short:
-                    action.setText(short)
-            menu.setToolTipsVisible(True)
-        from .collaboration_ui import open_dialog
-        for mode, title in (("dispatch", "派发原始数据包"), ("returns", "生成标注数据包"), ("receive", "接收标注数据包")):
-            self._action(collaboration, title, lambda checked=False, m=mode: open_dialog(self, m))
-        self._action(files, "打开协作原始数据包…", lambda: open_dialog(self, "open"))
-        self._action(tools, "统一牧场录像目录…", lambda: open_dialog(self, "layout"))
-        files.addMenu(legacy)
-        edit.addMenu(collaboration)
-        edit.addMenu(evidence)
-        self._legacy_menu, self._collaboration_menu, self._evidence_menu = legacy, collaboration, evidence
-        materials.setTitle("录像索引")
-        sync.setTitle("时间同步")
-        for menu in (exports, legacy, collaboration, evidence, tools):
-            menu.setToolTipsVisible(True)
 
     def set_glass(self, enabled):
         self._glass_requested = bool(enabled)
@@ -782,7 +863,7 @@ class MainWindow(ControllerWindow):
             self.date_choice.blockSignals(True)
             self.date_choice.clear()
             if not active_day:
-                self.date_choice.addItem("全部采集日期", "")
+                self.date_choice.addItem("全部日期", "")
             for day in days:
                 self.date_choice.addItem(day, day)
             self.date_choice.setCurrentIndex(max(0, self.date_choice.findData(current)))
@@ -839,22 +920,18 @@ class MainWindow(ControllerWindow):
 
     def refresh_action_state(self, *_):
         super().refresh_action_state()
-        self.event_status.setStyleSheet("font-size:12px; font-weight:600; color:#815c17" if self.active_event
-                                       else "font-size:11px; color:#6b8179")
+        self.event_status.setStyleSheet("font-size:12px; font-weight:600; color:#B7791F" if self.active_event
+                                       else "font-size:12px; color:#6B7785")
 
     def quick_help(self):
         from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "逐份标注 · 快速开始",
-            "1. 新数据先进入「数据准备」：选择采集类别，检查命名、审查并按日期归类。\n"
-            "   九轴目录：完整设备编号-牛耳标号-现场记号；同设备跨日期复用分别保留。\n"
-            "2. 打开工程：先确认牧场，再选择类别、Motion 和一个日期；同步检索当天录像。\n"
-            "3. 核对设备、牛耳标、现场记号及时间同步，再观察录像并标注。\n"
-            "4. 点击「完成本份」确认保存；切换自动保存，重开恢复未完成位置。\n"
-            "5. 标注自动按日期保存；在「数据集构建」生成行为数据集或分享标注片段。\n\n"
-            "未知录像的时间需要首次 OCR；文件编号只用于加速搜索，不是真值。\n"
-            "未检索不等于无录像。未找到时可用「数据准备 → 录像索引与核验 → 扩大当前检索」。\n"
-            "看不清牛身记号：Ctrl+E 放大视频（保留波形条，F11 全屏）；Ctrl+Shift+E 把波形分屏到第二块屏幕。\n"
-            "更新设置在「帮助 → 关于」；Ctrl+L 固定列表，悬停素材按钮可临时展开。")
+        QMessageBox.information(self, "快速开始",
+            "1  文件 → 打开工程\n"
+            "2  上传 → 台账：导入表格并同步\n"
+            "3  下载 → 端侧数据；下载 → 数据归类\n"
+            "4  标注：选择记录，标记动作起止，完成本份\n"
+            "5  工具：时间同步、录像索引、视图与设置\n\n"
+            "Ctrl+O 打开 · Ctrl+S 保存 · Ctrl+U 台账 · Ctrl+D 下载 · Ctrl+E 放大视频 · F1 帮助")
 
     def toggle_events(self):
         if self._algorithm_restore is not None:
@@ -985,6 +1062,12 @@ class MainWindow(ControllerWindow):
             self._retry_close(150)
             return
         self._closing_due_to_organization = False
+        ledger = getattr(self, "_ledger_host", None)
+        if ledger is not None and not ledger.close():
+            self.tell('正在完成台账同步，完成后退出。')
+            event.ignore()
+            self._retry_close(300)
+            return
         panel = getattr(self, "algorithm_panel", None)
         if panel is not None and panel.running:
             panel.cancel()

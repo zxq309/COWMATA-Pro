@@ -27,29 +27,42 @@ class LoginDialog(QDialog):
         self.saved = dict(DEFAULTS); preference_error = ''
         try: self.saved = self.preferences.load()
         except Exception: preference_error = '无法读取本机保存的登录信息，请手动输入。'
-        self.setWindowTitle('COWMATA · 登录'); self.setMinimumWidth(460)
+        self.setWindowTitle('COWMATA'); self.setMinimumWidth(380)
         self.setWindowModality(Qt.ApplicationModal)
-        layout = QVBoxLayout(self); form = self.form = QFormLayout()
+        layout = QVBoxLayout(self); layout.setContentsMargins(32, 28, 32, 24); layout.setSpacing(12)
+        brand = QLabel('COWMATA'); brand.setObjectName('brand'); brand.setAlignment(Qt.AlignCenter)
+        subtitle = QLabel({'pro': 'Annotator', 'ledger': '现场台账'}.get(product, '')); subtitle.setObjectName('muted')
+        subtitle.setAlignment(Qt.AlignCenter)
+        layout.addWidget(brand); layout.addWidget(subtitle); layout.addSpacing(6)
+        # Segmented role switch (iOS style); the combo box stays the data model.
         self.mode = QComboBox(); self.mode.addItem('管理员', 'admin'); self.mode.addItem('操作员', 'operator')
-        self.mode.setCurrentIndex(1 if self.saved['role'] == 'operator' else 0)
-        form.addRow('登录身份', self.mode)
+        self.mode.setCurrentIndex(1 if self.saved['role'] == 'operator' else 0); self.mode.hide()
+        roles = QHBoxLayout(); roles.setSpacing(0); self.role_buttons = []
+        for title, data in (('操作员', 'operator'), ('管理员', 'admin')):
+            button = QPushButton(title); button.setCheckable(True); button.setProperty('role', data)
+            button.clicked.connect(lambda _checked=False, d=data: self.mode.setCurrentIndex(self.mode.findData(d)))
+            roles.addWidget(button); self.role_buttons.append(button)
+        layout.addLayout(roles)
+        form = self.form = QFormLayout(); form.setSpacing(10); form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.account = QLineEdit(username or self.saved['account']); self.account.setReadOnly(bool(username))
-        self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password)
+        self.account.setPlaceholderText('用户名')
+        self.password = QLineEdit(); self.password.setEchoMode(QLineEdit.Password); self.password.setPlaceholderText('密码')
         if self.saved['remember_password'] and (not username or username == self.saved['account']):self.password.setText(self.saved['password'])
         self.code = QLineEdit(); self.code.setEchoMode(QLineEdit.Password)
-        self.code.setPlaceholderText('首次激活填写，已激活电脑可留空')
-        form.addRow('账号', self.account); form.addRow('密码', self.password); form.addRow('授权码', self.code)
+        self.code.setPlaceholderText('首次登录填写')
+        form.addRow('账号', self.account); form.addRow('密码', self.password); form.addRow('一次性密钥', self.code)
         layout.addLayout(form)
         choices = QHBoxLayout()
-        self.remember = QCheckBox('保存密码'); self.remember.setChecked(self.saved['remember_password'])
+        self.remember = QCheckBox('记住密码'); self.remember.setChecked(self.saved['remember_password'])
         self.automatic = QCheckBox('自动登录'); self.automatic.setChecked(self.saved['auto_login'])
-        self.remember.setToolTip('仅在当前 Windows 用户下加密保存；不勾选自动登录时仍需点击登录。')
-        self.automatic.setToolTip('仅主动勾选后，下次打开才自动登录；同时保存密码。')
+        self.remember.setToolTip('仅在当前 Windows 用户下加密保存')
+        self.automatic.setToolTip('下次打开自动登录')
         self.forgot = QPushButton('忘记密码'); self.forgot.setFlat(True)
         choices.addWidget(self.remember); choices.addWidget(self.automatic); choices.addStretch(); choices.addWidget(self.forgot)
         layout.addLayout(choices)
-        self.hint = QLabel(); self.hint.setWordWrap(True); layout.addWidget(self.hint)
-        self.button = QPushButton('登录'); self.button.clicked.connect(self.submit)
+        self.hint = QLabel(); self.hint.setWordWrap(True); self.hint.setObjectName('muted'); layout.addWidget(self.hint)
+        self.button = QPushButton('登录'); self.button.setObjectName('primary'); self.button.setMinimumHeight(34)
+        self.button.clicked.connect(self.submit)
         self.password.returnPressed.connect(self.submit); self.code.returnPressed.connect(self.submit)
         layout.addWidget(self.button)
         self.mode.currentIndexChanged.connect(self.mode_changed)
@@ -59,13 +72,14 @@ class LoginDialog(QDialog):
         if preference_error:self.hint.setText(preference_error)
         QTimer.singleShot(0, self.auto_login)
     def update_mode(self):
+        for button in getattr(self, 'role_buttons', ()):
+            button.setChecked(button.property('role') == self.mode.currentData())
         self.form.setRowVisible(self.code, self.mode.currentData() == 'operator')
         self.hint.setText(self.login_hint()); self.adjustSize()
     def mode_changed(self):
         self.password.clear(); self.code.clear(); self.automatic.setChecked(False); self.update_mode()
     def login_hint(self):
-        return ('管理员只需账号和密码，可在其他电脑使用。自动登录须主动勾选。' if self.mode.currentData() == 'admin'
-                else '首次使用需管理员下发的授权码；已激活电脑可留空。自动登录须主动勾选。')
+        return '' if self.mode.currentData() == 'admin' else '首次登录填写管理员提供的一次性密钥'
     def remember_changed(self, checked):
         if not checked:
             self.automatic.setChecked(False)
@@ -147,10 +161,15 @@ class AdminDialog(QDialog):
         super().__init__(parent)
         self.session = session or current_session(); self.session.require('accounts')
         self.task = None; self.need_reload = False
-        self.setWindowTitle('管理员 · 账号管理'); self.resize(860, 500)
-        layout = QVBoxLayout(self)
+        self.setWindowTitle('账号'); self.resize(760, 520)
+        layout = QVBoxLayout(self); layout.setContentsMargins(20, 18, 20, 16); layout.setSpacing(10)
+        add_row = QHBoxLayout()
+        self.new_account = QLineEdit(); self.new_account.setPlaceholderText('新用户名，如 zhangsan')
+        self.new_account.returnPressed.connect(self.add_account)
+        add_row.addWidget(self.new_account, 1)
+        layout.addLayout(add_row)
         self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(['账号', '密码', '授权码'])
+        self.table.setHorizontalHeaderLabels(['账号', '密码', '一次性密钥'])
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -158,17 +177,17 @@ class AdminDialog(QDialog):
         self.table.verticalHeader().setDefaultSectionSize(30)
         self.table.itemSelectionChanged.connect(self.selection_changed)
         layout.addWidget(self.table)
-        row = QHBoxLayout(); row.addWidget(QLabel('生成数量'))
-        self.count = QSpinBox(); self.count.setRange(1, 100); self.count.setValue(10)
-        row.addWidget(self.count)
+        row = QHBoxLayout()
         self.buttons = []
-        for title, call in [('批量生成', self.batch_create), ('复制所选', self.copy_selected),
-                            ('删除所选', self.remove_selected), ('打开本机 CSV', self.open_csv), ('刷新', self.reload)]:
+        for title, call in [('添加用户', self.add_account), ('复制', self.copy_selected),
+                            ('删除', self.remove_selected), ('打开表格', self.open_csv), ('刷新', self.reload)]:
             button = QPushButton(title); button.clicked.connect(call)
-            row.addWidget(button); self.buttons.append(button)
+            (add_row if title == '添加用户' else row).addWidget(button); self.buttons.append(button)
+        self.buttons[0].setObjectName('primary'); self.buttons[2].setObjectName('destructive')
+        row.insertStretch(3)
         layout.addLayout(row)
-        self.hint = QLabel('先批量生成，需要时复制所选账号发给使用者。删除账号即撤销授权。')
-        self.hint.setWordWrap(True); layout.addWidget(self.hint)
+        self.hint = QLabel('新用户自动生成 8 位密码和一次性密钥；删除即撤销。')
+        self.hint.setObjectName('muted'); self.hint.setWordWrap(True); layout.addWidget(self.hint)
         self.reload()
     def selected_rows(self):
         return sorted({index.row() for index in self.table.selectionModel().selectedRows()})
@@ -185,34 +204,56 @@ class AdminDialog(QDialog):
         try: self.session.require('accounts')
         except AccessDenied as exc: self.hint.setText(str(exc)); return
         for button in self.buttons: button.setEnabled(False)
-        self.count.setEnabled(False); self.hint.setText('正在处理…')
+        self.new_account.setEnabled(False); self.hint.setText('正在处理…')
         self.task = Task(lambda: self.session.admin(action, **values), self)
         self.task.succeeded.connect(self.result); self.task.failed.connect(self.hint.setText)
         self.task.finished.connect(self.finished_request); self.task.start()
     def finished_request(self):
         for button in self.buttons: button.setEnabled(True)
-        self.count.setEnabled(True); self.selection_changed()
+        self.new_account.setEnabled(True); self.selection_changed()
         if self.need_reload:
             self.need_reload = False; QTimer.singleShot(0, self.reload)
     def reload(self): self.invoke('credentials')
-    def batch_create(self): self.invoke('batch_create', count=self.count.value())
+    def add_account(self):
+        import re
+        name = self.new_account.text().strip().lower()
+        if not re.fullmatch(r'[a-z][a-z0-9_]{2,31}', name):
+            self.hint.setText('用户名：3–32 位小写字母、数字或下划线，字母开头'); return
+        self.invoke('create_account', account=name)
     def result(self, result):
+        other = {'ledger': '上传器', 'pro': '标注软件'}
+        skipped = [other.get(k, k) for k, v in (result.get('mirror') or {}).items() if v not in ('added', 'removed', 'unchanged')]
+        if skipped:
+            # A same-named account with other credentials belongs to someone else there; never touched.
+            self._mirror_note = '；'.join(skipped) + '中同名账号不同，未同步'
         if 'credentials' not in result:
             self.need_reload = True; return
         rows = result['credentials']
+        created = result.get('created')
         self.table.setRowCount(len(rows))
         for i, row in enumerate(rows):
             for j, key in enumerate(('account', 'password', 'code')):
                 item = QTableWidgetItem(str(row[key]))
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                 self.table.setItem(i, j, item)
-        self.hint.setText('共 '+str(len(rows))+' 个账号。管理员无需授权码；操作员首次激活后绑定设备。')
+        self.hint.setText('共 '+str(len(rows))+' 个账号')
+        if created:
+            self.new_account.clear()
+            index = next((i for i, r in enumerate(rows) if r['account'] == created['account']), None)
+            if index is not None: self.table.selectRow(index)
+            text = '账号\t'+created['account']+'\n密码\t'+created['password']+'\n一次性密钥\t'+created['code']
+            QApplication.clipboard().setText(text)
+            self.hint.setText('已添加 '+created['account']+'，账号、密码和一次性密钥已复制')
+        note = getattr(self, '_mirror_note', '')
+        if note:
+            self._mirror_note = ''
+            self.hint.setText(self.hint.text() + ' · ' + note)
     def copy_selected(self):
         try: self.session.require('accounts')
         except AccessDenied as exc: self.hint.setText(str(exc)); return
         rows = self.selected_rows()
         if not rows: self.hint.setText('请先选择要复制的账号。'); return
-        text = '账号\t密码\t授权码\n' + '\n'.join('\t'.join(self.table.item(row, column).text() for column in range(3)) for row in rows)
+        text = '账号\t密码\t一次性密钥\n' + '\n'.join('\t'.join(self.table.item(row, column).text() for column in range(3)) for row in rows)
         QApplication.clipboard().setText(text)
         self.hint.setText('已复制所选 '+str(len(rows))+' 个账号。请仅交给对应使用者。')
     def remove_selected(self):
@@ -245,17 +286,21 @@ class SessionController:
     def __init__(self,window,root,product):
         self.window=window;self.root=root;self.product=product;self.worker=None;self.locked=False
         self.timer=QTimer(window);self.timer.setInterval(1000);self.timer.timeout.connect(self.tick);self.timer.start()
-        menu=window.menuBar().addMenu('账号')
-        session=current_session()
+        # 4.4.0: the Annotator hosts the account menu under 帮助 → 账号.
+        menu=getattr(window,'account_menu',None)
+        if menu is None:menu=window.menuBar().addMenu('账号')
+        session=current_session();role=session.identity.get('role')
+        who=menu.addAction(session.identity.get('account','')+' · '+('管理员' if role=='admin' else '操作员'));who.setEnabled(False)
+        menu.addSeparator()
         if session.allows('accounts'):
-            menu.addAction('账号管理…',lambda:AdminDialog(window).exec())
-        menu.addAction('锁定当前账号',self.lock)
+            menu.addAction('用户与密钥…',lambda:AdminDialog(window).exec())
+        menu.addAction('锁定',self.lock)
         menu.addAction('退出登录',self.logout)
-        menu.addAction('清除此设备自动登录',self.forget)
+        menu.addAction('清除自动登录',self.forget)
         self.apply_role()
     def apply_role(self):
         session=current_session();role=session.identity.get('role')
-        self.window.setWindowTitle(self.window.windowTitle().split(' · 账号:')[0]+' · 账号:'+session.identity.get('account','')+'（'+('管理员' if role=='admin' else '操作员')+'）')
+        self.window.setWindowTitle(self.window.windowTitle().split(' — ')[0].split(' · 账号:')[0]+' — '+session.identity.get('account',''))
         def visit(menu,inherited=None):
             for action in menu.actions():
                 title=action.text().replace('&','')

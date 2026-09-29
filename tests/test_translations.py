@@ -22,7 +22,8 @@ DATA_WRITERS = {"build_events_csv", "to_dict", "as_dict", "serialize", "_seriali
 def _source_strings() -> set[str]:
     found: set[str] = set()
     for path in PKG_ROOT.rglob("*.py"):
-        if "model_runtime" in path.parts or path.name == "translations.py":
+        # ledger/ is the vendored Chinese-only field uploader (4.4.0); it has no t() calls.
+        if "model_runtime" in path.parts or "ledger" in path.parts or path.name == "translations.py":
             continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))

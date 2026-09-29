@@ -102,6 +102,8 @@ def main(argv: list[str] | None = None) -> int:
     if icon_path.is_file():
         application.setWindowIcon(QIcon(str(icon_path)))
     application.setStyle("Fusion")
+    from cowmata_tailring.workspace.theme import STYLE
+    application.setStyleSheet(STYLE)  # one look for login, dialogs, downloader and ledger windows
     from cowmata_security.qt_ui import authenticate, install_window
     security_root = Path(__file__).resolve().parents[2]
     session = authenticate(security_root, 'pro')
@@ -113,13 +115,12 @@ def main(argv: list[str] | None = None) -> int:
         has_single_source=bool(args.json or args.video),
     )
     canvas = QPixmap(520, 130)
-    canvas.fill(QColor('#e8f4dc'))
+    canvas.fill(QColor('#F5F7FA'))
     splash = QSplashScreen(canvas)
-    splash.showMessage('正在启动 COWMATA Annotator…', Qt.AlignmentFlag.AlignCenter, QColor('#203c2a'))
+    splash.showMessage('COWMATA Annotator', Qt.AlignmentFlag.AlignCenter, QColor('#1C2530'))
     splash.show()
     application.processEvents()
 
-    splash.showMessage('正在加载标注界面，请稍候…', Qt.AlignmentFlag.AlignCenter, QColor('#203c2a'))
     application.processEvents()
 
     if args.annotations:
