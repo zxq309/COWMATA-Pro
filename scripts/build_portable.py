@@ -78,6 +78,8 @@ def main():
     required = ["COWMATA.exe", "runtime/python.exe", "runtime/pythonw.exe", "runtime/Lib/site-packages/PySide6/QtWidgets.pyd",
                 "runtime/Lib/site-packages/rapidocr/__init__.py",
                 "runtime/Lib/site-packages/xgboost/__init__.py",
+                "runtime/Lib/site-packages/openpyxl/__init__.py",
+                "runtime/Lib/site-packages/et_xmlfile/__init__.py",
                 "assets/ocr/ppocrv6_medium/models.json",
                 "assets/ocr/ppocrv6_medium/PP-OCRv6_det_medium.onnx",
                 "assets/ocr/ppocrv6_medium/PP-OCRv6_rec_medium.onnx",
@@ -128,6 +130,11 @@ def main():
             "import numpy,scipy.signal,scipy.optimize,sklearn.ensemble,sklearn.metrics,sklearn.isotonic,joblib,"
             "xgboost,onnxruntime,rapidocr,pandas,PySide6.QtWidgets,PySide6.QtSvg;"
             "numpy.linalg.inv(numpy.eye(3));"
+            # 4.4.1: the embedded uploader reads and writes .xlsx ledgers; 4.4.0/4.4.1 first builds
+            # shipped without openpyxl and every Excel import/upload failed with ModuleNotFoundError.
+            "import io,openpyxl,et_xmlfile;from openpyxl.utils import get_column_letter,range_boundaries;"
+            "from openpyxl.utils.datetime import to_excel;openpyxl.Workbook().save(io.BytesIO());"
+            "from cowmata_tailring.ledger import ledger_files,ledger_import,ledger_sheets,ledger_workbook;"
             "from cowmata_engine.features import available_features;"
             "bad=[k for k,m,e in available_features() if m is None];"
             "assert not bad, bad;"

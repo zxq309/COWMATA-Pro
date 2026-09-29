@@ -39,4 +39,6 @@ private keys and user CSV data are not distributed.
 
 The clean 3.9 portable runtime includes XGBoost 3.4.1 under Apache-2.0.
 Its upstream license is retained in runtime/Lib/site-packages/xgboost-3.4.1.dist-info/licenses/.
+The embedded field-ledger uploader uses openpyxl 3.1.5 and et-xmlfile 2.0.0 (MIT License) to read and
+write .xlsx ledgers; both are bundled unmodified in the private runtime.
 No trained behavior or calving decision models are bundled.
