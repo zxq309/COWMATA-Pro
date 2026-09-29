@@ -167,7 +167,7 @@ def device_list(value):return re.findall(r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{4,12}(?![
 class SheetSchema:
     def __init__(self,id,title,filename,business,date_field,cow_field):
         self.id=id;self.title=title;self.filename=filename;self.business=business;self.fields=business+COMMON+META;self.date_field=date_field;self.cow_field=cow_field
-        self.defaults={"sheet_id":id,"server_file":str(Path(r"F:\牛舍_现场记录")/filename)}
+        self.defaults={"sheet_id":id,"server_file":str(Path(r"F:\1_下载器\扬大_高邮牧场\台账")/filename)}
     def empty(self,settings=None,section=None):
         row=dict.fromkeys(self.fields,"");row.update({"记录ID":str(uuid.uuid4()),"已删除":"0","记录日期":datetime.now().strftime("%Y-%m-%d"),"牧场":(settings or {}).get("farm","扬大_高邮牧场"),"工作表":section or ("产犊登记" if self.id=="calving" else "佩戴台账"),"记录类型":"数据"})
         row[self.date_field]=row["记录日期"];return row

@@ -1,8 +1,12 @@
 """Window teardown chooses Save and finishes requested asynchronous closes."""
 
+import os
 import time
 
 import pytest
+
+# Downloads in tests never launch the real calving decider (3_训练器\产犊\算法\<版本>).
+os.environ["COWMATA_DECIDER"] = "0"
 
 
 @pytest.fixture(scope="session", autouse=True)

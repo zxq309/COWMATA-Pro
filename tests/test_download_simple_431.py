@@ -1,9 +1,9 @@
-"""4.3.1: the downloader keeps three views and a short 更多 menu."""
+"""4.4.1: the downloader is one button, one table and a short 更多 menu."""
 from test_download_427 import FILES
 from test_relative_download_412 import isolated_store  # noqa: F401
 
 
-def test_three_views_and_grouped_more_menu(isolated_store, qt_application):  # noqa: F811
+def test_one_table_and_short_more_menu(isolated_store, qt_application):  # noqa: F811
     from cowmata_tailring.edge_download.pro_dialog import ProDownloadDialog
 
     def row(number, day, device, eligibility="eligible", reason="ok"):
@@ -25,20 +25,17 @@ def test_three_views_and_grouped_more_menu(isolated_store, qt_application):  # n
     dialog = ProDownloadDialog(store=isolated_store)
     try:
         dialog.receive_plan(Plan(), "")
-        assert [dialog.plan_filter.itemText(i) for i in range(dialog.plan_filter.count())] == ["全部", "待下载", "已下载"]
 
         def shown():
             return sorted(dialog.plan_table.item(i, 2).text() for i in range(dialog.plan_table.rowCount()))
 
         assert shown() == ["AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF"]
-        dialog.plan_filter.setCurrentIndex(1)
-        assert shown() == ["BBBB", "CCCC"]
-        dialog.plan_filter.setCurrentIndex(2)
-        assert shown() == ["AAAA", "FFFF"]
+        dialog.search.setText("cccc")
+        assert shown() == ["CCCC"]
+        dialog.search.clear()
         top = [a.text() for a in dialog.more_menu.actions() if not a.isSeparator()]
-        assert top == ["运行记录…", "问题清单与备注", "台账与连接", "打开目录"]
-        nested = {a.text(): [b.text() for b in a.menu().actions()] for a in dialog.more_menu.actions() if a.menu()}
-        assert "检测服务器连接" in nested["台账与连接"] and "仅刷新三个 CSV" in nested["台账与连接"]
-        assert dialog.ledger_button.text() == "仅刷新三个 CSV" and dialog.probe_button.text() == "检测服务器连接"
+        assert top == ["设置…", "运行记录…", "问题清单…", "备注记录…", "只刷新台账", "检测连接", "重新下载所选…",
+                       "打开目录", "决策 APP"]
+        assert dialog.download_button.objectName() == "primary" and dialog.download_button.isCheckable()
     finally:
         dialog.deleteLater()

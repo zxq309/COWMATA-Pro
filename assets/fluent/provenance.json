@@ -22,6 +22,99 @@
     "save.svg": {
       "path": "assets/Save/SVG/ic_fluent_save_20_regular.svg",
       "sha256": "fdfbcf9c469ff958782a3f8ab4659c7f1c48062752bb6324b07e5bbb70f52969"
+    },
+    "edit.svg": {
+      "path": "assets/Edit/SVG/ic_fluent_edit_20_regular.svg",
+      "sha256": "f14fdc76c0e3953d273e99394e724003bebd8779a55e30df6130455841f237c6"
+    },
+    "arrow_upload.svg": {
+      "path": "assets/Arrow Upload/SVG/ic_fluent_arrow_upload_20_regular.svg",
+      "sha256": "71fa5eb00acbd3475aeb83fc3a85d77eed7d537e0bbb0048cbe78261f3e64690"
+    },
+    "arrow_download.svg": {
+      "path": "assets/Arrow Download/SVG/ic_fluent_arrow_download_20_regular.svg",
+      "sha256": "28e752ccfd95feb1850de1da3d170f34fd31765417d3431a7dbf3da89840ea33"
+    },
+    "tag.svg": {
+      "path": "assets/Tag/SVG/ic_fluent_tag_20_regular.svg",
+      "sha256": "108cd0ba74aee1fc66e64e6da432322ed09094c04451d821b3b10f9ee7b4f11e"
+    },
+    "arrow_undo.svg": {
+      "path": "assets/Arrow Undo/SVG/ic_fluent_arrow_undo_20_regular.svg",
+      "sha256": "a6f6566eb86df531ce5332ab4153b056fb8ff8af37655058f30afaf127892a2f"
+    },
+    "arrow_redo.svg": {
+      "path": "assets/Arrow Redo/SVG/ic_fluent_arrow_redo_20_regular.svg",
+      "sha256": "374ec6ed97949ac3ae5ec6739c283f16a4a56fa7ad374b33e0b15d4d2154b991"
+    },
+    "arrow_sync.svg": {
+      "path": "assets/Arrow Sync/SVG/ic_fluent_arrow_sync_20_regular.svg",
+      "sha256": "1713352c66b798bd1bbf86467ab33e45ac615d8a18d3f79c50b195034a51ab9e"
+    },
+    "settings.svg": {
+      "path": "assets/Settings/SVG/ic_fluent_settings_20_regular.svg",
+      "sha256": "ac5bdb808bed91dc8c0b6f346e7a0a1ee1901fc4b50f5641987498a65e200685"
+    },
+    "search.svg": {
+      "path": "assets/Search/SVG/ic_fluent_search_20_regular.svg",
+      "sha256": "5ac1eac82df532662cd1bad2c8e55763846e1b258740bcbb0612a48d22630d40"
+    },
+    "person.svg": {
+      "path": "assets/Person/SVG/ic_fluent_person_20_regular.svg",
+      "sha256": "c75bdf7e4c02437f3ad35c305253f4eaf4e2dfb2cc11e30d5a31af02a391e7ad"
+    },
+    "info.svg": {
+      "path": "assets/Info/SVG/ic_fluent_info_20_regular.svg",
+      "sha256": "498bc2a24fb99480e7565b502467a4cc8e967b41b0c374c1283a68fc0da73b7a"
+    },
+    "video.svg": {
+      "path": "assets/Video/SVG/ic_fluent_video_20_regular.svg",
+      "sha256": "1d74113628b7c836425ad0888b31ee3c543942fd8035d1970366deb717c7b26f"
+    },
+    "clock.svg": {
+      "path": "assets/Clock/SVG/ic_fluent_clock_20_regular.svg",
+      "sha256": "a8330d82a8701f240a5e92fabadb6f73a4179f5980c7e329440f542ceb8deee2"
+    },
+    "table.svg": {
+      "path": "assets/Table/SVG/ic_fluent_table_20_regular.svg",
+      "sha256": "7acf041bc47eb694a3c3c74ba6d4d345cee8941c5f43dfe832494bfe4b8f0570"
+    },
+    "people_team.svg": {
+      "path": "assets/People Team/SVG/ic_fluent_people_team_20_regular.svg",
+      "sha256": "6427e892c4b2962091d947d88198a9aa575ef0a073373386dcb31a8c1f3ae857"
+    },
+    "checkmark_circle.svg": {
+      "path": "assets/Checkmark Circle/SVG/ic_fluent_checkmark_circle_20_regular.svg",
+      "sha256": "ee144bd831dd8a7b46976e38825f4c808e7f2468e2b34b587e79036265e801f7"
+    },
+    "sparkle.svg": {
+      "path": "assets/Sparkle/SVG/ic_fluent_sparkle_20_regular.svg",
+      "sha256": "7f74c3f121a1c1ef8df1c6696e7c091f1e46ff0086d046ab03ccdbe76082456f"
+    },
+    "book_open.svg": {
+      "path": "assets/Book Open/SVG/ic_fluent_book_open_20_regular.svg",
+      "sha256": "902200bc2ca473ed6a3087029fb36638feeca826531e1f92a1d0da2a4a11cb96"
+    },
+    "dismiss.svg": {
+      "path": "assets/Dismiss/SVG/ic_fluent_dismiss_20_regular.svg",
+      "sha256": "e84ad771fa8afba8e3ef52c98d9ab2d8ef4fc8e23c5954766a1c4e88fc13b355"
+    },
+    "share.svg": {
+      "path": "assets/Share/SVG/ic_fluent_share_20_regular.svg",
+      "sha256": "0daa9ea313db8c6a2b92bd097312ef8851a449ef9b499ba69b525692eaa0c7a7"
+    },
+    "data_trending.svg": {
+      "path": "assets/Data Trending/SVG/ic_fluent_data_trending_20_regular.svg",
+      "sha256": "59770ef9d3849bc7b728fe4819a9ec8bf7878b9fc6433abdebc24b1a6e446f20"
+    },
+    "folder_arrow_right.svg": {
+      "path": "assets/Folder Arrow Right/SVG/ic_fluent_folder_arrow_right_20_regular.svg",
+      "sha256": "6fc571fd38a4084ec83171befe5f250d9684b9a8e92d0c433cacd65824e6b728"
+    },
+    "window_new.svg": {
+      "path": "assets/Window New/SVG/ic_fluent_window_new_20_regular.svg",
+      "sha256": "5fcced8c614f8d4567fc23c04e249b381d0dfcfe0dd88ec6a8446eb28d16e6b3"
     }
-  }
+  },
+  "revision_4_4_1": "main (fetched 2026-09-29)"
 }

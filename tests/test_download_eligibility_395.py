@@ -164,8 +164,8 @@ def test_plan_read_does_not_block_window_or_timer(tmp_path, qt_application, monk
             qt_application.processEvents()
             time.sleep(0.01)
         qt_application.processEvents()
-        assert "可下载" in dialog.plan_label.text()
-        assert all(c.isChecked() and not c.isEnabled() for c in dialog.kind_checks.values())
+        assert "下载 " in dialog.plan_label.text()
+        assert dialog.download_button.text() == "下载"
     finally:
         for worker in dialog.workers():
             worker.cancel.set()

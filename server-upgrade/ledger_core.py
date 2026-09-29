@@ -14,7 +14,7 @@ PREGNANCY_PURPOSES = frozenset({"产犊","产犊监测","产后监测","难产",
 OUTCOME_PURPOSES = frozenset({"产后监测","难产","死胎"})
 PURPOSES = ["孕后期监测","产犊监测","产后监测","难产","死胎","正常监测","发情监测","孕早期监测","孕中期监测","疫病监测"]
 VALIDITY = ["","待判定","有效","无效","/"]
-DEFAULTS = {"host":"61.177.77.222","port":8022,"user":"cowmata_upload","server_file":r"F:\牛舍_现场记录\样本试验台账.csv","farm":"扬大_高邮牧场","wearer":"刘彦平","annotator":"张强","auto_sync":False,"sync_seconds":30,"minimize_to_tray":True}
+DEFAULTS = {"host":"61.177.77.222","port":8022,"user":"cowmata_upload","server_file":r"F:\1_下载器\扬大_高邮牧场\台账\样本试验台账.csv","farm":"扬大_高邮牧场","wearer":"刘彦平","annotator":"张强","auto_sync":False,"sync_seconds":30,"minimize_to_tray":True}
 def now(): return datetime.now(ZONE).isoformat(timespec="seconds")
 def today(): return datetime.now(ZONE).date().isoformat()
 def sha(data): return hashlib.sha256(data).hexdigest()

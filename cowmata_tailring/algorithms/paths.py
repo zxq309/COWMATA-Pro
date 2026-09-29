@@ -30,8 +30,13 @@ def data_root() -> Path:
     return (base / "COWMATA Pro" / "data").resolve()
 
 
-MODEL_LIBRARY = "科牧特_模型"
+# 4.4.1 layout: <drive>\3_训练器\产犊\模型\<version>\行为识别 (训练器 owns datasets, models and results).
+MODEL_LIBRARY = ("3_训练器", "产犊", "模型")
 BEHAVIOR_FOLDER = "行为识别"
+
+
+def library_under(base: Path) -> Path:
+    return Path(base).joinpath(*MODEL_LIBRARY)
 
 
 def _version_key(name: str):
@@ -51,8 +56,8 @@ def has_suites(home: Path) -> bool:
 def discover_model_homes() -> list[Path]:
     """Behaviour-model folders of the versioned model library, newest version first.
 
-    4.3.8 layout: ``<root>\\科牧特_模型\\<version>\\行为识别\\versions\\<suite>\\suite.json``. Roots
-    searched: the folder next to the application, its parents, and every drive root (Windows).
+    4.4.1 layout: ``<drive>\\3_训练器\\产犊\\模型\\<version>\\行为识别\\versions\\<suite>\\suite.json``.
+    Roots searched: the application's parent folders (e.g. …\\2_标注器\\…) and every local drive root.
     """
     import time
 
@@ -66,7 +71,7 @@ def discover_model_homes() -> list[Path]:
     if explicit:
         roots = [Path(explicit).expanduser()]
     else:
-        roots = [base / MODEL_LIBRARY for base in (APP_ROOT.parent, APP_ROOT.parent.parent, APP_ROOT.parent.parent.parent)]
+        roots = [library_under(base) for base in APP_ROOT.parents]
         if os.name == "nt":
             import ctypes
             import string
@@ -75,7 +80,7 @@ def discover_model_homes() -> list[Path]:
             # Local fixed / removable drives only (DRIVE_REMOVABLE=2, DRIVE_FIXED=3): network drives may hang.
             for i, letter in enumerate(string.ascii_uppercase):
                 if mask >> i & 1 and ctypes.windll.kernel32.GetDriveTypeW(f"{letter}:\\") in (2, 3):
-                    roots.append(Path(f"{letter}:\\") / MODEL_LIBRARY)
+                    roots.append(library_under(Path(f"{letter}:\\")))
     found, seen = [], set()
     for library in roots:
         try:

@@ -115,7 +115,7 @@ SCHEMAS = {
         ],
     },
 }
-SERVER_DIRECTORY = r"F:\牛舍_现场记录"
+SERVER_DIRECTORY = r"F:\1_下载器\扬大_高邮牧场\台账"
 # A local mirror is kept in the user's standard COWMATA data area.  The
 # server-side Windows path above is independent and remains configurable.
 LOCAL_DIRECTORY = str(DEFAULT_LEDGER_ROOT)

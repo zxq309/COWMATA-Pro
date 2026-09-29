@@ -102,6 +102,11 @@ def main(argv: list[str] | None = None) -> int:
     if icon_path.is_file():
         application.setWindowIcon(QIcon(str(icon_path)))
     application.setStyle("Fusion")
+    from PySide6.QtGui import QFont
+
+    base_font = QFont("Microsoft YaHei UI", 10)
+    base_font.setWeight(QFont.Weight.DemiBold)  # 4.4.1: bold type throughout, charts included
+    application.setFont(base_font)
     from cowmata_tailring.workspace.theme import STYLE
     application.setStyleSheet(STYLE)  # one look for login, dialogs, downloader and ledger windows
     from cowmata_security.qt_ui import authenticate, install_window

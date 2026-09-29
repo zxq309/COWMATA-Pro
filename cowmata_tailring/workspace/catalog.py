@@ -16,7 +16,7 @@ from .storage import ProjectLock, atomic_json, read_json
 META_DIR = "标注工程"
 VIDEO_SUFFIXES = {".mp4", ".mkv", ".avi", ".dav", ".h264", ".h265", ".ts", ".mov",
                   ".mpg", ".mpeg", ".m4v", ".webm", ".wmv", ".asf", ".flv", ".mts", ".m2ts", ".ps"}
-EXCLUDE_DIRS = {".edge-download", "科牧特_协作标注","归类附属文件", ".归类缓存", META_DIR, ".git", ".venv", "__pycache__", "node_modules", "runtime", "dist"}
+EXCLUDE_DIRS = {".edge-download", "科牧特_协作标注", "台账", "待核对V2", "归类附属文件", ".归类缓存", META_DIR, ".git", ".venv", "__pycache__", "node_modules", "runtime", "dist"}
 
 
 def previous_video_files(video,day):

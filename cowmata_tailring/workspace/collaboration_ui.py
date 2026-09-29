@@ -348,10 +348,10 @@ class CollaborationDialog(QDialog):
         from datetime import datetime
         from uuid import uuid4
         from .storage import atomic_json
-        from .farm_layout import COLLABORATION
+        from .farm_layout import collaboration_home
         try:
             root = packages.farm_root(self.root.text().strip())
-            report = root / COLLABORATION / '派包报告' / (datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid4().hex[:8] + '.json')
+            report = collaboration_home(root) / '派包报告' / (datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid4().hex[:8] + '.json')
             atomic_json(report, dict(error_type=type(exc).__name__, message=str(exc), root=str(root),
                 selected_packages=[[dict(category=u['category'], day=u['day'], owner=u['owner'])
                                     for u in group] for group in self.planner.groups()]), backup=False)

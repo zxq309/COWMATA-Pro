@@ -52,7 +52,7 @@ def install(target,service,authfile,public_key,check=False):
     print("回到现场软件登录后同步，核对成功后才算完成。")
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument("--target",default=r"F:\牛舍_现场记录\样本试验台账.csv")
+    p.add_argument("--target",default=r"F:\1_下载器\扬大_高邮牧场\台账\样本试验台账.csv")
     p.add_argument("--service",default=r"E:\Services\CowmataLedgerUploadV2")
     p.add_argument("--authfile",default=r"C:\Users\cowmata_upload\.ssh\authorized_keys")
     p.add_argument("--public-key",default=str(SOURCE/"upload_key.pub"))

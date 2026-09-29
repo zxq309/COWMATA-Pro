@@ -364,7 +364,7 @@ class MainWindow(ControllerWindow):
                 menu.addAction(item)
 
     def _build_menubar(self):
-        """4.4.0 menu bar, in the order of an operator's day.
+        """4.4.0 menu bar, in the order of an operator's day (4.4.1: branded bar, icons, one-button download).
 
         文件 → 编辑 → 上传（台账）→ 下载（端侧数据 + 数据归类）→ 标注 → 工具 → 帮助.
         Controller actions are re-homed, never recreated, so handlers, shortcuts
@@ -467,8 +467,8 @@ class MainWindow(ControllerWindow):
         self._downloader = downloader
         downloader.action.setText("端侧数据…")
         downloader.action.setShortcut(QKeySequence("Ctrl+D"))
-        self._action(download, "更新台账并下载", lambda: downloader.run(lambda d: d.update_and_download()))
-        self._action(download, "停止下载", lambda: downloader.run(lambda d: d.pause(), show=False))
+        self._action(download, "开始下载", lambda: downloader.run(lambda d: d.start_download()))
+        self._action(download, "暂停下载", lambda: downloader.run(lambda d: d.pause_download(), show=False))
         download.addSeparator()
         organize = menu(download, "数据归类")
         self._action(organize, "录像转码与归类…", lambda: self.open_organization(1, mode=0))
@@ -478,6 +478,7 @@ class MainWindow(ControllerWindow):
         self._action(organize, "归类记录…", lambda: self._organization_command("export_report"))
         self._action(organize, "打开归类目录", lambda: self._organization_command("open_destination"))
         download.addSeparator()
+        self._action(download, "决策 APP", lambda: downloader.run(lambda d: d.open_decision_app(), show=False))
         self._action(download, "下载设置…", lambda: downloader.run(lambda d: d.open_configuration(), show=False))
         records = menu(download, "下载记录")
         self._action(records, "运行记录…", lambda: downloader.run(lambda d: d.log_dialog.show(), show=False))
@@ -558,6 +559,9 @@ class MainWindow(ControllerWindow):
         help_menu.addSeparator()
         self._action(help_menu, "关于", lambda: show_about(self))
         self._menu_unplaced = sorted(found)
+        from .theme import decorate_menus
+
+        decorate_menus(bar)
 
     def menu_inventory(self):
         """Every reachable command as (menu path, text) for audits and tests."""

@@ -34,7 +34,7 @@ def test_long_plan_scrolls_without_compressing_headers(tmp_path, qt_application)
         table.fit_columns()
         assert table.verticalScrollBar().maximum() > 0
         metrics = table.horizontalHeader().fontMetrics()
-        for col in range(7):
+        for col in range(table.columnCount()):
             assert table.columnWidth(col) >= metrics.horizontalAdvance(table.horizontalHeaderItem(col).text()) + 32
         table.scrollToBottom()
         assert table.verticalScrollBar().value() == table.verticalScrollBar().maximum()
@@ -54,15 +54,14 @@ def test_default_cache_is_installation_relative_and_custom_directory_is_preserve
     assert ProSettings(tmp_path / "settings", app_root=root).value["ledger_directory"] == str(custom)
 
 
-def test_default_schedule_is_future_beijing_time_on_every_host(tmp_path, qt_application):
-    from datetime import datetime
-
-    from cowmata_tailring.edge_download.core import CHINA
-
+def test_one_button_and_short_interval(tmp_path, qt_application):
     dialog = make_dialog(tmp_path)
     try:
-        delay = (dialog._field_time(dialog.scheduled_at) - datetime.now(CHINA)).total_seconds()
-        assert 3590 < delay <= 3600
-        assert abs((dialog._field_time(dialog.end_at) - datetime.now(CHINA)).total_seconds()) < 10
+        assert dialog.interval.value() >= 1 and dialog.interval.suffix() == " 分钟"
+        assert [dialog.plan_table.horizontalHeaderItem(i).text() for i in range(dialog.plan_table.columnCount())] == [
+            "状态", "牛号", "设备号", "分类", "佩戴", "文件"]
+        assert not hasattr(dialog, "end_at") and not hasattr(dialog, "day_table")
     finally:
         dialog.deleteLater()
+
+
