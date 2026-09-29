@@ -67,7 +67,7 @@ class CandidateWindow(TaskWindow):
         layout.addWidget(self.status)
         model_actions = QHBoxLayout()
         self.model_setup_button = QPushButton("选择行为识别模型目录…")
-        self.model_setup_button.setToolTip("模型由 科牧特_产犊预测算法 的行为识别训练生成；默认自动查找 科牧特_模型\\<最新版本>\\行为识别")
+        self.model_setup_button.setToolTip("训练器生成；默认查找 3_训练器\\产犊\\模型\\<最新版本>\\行为识别")
         self.model_setup_button.clicked.connect(self._choose_models)
         model_actions.addWidget(self.model_setup_button)
         self.refresh_button = QPushButton("刷新可用模型")
@@ -149,7 +149,7 @@ class CandidateWindow(TaskWindow):
                 self.models.addItem(model["title"], model["id"])
         self.start_button.setEnabled(bool(self.packs) and not self.running)
         if not self.packs:
-            self.status.setText("尚未找到当前数据类型的行为模型。请点“选择行为识别模型目录…”导入 科牧特_模型\<版本>\行为识别；即可扫描。人工标注可继续使用。")
+            self.status.setText("未找到行为模型：点“选择行为识别模型目录…”导入 3_训练器\\产犊\\模型\\<版本>\\行为识别。人工标注不受影响。")
 
     def check_context(self):
         self.bind_label_keys()

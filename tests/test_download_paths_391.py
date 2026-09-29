@@ -37,6 +37,7 @@ def test_390_wrong_default_migrates_without_creating_data(tmp_path,monkeypatch):
     values.update(schema_390=1,kinds=['motion','pulse','temp'])
     (folder/'automatic-download.json').write_text(json.dumps(values),encoding='utf-8')
     store=ProSettings(folder)
-    assert not str(store.value['data_root']).startswith('F:\\')
-    assert not str(store.value['ledger_directory']).startswith('F:\\')
+    # Legacy roots are replaced (the build may itself live on F:, so compare the paths, not the drive).
+    assert str(store.value['data_root']) != r'F:\牛舍' and not str(store.value['data_root']).startswith('F:\\牛舍')
+    assert not str(store.value['ledger_directory']).startswith('F:\\牛舍')
     assert not (tmp_path/'local').exists()

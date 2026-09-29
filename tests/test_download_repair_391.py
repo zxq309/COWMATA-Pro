@@ -198,38 +198,28 @@ def test_open_never_arms_even_with_old_auto_setting(tmp_path, qt_application):
         assert not dialog.timer.isActive() and not dialog.running
         dialog.show()
         qt_application.processEvents()
-        assert not dialog.timer.isActive()
-        assert [dialog.mode.itemData(i) for i in range(dialog.mode.count())] == [
-            "",
-            "manual",
-            "automatic",
-            "scheduled",
-        ]
-        dialog.mode.setCurrentIndex(dialog.mode.findData("automatic"))
-        assert not dialog.timer.isActive()
+        assert not dialog.timer.isActive() and not dialog.armed
+        # 4.4.1: one button, no mode or schedule selector.
+        assert dialog.download_button.text() == "下载" and not dialog.download_button.isChecked()
+        assert not hasattr(dialog, "mode") and not hasattr(dialog, "scheduled_at")
         assert dialog.save_settings() and not dialog.timer.isActive()
+        assert dialog.store.value["download_mode"] == "automatic"
     finally:
         dialog.stop_task()
         dialog.deleteLater()
 
 
-def test_scheduled_waits_for_explicit_start_and_pause_disarms(tmp_path, qt_application):
+def test_pause_disarms_and_resets_the_button(tmp_path, qt_application):
     dialog = make_dialog(tmp_path)
+    started = []
+    dialog.start_task = lambda operation, **kwargs: started.append((operation, kwargs))
     try:
-        dialog.mode.setCurrentIndex(dialog.mode.findData("scheduled"))
-        dialog.scheduled_at.setDateTime(
-            QDateTime.fromString(
-                (datetime.now(CHINA) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
-                "yyyy-MM-dd HH:mm:ss",
-            )
-        )
-        assert not dialog.timer.isActive()
-        dialog.start_selected()
-        assert dialog.timer.isActive() and not dialog.running
-        dialog.pause()
-        assert not dialog.timer.isActive()
-        dialog.show()
-        assert not dialog.timer.isActive()
+        dialog.start_download()
+        assert dialog.armed and dialog.download_button.text() == "暂停"
+        assert started == [("all", {"refresh_ledger": True})]
+        dialog.pause_download()
+        assert not dialog.armed and not dialog.timer.isActive()
+        assert dialog.download_button.text() == "下载" and not dialog.download_button.isChecked()
     finally:
         dialog.stop_task()
         dialog.deleteLater()
@@ -267,48 +257,53 @@ def test_uploader_131_pull_uses_memory_session(tmp_path, monkeypatch):
     assert seen[0]["action"] == "pull" and seen[0]["changes"] == []
 
 
-def test_manual_and_automatic_only_run_after_start(tmp_path, qt_application):
+def test_download_runs_rounds_until_paused_and_removes_partials(tmp_path, qt_application):
     import time
     from contextlib import nullcontext
 
     from cowmata_tailring.edge_download.core import Result
     from cowmata_tailring.edge_download.pro_dialog import SyncWorker
 
-    for mode in ("manual", "automatic"):
-        case = tmp_path / mode
-        case.mkdir()
-        dialog = make_dialog(case)
-        dialog.sync_ledger.setChecked(False)
+    dialog = make_dialog(tmp_path)
+    dialog.sync_ledger.setChecked(False)
+    seen = []
 
-        def factory(values, operation, parent):
-            worker = SyncWorker(values, operation, parent, runner=lambda *a: Result())
-            return worker
+    def factory(values, operation, parent):
+        seen.append(values.get("realtime"))
+        return SyncWorker(values, operation, parent, runner=lambda *a, **k: Result())
 
-        import cowmata_tailring.edge_download.pro_dialog as module
+    import cowmata_tailring.edge_download.pro_dialog as module
 
-        original = module.raw_connection
-        module.raw_connection = lambda *a: nullcontext()
-        dialog.worker_factory = factory
-        try:
-            dialog.mode.setCurrentIndex(dialog.mode.findData(mode))
-            assert not dialog.running and not dialog.timer.isActive()
-            dialog.start_selected()
-            assert dialog.running
-            for _ in range(100):
-                qt_application.processEvents()
-                if not dialog.running:
-                    break
-                time.sleep(0.01)
-            assert not dialog.running
-            assert dialog.timer.isActive() == (mode == "automatic")
-            dialog.pause()
-            assert not dialog.timer.isActive()
-        finally:
-            module.raw_connection = original
-            dialog.stop_task()
-            if dialog.worker:
-                dialog.worker.wait(2000)
-            dialog.deleteLater()
+    original = module.raw_connection
+    module.raw_connection = lambda *a: nullcontext()
+    dialog.worker_factory = factory
+    try:
+        assert not dialog.running and not dialog.timer.isActive()
+        dialog.download_button.click()
+        assert dialog.running
+        for _ in range(200):
+            qt_application.processEvents()
+            if not dialog.running:
+                break
+            time.sleep(0.01)
+        assert not dialog.running and dialog.armed and dialog.timer.isActive()
+        assert seen == [True]  # continuous rounds download up to now (real time)
+        root = dialog.store.resolve_path(dialog.directory.text())
+        day = datetime.now(CHINA).strftime("%Y-%m-%d")
+        partial = root / "待产犊" / "Motion" / day / "DEV-1" / ".edge-abc.partial"
+        partial.parent.mkdir(parents=True)
+        partial.write_bytes(b"half")
+        complete = partial.with_name("2026-09-29_10-00-00.json")
+        complete.write_bytes(b"{}")
+        dialog.download_button.click()
+        assert not dialog.timer.isActive() and not dialog.armed
+        assert not partial.exists() and complete.exists()
+    finally:
+        module.raw_connection = original
+        dialog.stop_task()
+        if dialog.worker:
+            dialog.worker.wait(2000)
+        dialog.deleteLater()
 
 
 def test_changed_file_is_repaired_and_missing_file_is_downloaded_again(tmp_path):
@@ -347,20 +342,11 @@ def test_legacy_without_uid_is_not_duplicated_after_detail_check(tmp_path):
     assert len(calls) == 1
 
 
-def test_scheduled_deadline_while_other_task_runs_is_not_lost(tmp_path, qt_application):
+def test_next_round_waits_while_another_task_runs(tmp_path, qt_application):
     dialog = make_dialog(tmp_path)
     try:
-        dialog.mode.setCurrentIndex(dialog.mode.findData("scheduled"))
-        dialog.scheduled_at.setDateTime(
-            QDateTime.fromString(
-                (datetime.now(CHINA) + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
-                "yyyy-MM-dd HH:mm:ss",
-            )
-        )
-        dialog.start_selected()
-        dialog.store.value["scheduled_time"] = (
-            datetime.now(CHINA) - timedelta(seconds=1)
-        ).isoformat()
+        dialog.armed = True
+        dialog.scheduling_stopped = False
         dialog.workers = lambda: [object()]
         dialog.timer_fired()
         assert dialog.armed and dialog.timer.isActive()

@@ -1,5 +1,5 @@
 {
-  "version": "4.4.0",
+  "version": "4.4.1",
   "product": "COWMATA Annotator",
   "files": [
     {
@@ -49,8 +49,8 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 80168,
-      "sha256": "a4434a5c51330675e2be66e14098247e9bbee7deef8952e74398cc28010ecc3b"
+      "size": 83670,
+      "sha256": "0afc651e42e265c2f1211722a355644dcdb9eaa37957bf426eefdf936d1c0ca0"
     },
     {
       "path": "CITATION.cff",
@@ -74,13 +74,13 @@
     },
     {
       "path": "README.md",
-      "size": 3338,
-      "sha256": "9bc56f20e32f23224ff6be9ee9d57ddc3fcddba1df8a6b1f3e3f375e8b1da424"
+      "size": 3448,
+      "sha256": "6161cb873c340056c52dd805f2a0ca4218fecfa69b6181c8a506f3b07185f821"
     },
     {
       "path": "README.zh-CN.md",
       "size": 136,
-      "sha256": "c7b5a4a11f12a6e00029cba6e6120e17a752979b2f858bd98c644cfbd230254a"
+      "sha256": "623fa9574fe34eb204f4f5849ccb4d3ae0722ad445f4950ff984675bd861549c"
     },
     {
       "path": "SECURITY.md",
@@ -228,9 +228,44 @@
       "sha256": "69bc45dc42b9acb96a69823adbc6ae538374e3c0bde169b855b32c48eaaef52f"
     },
     {
+      "path": "assets/fluent/arrow_download.svg",
+      "size": 894,
+      "sha256": "28e752ccfd95feb1850de1da3d170f34fd31765417d3431a7dbf3da89840ea33"
+    },
+    {
+      "path": "assets/fluent/arrow_redo.svg",
+      "size": 687,
+      "sha256": "374ec6ed97949ac3ae5ec6739c283f16a4a56fa7ad374b33e0b15d4d2154b991"
+    },
+    {
+      "path": "assets/fluent/arrow_sync.svg",
+      "size": 1622,
+      "sha256": "1713352c66b798bd1bbf86467ab33e45ac615d8a18d3f79c50b195034a51ab9e"
+    },
+    {
+      "path": "assets/fluent/arrow_undo.svg",
+      "size": 633,
+      "sha256": "a6f6566eb86df531ce5332ab4153b056fb8ff8af37655058f30afaf127892a2f"
+    },
+    {
+      "path": "assets/fluent/arrow_upload.svg",
+      "size": 892,
+      "sha256": "71fa5eb00acbd3475aeb83fc3a85d77eed7d537e0bbb0048cbe78261f3e64690"
+    },
+    {
+      "path": "assets/fluent/book_open.svg",
+      "size": 710,
+      "sha256": "902200bc2ca473ed6a3087029fb36638feeca826531e1f92a1d0da2a4a11cb96"
+    },
+    {
       "path": "assets/fluent/check_visible.svg",
       "size": 213,
       "sha256": "ed198068a9e943f7cf22a0f90ae5671f66d704a26cca83fa2c83af8628f51f9d"
+    },
+    {
+      "path": "assets/fluent/checkmark_circle.svg",
+      "size": 711,
+      "sha256": "ee144bd831dd8a7b46976e38825f4c808e7f2468e2b34b587e79036265e801f7"
     },
     {
       "path": "assets/fluent/chevron_down.svg",
@@ -238,14 +273,54 @@
       "sha256": "a4fbfd6be5a31857c20e2aa1870b83a9ed419df972f45d99a359317738c72d44"
     },
     {
+      "path": "assets/fluent/clock.svg",
+      "size": 580,
+      "sha256": "a8330d82a8701f240a5e92fabadb6f73a4179f5980c7e329440f542ceb8deee2"
+    },
+    {
+      "path": "assets/fluent/data_trending.svg",
+      "size": 832,
+      "sha256": "59770ef9d3849bc7b728fe4819a9ec8bf7878b9fc6433abdebc24b1a6e446f20"
+    },
+    {
+      "path": "assets/fluent/dismiss.svg",
+      "size": 782,
+      "sha256": "e84ad771fa8afba8e3ef52c98d9ab2d8ef4fc8e23c5954766a1c4e88fc13b355"
+    },
+    {
+      "path": "assets/fluent/edit.svg",
+      "size": 839,
+      "sha256": "f14fdc76c0e3953d273e99394e724003bebd8779a55e30df6130455841f237c6"
+    },
+    {
+      "path": "assets/fluent/folder_arrow_right.svg",
+      "size": 1361,
+      "sha256": "6fc571fd38a4084ec83171befe5f250d9684b9a8e92d0c433cacd65824e6b728"
+    },
+    {
       "path": "assets/fluent/folder_open.svg",
       "size": 1222,
       "sha256": "c5f8b2db9af20a454c1f05ce6eda4b21c99f1b8677b14b6d7d07d5817140a487"
     },
     {
+      "path": "assets/fluent/info.svg",
+      "size": 815,
+      "sha256": "498bc2a24fb99480e7565b502467a4cc8e967b41b0c374c1283a68fc0da73b7a"
+    },
+    {
       "path": "assets/fluent/panel_left.svg",
       "size": 391,
       "sha256": "be665db4761d910a85eddf2c55dbcaffb816bbc46d2c1c1e68377220c776009f"
+    },
+    {
+      "path": "assets/fluent/people_team.svg",
+      "size": 1762,
+      "sha256": "6427e892c4b2962091d947d88198a9aa575ef0a073373386dcb31a8c1f3ae857"
+    },
+    {
+      "path": "assets/fluent/person.svg",
+      "size": 791,
+      "sha256": "c75bdf7e4c02437f3ad35c305253f4eaf4e2dfb2cc11e30d5a31af02a391e7ad"
     },
     {
       "path": "assets/fluent/pin.svg",
@@ -254,8 +329,8 @@
     },
     {
       "path": "assets/fluent/provenance.json",
-      "size": 1091,
-      "sha256": "cff2797e00480ac8b5ee643ec23f3e3b71b203c9a3299583d05d5d7040ada6e7"
+      "size": 5510,
+      "sha256": "6b951ac05e183aad6f251d1f9db26fb0fb7d852caa8c920fcc2f49534ae85099"
     },
     {
       "path": "assets/fluent/save.svg",
@@ -263,9 +338,49 @@
       "sha256": "fdfbcf9c469ff958782a3f8ab4659c7f1c48062752bb6324b07e5bbb70f52969"
     },
     {
+      "path": "assets/fluent/search.svg",
+      "size": 668,
+      "sha256": "5ac1eac82df532662cd1bad2c8e55763846e1b258740bcbb0612a48d22630d40"
+    },
+    {
+      "path": "assets/fluent/settings.svg",
+      "size": 3314,
+      "sha256": "ac5bdb808bed91dc8c0b6f346e7a0a1ee1901fc4b50f5641987498a65e200685"
+    },
+    {
+      "path": "assets/fluent/share.svg",
+      "size": 1698,
+      "sha256": "0daa9ea313db8c6a2b92bd097312ef8851a449ef9b499ba69b525692eaa0c7a7"
+    },
+    {
+      "path": "assets/fluent/sparkle.svg",
+      "size": 3960,
+      "sha256": "7f74c3f121a1c1ef8df1c6696e7c091f1e46ff0086d046ab03ccdbe76082456f"
+    },
+    {
+      "path": "assets/fluent/table.svg",
+      "size": 621,
+      "sha256": "7acf041bc47eb694a3c3c74ba6d4d345cee8941c5f43dfe832494bfe4b8f0570"
+    },
+    {
+      "path": "assets/fluent/tag.svg",
+      "size": 901,
+      "sha256": "108cd0ba74aee1fc66e64e6da432322ed09094c04451d821b3b10f9ee7b4f11e"
+    },
+    {
       "path": "assets/fluent/text_bullet_list.svg",
       "size": 885,
       "sha256": "4b57105ae98074d41fea28c7cee11670c78d2c739c97e31c344c89deaddc5304"
+    },
+    {
+      "path": "assets/fluent/video.svg",
+      "size": 658,
+      "sha256": "1d74113628b7c836425ad0888b31ee3c543942fd8035d1970366deb717c7b26f"
+    },
+    {
+      "path": "assets/fluent/window_new.svg",
+      "size": 907,
+      "sha256": "5fcced8c614f8d4567fc23c04e249b381d0dfcfe0dd88ec6a8446eb28d16e6b3"
     },
     {
       "path": "assets/ocr/ppocrv6_medium/models.json",
@@ -1315,7 +1430,7 @@
     {
       "path": "cowmata_tailring/__init__.py",
       "size": 198,
-      "sha256": "7b22bfdfb401a0318a546b52fef56fa9ec7d52706da5b5dd4539b8748cffc7f7"
+      "sha256": "bd118e1720f0c5ff76768eb05a4fa6eea87d8aacca89eac1898f2607646ebdc1"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -1539,8 +1654,8 @@
     },
     {
       "path": "cowmata_tailring/algorithms/paths.py",
-      "size": 5499,
-      "sha256": "7415de97ae91d9e33be0cf46560dcb2ce5acb35797b58c13984f5b2803ba5449"
+      "size": 5687,
+      "sha256": "d6816959cd8d1078ea0e073a446a1f11283a2cb08a7829b91450587f7cc98932"
     },
     {
       "path": "cowmata_tailring/algorithms/posture.py",
@@ -1739,8 +1854,8 @@
     },
     {
       "path": "cowmata_tailring/app/main.py",
-      "size": 6357,
-      "sha256": "652df5b892d29b50e8dd5c2d8a98f6e10bdf5865438e2e19eb08a6e948d419e4"
+      "size": 6577,
+      "sha256": "e1692f16d6e92e7d99920921212569372a247eb44cf2137c7b338b75aabcc79c"
     },
     {
       "path": "cowmata_tailring/app/mixins/__init__.py",
@@ -1869,13 +1984,18 @@
     },
     {
       "path": "cowmata_tailring/edge_download/csv_download.py",
-      "size": 15205,
-      "sha256": "0415642c7eb8ff62dc6ce0e4d6463a5b397734c3cd15338f9d9869ca8b078f02"
+      "size": 15521,
+      "sha256": "db446bf8a5cbab19eb6892c6ff9bd3fa52fe3c57133b6ec0d1d6fbcd8167b65c"
     },
     {
       "path": "cowmata_tailring/edge_download/csv_targets.py",
       "size": 30066,
       "sha256": "67ff83a3c90e6e8fe98cacb6a876c98eafac4beae2c97ad4d8df57b9cc7f8194"
+    },
+    {
+      "path": "cowmata_tailring/edge_download/decider.py",
+      "size": 4054,
+      "sha256": "137c46e3f665b9038fc7af901db24fbf0f0eeb3765d181c9b59dde5c6c343a0d"
     },
     {
       "path": "cowmata_tailring/edge_download/deduplication.py",
@@ -1904,8 +2024,8 @@
     },
     {
       "path": "cowmata_tailring/edge_download/integration.py",
-      "size": 2897,
-      "sha256": "e7d6992d189f83fe07dff3be5fb8392c4b19619de8f2a87d5ccfff9cd8947570"
+      "size": 2979,
+      "sha256": "e437533cc6930f4d1d9c82f2046a1fe565a5a94e23f29a1d66c6da9f6d8b4f90"
     },
     {
       "path": "cowmata_tailring/edge_download/ledger.py",
@@ -1934,18 +2054,23 @@
     },
     {
       "path": "cowmata_tailring/edge_download/paths.py",
-      "size": 2995,
-      "sha256": "1c6aa9dee2bf2bd62a0d6b2ca92ec4d461315d79544f97ff8a37d3403f6dea8b"
+      "size": 4766,
+      "sha256": "535d80003b48fd18a72c46388512e6f69fe10baf957f0899b5a4c64a43448d6d"
+    },
+    {
+      "path": "cowmata_tailring/edge_download/pending_reconcile.py",
+      "size": 3533,
+      "sha256": "81941e01d2f4d723aae70e2c8e0f08c932838cbf3dcee9b51177ea196c44d4d8"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_dialog.py",
-      "size": 73776,
-      "sha256": "743b98fabea991ed8743ffeda247acfa0fce0991ed9645694926620a98f734ff"
+      "size": 65534,
+      "sha256": "cfb90ba6a4908fb07af1e45a296678cc38786a32c98ab59187a3d86ca033d6d8"
     },
     {
       "path": "cowmata_tailring/edge_download/pro_settings.py",
-      "size": 7726,
-      "sha256": "9d47b9433488c7119b4a3df881232857dde66701e88a37f84ab14ab01d70377f"
+      "size": 8134,
+      "sha256": "10d9b53769ccc8ad8a0544c4c8785e7cb70df3ba3aa9ba220e88f9d49309b395"
     },
     {
       "path": "cowmata_tailring/edge_download/raw_connection.py",
@@ -1959,8 +2084,8 @@
     },
     {
       "path": "cowmata_tailring/edge_download/site_records.py",
-      "size": 18757,
-      "sha256": "8c6e3027cf3a475646ee9f3ed3b8a90740687257c588d1f4ee8d75c2c5e7dbe7"
+      "size": 18776,
+      "sha256": "49f883f96ca8ce544e8cc9dfa810fd2b34aecae8bbbaeaa80c8577c12738d01e"
     },
     {
       "path": "cowmata_tailring/edge_download/transport.py",
@@ -1979,8 +2104,8 @@
     },
     {
       "path": "cowmata_tailring/ledger/host.py",
-      "size": 6579,
-      "sha256": "680dd209bc90d5a4d9393352cb706317e5f3eb1307926f6834ffb0bcfda23fb8"
+      "size": 6594,
+      "sha256": "60ea5ecaf4f1462a47b9488b2e4974e6f395617fea4289d865f80beb805bf7cf"
     },
     {
       "path": "cowmata_tailring/ledger/ledger_access_ui.py",
@@ -1989,8 +2114,8 @@
     },
     {
       "path": "cowmata_tailring/ledger/ledger_app.py",
-      "size": 105413,
-      "sha256": "af73a19cf151d8d3b444933413fbded54f9762e0d649f07c9251a2df22b64a14"
+      "size": 105420,
+      "sha256": "e35f06e848291a545bda72fb12f1903d3f8868d607b5fbc230a545dc00f6a68d"
     },
     {
       "path": "cowmata_tailring/ledger/ledger_auth.py",
@@ -2004,8 +2129,8 @@
     },
     {
       "path": "cowmata_tailring/ledger/ledger_core.py",
-      "size": 27510,
-      "sha256": "2e0fb28592898e9a59227fec4cd9d7b576a5900836105e886e1717b12de30b7a"
+      "size": 27529,
+      "sha256": "f8e9b4c059bb6f8614b2b6279c319c386a9ca6309b2a0322d9fb5f71577746e2"
     },
     {
       "path": "cowmata_tailring/ledger/ledger_direct.py",
@@ -2064,8 +2189,8 @@
     },
     {
       "path": "cowmata_tailring/ledger/ledger_sheets.py",
-      "size": 25238,
-      "sha256": "c9cdc1ddadbc3c0a1ecbcaa83b2ae5110d7057113a2dede925c45c3bac5a58f6"
+      "size": 25257,
+      "sha256": "caa648211cd714422a196e5eecc947a25ebe294ae9b1d9c9a7acf7a3cdfbb25d"
     },
     {
       "path": "cowmata_tailring/ledger/ledger_sync.py",
@@ -2424,8 +2549,8 @@
     },
     {
       "path": "cowmata_tailring/ui/algorithms/workbench_ui.py",
-      "size": 22022,
-      "sha256": "103abdcbe69f9ca805664faa375033fe80d77fda14df820a418009c531d114aa"
+      "size": 22039,
+      "sha256": "49a1ced51ed70fc5400bbf0869dc6008597ee87b922fe1e99451ceae031a9fd1"
     },
     {
       "path": "cowmata_tailring/ui/cached_widgets.py",
@@ -2469,8 +2594,8 @@
     },
     {
       "path": "cowmata_tailring/ui/translations.py",
-      "size": 453064,
-      "sha256": "617890ce9a643f7609a55d605de03ab351a49975786fe96a8688c78c85c14dc4"
+      "size": 457485,
+      "sha256": "e351a9e54dc65d60bdbc20693cc5f0fe3afdce28505eddcf49c9081c71608331"
     },
     {
       "path": "cowmata_tailring/ui/video_timeline.py",
@@ -2534,13 +2659,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/candidate_window.py",
-      "size": 17839,
-      "sha256": "49161dda074a28d13b3d3a0677f452ea85968c1e2f163202f6a0488d80650744"
+      "size": 17761,
+      "sha256": "2c7e1c6214fd7314ee1e0159c802cd541b62552ab6fdeb50416f14189ff5d8ad"
     },
     {
       "path": "cowmata_tailring/workspace/catalog.py",
-      "size": 39229,
-      "sha256": "627e75fe6441ec65bc95036634fb8da0be976932c48915482a28e6978f874be6"
+      "size": 39255,
+      "sha256": "551ba422068737c770d436883d4e1cb0797911a09dabc73083642154a409c721"
     },
     {
       "path": "cowmata_tailring/workspace/classification_report.py",
@@ -2564,13 +2689,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/collaboration_packages.py",
-      "size": 42448,
-      "sha256": "e4bd1e09f09d2e32a8c3a68905adc5e0c142e69c7f89cba7668c7b9c37ead976"
+      "size": 42500,
+      "sha256": "ac0d2cbcef89c9bb4e0b0830a60e0e32538adc0850a9fc792999672dc07c49ac"
     },
     {
       "path": "cowmata_tailring/workspace/collaboration_ui.py",
-      "size": 19879,
-      "sha256": "3fc392f700ffbeeb6054f206ae9c0a5849ff534dd3a8a58f2fc4a852194ca0bd"
+      "size": 19923,
+      "sha256": "991c5309413cfcb5bc7ac26c6f69df32f7d1ee8da3a7fe8bf69076a83fd43e61"
     },
     {
       "path": "cowmata_tailring/workspace/compatibility.py",
@@ -2719,13 +2844,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/farm_layout.py",
-      "size": 2778,
-      "sha256": "40059b954c476a2ed8d15f29e6ec72d1ef05c4cd6a77ff4eff79198db427c0eb"
+      "size": 3294,
+      "sha256": "81a733e622922faab28cd274f1d801ef4edc74ce3ee8e0978ca7b19b81509fac"
     },
     {
       "path": "cowmata_tailring/workspace/farm_migration.py",
-      "size": 13707,
-      "sha256": "9f31df0ad25789524b192b8d0c1d573598506a3f8b1ee1c4bbfa2df72fe923e0"
+      "size": 13735,
+      "sha256": "43f2ded0e63f4bc5bf335ec4e069643c4bb2c0b8d0f576ef625f42e95ac927d9"
     },
     {
       "path": "cowmata_tailring/workspace/fast_transfer.py",
@@ -2789,13 +2914,13 @@
     },
     {
       "path": "cowmata_tailring/workspace/materials.py",
-      "size": 4261,
-      "sha256": "433f3585e4c3bddef27e2c5ce09d2530ee3a4ccafbd8d5e4c791c945a3ccc39f"
+      "size": 4445,
+      "sha256": "77cc890f97b22404a6785d8f8db041bf9fe8856184777960eb444782c3a63866"
     },
     {
       "path": "cowmata_tailring/workspace/modern_window.py",
-      "size": 56140,
-      "sha256": "1744a9123a8712e1760d888eeb007eac80c8c3582126b78cf5e64317c7d1901c"
+      "size": 56373,
+      "sha256": "08be3a55a215027bb7a16da50aa5317a4f39d2f8f33d14132f0182f34fd76684"
     },
     {
       "path": "cowmata_tailring/workspace/mother_dataset.py",
@@ -2849,8 +2974,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/paired_dataset.py",
-      "size": 30720,
-      "sha256": "e7cc4133611c987566d4da1f5d7f54c4cfdd13db9a31c55c71601cf3298d6543"
+      "size": 30745,
+      "sha256": "50ebec8ac27338a083160c1b2e51d453452ad46ce3d837ac7d711f60f798ad0a"
     },
     {
       "path": "cowmata_tailring/workspace/playback.py",
@@ -2874,8 +2999,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/project_picker.py",
-      "size": 6124,
-      "sha256": "b5bb77b72d0c09f452bd8b81beb2ea6c82ed79223a24f016ac4a4563e786e077"
+      "size": 6149,
+      "sha256": "63aee9674ec6a5fb3e6b1308f847068c169795b17e5ddeac00d1b070b7ab9a3b"
     },
     {
       "path": "cowmata_tailring/workspace/project_registry.py",
@@ -2934,8 +3059,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/theme.py",
-      "size": 8168,
-      "sha256": "1ef5d9b6f99af0550ac417009939f05e0c9d62f4204ec892d75e2f62e57f2314"
+      "size": 12218,
+      "sha256": "b422a7eca9eccb436f4de4f00f0622ab1b6a4471517243a868f245217aff9ad6"
     },
     {
       "path": "cowmata_tailring/workspace/threaded_engine.py",
@@ -3644,78 +3769,78 @@
     },
     {
       "path": "docs/operator-guide-440-assets/01-main.png",
-      "size": 274627,
-      "sha256": "2329418f3f483e88691615ca7538560aaebb8a98576cf46e3eacf3b2739da99e"
+      "size": 107463,
+      "sha256": "f4cb578e55eaffad71d2c3fb5e30331e9f1cdd91abaf44c740946413559ca13c"
     },
     {
       "path": "docs/operator-guide-440-assets/02-login.png",
-      "size": 40005,
-      "sha256": "48e3a59459b4f47e95c7fac50e722222a9d9e1ccc1c79bdc5ad36b17299cb661"
+      "size": 15236,
+      "sha256": "bdc4c59672f6af105bf9767988fa08cead9edc111632b22c1acdba7686a51513"
     },
     {
       "path": "docs/operator-guide-440-assets/03-accounts.png",
-      "size": 51661,
-      "sha256": "892f9e23a00efa3a1b3a05016fda7ec2c0c68ec259fc24d14fde20c80f8b6ab5"
+      "size": 18429,
+      "sha256": "4a9c5538f561c900c33e24428a948372cfce203346d5dc56a3b53d04c08a4fb6"
     },
     {
       "path": "docs/operator-guide-440-assets/04-ledger.png",
-      "size": 167199,
-      "sha256": "9e5d2edfb0f4872107e721886d476842c68f09d286255c500ae289cf25932c5d"
+      "size": 63176,
+      "sha256": "8c21b8ecbadcb1e498cf032252caac2a12ef575c655d9334dd1662960c063875"
     },
     {
       "path": "docs/operator-guide-440-assets/05-pending.png",
-      "size": 147980,
-      "sha256": "75ecd0e5caa2dda1483dd3aa8b7da42eb21be796fa46dd872dcfb3130605e423"
+      "size": 58395,
+      "sha256": "cd4171202b253db6250451fe7add2c456a5151acc4b6b0a468e62b76d16734eb"
     },
     {
       "path": "docs/operator-guide-440-assets/06-download.png",
-      "size": 132718,
-      "sha256": "dc96e52ded79f92b96800333f1e401b0483d745db70798e0897409728e6d3144"
+      "size": 73480,
+      "sha256": "62ae85481e98154072ebbb441522408c4af2d179d88dcfc5e60eb5a1bd55a355"
     },
     {
       "path": "docs/operator-guide-440-assets/07-organize.png",
-      "size": 307003,
-      "sha256": "7dc147a860f9f20ee647e607ea25656c46e8c7ba16c25cce5629c9b3176435b2"
+      "size": 126740,
+      "sha256": "37eb7e1fc474640730f7eefdfc5616cd9fdcedb85aedc9f71477d64fb96e4525"
     },
     {
       "path": "docs/operator-guide-440-assets/menu-1.png",
-      "size": 19690,
-      "sha256": "d577bab73666a440643aafc84917cb42231d3610b800060d79eeff24ae2c470a"
+      "size": 10259,
+      "sha256": "4b56982c11134547eebbbaedf56797bb9a49628562006fd305a1a7cbbe2216bd"
     },
     {
       "path": "docs/operator-guide-440-assets/menu-2.png",
-      "size": 13727,
-      "sha256": "01ceeb6d1f81501cad872d93dc186f627bbc756305a894ee2d00726a494f4b78"
+      "size": 7531,
+      "sha256": "1019c909beb604a8f073b764f37eba5803e5141e543eec85ca9c9cfef467fa40"
     },
     {
       "path": "docs/operator-guide-440-assets/menu-3.png",
-      "size": 19795,
-      "sha256": "8deb0010ef0e2461040f01f5e711b9e50819dce4ca85c9444cc937a4034a9a68"
+      "size": 9836,
+      "sha256": "a9e906242777bd4e99241abbec0a9f230726db9d8bdcbf4720cf8aec11c84184"
     },
     {
       "path": "docs/operator-guide-440-assets/menu-4.png",
-      "size": 19585,
-      "sha256": "fd1311a94e79fb377bb134df4aa49d8eee393040b116b09b5202a2df0e5038e2"
+      "size": 10298,
+      "sha256": "6cabdb04e6e63f36dad0c51dd5bd1d9322814a6c8bac91d0ab97d6383cdf085d"
     },
     {
       "path": "docs/operator-guide-440-assets/menu-5.png",
-      "size": 27254,
-      "sha256": "3913d911d6a0a5b49e6601587f4394703d3fbcb8da0d09b2bd40c902c3c2660c"
+      "size": 12795,
+      "sha256": "29fa9981e342cf4ff78de123c36a8fae290dfc98fb6d3804912efe36e17951d6"
     },
     {
       "path": "docs/operator-guide-440-assets/menu-6.png",
-      "size": 14981,
-      "sha256": "5f75a87b1886f96dc35d28fe3ff41565f962344ecb18c39347c8f502f1e9c96d"
+      "size": 8098,
+      "sha256": "4c5cd12a6adcc6599b0e850f32e4f4e150cee30f65a4501c3c01a62a0082c094"
     },
     {
       "path": "docs/operator-guide-440-assets/menu-7.png",
-      "size": 8830,
-      "sha256": "2840bee48771f3d39e808f66e8e7f828dd8218383e2c9578da78ee7877d3accc"
+      "size": 4875,
+      "sha256": "898fffd2b54f4c65003f1d28bb49fcee2c2eaa8bebe853bc1cf60ccf7accf9b6"
     },
     {
       "path": "docs/operator-guide-440.html",
-      "size": 8199,
-      "sha256": "6bf00b792f56bd837d17128b8dd3aa8ec24e118bb49ad5ec07e1eecdc1122fd8"
+      "size": 8420,
+      "sha256": "e9a415033a932de7a6f65b034d5181e5ae9626b6903be3081a2ff36f5fc275b9"
     },
     {
       "path": "docs/playback-annotation-fix-20260910.md",
@@ -4023,6 +4148,11 @@
       "sha256": "aacb13ab85e121ffb71c37ce7552f10e9f61f79d7e5fdf90cc43bb3c96e81f59"
     },
     {
+      "path": "docs/release-441.md",
+      "size": 1828,
+      "sha256": "78ee5c9fb565abd85df9c2584c2450cc83483aa5ecd2e0ce982f3b30361ea767"
+    },
+    {
       "path": "docs/release-notes-v2.2.0.md",
       "size": 5827,
       "sha256": "bc8f0b9acec046baabfba72bce4b404d69af8995322a9cacac6d01663b0b6f79"
@@ -4224,8 +4354,8 @@
     },
     {
       "path": "scripts/build_portable.py",
-      "size": 11182,
-      "sha256": "91fdec3a6f84d98f262a70de15e45e92e97c433f51c30ed92833236a3cc97682"
+      "size": 11200,
+      "sha256": "528c071982af9f8de86c895dddb6f1d23d8b3a5cf7b9018dca5980be7aa9e6ea"
     },
     {
       "path": "scripts/build_quick_start_pdf.py",
@@ -4474,13 +4604,13 @@
     },
     {
       "path": "server-upgrade/install_receiver.py",
-      "size": 4454,
-      "sha256": "14e73920bc252d3e2fae983f399b3d6977041998a48634e416f850da6b85963e"
+      "size": 4473,
+      "sha256": "e1ac94ba9cefed46005993217020aee5225a6723c3c2c073de2044076c5dea07"
     },
     {
       "path": "server-upgrade/ledger_core.py",
-      "size": 27507,
-      "sha256": "6d81e65b14dd42b4905564abd02e7cb637ceaf05a889ee2cbffeba75060c22b4"
+      "size": 27526,
+      "sha256": "f361b6f3f4baa5e328964265743ff68e7739ab3cbc41edb583c995240bcb8782"
     },
     {
       "path": "server-upgrade/ledger_merge.py",
@@ -4494,13 +4624,13 @@
     },
     {
       "path": "server-upgrade/ledger_sheets.py",
-      "size": 25236,
-      "sha256": "3c9008ac72031c9dd057db1e37e46037cb51882fb948746b0b6086e2e22f6782"
+      "size": 25255,
+      "sha256": "77a0eaf1d5d36a5efb385cba587e9ae273c9f2acc5d614b7df2ab0e99edef7f0"
     },
     {
       "path": "server-upgrade/receiver.py",
-      "size": 14156,
-      "sha256": "4eb301fc97674bbf0a210090db6a3e28e384acaa0664b579d747b5ced6f7ccc0"
+      "size": 14175,
+      "sha256": "087f62d21354d0112135e66f000cab2a7643a15f9908f70a80f78b932c1db8a3"
     },
     {
       "path": "tests/authorized_worker.py",
@@ -4509,8 +4639,8 @@
     },
     {
       "path": "tests/conftest.py",
-      "size": 7363,
-      "sha256": "b7736951087b75b54ca4a59dd956f862d741588b55974488448363c090c26bbe"
+      "size": 7507,
+      "sha256": "ca0879a6b1d5c20fd4565ae4303f5acdbe3a5381ed01bb8b70bad0fb0e898411"
     },
     {
       "path": "tests/legacy_organization.py",
@@ -4794,33 +4924,33 @@
     },
     {
       "path": "tests/test_download_427.py",
-      "size": 11014,
-      "sha256": "bc9c039449e8973bb926738e5d32ead315d7ca9cf4e668d88a9190c8eea3a1ae"
+      "size": 10507,
+      "sha256": "439ac05db3105d72377504196b27206d61b4c4ac2232cb708dadc09b72f7a8e2"
     },
     {
       "path": "tests/test_download_eligibility_395.py",
-      "size": 11301,
-      "sha256": "1de299e0dbb6de559f8de8f9bbfb9e997a1e4e4c6440c8eb0d914143adf380de"
+      "size": 11263,
+      "sha256": "659cc2d6db5212f06f312a26fc408928c4a7697a05c2acaca0a3e9f935227157"
     },
     {
       "path": "tests/test_download_layout_392.py",
-      "size": 2885,
-      "sha256": "df5880c49f12a78f3eccc33ec36963a7e7e47ac5323bc42d0c92d75c5446b943"
+      "size": 2918,
+      "sha256": "01c23521e56f32a8c2704243ecb98e22012489dbb6c6031c4469c991fe0da515"
     },
     {
       "path": "tests/test_download_paths_391.py",
-      "size": 1714,
-      "sha256": "d4fb654b9b6d4d00642d985b76f764c978192f955256fdfec17e96473325c26f"
+      "size": 1880,
+      "sha256": "35462d3cebbba90965dfc6d820d9bacb825d0108edbb53d8e6e5d8c0c21f5ac1"
     },
     {
       "path": "tests/test_download_repair_391.py",
-      "size": 16495,
-      "sha256": "c894242ec2f2797e66a6b70cb8c6feeed934b4d4aa27f334b19bda7da63042e6"
+      "size": 16338,
+      "sha256": "2d63676103f3fea20979261f8eedbc2c05f1a5b71a172f6db8ef92f6a58621d4"
     },
     {
       "path": "tests/test_download_simple_431.py",
-      "size": 2537,
-      "sha256": "3b2332956ceae1a45060a2b31522678c1a55454b8fe630f4b8fe33ef57e219b8"
+      "size": 2220,
+      "sha256": "9540ed52b9f756dbd913a9dd5ca3a827db5bbb9f7f23ce83c854079bf1ded4e2"
     },
     {
       "path": "tests/test_downloader_completion_422.py",
@@ -4844,8 +4974,8 @@
     },
     {
       "path": "tests/test_edge_download_384.py",
-      "size": 24538,
-      "sha256": "29ead099c8c2d0d1472b0a29520b5f9ea57966c06e8bf859260cce62273243e9"
+      "size": 24504,
+      "sha256": "9496627e6f9ea4f32ee53bf5e82f4a584a2575b02c5139ebedf081cc2299afc0"
     },
     {
       "path": "tests/test_event_models.py",
@@ -5034,8 +5164,8 @@
     },
     {
       "path": "tests/test_menu_simplify_431.py",
-      "size": 2824,
-      "sha256": "93ffd6391f7f58477bcd5e4c18a0434b32effd6cec1ffcf20e6de5e462fe4dee"
+      "size": 2815,
+      "sha256": "64a60fd9d3757c60b2ebdd12056e4f20e04db399a3e09b520f79409e16429276"
     },
     {
       "path": "tests/test_model_dataset_locations_393.py",
@@ -5159,8 +5289,8 @@
     },
     {
       "path": "tests/test_relative_download_412.py",
-      "size": 12691,
-      "sha256": "48df92cec414e15ec9afc4743ead6495ca9a6144994ecf2a98fbf65239a513c4"
+      "size": 13071,
+      "sha256": "800447f781fb78146ce95fa14e62b49d00a1909cf9e8d9721805d7a879d4bc33"
     },
     {
       "path": "tests/test_release_390.py",
@@ -5499,8 +5629,8 @@
     },
     {
       "path": "\u4f7f\u7528\u8bf4\u660e.txt",
-      "size": 770,
-      "sha256": "4106c21762395b79285326d120eef57f437d9236ac0a1bd7f2b2fdf0f712ec7c"
+      "size": 755,
+      "sha256": "4d9f8f8cb9780fac7c57613fdaab5aa0f0b9754654ded62909c7739a8d1ed95d"
     }
   ]
 }

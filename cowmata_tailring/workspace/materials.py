@@ -85,9 +85,10 @@ QPushButton:checked, QToolButton:checked {background:#DDF1F6; color:#0E5F70; bor
 QListWidget, QTableWidget {background:rgba(255,255,255,225);}
 QMenu {background:#FFFFFF;}
 QDialog {background:#F5F7FA;}
-QMenuBar {background:rgba(251,252,253,235); color:#1C2530; border-bottom:1px solid #E3E7ED;}
-QMenuBar::item {background:transparent; color:#1C2530;}
-QMenuBar::item:selected, QMenuBar::item:pressed {background:#E9EDF2;}
+QMenuBar {background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #239BB3, stop:0.55 #35AFC8, stop:1 #6FCB5A); color:#FFFFFF; border:0; font-size:14px; font-weight:700;}
+QMenuBar::item {background:transparent; color:#FFFFFF; padding:6px 14px; margin:1px 2px; border-radius:8px;}
+QMenuBar::item:selected {background:rgba(255,255,255,0.22);}
+QMenuBar::item:pressed {background:#FFFFFF; color:#0E5F70;}
 QStatusBar {background:rgba(245,247,250,235); color:#6B7785;}
 QComboBox QAbstractItemView {background:#FFFFFF; color:#1C2530;}
 """

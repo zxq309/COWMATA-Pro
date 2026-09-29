@@ -113,9 +113,12 @@ def _local_signature(db, root, device, lo, hi):
 
 def run_csv_job(
     job, cancel, log=lambda message: None, progress=lambda done, total: None, client_factory=Client,
-    *, only=None, force=False, now=None,
+    *, only=None, force=False, now=None, realtime=False,
 ):
     """Download the ledger-authorised range up to 00:00 today (Beijing).
+
+    ``realtime`` (4.4.1 continuous download) moves the end to two minutes ago, so today's complete
+    files reach the 待产犊 folder, and the decider, while the cow is still wearing the device.
 
     ``only`` restricts the round to the given plan records (a date or rows
     picked in the window); ``force`` re-downloads them from the server even if
@@ -124,7 +127,7 @@ def run_csv_job(
     from .download_status import clear_done, clip_ranges, day_cutoff, mark_done, settled
 
     result = Result()
-    cutoff = day_cutoff(now)
+    cutoff = (datetime.now(CHINA) - timedelta(minutes=2)).replace(microsecond=0) if realtime else day_cutoff(now)
     root = Path(job.farm)
     root.mkdir(parents=True, exist_ok=True)
     with RootSyncLock(root, cancel):
@@ -158,7 +161,7 @@ def run_csv_job(
             for issue in plan.issues:
                 log(f"台账待核对 {issue['source']} 第 {issue['row']} 行：{issue['message']}")
             end_limit = min(job.end, cutoff)
-            if job.end > cutoff:
+            if job.end > cutoff and not realtime:
                 log(f"今日数据仍在实时上传，留到明天下载；本轮截至 {cutoff:%Y-%m-%d %H:%M}（北京时间）")
             ranges = list(plan.bounds(job.start, end_limit)) if job.start < end_limit else []
             if only is not None:

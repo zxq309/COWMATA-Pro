@@ -84,7 +84,9 @@ def test_missing_legacy_drive_is_backed_up_without_rewriting_source(isolated_sto
     store.path.parent.mkdir(parents=True, exist_ok=True)
     store.path.write_bytes(original)
     is_dir = Path.is_dir
-    monkeypatch.setattr(Path, "is_dir", lambda p: False if p.drive.upper() == "F:" else is_dir(p))
+    # Pretend the legacy drive is gone (the test folders themselves may live on F:).
+    keep = str(store.directory.parent)
+    monkeypatch.setattr(Path, "is_dir", lambda p: False if p.drive.upper() == "F:" and not str(p).startswith(keep) else is_dir(p))
     loaded = ProSettings(store.directory, app_root=store.app_root)
     assert store.path.read_bytes() == original
     loaded.save()
@@ -167,10 +169,10 @@ def test_one_click_fetches_all_csv_before_downloading_and_keeps_cache_on_failure
                 raise OSError("test connection unavailable")
             return content[sheet]
     raw_client = client_for([("motion", record("motion")), ("pulse", record("pulse"))], downloads)
-    def run(job, *args):
+    def run(job, *args, **kwargs):
         assert calls == list(SCHEMAS)
         assert CsvPlan(job.ledger_directory).ready
-        return run_csv_job(job, *args, client_factory=raw_client)
+        return run_csv_job(job, *args, client_factory=raw_client, **kwargs)
     def factory(values, operation, parent):
         operations.append(operation)
         assert values["sync_ledger"] is True
@@ -180,10 +182,13 @@ def test_one_click_fetches_all_csv_before_downloading_and_keeps_cache_on_failure
     dialog = ui.ProDownloadDialog(store=store, worker_factory=factory)
     try:
         assert dialog.directory.text().startswith("../")
-        dialog.refresh_button.click()
+        dialog.download_button.click()
         spin(qt_application, lambda: not dialog.running)
         assert operations == ["all"]
-        assert not dialog.timer.isActive()
+        # 4.4.1: download keeps going (next round scheduled) until 暂停.
+        assert dialog.timer.isActive() == (not fail_refresh) or dialog.armed
+        dialog.download_button.click()
+        assert not dialog.timer.isActive() and not dialog.armed
         if fail_refresh:
             assert not downloads
             assert "刷新未完成" in dialog.csv_receipt.text()
@@ -237,7 +242,7 @@ def test_incomplete_ledger_rows_are_ignored_from_the_visible_download_plan(isola
     try:
         dialog.receive_plan(Plan(), "")
         assert [row["device"] for row in dialog.plan_records] == ["A", "C"]
-        assert "待补全已忽略 1" in dialog.plan_label.text()
+        assert "待补全 1" in dialog.plan_label.text()
         assert all(item["row"] != 3 for item in dialog.csv_issues)
     finally:
         dialog.deleteLater()

@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from .catalog import digest_file, file_stamp
 from .dataset_access import DatasetLease
-from .farm_layout import CATEGORY_PATHS, COLLABORATION, MARKER, SCHEMA, farm_identity
+from .farm_layout import CATEGORY_PATHS, COLLABORATION, MARKER, SCHEMA, collaboration_home, farm_identity
 from .package_paths import safe_path
 from .package_readiness import download_guard
 from .storage import ProjectLock, atomic_json, read_json
@@ -136,7 +136,7 @@ def _prepare_metadata(root, staging):
 
 def _recover(root):
     """Recover a stopped migration before beginning another one."""
-    for record in (root / COLLABORATION / '目录迁移记录').glob('*/事务.json'):
+    for record in (collaboration_home(root) / '目录迁移记录').glob('*/事务.json'):
         journal = read_json(record, {})
         if journal.get('status') in {'complete', 'rolled_back'}:
             continue
@@ -189,7 +189,7 @@ def migrate(root, *, progress=lambda *_: None):
         report = audit(root)
         if report['collisions']:
             raise ValueError('录像目标存在冲突，未移动文件：' + '\n'.join(report['collisions'][:20]))
-        journal_dir = root / COLLABORATION / '目录迁移记录' / uuid4().hex
+        journal_dir = collaboration_home(root) / '目录迁移记录' / uuid4().hex
         journal_dir.mkdir(parents=True)
         changes = _prepare_metadata(root, journal_dir)
         identity = dict(schema=SCHEMA, farm_id=str(uuid4()), recordings='录像')

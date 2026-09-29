@@ -1,5 +1,9 @@
 """Shared static Qt theme; no window/controller dependency.
 
+4.4.1: bold type throughout, a branded menu bar (COWMATA cyan → green with
+white type and the wordmark in its corner) and Fluent System Icons (MIT,
+microsoft/fluentui-system-icons) on the key commands.
+
 4.4.0 design language: Apple Human Interface Guidelines rhythm (8 px grid,
 13 px body, 12 px secondary, hairline separators, 8–12 px corner radii,
 neutral grouped background) in the COWMATA brand colours from
@@ -22,7 +26,7 @@ PALETTE = {
 _ASSETS = Path(__file__).resolve().parents[2] / "assets/fluent"
 
 STYLE = """
-QMainWindow, QWidget {background:#F5F7FA; color:#1C2530; font-family:'Microsoft YaHei UI','Segoe UI'; font-size:13px;}
+QMainWindow, QWidget {background:#F5F7FA; color:#1C2530; font-family:'Microsoft YaHei UI','Segoe UI'; font-size:13px; font-weight:600;}
 QDialog {background:#F5F7FA;}
 QFrame#card, QWidget#signalCard, QFrame#sourcePanel, QFrame#eventPanel, QFrame#algorithmPanel, QGroupBox {background:#FFFFFF; border:1px solid #E3E7ED; border-radius:12px;}
 QGroupBox {margin-top:14px; padding:18px 12px 12px; font-weight:600;}
@@ -83,11 +87,14 @@ QScrollBar::add-line, QScrollBar::sub-line {height:0; width:0;}
 QScrollBar::add-page, QScrollBar::sub-page {background:transparent;}
 QStatusBar {background:#F5F7FA; border-top:1px solid #E3E7ED; color:#6B7785; font-size:12px;}
 QStatusBar::item {border:0;}
-QMenuBar {background:#FBFCFD; border-bottom:1px solid #E3E7ED; padding:2px 6px; color:#1C2530;}
-QMenuBar::item {background:transparent; padding:5px 12px; margin:1px; border-radius:6px;}
-QMenuBar::item:selected, QMenuBar::item:pressed {background:#E9EDF2;}
+QMenuBar {background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #239BB3, stop:0.55 #35AFC8, stop:1 #6FCB5A); border:0; padding:3px 8px; color:#FFFFFF; font-size:14px; font-weight:700;}
+QMenuBar::item {background:transparent; color:#FFFFFF; padding:6px 14px; margin:1px 2px; border-radius:8px;}
+QMenuBar::item:selected {background:rgba(255,255,255,0.22);}
+QMenuBar::item:pressed {background:#FFFFFF; color:#0E5F70;}
+QLabel#menuLogo {background:transparent; padding:0 10px 0 4px;}
 QMenu {background:#FFFFFF; border:1px solid #DDE2E9; border-radius:10px; padding:5px;}
-QMenu::item {padding:6px 30px 6px 12px; border-radius:6px; color:#1C2530; background:transparent;}
+QMenu::item {padding:7px 30px 7px 10px; border-radius:6px; color:#1C2530; background:transparent; font-weight:600;}
+QMenu::icon {padding-left:6px;}
 QMenu::item:selected {background:#35AFC8; color:#FFFFFF;}
 QMenu::item:disabled {color:#A1AAB5; background:transparent;}
 QMenu::item:checked {font-weight:600;}
@@ -107,3 +114,86 @@ SEGMENTED = (
     "QTabBar::tab:selected {background:#FFFFFF; color:#1C2530; font-weight:600; border:1px solid #DDE2E9;}"
     "QTabBar::tab:hover:!selected {background:#E6EAF0;}"
 )
+
+
+def fluent_icon(name, color="#1C2530", size=20):
+    """A Fluent System Icon (assets/fluent/<name>.svg) recoloured for the current surface."""
+    from PySide6.QtCore import QByteArray, Qt
+    from PySide6.QtGui import QIcon, QPainter, QPixmap
+    from PySide6.QtSvg import QSvgRenderer
+
+    path = _ASSETS / f"{name}.svg"
+    if not path.is_file():
+        return QIcon()
+    data = path.read_text(encoding="utf-8").replace("#212121", color)
+    icon = QIcon()
+    for scale in (1, 2):
+        pixmap = QPixmap(size * scale, size * scale)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        QSvgRenderer(QByteArray(data.encode("utf-8"))).render(painter)
+        painter.end()
+        pixmap.setDevicePixelRatio(scale)
+        icon.addPixmap(pixmap)
+    return icon
+
+
+def wordmark_pixmap(height=16, color="#FFFFFF"):
+    """The official COWMATA wordmark (www.cowmata.com) in one colour, for the menu bar."""
+    import re
+
+    from PySide6.QtCore import QByteArray, QRectF, Qt
+    from PySide6.QtGui import QPainter, QPixmap
+    from PySide6.QtSvg import QSvgRenderer
+
+    path = _ASSETS.parent / "brand" / "official-wordmark.svg"
+    data = re.sub(r'fill="#[0-9A-Fa-f]{6}"', f'fill="{color}"', path.read_text(encoding="utf-8"))
+    renderer = QSvgRenderer(QByteArray(data.encode("utf-8")))
+    size = renderer.defaultSize()
+    width = max(1, round(size.width() * height / max(1, size.height())))
+    pixmap = QPixmap(width * 2, height * 2)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    renderer.render(painter, QRectF(0, 0, width * 2, height * 2))
+    painter.end()
+    pixmap.setDevicePixelRatio(2)
+    return pixmap
+
+
+# Key commands and their icons (menu text -> Fluent icon name).
+MENU_ICONS = {
+    "打开工程…": "folder_open", "保存": "save", "导出": "share", "关闭工程": "dismiss",
+    "撤销": "arrow_undo", "重做": "arrow_redo", "修改标签…": "tag", "批量修改…": "edit", "查找记录": "search",
+    "台账": "table", "导入表格…": "arrow_upload", "同步修改": "arrow_sync", "上传设置…": "settings",
+    "端侧数据…": "arrow_download", "数据归类": "folder_arrow_right", "下载设置…": "settings", "决策 APP": "data_trending",
+    "自动生成候选…": "sparkle", "完成本份…": "checkmark_circle", "协作": "people_team",
+    "时间同步": "clock", "录像": "video", "视图": "window_new", "设置…": "settings",
+    "快速开始": "book_open", "新手图文教程…": "book_open", "账号": "person", "关于": "info",
+}
+
+
+def decorate_menus(menubar):
+    """Icons on the key commands and the wordmark in the menu bar's left corner."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QLabel
+
+    def visit(menu):
+        for action in menu.actions():
+            name = MENU_ICONS.get(action.text())
+            if name and action.icon().isNull():
+                action.setIcon(fluent_icon(name, "#35AFC8"))
+                action.setIconVisibleInMenu(True)
+            if action.menu() is not None:
+                visit(action.menu())
+
+    for top in menubar.actions():
+        if top.menu() is not None:
+            visit(top.menu())
+    logo = QLabel(menubar)
+    logo.setObjectName("menuLogo")
+    logo.setPixmap(wordmark_pixmap(15))
+    logo.setToolTip("COWMATA · www.cowmata.com")
+    menubar.setCornerWidget(logo, Qt.Corner.TopLeftCorner)
+    menubar._cowmata_logo = logo  # PySide does not keep the corner widget alive by itself
+    logo.show()
+    return logo

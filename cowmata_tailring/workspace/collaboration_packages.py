@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 
 from .catalog import VIDEO_SUFFIXES, assert_not_being_written, digest_file, file_stamp
 from .dataset_access import DatasetLease
-from .farm_layout import CATEGORY_PATHS, COLLABORATION, MARKER, farm_identity, shared_farm
+from .farm_layout import CATEGORY_PATHS, COLLABORATION, MARKER, collaboration_home, farm_identity, shared_farm
 from .package_paths import check, safe_path
 from .storage import ProjectLock, atomic_json, read_json
 
@@ -49,7 +49,7 @@ def label_schema():
 
 
 def _registry(root):
-    return Path(root) / COLLABORATION / '派发记录'
+    return collaboration_home(root) / '派发记录'
 
 
 def inventory(root, category, *, cancelled=lambda: False):
@@ -280,7 +280,7 @@ def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None):
     root = Path(root).resolve(strict=True)
     identity = farm_identity(root)
     outputs = []
-    home = root / COLLABORATION
+    home = collaboration_home(root)
     home.mkdir(exist_ok=True)
     with DatasetLease([root], 'annotation'), download_guard(root), ExitStack() as stack:
         lock = ProjectLock(home / '.dispatch.lock')
@@ -358,7 +358,7 @@ def _cleanup_replaced_packages(root, plan, current_output):
         old = Path(value.get('output', ''))
         if old == Path(current_output):
             continue
-        if old.suffix.lower() == '.zip' and old.is_file() and old.resolve().is_relative_to((root / COLLABORATION).resolve()):
+        if old.suffix.lower() == '.zip' and old.is_file() and old.resolve().is_relative_to(collaboration_home(root).resolve()):
             old.unlink()
             removed.append(str(old))
         record.unlink(missing_ok=True)
@@ -464,7 +464,7 @@ def open_raw_package(path, destination, *, cancelled=lambda: False, progress=lam
         for category in manifest['categories']:
             atomic_json(safe_path(farm, category + '/标注工程/annotation-layout.json'), {'schema': 'dated-annotations-v1'}, backup=False)
         atomic_json(farm / ASSIGNMENT, manifest, backup=False)
-        (farm / COLLABORATION).mkdir(exist_ok=True)
+        collaboration_home(farm).mkdir(parents=True, exist_ok=True)
         check(cancelled)
         staging.rename(final)
     return final / name
@@ -613,7 +613,7 @@ def make_return(root, *, cancelled=lambda: False, progress=lambda *_: None):
         manifest = {k: copy.deepcopy(assignment[k]) for k in ('schema', 'task_id', 'package_id', 'farm_id', 'farm_name', 'label_schema', 'base_name')}
         manifest.update(kind='annotations', revision=uuid4().hex, annotations=annotations,
                         source_manifest_sha256=hashlib.sha256(canonical(assignment)).hexdigest(), purpose=assignment.get('purpose', 'annotation'))
-        output = root / COLLABORATION / '标注数据包' / (manifest['base_name'] + '_标注_' + manifest['revision'][:12] + '.zip')
+        output = collaboration_home(root) / '标注数据包' / (manifest['base_name'] + '_标注_' + manifest['revision'][:12] + '.zip')
         _write_zip(output, manifest, list(entries.values()), cancelled=cancelled, progress=progress)
         return output
 
@@ -626,7 +626,7 @@ def _semantic_document(doc):
 
 def _recover_receives(root):
     """Rollback interrupted publication only when its expected bytes still match."""
-    for journal_path in (root / COLLABORATION / '接收记录').glob('*/事务.json'):
+    for journal_path in (collaboration_home(root) / '接收记录').glob('*/事务.json'):
         journal = read_json(journal_path, {})
         if journal.get('status') != 'committing':
             continue
@@ -692,7 +692,7 @@ def receive_return(root, path, *, cancelled=lambda: False, progress=lambda *_: N
         safe_path(root, relative)
         if relative not in annotations and not ('/标注工程/' in relative and '/证据/' in relative and relative.endswith('.jpg')):
             raise ValueError('回传包含未授权文件或原始数据')
-    home = root / COLLABORATION
+    home = collaboration_home(root)
     report = dict(package_id=manifest['package_id'], imported=0, unchanged=0, conflicts=[], files=[])
     with DatasetLease([root], 'organize'), ExitStack() as locks, tempfile.TemporaryDirectory(prefix='cowmata-receive-') as temporary:
         for category in {u['category'] for u in assignment['units']}:

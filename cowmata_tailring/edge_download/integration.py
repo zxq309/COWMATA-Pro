@@ -40,6 +40,9 @@ class DownloadIntegration(QObject):
         dialog = getattr(self, 'dialog', None)
         if watched is window and event.type() == QEvent.Type.Close and dialog and hasattr(dialog, 'stop_scheduling'):
             dialog.stop_scheduling()
+            from .decider import stop as stop_decider
+
+            stop_decider()
         if watched is window and event.type() == QEvent.Type.Close and dialog and dialog.running:
             # Never destroy a live QThread. Resume the host's normal close flow
             # (including its own unsaved-work prompts) once cancellation finishes.

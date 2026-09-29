@@ -64,4 +64,52 @@ def relative_location(value, app_root=APP_ROOT):
 
 DEFAULT_DATA_ROOT = resolve_location(RELATIVE_DATA_ROOT)
 DEFAULT_LEDGER_ROOT = resolve_location(RELATIVE_LEDGER_ROOT)
-LEGACY_DATA_ROOT = Path(r"F:\牛舍")
+
+# 4.4.1 site layout: <drive>\1_下载器\<牧场>  (raw data by category + 台账 CSVs),
+# <drive>\2_标注器 (this app + 科牧特_协作标注), <drive>\3_训练器, <drive>\4_决策器.
+DOWNLOADS = "1_下载器"
+ANNOTATOR = "2_标注器"
+LEDGER_FOLDER = "台账"
+FARM_NAME = "扬大_高邮牧场"
+# Folders of the pre-4.4.1 layout; settings pointing here are moved to the site layout.
+LEGACY_DATA_ROOTS = (r"F:\牛舍", r"F:\扬大_高邮牧场")
+LEGACY_LEDGER_ROOTS = (r"F:\牛舍\_现场记录", r"F:\牛舍_现场记录")
+
+
+def _drives():
+    if os.name != "nt":
+        return []
+    import ctypes
+    import string
+
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    return [Path(f"{letter}:\\") for i, letter in enumerate(string.ascii_uppercase)
+            if mask >> i & 1 and ctypes.windll.kernel32.GetDriveTypeW(f"{letter}:\\") in (2, 3)]
+
+
+def site_farm(app_root=APP_ROOT):
+    """<drive>\\1_下载器\\<牧场> of this site: the app's own drive first, then every local drive."""
+    anchors = [Path(Path(app_root).anchor)] + [d for d in _drives() if d != Path(Path(app_root).anchor)]
+    for anchor in anchors:
+        if not anchor.is_dir():
+            continue
+        base = anchor / DOWNLOADS
+        preferred = base / FARM_NAME
+        if preferred.is_dir():
+            return preferred
+        try:
+            farms = sorted(p for p in base.iterdir() if p.is_dir() and not p.name.startswith("."))
+        except OSError:
+            continue
+        if farms:
+            return farms[0]
+    return None
+
+
+def site_ledger(app_root=APP_ROOT):
+    farm = site_farm(app_root)
+    return farm / LEDGER_FOLDER if farm is not None else None
+
+
+def is_legacy(path, legacy):
+    return str(PureWindowsPath(str(path))).casefold() in {str(PureWindowsPath(p)).casefold() for p in legacy}

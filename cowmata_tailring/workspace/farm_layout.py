@@ -14,6 +14,20 @@ COLLABORATION = "科牧特_协作标注"
 CATEGORY_PATHS = ("产犊", "发情", "怀孕/孕早期", "怀孕/孕中期", "怀孕/孕晚期", "正常", "疫病", "待产犊", "待核对", "未分类")
 
 
+def collaboration_home(root):
+    """科牧特_协作标注 of a farm.
+
+    4.4.1 site layout keeps annotation packages with the Annotator: a farm at
+    <drive>\\1_下载器\\<牧场> uses <drive>\\2_标注器\\科牧特_协作标注. Other farms keep it inside the farm.
+    """
+    root = Path(root)
+    if root.parent.name == "1_下载器":
+        site = root.parent.parent / "2_标注器"
+        if site.is_dir():
+            return site / COLLABORATION
+    return root / COLLABORATION
+
+
 def farm_identity(root):
     marker = Path(root) / MARKER
     if not marker.is_file():
@@ -42,8 +56,8 @@ def initialize_farm(root, *, farm_id=None):
         raise ValueError("存在旧版分类录像，请先完成共享录像迁移")
     root.mkdir(parents=True, exist_ok=True)
     identity = dict(schema=SCHEMA, farm_id=str(UUID(farm_id)) if farm_id else str(uuid4()), recordings=RECORDINGS)
-    for name in (RECORDINGS, COLLABORATION):
-        (root / name).mkdir(exist_ok=True)
+    (root / RECORDINGS).mkdir(exist_ok=True)
+    collaboration_home(root).mkdir(parents=True, exist_ok=True)
     atomic_json(root / MARKER, identity)
     return identity
 

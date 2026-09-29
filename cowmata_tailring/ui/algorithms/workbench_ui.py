@@ -86,7 +86,7 @@ def dataset_default(name):
     if configured is not None and (configured / name).is_dir():
         return str(configured / name)
     for base in (Path.cwd(), APP_ROOT, APP_ROOT / "data", APP_ROOT.parent):
-        for candidate in (base / "datasets" / name, base / "科牧特_数据集" / name, base / name):
+        for candidate in (base / "datasets" / name, base / "3_训练器" / "产犊" / "数据集" / name, base / name):
             if candidate.is_dir():
                 return str(candidate)
     return ""

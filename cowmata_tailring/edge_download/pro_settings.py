@@ -5,8 +5,9 @@ import os
 from pathlib import Path, PureWindowsPath
 
 from .core import DownloadError
-from .paths import (APP_ROOT, RELATIVE_DATA_ROOT, RELATIVE_LEDGER_ROOT,
-                    documents_root, relative_location, resolve_location)
+from .paths import (APP_ROOT, LEGACY_DATA_ROOTS, LEGACY_LEDGER_ROOTS, RELATIVE_DATA_ROOT, RELATIVE_LEDGER_ROOT,
+                    documents_root, is_legacy, relative_location, resolve_location, site_farm, site_ledger)
+from .site_records import SERVER_DIRECTORY
 from .settings import SettingsStore, validated
 from .site_records import settings_defaults, validate_connection
 
@@ -65,16 +66,17 @@ class ProSettings(SettingsStore):
         self.value.setdefault("end_time", "")
 
     def _repair_legacy_paths(self):
-        """Repair only unavailable fixed defaults; preserve custom/removable paths."""
+        """Move pre-4.4.1 fixed locations to the site layout; preserve custom/removable paths."""
         old = dict(self.value)
         data = Path(self.value["data_root"])
         records = Path(self.value["ledger_directory"])
-        legacy_data = {PureWindowsPath(r"F:\牛舍"), PureWindowsPath(r"F:\扬大_高邮牧场")}
-        legacy_records = {PureWindowsPath(r"F:\牛舍\_现场记录"), PureWindowsPath(r"F:\牛舍_现场记录")}
-        if PureWindowsPath(str(data)) in legacy_data and not Path(data.anchor).is_dir():
-            self.value["data_root"] = str(self._previous_data_root())
-        if PureWindowsPath(str(records)) in legacy_records and not records.is_dir():
-            self.value["ledger_directory"] = str(self.default_ledger_root)
+        farm, ledger = site_farm(self.app_root), site_ledger(self.app_root)
+        if is_legacy(data, LEGACY_DATA_ROOTS) and not data.is_dir():
+            self.value["data_root"] = str(farm) if farm is not None else str(self._previous_data_root())
+        if is_legacy(records, LEGACY_LEDGER_ROOTS) and not records.is_dir():
+            self.value["ledger_directory"] = str(ledger) if ledger is not None and ledger.is_dir() else str(self.default_ledger_root)
+        if is_legacy(self.value.get("ledger_server_directory", ""), LEGACY_LEDGER_ROOTS):
+            self.value["ledger_server_directory"] = SERVER_DIRECTORY
         # Replace generated defaults only when they contain no existing files.
         # Existing datasets/caches retain their location and exact bytes.
         generated = {
@@ -84,7 +86,11 @@ class ProSettings(SettingsStore):
         for key, candidates in generated.items():
             path = Path(self.value[key])
             if path in candidates and not path.exists():
-                self.value[key] = str(self.default_data_root if key == "data_root" else self.default_ledger_root)
+                site = farm if key == "data_root" else ledger
+                if site is not None and site.is_dir():
+                    self.value[key] = str(site)
+                else:
+                    self.value[key] = str(self.default_data_root if key == "data_root" else self.default_ledger_root)
         if old != self.value:
             self.notice = "已自动定位数据目录。更新台账后即可下载，原文件保留。"
             if self.path.is_file():

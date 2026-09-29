@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from ledger_core import FIELDS,atomic_write,csv_bytes,read_csv,sha,content_fingerprint,event_identity
 MAX_REQUEST=16*1024*1024
-DEFAULT_TARGET=r"F:\牛舍_现场记录\样本试验台账.csv"
+DEFAULT_TARGET=r"F:\1_下载器\扬大_高邮牧场\台账\样本试验台账.csv"
 @contextmanager
 def locked(target):
     # Derive the name lexically: resolving a path while its file is being

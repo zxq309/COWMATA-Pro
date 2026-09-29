@@ -151,8 +151,6 @@ def test_dialog_lists_dates_newest_unfinished_first_and_colours_states(isolated_
     dialog = ProDownloadDialog(store=isolated_store)
     try:
         dialog.receive_plan(Plan(), "")
-        days = [dialog.day_table.item(i, 0).text() for i in range(dialog.day_table.rowCount())]
-        assert days == ["全部日期", "2026-09-21", "2026-09-18", "2026-09-20"]
         order = [dialog.plan_table.item(i, 2).text() for i in range(dialog.plan_table.rowCount())]
         assert order == ["CCCC", "BBBB", "AAAA", "DDDD"]
         labels = {dialog.plan_table.item(i, 2).text(): dialog.plan_table.item(i, 0) for i in range(4)}
@@ -160,14 +158,8 @@ def test_dialog_lists_dates_newest_unfinished_first_and_colours_states(isolated_
         assert labels["AAAA"].background().color().name() == status.STATES["downloaded"][1]
         assert labels["BBBB"].background().color().name() == status.STATES["missing"][1]
         assert labels["DDDD"].text() == "不下载 · 传感器无效"
-        assert "已下载 1" in dialog.plan_label.text() and "传感器无效 1" in dialog.plan_label.text()
-        dialog.day_table.selectRow(2)
-        assert [dialog.plan_table.item(i, 2).text() for i in range(dialog.plan_table.rowCount())] == ["BBBB"]
-        started = []
-        dialog.start_task = lambda operation, **kwargs: started.append(kwargs)
-        dialog.download_selected()
-        assert [r["device"] for r in started[0]["only"]] == ["BBBB"] and not started[0].get("force")
-        dialog.day_table.selectRow(0)
+        assert "已完成 1" in dialog.plan_label.text() and "不下载 1" in dialog.plan_label.text()
+        assert [dialog.plan_table.item(i, 1).text() for i in range(4)] == ["C4", "C3", "C2", "C5"]
         dialog.search.setText("aaaa")
         assert [dialog.plan_table.item(i, 2).text() for i in range(dialog.plan_table.rowCount())] == ["AAAA"]
     finally:

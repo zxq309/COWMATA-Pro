@@ -136,7 +136,7 @@ class LedgerHost(QObject):
         root = data_root(account["username"])
         root.mkdir(parents=True, exist_ok=True)
         store = Store(root)
-        store.configure({key: DEFAULTS[key] for key in ("host", "port", "user")})
+        store.configure({key: DEFAULTS[key] for key in ("host", "port", "user", "server_file")})
         self.view = _window_class()(self, store, account)
         self.view.destroyed.connect(self._released)
         self.view.show()
