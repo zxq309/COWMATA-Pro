@@ -1,9 +1,10 @@
 """4.4.1: start / stop the calving decider (决策器) next to the downloader.
 
-The decider is the trainer's algorithm package (``<drive>\\3_训练器\\产犊\\算法\\<version>``) run as
-``calving.py watch``: it re-decides a 待产犊 cow whenever new complete JSON files of its wearing
-arrive and writes ``<drive>\\4_决策器\\产犊`` (decision CSVs + the terminal APP). Downloading starts
-it; pausing the download or quitting the Annotator stops it. Missing package → nothing happens.
+The decider is its own package (``<drive>\\4_决策器\\产犊\\预测算法\\<version>``), separate from the
+trainer: it loads its own copy of the trainer's model and runs ``calving.py watch``, re-deciding a
+待产犊 cow whenever new complete JSON files of its wearing arrive, and writes ``<drive>\\4_决策器\\产犊``
+(decision CSVs + the terminal APP). Downloading starts it; pausing the download or quitting the
+Annotator stops it. Missing package → nothing happens.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from pathlib import Path
 
 from .paths import APP_ROOT, _drives
 
-ALGORITHMS = ("3_训练器", "产犊", "算法")
+ALGORITHMS = ("4_决策器", "产犊", "预测算法")
 DECISIONS = ("4_决策器", "产犊")
 _process = None
 
@@ -24,7 +25,7 @@ def _version_key(name):
 
 
 def algorithm_home(app_root=APP_ROOT):
-    """Newest algorithm package with its own runtime, on the app's drive first."""
+    """Newest decider package with its own runtime, on the app's drive first."""
     anchors = [Path(Path(app_root).anchor)] + [d for d in _drives() if d != Path(Path(app_root).anchor)]
     for anchor in anchors:
         base = anchor.joinpath(*ALGORITHMS)
@@ -66,7 +67,7 @@ def start(log=lambda message: None, app_root=APP_ROOT):
         return True
     home = algorithm_home(app_root)
     if home is None:
-        log("未找到决策器（3_训练器\\产犊\\算法\\<版本>），只下载不决策")
+        log("未找到决策器（4_决策器\\产犊\\预测算法\\<版本>），只下载不决策")
         return False
     (home / ".cache" / "live").mkdir(parents=True, exist_ok=True)
     (home / ".cache" / "live" / "stop").unlink(missing_ok=True)
