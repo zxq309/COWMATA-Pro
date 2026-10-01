@@ -4638,5 +4638,123 @@ ZH_TO_EN.update({'正在完成台账同步，完成后退出。': 'Finishing the
 ZH_TO_EN.update({'训练器生成；默认查找 3_训练器\\产犊\\模型\\<最新版本>\\行为识别': 'Made by the trainer; default: the newest behaviour models of the trainer folder', '未找到行为模型：点“选择行为识别模型目录…”导入 3_训练器\\产犊\\模型\\<版本>\\行为识别。人工标注不受影响。': 'No behaviour model: click “Choose behavior model folder…” and import the trainer\'s behaviour models. Manual annotation is unaffected.', '未找到决策器（4_决策器\\产犊\\预测算法\\<版本>），只下载不决策': 'Decider package not found; downloading without decisions', '实时决策已启动：': 'Real-time decisions started: ', '（新数据到达即重新决策 待产犊 的牛）': ' (awaiting-calving cows are re-decided as new data arrives)', '实时决策已停止': 'Real-time decisions stopped', '待产犊核对：台账已补产犊时间，': 'Awaiting-calving check: calving times filled in the ledger, ', ' 个文件目标已有不同内容，保留在待产犊': ' files kept in awaiting-calving (different file at destination)', ' 个文件归入 ': ' files moved to ', '暂停下载': 'Pause Download', '开始下载': 'Start Download', '决策 APP': 'Decision APP', '按样本试验台账下载：五项已填写、九轴与温度有效的记录，下载九轴、PPG、温度，按台账分类保存（产犊 / 待产犊 / 孕晚期 …）。每轮先刷新台账，并把台账已补产犊时间的待产犊移到产犊或孕晚期。': 'Downloads follow the sample ledger: records with the five fields and valid IMU and temperature get IMU, PPG and temperature, filed by ledger category (calving / awaiting calving / late pregnancy …). Each round refreshes the ledger first and moves awaiting-calving cows whose calving time is now filled in to calving or late pregnancy.', '端侧数据': 'Device Data', '搜索牛号 / 设备号': 'Search cow / device', '下载设置': 'Download Settings', '保存位置': 'Locations', '默认：数据 1_下载器\\扬大_高邮牧场，台账 1_下载器\\扬大_高邮牧场\\台账。': 'Default: the farm folder of the downloader and its ledger folder.', '每轮间隔': 'Interval between rounds', '台账与账号': 'Ledger and Account', '验证当前账号': 'Verify Current Account', '台账：尚未检测': 'Ledger: not checked yet', '连接': 'Connection', '数据接口': 'Data API', '按设备访问数据服务器': 'Query the data server by device', '复用已授权的本机通道': 'Reuse the authorised local channel', 'SSH 直连': 'Direct SSH', '原始数据连接': 'Raw data connection', 'SSH 用户': 'SSH user', 'SSH 私钥': 'SSH key', '远端端口': 'Remote port', '台账服务器 / 端口': 'Ledger server / port', '服务器台账位置': 'Server ledger folder', '台账授权文件': 'Ledger key file', '只刷新台账': 'Refresh Ledger Only', '重新下载所选…': 'Re-download Selected…', '下载中 · 实时': 'Downloading · real time', '正在核对台账…': 'Checking the ledger…', '分类': 'Category', '数据（1_下载器\\牧场）': 'Data (downloader farm folder)', '设置已保存': 'Settings saved', '正在暂停…': 'Pausing…', '已暂停；再次点击“下载”从断点继续': 'Paused; click “Download” to resume', '本轮完成，': 'Round finished, ', ' 分钟后继续下载': ' min until the next round', '还没有决策 APP：下载后由决策器生成': 'No decision APP yet: the decider builds it after downloading', ' · 下载 ': ' · download ', '（已完成 ': ' (done ', ' · 待下载 ': ' · to download ', '） · 不下载 ': ') · skipped ', ' · 待补全 ': ' · incomplete ', '待产犊核对：': 'Awaiting-calving check: ', ' 起，下载到当前 · 每轮间隔 ': ' until now · round interval ', '请先暂停下载再修改设置': 'Pause downloading before changing settings', '已删除 ': 'Deleted ', ' 个未完成的临时文件': ' unfinished temporary files', '\n自 ': '\nFrom ', '本轮完成：新增 ': 'Round finished: new ', ' · 已完成设备日 ': ' · finished device-days ', '待产犊核对未完成：': 'Awaiting-calving check not finished: '})
 NON_TRANSLATABLE = NON_TRANSLATABLE | {'1_下载器', '2_标注器', '3_训练器', '4_决策器', '预测算法', '前端APP', '模型', '待分类', '孕'}
 
+# 4.4.2 reported-bug fixes: source verification guidance, resizable picture-in-picture, confirmation evidence.
+ZH_TO_EN.update({'录像尚未下载完成或暂时无法读取，本次未打入包内：': 'This recording is still downloading or cannot be read yet and was left out of this package: ', '九轴 JSON 行仅用于显示记录和设备信息；请在左侧载入记录。视频时间核验只适用于录像行。': 'IMU JSON rows only show record and device information; load the record from the left panel. Video-time verification applies to video rows only.', '九轴 JSON（信息项）': 'IMU JSON (information only)', '仅录像行支持重建视频索引。': 'Only video rows support rebuilding the video index.', '当前可打开录像时间核验；建议尽量确认两个相隔较远的读数。': 'Video-time verification is available; confirm two readings far apart if possible.', '当前工程只读，不能保存录像核验结果。': 'The project is read-only, so verification results cannot be saved.', '录像（可核验）': 'Video (verifiable)', '待复核表示录像时间戳仍有歧义、冲突，或只有粗定位信息。请选择此行后再用 ROI 或人工读数核验画面时间。': 'Needs review means the recording timestamp is ambiguous, conflicting or only roughly located. Select this row and verify the picture time with ROI or manual readings.', '所选行是九轴 JSON，仅用于载入记录和设备信息。请改选录像行后再核验视频时间。': 'The selected row is an IMU JSON used only to load the record and device information. Select a video row before verifying video time.', '拖动以调整画中画大小': 'Drag to resize the picture-in-picture', '未索引表示录像开始时间尚未可靠读出或索引尚未完成，不等于视频损坏。可先选择对应九轴，让后台按时间查找录像；也可选中此行，点击“重新建立所选视频索引”。': 'Not indexed means the recording start time has not been read reliably or indexing is unfinished; it does not mean the video is damaged. Select the matching IMU record so the background finds the video by time, or select this row and click “Rebuild selected video index”.', '画中画 · 自定义': 'Picture-in-picture · Custom', '该录像仍在等待索引或可读性检查；请先点击“重新建立所选视频索引”，或等待状态变为“可用 / 待复核”后再核验。': 'This recording is still waiting for indexing or a readability check. Click “Rebuild selected video index” or wait until the state becomes Ready / Needs review, then verify.', '该录像当前状态为“{state}”；请先排除素材问题后再核验时间。': 'This recording is currently “{state}”. Resolve the source problem before verifying its time.', '请先选中一行素材。': 'Select a source row first.', '请回看对应动作并等画面到位；旧标注需先转成视频草稿后才能补充证据。': 'Review the action and wait for the picture to be ready; an old label must be turned into a video draft before evidence can be added.'})
+
+
+# 4.4.2 dispatch: fast scan, tolerant packaging, progress with speed and remaining time.
+ZH_TO_EN.update({'  跳过 ': '  Skipped ', ' 个包未生成（原因见上方）。': ' packages not created (reasons above).', ' 个包，': ' packages, ', ' 个录像未打包：': ' recordings not packaged: ', ' 个文件（正在写入、已移走或读取失败），其余照常打包': ' files (still being written, moved away or unreadable); everything else was packaged', ' 分': ' min', ' 分 ': ' min ', ' 小时 ': ' h ', ' 条提示，派包完成后写入派包报告': ' more notes; they are written to the dispatch report after dispatch', ' 缺少 ': ' is missing ', '……另有 ': '…and ', '不是普通文件（链接或目录）': 'Not a regular file (link or folder)', '以下设备日没有可打包的传感器文件，本包不含它们：': 'These device-days have no sensor files to package and are not in this package: ', '任务仍在进行。取消后，已完成的包保留，未完成的包不会生成。确定取消？': 'The task is still running. Cancelling keeps finished packages; unfinished ones are not created. Cancel now?', '剩余约 ': 'about ', '另一个派发任务正在运行，请等它完成后再派包': 'Another dispatch is running. Wait for it to finish, then dispatch.', '合计 ': 'Total ', '复核标注无法读取，未打包：': 'Review label unreadable, not packaged: ', '复核标注未打包': 'Review label not packaged', '失败': 'failed', '对应的原始记录未打包': 'its source record was not packaged', '已清理上次中断留下的临时文件 ': 'Removed temporary files left by an interrupted dispatch: ', '已生成 ': 'Created ', '已生成 · ': 'created · ', '录像不在“视角NN”目录内，未打包：': 'Recording is not inside a numbered view folder, not packaged: ', '所在目录已不存在或是链接': 'Its folder no longer exists or is a link', '打包时文件仍在写入，已按读取到的内容打包：': 'File was still being written; packaged as read: ', '文件已不存在': 'file no longer exists', '无法读取：': 'unreadable: ', '未打包': 'Not packaged', '未打包（': 'Not packaged (', '未打包（链接或文件名不安全）：': 'Not packaged (link or unsafe file name): ', '未生成 · ': 'not created · ', '正在写入，可能仍在下载或复制': 'still being written, possibly downloading or copying', '正在扫描：': 'Scanning: ', '此包没有可打包的传感器资料，已跳过': 'This package has no sensor data to package and was skipped', '此包的传感器文件都无法读取，未生成；请稍后重新派发': "None of this package's sensor files could be read; it was not created. Dispatch it again later.", '派包仍在进行。退出会取消尚未完成的包，已完成的包保留。确定退出？': 'Dispatch is still running. Quitting cancels unfinished packages and keeps finished ones. Quit now?', '派包报告：': 'Dispatch report: ', '派包进行中': 'Dispatch in progress', '视角目录内的子文件夹未打包：': 'Sub-folders inside a view folder are not packaged: ', '视角目录名不是“视角NN”，接收端无法识别，': 'View folder name does not follow the numbered view pattern, so receivers cannot read it; ', '读取中断：': 'Read interrupted: ', '；不影响派包，按现有资料打包': '; dispatch continues with the available data', '；视频按原样存入，不重新压缩。': '; recordings are stored as-is, not recompressed.'})
+
+
+# 4.4.3: each blocked confirmation names its cause and fix; recordings needing a time check are findable.
+ZH_TO_EN.update({
+    ' · 需核验时间': ' · Time check needed',
+    ' 个读数：第 ': ' readings: from second ',
+    ' 段录像需要核验时间。': ' recordings need a time check.',
+    ' 段录像：需核验时间 ': ' recordings: time check needed for ',
+    ' 段，未索引 ': ', not indexed: ',
+    ' 段：需核验时间 ': '; time check needed: ',
+    ' 的录像《': ' recording "',
+    ' 的录像已不在可用素材中（可能被移动、改名、删除或正在复制）。请点左侧“刷新”，等该录像状态变回“可用”后，回到动作画面再点一次。':
+        ' recording is no longer among usable sources (moved, renamed, deleted or still copying). Click Refresh on the left; once it is Ready again, return to the action and try again.',
+    ' 的录像时间核验在记录动作后被修改，原画面证据已失效。请双击这条标注回到动作画面，等画面到位后再点一次。':
+        " recording's time verification changed after the action was recorded, so the earlier picture evidence is void. Double-click the label to return to the action, wait for the picture, then try again.",
+    ' 的画面还在加载。请暂停在动作画面，等视频下方出现“精确暂停帧 … 原片”后，再点一次。':
+        ' picture is still loading. Pause on the action and wait until "Precise pause frame ... original" appears under the video, then try again.',
+    ' 的相机时钟校准在记录动作后被修改，原画面证据已失效。请双击这条标注回到动作画面，等画面到位后再点一次。':
+        ' camera clock calibration changed after the action was recorded, so the earlier picture evidence is void. Double-click the label to return to the action, wait for the picture, then try again.',
+    ' 秒之间算已核验（约占全片 ': ' is verified (about ',
+    ' 秒到第 ': ' to second ',
+    ' 秒，并按文件名/索引时间预填了读数。请与画面上的时间逐字核对（含日期），不一致就改成画面上的时间，再点“确认当前读数”。':
+        ' s and pre-filled the reading from the filename/index time. Compare it character by character with the time in the picture, date included; if it differs, type the time shown in the picture, then click "Confirm reading".',
+    ' 项：录像 ': ' items: recordings ',
+    '1  文件 → 打开工程\n2  上传 → 台账：导入表格并同步\n3  下载 → 端侧数据；下载 → 数据归类\n4  标注：选择记录，标记动作起止，完成本份\n5  工具：时间同步、录像索引、视图与设置\n\n看不懂某条提示：帮助 → 提示信息说明；完整步骤：帮助 → 新手图文教程。\n\nCtrl+O 打开 · Ctrl+S 保存 · Ctrl+U 台账 · Ctrl+D 下载 · Ctrl+E 放大视频 · F1 帮助':
+        '1  File > Open project\n2  Upload > Ledger: import the sheet and sync\n3  Download > Edge data; Download > Data classification\n4  Annotate: pick a record, mark action start/end, finish the record\n5  Tools: time sync, video index, view and settings\n\nA message is unclear: Help > Message guide; full steps: Help > Illustrated tutorial.\n\nCtrl+O open · Ctrl+S save · Ctrl+U ledger · Ctrl+D download · Ctrl+E enlarge video · F1 help',
+    '》在记录动作后发生了变化（被替换、重新转码或仍在复制）。请点左侧“刷新”，等状态变回“可用”后回到动作画面再点一次。':
+        '" changed after the action was recorded (replaced, re-encoded or still copying). Click Refresh on the left; once it is Ready again, return to the action and try again.',
+    '》已保存核验，但只覆盖了约 ': '" verification saved, but it covers only about ',
+    '》时间已核验并保存。等画面重新到位后，就可以确认这段录像上的标注。':
+        '" time verified and saved. Once the picture is ready again, labels on this recording can be confirmed.',
+    '》时间还没有核验（': '" has no verified time (',
+    '下载正在写入此牧场：请等本轮下载结束，或先点“下载 → 暂停下载”，再统一录像目录':
+        'The downloader is writing to this farm. Wait for the current round to end, or click Download > Pause download, then unify the recording folders',
+    '主视角': 'Main view',
+    '九轴所选区间还没有对应的录像时间：请先点“一次对齐”；也可以直接在视频里记录动作草稿。':
+        'The selected IMU range has no matching video time yet: click One-step alignment first, or record the action as a draft directly in the video.',
+    '全部录像': 'All recordings',
+    '全部录像 ': 'All recordings: ',
+    '全部素材': 'All sources',
+    '全部素材 ': 'All sources: ',
+    '共有 ': 'In total ',
+    '去核验该录像': 'Verify this recording',
+    '定位当前画面录像': 'Locate current recording',
+    '工程已保存并暂停，可进行数据归类': 'Project saved and paused; data classification can run now',
+    '已确认': 'Confirmed',
+    '已确认 ': 'Confirmed ',
+    '已确认 1 个读数：只能粗定位，还不能确认真值。请再确认一个相隔较远的读数（建议录像结尾）。':
+        '1 reading confirmed: rough positioning only, labels cannot be confirmed yet. Confirm another reading far apart, ideally at the end of the recording.',
+    '已跳到这条动作的开头。请等视频画面到位（画面下方显示“精确暂停帧 … 原片”），再点一次“确认真值”。':
+        'Jumped to the start of this action. Wait for the picture ("Precise pause frame ... original" under the video), then click Confirm truth again.',
+    '已跳到这条动作的开头。请等视频画面到位（画面下方显示“精确暂停帧 … 原片”），再点一次“补充证据”。':
+        'Jumped to the start of this action. Wait for the picture ("Precise pause frame ... original" under the video), then click Add evidence again.',
+    '当前时刻勾选的视角都没有录像画面，无法核对动作。请在左侧“视角”勾选能拍到这头牛的视角；若这个时段确实没有录像，可用“工具 → 时间同步 → 下一录像时段”找到有录像的时段。':
+        'None of the checked views has a recording at this moment, so the action cannot be checked. Check a view that shows this cow under Views on the left; if there is no recording here, use Tools > Time sync > Next recorded period.',
+    '当前时刻暂未匹配录像 · 仍有未检索素材，可用「工具 → 录像 → 扩大检索」继续检索':
+        'No recording matched yet · some files are unsearched; continue with Tools > Recordings > Expand search',
+    '当前画面没有正在显示的录像：请先在主界面定位到有录像的时刻。':
+        'No recording is showing right now: move to a moment with video in the main window first.',
+    '当前记录用到 ': 'The current record uses ',
+    '当前记录用到的录像': 'Recordings used by current record',
+    '录像《': 'Recording "',
+    '提示信息说明…': 'Message guide…',
+    '操作：① 点“读取开头画面”；② 对照画面上的时间，核对或修改“画面读数”（日期也要核对）；③ 点“确认当前读数”；④ 点“读取结尾画面”，重复 ② ③；⑤ 点“保存”。两个读数之间的录像才算已核验，开头、结尾各确认一个最省事。原始录像不会修改。':
+        'Steps: 1) click Read start frame; 2) compare the reading with the time in the picture and correct it if needed, date included; 3) click Confirm reading; 4) click Read end frame and repeat 2-3; 5) click Save. Only the part between two readings counts as verified, so one reading at the start and one at the end is easiest. The original recording is never modified.',
+    '旧标注·待确认': 'Old label · to confirm',
+    '显示': 'Show',
+    '未知文件': 'unknown file',
+    '未索引的录像会在后台按需读取，稍后自动出现时间。': 'Unindexed recordings are read in the background on demand; their times appear shortly.',
+    '没有需要核验时间的录像。': 'No recording needs a time check.',
+    '视频数据包时钟不连续（录像机中途断流或校时），需人工核验时间：左侧“核验” → 选中这段录像 → 核验所选视频时间':
+        'Video packet clock is discontinuous (recorder dropout or clock change); verify the time manually: Verify on the left > select this recording > Verify selected video time',
+    '视频时长无法读取：文件可能没下载完或已损坏。请重新下载这段录像，或用「下载 → 数据归类 → 录像转码与归类」重新处理':
+        'Cannot read the video duration: the file may be incomplete or damaged. Download this recording again, or reprocess it with Download > Data classification > Video transcode and classification',
+    '视频画面证据暂不可用。请双击这条标注回到动作画面，等画面到位后再点一次。':
+        'Video picture evidence is not available. Double-click the label to return to the action, wait for the picture, then try again.',
+    '请先在右侧标注列表中选中一条标注或视频草稿，再点“补充证据”。': 'Select a label or video draft in the label list on the right, then click Add evidence.',
+    '请先在右侧标注列表中选中一条视频草稿或待确认的标注，再点“确认真值”。':
+        'Select a video draft or a label awaiting confirmation in the label list on the right, then click Confirm truth.',
+    '请先点“一次对齐”，让九轴与录像建立对应关系；草稿已经保留': 'Click One-step alignment first so the IMU and video are matched; the draft is kept',
+    '请先用「下载 → 数据归类 → 录像转码与归类」转为 MP4，再加载到标注界面。':
+        'Convert to MP4 with Download > Data classification > Video transcode and classification first, then load it for annotation.',
+    '读取开头画面': 'Read start frame',
+    '读取结尾画面': 'Read end frame',
+    '还不能确认真值': 'Cannot confirm yet',
+    '还不能补充证据': 'Cannot add evidence yet',
+    '还没有读数。': 'No readings yet.',
+    '还没有载入并对齐九轴记录：请先在左侧选择一条记录，或改看“需要核验时间的录像”。':
+        'No aligned IMU record is loaded: pick a record on the left first, or switch to Recordings needing a time check.',
+    '这条是已保存的标注，不需要单独补充证据：双击它回到动作画面，等画面到位后直接点“确认真值”，软件会自动记下当时的画面证据。':
+        'This is a saved label and needs no separate evidence: double-click it to return to the action, wait for the picture, then click Confirm truth; the picture evidence is recorded automatically.',
+    '这条标注已经确认为真值，不需要再次确认；修改标签或起止后才需要重新确认。':
+        'This label is already confirmed; it needs confirming again only after its label or start/end changes.',
+    '这条标注还没有九轴与录像的对应关系：请先点“一次对齐”，再确认。':
+        'This label has no IMU-to-video mapping yet: click One-step alignment first, then confirm.',
+    '这段录像的画面时间还没核验，录像上的标注暂时不能确认真值。选中此行后点“核验所选视频时间”，在录像开头和结尾各确认一个画面时间并保存。':
+        "This recording's picture time is not verified yet, so labels on it cannot be confirmed. Select this row, click Verify selected video time, confirm one picture time at the start and one at the end, then save.",
+    '选中主视角当前正在显示的那段录像': 'Select the recording the main view is showing now',
+    '需复核': 'Needs review',
+    '需要核验时间的录像': 'Recordings needing a time check',
+    '黄色行＝录像时间还没核验，这段录像上的标注暂时不能确认真值：选中黄色行 → 点“核验所选视频时间”，在录像开头和结尾各确认一个画面时间并保存。九轴 JSON 行只用于显示记录信息，不需要核验。后台抽查录像时间不代表已匹配当前牛，匹配后仍需人工核对画面中的牛。':
+        'Yellow rows = recording time not verified yet, so labels on them cannot be confirmed: select a yellow row > Verify selected video time, confirm one picture time at the start and one at the end, then save. IMU JSON rows only show record information and need no check. A background time sample does not mean the cow is matched; still check the cow in the picture.',
+    '）。这段录像上的标注都在此范围内即可确认真值。': ' of the recording). Labels inside this range can be confirmed.',
+    '），所以不能确认真值。请点“去核验”（或左侧“核验” → 选中黄色行 → “核验所选视频时间”），在录像开头和结尾各确认一个画面时间并保存，然后回到动作画面再点“确认真值”。':
+        '), so the label cannot be confirmed. Click Verify this recording (or Verify on the left > select a yellow row > Verify selected video time), confirm one picture time at the start and one at the end, save, then return to the action and click Confirm truth.',
+    '，九轴 JSON ': ', IMU JSON ',
+    '：两个读数之间才算已核验。如需确认更前或更后的动作，请再核验一次，在开头和结尾各补一个读数。':
+        ': only the part between two readings counts as verified. To confirm earlier or later actions, verify again and add one reading at the start and one at the end.',
+    '；需核验时间 ': '; time check needed: ',
+})
+
+
 if __name__ == "__main__":
     _coverage()

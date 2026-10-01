@@ -65,6 +65,7 @@ from .demand import (
 )
 from .dialogs import MappingDialog, SourceTimeDialog
 from .playback import VideoBoard
+from .review_guidance import SOURCE_STATE_TEXT, confirmation_text, file_label, needs_time_check
 from .sensor_records import load_sensor_json as load_motion_json
 from .signal_panel import TimePositionSpinBox, reference_text
 from .storage import SnapshotWriter, atomic_json, read_json, unique_batch
@@ -348,9 +349,9 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self._button("帧 ]", lambda: self.board.step(1), controls)
         self._button("+10s", lambda: self.board.seek(self.board.reference_ms + 10000), controls)
         self.speed = QComboBox()
-        self.speed.addItems(["0.25×", "0.5×", "1×", "2×", "4×"])
+        self.speed.addItems(["0.25×", "0.5×", "1×", "2×", "4×", "8×", "10×"])
         self.speed.setCurrentIndex(2)
-        self.speed.currentIndexChanged.connect(lambda i: self.board.set_rate([.25, .5, 1, 2, 4][i]))
+        self.speed.currentIndexChanged.connect(lambda i: self.board.set_rate([.25, .5, 1, 2, 4, 8, 10][i]))
         self.board.rateChanged.connect(self._display_rate)
         controls.addWidget(self.speed)
         video_layout.addLayout(controls)
@@ -521,7 +522,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
         if not video:
             return
         if Path(video).suffix.lower() != '.mp4':
-            self.tell('请先在数据准备 → 数据归类中转为 MP4，再加载到标注界面。')
+            self.tell('请先用「下载 → 数据归类 → 录像转码与归类」转为 MP4，再加载到标注界面。')
             return
         raw,_=QFileDialog.getOpenFileName(self,'选择与该录像配对的单个九轴文件','','JSON (*.json)')
         if raw:
@@ -1057,7 +1058,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 self.imu_position.set_clock(None)
                 self.devices.clear()
                 self.records.clear()
-                self.root_label.setText("工程已保存并暂停，可进行数据整理")
+                self.root_label.setText("工程已保存并暂停，可进行数据归类")
                 message = "工程已保存并暂停，文件已释放。现在可执行整理，完成后重新打开工程。"
             except (OSError, ValueError) as exc:
                 message = "暂停失败，工程保留：" + str(exc)
@@ -1929,7 +1930,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
 
     def _display_rate(self, rate):
         self.speed.blockSignals(True)
-        self.speed.setCurrentIndex([.25, .5, 1, 2, 4].index(rate))
+        self.speed.setCurrentIndex([.25, .5, 1, 2, 4, 8, 10].index(rate))
         self.speed.blockSignals(False)
 
     def playback_changed(self, playing):
@@ -1963,6 +1964,17 @@ class MainWindow(AlignmentMixin, QMainWindow):
     @staticmethod
     def video_revision(row):
         return hashlib.sha256(json.dumps(row["metadata"].get("intervals", []), sort_keys=True).encode()).hexdigest()
+
+    def refresh_draft_evidence(self, draft, *, require_valid=False):
+        fresh = self.evidence()
+        if require_valid and not self.validate_evidence(fresh):
+            return False
+        valid = [e for e in draft.get("video_evidence", []) if self.validate_evidence([e])]
+        if fresh:
+            valid.extend(fresh)
+        if valid != draft.get("video_evidence", []):
+            draft["video_evidence"] = valid
+        return bool(valid)
 
     def validate_evidence(self, evidence, *, allow_archived=False):
         usable = [e for e in evidence if e.get("frame_ready") and e.get("verified_interval")]
@@ -2132,7 +2144,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
         if not self.writable_work() or not self.selection:
             return
         if not self.work.clock.anchors:
-            self.tell("九轴所选区间尚无视频对应关系，请先钉住同步点；也可以直接记录视频动作草稿。")
+            self.tell("九轴所选区间还没有对应的录像时间：请先点“一次对齐”；也可以直接在视频里记录动作草稿。")
             return
         start, end = (self.work.clock.map(value) for value in self.selection)
         try:
@@ -2217,7 +2229,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 if entry.t1 is not None:
                     end = reference_text(clock, entry.t1, True) if clock.anchors else f"相对 {entry.t1 / 1000:.3f} 秒"
                 values = ["九轴标注", label.name, start, end,
-                          entry.extras.get("confirmation", "legacy_unreviewed"), entry.note]
+                          confirmation_text(entry.extras.get("confirmation", "legacy_unreviewed")), entry.note]
                 identifier = entry.id
             for j, text in enumerate(values):
                 item = QTableWidgetItem(str(text))
@@ -2275,24 +2287,144 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 (key for key, draft_id in getattr(self, "_plot_drafts", {}).items() if draft_id == value), None)
         self.plot.set_selected_event(identifier)
 
+    ACTION_TOLERANCE_MS = 3000
+
+    def entry_span(self, kind, entry):
+        """Reference-clock span of a draft or saved label; None before alignment."""
+        if kind == "draft":
+            start = entry["reference_start"]
+            end = entry["reference_end"] if entry["reference_end"] is not None else start
+            return min(start, end), max(start, end)
+        if not self.work or not self.work.clock.anchors:
+            return None
+        start = self.work.clock.map(entry.t0)
+        end = self.work.clock.map(entry.t1) if entry.t1 is not None else start
+        return min(start, end), max(start, end)
+
+    def board_at(self, span):
+        """True when the paused video shows this action (with a small margin)."""
+        if span is None:
+            return False
+        position = self.board.reference_ms
+        return span[0] - self.ACTION_TOLERANCE_MS <= position <= span[1] + self.ACTION_TOLERANCE_MS
+
+    def go_to_action(self, span):
+        """Show the selected action's first frame, even when 同步跟随 is off."""
+        self.review_selected()
+        if abs(self.board.reference_ms - span[0]) > 1:
+            self.board.seek(span[0])
+
+    def _evidence_row(self, item):
+        rows = [r for r in self.rows if r["asset_id"] and r["asset_id"] == item.get("asset_id")]
+        return next((r for r in rows if r["state"] in {"ready", "review"}), rows[0] if rows else None)
+
+    def evidence_problem(self, evidence):
+        """Why the live picture cannot confirm truth, as (next step, video row to verify or None)."""
+        items = sorted((e for e in evidence or [] if isinstance(e, dict)),
+                       key=lambda e: e.get("camera") != self.board.main_camera)
+        if not items:
+            return ("当前时刻勾选的视角都没有录像画面，无法核对动作。请在左侧“视角”勾选能拍到这头牛的视角；"
+                    "若这个时段确实没有录像，可用“工具 → 时间同步 → 下一录像时段”找到有录像的时段。", None)
+        usable = [e for e in items if e.get("frame_ready") and e.get("verified_interval")]
+        if not usable:
+            loading = next((e for e in items if e.get("verified_interval")), None)
+            if loading is not None:
+                return (f"{loading.get('camera') or '主视角'} 的画面还在加载。请暂停在动作画面，等视频下方出现"
+                        "“精确暂停帧 … 原片”后，再点一次。", None)
+            item = items[0]
+            row = self._evidence_row(item)
+            state = SOURCE_STATE_TEXT.get(row["state"], row["state"]) if row else "未知"
+            return (f"{item.get('camera') or '当前视角'} 的录像《{file_label(row) if row else '未知文件'}》时间还没有核验（{state}），"
+                    "所以不能确认真值。请点“去核验”（或左侧“核验” → 选中黄色行 → “核验所选视频时间”），"
+                    "在录像开头和结尾各确认一个画面时间并保存，然后回到动作画面再点“确认真值”。",
+                    row if row and row["state"] in {"ready", "review"} and not self.catalog.readonly else None)
+        maps = self.settings.get("camera_maps", {})
+        for item in usable:
+            camera = item.get("camera") or "当前视角"
+            if item.get("camera_mapping_revision") != maps.get(item.get("camera"), {}).get("revision", "uncalibrated"):
+                return (f"{camera} 的相机时钟校准在记录动作后被修改，原画面证据已失效。请双击这条标注回到动作画面，"
+                        "等画面到位后再点一次。", None)
+            row = self._evidence_row(item)
+            if row is None or row["state"] not in {"ready", "review"}:
+                return (f"{camera} 的录像已不在可用素材中（可能被移动、改名、删除或正在复制）。请点左侧“刷新”，"
+                        "等该录像状态变回“可用”后，回到动作画面再点一次。", None)
+            try:
+                changed = file_stamp(self.catalog.source_path(row["path"])) != row["stamp"]
+            except OSError:
+                changed = True
+            if changed:
+                return (f"{camera} 的录像《{file_label(row)}》在记录动作后发生了变化（被替换、重新转码或仍在复制）。"
+                        "请点左侧“刷新”，等状态变回“可用”后回到动作画面再点一次。", None)
+            if self.video_revision(row) != item.get("video_revision"):
+                return (f"{camera} 的录像时间核验在记录动作后被修改，原画面证据已失效。请双击这条标注回到动作画面，"
+                        "等画面到位后再点一次。", None)
+        return ("视频画面证据暂不可用。请双击这条标注回到动作画面，等画面到位后再点一次。", None)
+
+    def explain_blocked(self, title, message, row=None):
+        self.event_status.setText(message)
+        self.event_status.setToolTip(message)
+        self.tell(message)
+        if row is None or not self.isVisible():
+            return
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(title)
+        box.setText(message)
+        verify = box.addButton("去核验该录像", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        chosen = box.clickedButton() is verify
+        box.deleteLater()
+        if chosen:
+            self.edit_source(row)
+
     def confirm_selected(self):
         if not self.writable_work():
             return
         selected = self.selected_entry()
         if not selected:
-            self.tell("请先在表格中选择一条视频草稿或待复核标注")
+            self.tell("请先在右侧标注列表中选中一条视频草稿或待确认的标注，再点“确认真值”。")
             return
         kind, identifier = selected
         try:
             if kind == "event":
                 event = next(e for e in self.work.project.events if e.id == identifier)
-                identifier = event.extras.get("draft_id")
-                if identifier is None:
-                    raise ValueError("这是已有标签，请直接复核修改；确认真值按钮用于具备同步和证据的视频草稿，无须新建重复标签")
+                linked = event.extras.get("draft_id")
+                draft = next((d for d in self.work.drafts if d["id"] == linked), None) if linked else None
+                if draft is None and event.extras.get("confirmation") == "confirmed":
+                    self.tell("这条标注已经确认为真值，不需要再次确认；修改标签或起止后才需要重新确认。")
+                    return
+                span = self.entry_span("draft", draft) if draft is not None else self.entry_span("event", event)
+                if span is None:
+                    raise ValueError("这条标注还没有九轴与录像的对应关系：请先点“一次对齐”，再确认。")
+            else:
+                draft = next(d for d in self.work.drafts if d["id"] == identifier)
+                span = self.entry_span("draft", draft)
+            at_action = self.board_at(span)
+            if draft is not None:
+                # Operators often pause on the reviewed frame and confirm at
+                # once; take the live proof only while the action is on screen.
+                if at_action:
+                    self.refresh_draft_evidence(draft, require_valid=True)
+                ready = self.validate_evidence(draft.get("video_evidence", []))
+            else:
+                live = self.evidence() if at_action else []
+                ready = self.validate_evidence(live)
+            if not ready:
+                if not at_action:
+                    self.go_to_action(span)
+                    self.tell("已跳到这条动作的开头。请等视频画面到位（画面下方显示“精确暂停帧 … 原片”），再点一次“确认真值”。")
+                    return
+                message, row = self.evidence_problem(self.evidence())
+                self.explain_blocked("还不能确认真值", message, row)
+                return
             self.check_active_sources()
-            confirmed = self.work.confirm_draft(identifier, self.motion.duration_ms, source_available=self.source_available,
-                                                evidence_validator=self.validate_evidence)
-            self.refresh_events()
+            options = dict(source_available=self.source_available, evidence_validator=self.validate_evidence)
+            if draft is not None:
+                confirmed = self.work.confirm_draft(draft["id"], self.motion.duration_ms, **options)
+            else:
+                confirmed = self.work.confirm_event(event.id, live, self.motion.duration_ms, **options)
+            self.refresh_events(preferred=("event", confirmed.id))
             self.dirty = True
             self.save_current()
             self.tell("已确认九轴真值，保留视频资产、真实样本范围和同步版本。")
@@ -2457,19 +2589,30 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.tell(str(exc))
 
     def update_evidence(self):
-        if not self.writable_work() or not self.selected_entry():
+        if not self.writable_work():
+            return
+        if not self.selected_entry():
+            self.tell("请先在右侧标注列表中选中一条标注或视频草稿，再点“补充证据”。")
             return
         kind, identifier = self.selected_entry()
         if kind == "event":
             event = next(e for e in self.work.project.events if e.id == identifier)
             identifier = event.extras.get("draft_id")
         draft = next((d for d in self.work.drafts if d["id"] == identifier), None)
-        fresh = self.evidence()
-        if not draft or not self.validate_evidence(fresh):
-            self.tell("请回看对应动作并等画面到位；旧标注需先建立视频草稿。")
+        if not draft:
+            self.tell("这条是已保存的标注，不需要单独补充证据：双击它回到动作画面，等画面到位后直接点“确认真值”，"
+                      "软件会自动记下当时的画面证据。")
+            return
+        span = self.entry_span("draft", draft)
+        if not self.board_at(span):
+            self.go_to_action(span)
+            self.tell("已跳到这条动作的开头。请等视频画面到位（画面下方显示“精确暂停帧 … 原片”），再点一次“补充证据”。")
+            return
+        if not self.refresh_draft_evidence(draft, require_valid=True):
+            message, row = self.evidence_problem(self.evidence())
+            self.explain_blocked("还不能补充证据", message, row)
             return
         self.work.checkpoint()
-        draft["video_evidence"] = [e for e in draft["video_evidence"] if self.validate_evidence([e])] + fresh
         if kind == "event":
             event.extras["confirmation"] = "needs_review"
         self.dirty = True
@@ -2700,69 +2843,180 @@ class MainWindow(AlignmentMixin, QMainWindow):
         if self.dirty and available:
             self.save_current(background=True)
 
+    def record_videos_for_review(self):
+        """Videos the loaded record plays, plus not-yet-indexed ones named inside its time span."""
+        rows = list(self.window_videos())
+        if self.motion and self.work and self.work.clock.anchors:
+            from .video_names import filename_wall
+            lo, hi = sorted((self.work.clock.map(0), self.work.clock.map(self.motion.duration_ms)))
+            known = {r["path"] for r in rows}
+            for row in self.rows:
+                if row["kind"] != "video" or row["path"] in known or row["state"] != "pending":
+                    continue
+                start = filename_wall(row["path"])
+                if start is not None and lo - 3600000 <= start <= hi + 30000:
+                    rows.append(row)
+        return rows
+
     def source_manager(self):
         if not self.catalog:
             self.tell("请先打开数据工程")
             return
         dialog = QDialog(self)
         dialog.setWindowTitle("素材索引 · 重名按批次/内容身份区分")
-        dialog.resize(1150, 650)
+        dialog.resize(1180, 680)
         layout = QVBoxLayout(dialog)
-        table = QTableWidget(len(self.rows), 5)
-        guidance = QLabel("悬停“状态 / 开始时间”查看下一步。后台抽查录像时间不代表已匹配当前牛；匹配时间后仍需人工核对画面中的牛。")
+        guidance = QLabel("黄色行＝录像时间还没核验，这段录像上的标注暂时不能确认真值：选中黄色行 → 点“核验所选视频时间”，"
+                          "在录像开头和结尾各确认一个画面时间并保存。九轴 JSON 行只用于显示记录信息，不需要核验。"
+                          "后台抽查录像时间不代表已匹配当前牛，匹配后仍需人工核对画面中的牛。")
         guidance.setWordWrap(True)
         layout.addWidget(guidance)
+        filters = QHBoxLayout()
+        filters.addWidget(QLabel("显示"))
+        scope = QComboBox()
+        for title, key in (("当前记录用到的录像", "record"), ("需要核验时间的录像", "verify"),
+                           ("全部录像", "video"), ("全部素材", "all")):
+            scope.addItem(title, key)
+        filters.addWidget(scope)
+        summary = QLabel()
+        summary.setWordWrap(True)
+        filters.addWidget(summary, 1)
+        layout.addLayout(filters)
+        table = QTableWidget(0, 5)
         table.setHorizontalHeaderLabels(["相对路径", "类型", "状态", "开始时间 / 设备", "说明"])
         table.setColumnWidth(0, 360)
+        table.setColumnWidth(2, 150)
         table.horizontalHeader().setStretchLastSection(True)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         snapshot = []
+        shown = {"rows": None, "scope": None}
         catalog = self.catalog
-        def refresh():
+        highlight = QColor("#FFF1CC")
+
+        if self.motion and self.work and self.work.clock.anchors:
+            scope.setCurrentIndex(0)
+        elif any(needs_time_check(r) for r in self.rows):
+            scope.setCurrentIndex(1)
+        else:
+            scope.setCurrentIndex(3)
+
+        def selection_state():
+            if table.currentRow() < 0 or table.currentRow() >= len(snapshot):
+                return None
+            return self.source_verification_state(snapshot[table.currentRow()])
+
+        def update_buttons():
+            state = selection_state()
+            verify_button.setEnabled(bool(state and state["can_verify"]))
+            recheck_button.setEnabled(bool(state and state["can_recheck"]))
+            tip = state["message"] if state else "请先选中一行素材。"
+            verify_button.setToolTip(tip)
+            recheck_button.setToolTip(tip if state and state["can_recheck"] else "仅录像行支持重建视频索引。")
+
+        def visible_rows():
+            key = scope.currentData()
+            if key == "record":
+                rows = self.record_videos_for_review()
+            elif key == "verify":
+                rows = [r for r in self.rows if needs_time_check(r)]
+            elif key == "video":
+                rows = [r for r in self.rows if r["kind"] == "video"]
+            else:
+                return list(self.rows)
+            return sorted(rows, key=lambda r: (not needs_time_check(r), r["state"] == "pending", r["path"]))
+
+        def describe(rows):
+            check = sum(needs_time_check(r) for r in rows)
+            pending = sum(r["kind"] == "video" and r["state"] == "pending" for r in rows)
+            key = scope.currentData()
+            if key == "record":
+                if not (self.motion and self.work and self.work.clock.anchors):
+                    return "还没有载入并对齐九轴记录：请先在左侧选择一条记录，或改看“需要核验时间的录像”。"
+                text = f"当前记录用到 {len(rows)} 段录像：需核验时间 {check} 段，未索引 {pending} 段。"
+                if pending:
+                    text += "未索引的录像会在后台按需读取，稍后自动出现时间。"
+                return text
+            if key == "verify":
+                return f"共有 {check} 段录像需要核验时间。" if check else "没有需要核验时间的录像。"
+            if key == "video":
+                return f"全部录像 {len(rows)} 段：需核验时间 {check} 段，未索引 {pending} 段。"
+            videos = sum(r["kind"] == "video" for r in rows)
+            return f"全部素材 {len(rows)} 项：录像 {videos}，九轴 JSON {len(rows) - videos}；需核验时间 {check} 段。"
+
+        def refresh(force=False):
             if self.catalog is not catalog or self._closed:
                 dialog.reject()
                 return
-            if snapshot == self.rows:
+            if not force and shown["rows"] == self.rows and shown["scope"] == scope.currentData():
+                update_buttons()
                 return
             selected = snapshot[table.currentRow()]["path"] if 0 <= table.currentRow() < len(snapshot) else None
-            snapshot[:] = self.rows
+            shown["rows"], shown["scope"] = list(self.rows), scope.currentData()
+            snapshot[:] = visible_rows()
+            summary.setText(describe(snapshot))
             table.setRowCount(len(snapshot))
             for i, row in enumerate(snapshot):
                 explanation = row["error"] or row["metadata"].get("reason") or "; ".join(row["metadata"].get("warnings", []))
-                if row["state"] == "pending" and explanation == "等待文件稳定及可读性检查":
-                    explanation = ("尚未索引；选择九轴后自动检索对应录像，也可在录像索引菜单启动完整索引。" if row["kind"] == "video" else
-                                   "九轴尚未读取；在左侧选择此记录后自动加载，不需要逐一处理所有 JSON。")
-                state = {"pending": "未索引", "ready": "可用", "review": "待复核", "invalid": "异常",
-                         "ignored": "已忽略", "missing": "缺失"}.get(row["state"], row["state"])
-                values = [row["path"], row["kind"], state,
+                state = SOURCE_STATE_TEXT.get(row["state"], row["state"])
+                check = needs_time_check(row)
+                if check:
+                    state += " · 需核验时间"
+                kind = "录像（可核验）" if row["kind"] == "video" else "九轴 JSON（信息项）" if row["kind"] == "imu" else row["kind"]
+                values = [row["path"], kind, state,
                           row["metadata"].get("start_display") or row["metadata"].get("device", ""), explanation]
                 help_text = explanation
                 if row["kind"] == "video":
                     if row["state"] == "pending":
-                        help_text = ("待确认：录像开始时间尚未可靠读出或索引尚未完成，不等于视频损坏。\n"
-                                     "下一步：先选择要标注的九轴，后台会按其时间查找录像；也可选中此行，点击“重新建立所选视频索引”。\n"
-                                     "状态变为“可用 / 待复核”后，才能点击“核验所选视频时间 / 框选 ROI”人工校准。")
-                    elif row["state"] == "review" or values[3] == "待确认":
-                        help_text = ("待确认 / 待复核：录像时间戳未读清、存在冲突，或只有粗定位信息；不是牛身份已确认。\n"
-                                     "下一步：选中此行，点击“核验所选视频时间 / 框选 ROI”，框住画面时间戳；"
-                                     "或在两个不同播放位置输入画面显示的完整日期时间，保存后核对与九轴是否同步。")
+                        help_text = "未索引表示录像开始时间尚未可靠读出或索引尚未完成，不等于视频损坏。可先选择对应九轴，让后台按时间查找录像；也可选中此行，点击“重新建立所选视频索引”。"
+                    elif check:
+                        help_text = ("这段录像的画面时间还没核验，录像上的标注暂时不能确认真值。选中此行后点“核验所选视频时间”，"
+                                     "在录像开头和结尾各确认一个画面时间并保存。")
                     if explanation and help_text != explanation:
-                        help_text += "\n" + explanation
+                        help_text = f"{help_text}\n{explanation}"
+                elif row["kind"] == "imu" and not explanation:
+                    help_text = "九轴 JSON 行仅用于显示记录和设备信息；请在左侧载入记录。视频时间核验只适用于录像行。"
                 for j, value in enumerate(values):
                     item = QTableWidgetItem(str(value))
                     item.setToolTip(help_text if j in {2, 3, 4} else str(value))
+                    if check:
+                        item.setBackground(highlight)
                     table.setItem(i, j, item)
                 if row["path"] == selected:
                     table.selectRow(i)
-        refresh()
+            update_buttons()
+
+        def locate_current():
+            tile = self.board.tiles.get(self.board.main_camera)
+            asset = getattr(tile, "asset_id", None) if tile is not None and getattr(tile, "interval", None) else None
+            target = next((r for r in self.rows if r["kind"] == "video" and asset and r["asset_id"] == asset), None)
+            if target is None:
+                summary.setText("当前画面没有正在显示的录像：请先在主界面定位到有录像的时刻。")
+                return
+            if all(r["path"] != target["path"] for r in snapshot):
+                scope.setCurrentIndex(2)
+                refresh(force=True)
+            index = next(i for i, r in enumerate(snapshot) if r["path"] == target["path"])
+            table.selectRow(index)
+            table.scrollToItem(table.item(index, 0))
+
+        def verify_row(*_):
+            if 0 <= table.currentRow() < len(snapshot):
+                self.edit_source(snapshot[table.currentRow()])
+
+        layout.addWidget(table)
+        buttons = QHBoxLayout()
+        verify_button = self._button("核验所选视频时间 / 框选 ROI", verify_row, buttons)
+        recheck_button = self._button("重新建立所选视频索引",
+                                      lambda: self.worker.request("recheck", snapshot[table.currentRow()]["path"]) if self.worker and table.currentRow() >= 0 else None, buttons)
+        self._button("定位当前画面录像", locate_current, buttons).setToolTip("选中主视角当前正在显示的那段录像")
+        table.itemSelectionChanged.connect(update_buttons)
+        table.cellDoubleClicked.connect(lambda *_: verify_row() if verify_button.isEnabled() else None)
+        scope.currentIndexChanged.connect(lambda *_: refresh(force=True))
+        refresh(force=True)
         timer = QTimer(dialog)
         timer.timeout.connect(refresh)
         timer.start(500)
-        layout.addWidget(table)
-        buttons = QHBoxLayout()
-        self._button("核验所选视频时间 / 框选 ROI", lambda: self.edit_source(snapshot[table.currentRow()]) if table.currentRow() >= 0 else None, buttons)
-        self._button("重新建立所选视频索引", lambda: self.worker.request("recheck", snapshot[table.currentRow()]["path"]) if self.worker and table.currentRow() >= 0 else None, buttons)
         layout.addLayout(buttons)
         box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         box.rejected.connect(dialog.reject)
@@ -2773,31 +3027,61 @@ class MainWindow(AlignmentMixin, QMainWindow):
             timer.stop()
             dialog.deleteLater()
 
+    def source_verification_state(self, row):
+        state_text = SOURCE_STATE_TEXT.get(row.get("state"), row.get("state", ""))
+        if row.get("kind") != "video":
+            return {"can_verify": False, "can_recheck": False,
+                    "message": "所选行是九轴 JSON，仅用于载入记录和设备信息。请改选录像行后再核验视频时间。"}
+        if not self.catalog or self.catalog.readonly:
+            return {"can_verify": False, "can_recheck": False,
+                    "message": "当前工程只读，不能保存录像核验结果。"}
+        if row.get("state") in {"ready", "review"}:
+            return {"can_verify": True, "can_recheck": True,
+                    "message": "当前可打开录像时间核验；建议尽量确认两个相隔较远的读数。"}
+        if row.get("state") == "pending":
+            return {"can_verify": False, "can_recheck": True,
+                    "message": "该录像仍在等待索引或可读性检查；请先点击“重新建立所选视频索引”，或等待状态变为“可用 / 待复核”后再核验。"}
+        return {"can_verify": False, "can_recheck": row.get("state") not in {"missing", "ignored"},
+                "message": "该录像当前状态为“{state}”；请先排除素材问题后再核验时间。".format(state=state_text)}
+
     def edit_source(self, row):
-        if row["kind"] != "video" or row["state"] not in {"ready", "review"} or self.catalog.readonly:
-            self.tell("请先等待视频通过可读性检查，再核验时间")
+        state = self.source_verification_state(row)
+        if not state["can_verify"]:
+            self.tell(state["message"])
             return
         dialog = SourceTimeDialog(self.catalog, row, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            readings, roi, camera = dialog.readings, dialog.canvas.roi, dialog.camera.text().strip()
+        finally:
+            dialog.deleteLater()
         from .clocks import manual_video_metadata
         try:
             if file_stamp(self.catalog.source_path(row['path'])) != row['stamp']:
                 raise ValueError('录像在核验期间发生变化，请刷新后重新核验。')
-            metadata = manual_video_metadata(row['metadata'],dialog.readings)
+            metadata = manual_video_metadata(row['metadata'],readings)
         except (ValueError,OSError) as exc:
             self.tell(str(exc))
             return
-        metadata["roi"] = dialog.canvas.roi
-        self.settings.setdefault("camera_overrides", {})[row["asset_id"]] = dialog.camera.text().strip()
+        metadata["roi"] = roi
+        self.settings.setdefault("camera_overrides", {})[row["asset_id"]] = camera
         # Manual work is also outside the rebuildable DB.
         atomic_json(self.catalog.meta / "video_corrections" / (row["asset_id"] + ".json"),
-                    {"asset_id": row["asset_id"], "readings": dialog.readings, "roi": dialog.canvas.roi,
-                     "camera": dialog.camera.text().strip(), "intervals": metadata.get("intervals", [])})
+                    {"asset_id": row["asset_id"], "readings": readings, "roi": roi,
+                     "camera": camera, "intervals": metadata.get("intervals", [])})
         self.catalog.update_metadata(row["asset_id"], metadata)
         self.save_current()
         self.scan_completed(None)
         self.board.seek(self.board.reference_ms)
+        from .review_guidance import verified_share
+        share = verified_share({**row, "metadata": metadata})
+        if share >= 0.95:
+            self.tell(f"录像《{file_label(row)}》时间已核验并保存。等画面重新到位后，就可以确认这段录像上的标注。")
+        else:
+            self.tell(f"录像《{file_label(row)}》已保存核验，但只覆盖了约 {share:.0%}：两个读数之间才算已核验。"
+                      "如需确认更前或更后的动作，请再核验一次，在开头和结尾各补一个读数。")
+        return True
 
     def new_batch(self):
         if not self.catalog or self.catalog.readonly:
@@ -3208,3 +3492,4 @@ class MainWindow(AlignmentMixin, QMainWindow):
             catalog.close()
         self.retired.clear()
         event.accept()
+

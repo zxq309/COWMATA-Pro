@@ -263,7 +263,8 @@ class HistoryWindow(QMainWindow):
             if event.t1 is not None:
                 end = reference_text(clock, event.t1, True) if clock.anchors else f"相对 {event.t1 / 1000:.3f} 秒"
                 ending = f" – {end}"
-            item = QListWidgetItem(f"{label} · {start}{ending}\n{event.extras.get('confirmation', 'legacy_unreviewed')} · {event.note}")
+            from .review_guidance import confirmation_text
+            item = QListWidgetItem(f"{label} · {start}{ending}\n{confirmation_text(event.extras.get('confirmation', 'legacy_unreviewed'))} · {event.note}")
             item.setData(Qt.ItemDataRole.UserRole, ("event", event.id))
             item.setToolTip(item.text())
             self.events.addItem(item)

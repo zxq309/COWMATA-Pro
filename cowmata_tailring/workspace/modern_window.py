@@ -304,9 +304,10 @@ class MainWindow(ControllerWindow):
         self.layout_choice.setParent(self.options)
         self.layout_choice.hide()  # legacy indices remain persisted separately
         self.pip_size = QComboBox()
-        self.pip_size.addItems(["画中画 · 小", "画中画 · 中", "画中画 · 大"])
+        self.pip_size.addItems(["画中画 · 小", "画中画 · 中", "画中画 · 大", "画中画 · 自定义"])
         self.pip_size.setCurrentIndex(1)
         self.pip_size.currentIndexChanged.connect(self.resize_pip)
+        self.stage.pipResized.connect(self._pip_customised)
         options.addWidget(self.pip_size)
         self.wave_size = QComboBox()
         self.wave_size.addItems(["底部波形 · 紧凑", "底部波形 · 标准", "底部波形 · 较大"])
@@ -554,6 +555,7 @@ class MainWindow(ControllerWindow):
         help_menu = menu(bar, "帮助")
         self._action(help_menu, "快速开始", self.quick_help, "F1")
         self._action(help_menu, "新手图文教程…", self.open_tutorial)
+        self._action(help_menu, "提示信息说明…", self.open_prompt_guide)
         help_menu.addSeparator()
         self.account_menu = menu(help_menu, "账号")
         help_menu.addSeparator()
@@ -761,12 +763,15 @@ class MainWindow(ControllerWindow):
         super().open_candidates()
 
     def open_tutorial(self):
+        self._open_document("operator-guide-443.html")
+
+    def open_prompt_guide(self):
+        self._open_document("prompt-guide-443.html")
+
+    def _open_document(self, name):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
-        path = Path(__file__).resolve().parents[2] / "docs/quick-start-illustrated.pdf"
-        current = Path(__file__).resolve().parents[2] / 'docs/operator-guide-440.html'
-        if current.is_file():
-            path = current
+        path = Path(__file__).resolve().parents[2] / "docs" / name
         if path.is_file():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
         else:
@@ -920,7 +925,7 @@ class MainWindow(ControllerWindow):
         self.coverage_label.setToolTip(text)
         self.coverage_label.setVisible(bool(self.motion) and not text.startswith("当前参考时刻有录像覆盖"))
         if text.startswith("录像仍在索引"):
-            self.coverage_label.setText("当前时刻暂未匹配录像 · 仍有未检索素材，可在「数据准备 → 录像索引与核验」继续检索")
+            self.coverage_label.setText("当前时刻暂未匹配录像 · 仍有未检索素材，可用「工具 → 录像 → 扩大检索」继续检索")
 
     def refresh_action_state(self, *_):
         super().refresh_action_state()
@@ -935,6 +940,7 @@ class MainWindow(ControllerWindow):
             "3  下载 → 端侧数据；下载 → 数据归类\n"
             "4  标注：选择记录，标记动作起止，完成本份\n"
             "5  工具：时间同步、录像索引、视图与设置\n\n"
+            "看不懂某条提示：帮助 → 提示信息说明；完整步骤：帮助 → 新手图文教程。\n\n"
             "Ctrl+O 打开 · Ctrl+S 保存 · Ctrl+U 台账 · Ctrl+D 下载 · Ctrl+E 放大视频 · F1 帮助")
 
     def toggle_events(self):
@@ -984,9 +990,21 @@ class MainWindow(ControllerWindow):
             self.dirty = True
             self.save_current()
 
+    def _pip_customised(self, _size):
+        if self.pip_size.currentIndex() != 3:
+            self.pip_size.blockSignals(True)
+            self.pip_size.setCurrentIndex(3)
+            self.pip_size.blockSignals(False)
+        if self.catalog:
+            self.dirty = True
+
     def resize_pip(self, i):
-        self.stage.pip_scale = [.26, .34, .46][i]
-        self.stage.arrange()
+        if i < 3:
+            self.stage.pip_scale = [.26, .34, .46][i]
+            self.stage.pip_custom_size = None
+            self.stage.arrange()
+        elif self.stage.pip_custom_size is None:
+            self.stage.resize_pip_to(self.stage.video.width(), self.stage.video.height())
         if self.catalog:
             self.dirty = True
 
@@ -1015,13 +1033,23 @@ class MainWindow(ControllerWindow):
             return value if isinstance(value, int) and 0 <= value <= maximum else default
         mode = prefs.get("mode", "A")
         self.set_presentation(mode if isinstance(mode, str) and mode in {"A", "B", "C"} else "A", persist=False)
-        self.pip_size.setCurrentIndex(index("pip_size", 1, 2))
+        pip_index = index("pip_size", 3 if prefs.get("pip_custom_size") else 1, 3)
+        self.pip_size.blockSignals(True)
+        self.pip_size.setCurrentIndex(pip_index)
+        self.pip_size.blockSignals(False)
         self.wave_size.setCurrentIndex(index("wave_size", 1, 2))
         self.plot.group.setCurrentIndex(index("signal_group", 0, 5))
         self.playback_policy.setCurrentIndex(index("playback_policy", 2, 2))
         self.glass.setChecked(prefs.get("glass", True) is not False)
         ratio = prefs.get("observation_ratio", 75)
         self.board.observation_ratio = ratio if isinstance(ratio, int) and 50 <= ratio <= 85 else 75
+        if pip_index < 3:
+            self.stage.pip_scale = [.26, .34, .46][pip_index]
+            self.stage.pip_custom_size = None
+        else:
+            size = prefs.get("pip_custom_size")
+            self.stage.pip_custom_size = (QSize(int(size[0]), int(size[1])) if isinstance(size, list | tuple) and len(size) == 2
+                                          and all(isinstance(v, int | float) for v in size) else None)
         self.stage.pip_position = (1.0, 0.0)
         pos = prefs.get("pip_position", [1.0, 0.0])
         if isinstance(pos, list | tuple) and len(pos) == 2 and all(isinstance(v, int | float) for v in pos):
@@ -1036,6 +1064,8 @@ class MainWindow(ControllerWindow):
         if hasattr(self, "stage") and self.catalog and not self.catalog.readonly:
             self.settings["presentation"] = {
                 "mode": self.stage.mode, "pip_size": self.pip_size.currentIndex(),
+                "pip_custom_size": ([self.stage.video.width(), self.stage.video.height()]
+                                     if self.stage.pip_custom_size is not None else None),
                 "wave_size": self.wave_size.currentIndex(), "pip_position": self.stage.pip_position,
                 "signal_group": self.plot.group.currentIndex(),
                 "observation_ratio": self.board.observation_ratio,
@@ -1050,6 +1080,18 @@ class MainWindow(ControllerWindow):
     def closeEvent(self, event):
         if self._closed:
             event.accept()
+            return
+        dispatching = getattr(self, "_dispatch_dialog", None)
+        if dispatching is not None and dispatching.future is not None:
+            if dispatching.progress_kind == "bytes" and not dispatching.stop.is_set():
+                from PySide6.QtWidgets import QMessageBox
+                answer = QMessageBox.question(self, "派包进行中", "派包仍在进行。退出会取消尚未完成的包，已完成的包保留。确定退出？")
+                if answer != QMessageBox.StandardButton.Yes:
+                    event.ignore()
+                    return
+            dispatching.cancel_or_close()
+            event.ignore()
+            self._retry_close(300)
             return
         for name in ('_behavior_390','_calving_evidence','_algorithm_workbench'):
             window = getattr(self,name,None)

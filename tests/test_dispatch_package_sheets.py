@@ -1,4 +1,5 @@
 import copy
+import zipfile
 
 import pytest
 from PySide6.QtCore import Qt
@@ -63,19 +64,23 @@ def test_packages_choose_categories_and_dates_independently_without_duplicate_un
     assert p.panes[1].selected_days == {'2026-09-14'}
 
 
-def test_balance_keeps_whole_days_and_skips_sent_completed_or_incomplete_data(dialog):
+def test_balance_keeps_whole_days_and_skips_sent_completed_or_unannotatable_data(dialog):
     assert hasattr(dialog, 'planner'), 'Dispatch needs independent package sheets'
     p = dialog.planner
     rows = [unit(f'2026-09-{day:02}', f'{day}-{n}') for day, count in [(10, 4), (11, 2), (12, 1), (13, 1)] for n in range(count)]
-    rows += [unit('2026-09-10', 'done', done=True), unit('2026-09-10', 'sent', sent=True), unit('2026-09-11', 'missing', missing=True)]
+    rows += [unit('2026-09-10', 'done', done=True), unit('2026-09-10', 'sent', sent=True),
+             unit('2026-09-11', 'temp-pending', missing=True), unit('2026-09-11', 'temp-only', missing=True)]
+    rows[-1]['modalities'] = ['Temp']
     p.load_inventory({'产犊': rows})
     p.balance()
     groups = p.groups()
-    assert sorted(len(g) for g in groups) == [2, 2, 4]
-    assert len({u['key'] for g in groups for u in g}) == 8
+    assert sorted(len(g) for g in groups) == [2, 3, 4]
+    assert len({u['key'] for g in groups for u in g}) == 9
     for day in ['2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13']:
         assert sum(any(u['day'] == day for u in g) for g in groups) == 1
-    assert all(u['owner'] not in {'done', 'sent', 'missing'} for g in groups for u in g)
+    owners = {u['owner'] for g in groups for u in g}
+    # A Temp file still downloading does not hold a device-day back; nothing to annotate does.
+    assert 'temp-pending' in owners and not owners & {'done', 'sent', 'temp-only'}
 
 
 def test_category_or_root_changes_clear_stale_selections_and_preview(dialog):
@@ -119,16 +124,22 @@ def test_explicit_groups_reject_duplicate_or_empty_packages(farm):
         packages.plan_dispatch_groups(farm, [[rows[0]], []])
 
 
-def test_new_camera_after_preview_requires_a_fresh_all_views_plan(farm):
+def test_new_camera_after_preview_keeps_frozen_scan_and_still_dispatches(farm):
+    """4.4.2: a camera view that appears after preview must not block dispatch.
+
+    The package stays frozen to what was actually previewed/scanned; the new
+    view is simply left out, available for the next dispatch round.
+    """
     units = [u for u in packages.inventory(farm, '产犊') if u['day'] == '2026-09-17']
     plans = packages.plan_dispatch_groups(farm, [units])
     old = next((farm / '录像' / '2026-09-17').rglob('*.mp4'))
     new = old.parent.parent / '视角02' / old.name
     new.parent.mkdir()
     new.write_bytes(old.read_bytes())
-    with pytest.raises(ValueError, match='录像范围已变化'):
-        packages.dispatch(farm, plans)
-    assert not list((farm / '科牧特_协作标注').rglob('*.zip'))
+    outputs = packages.dispatch(farm, plans)
+    with zipfile.ZipFile(outputs[0]) as archive:
+        names = archive.namelist()
+    assert not any('视角02' in name for name in names)
 
 
 def test_multi_day_package_stays_together(farm):
@@ -137,3 +148,63 @@ def test_multi_day_package_stays_together(farm):
     assert len(plans) == 1
     assert plans[0]['dates'] == ['2026-09-17', '2026-09-18']
     assert len(plans[0]['units']) == 4
+
+
+def test_dispatch_progress_shows_speed_and_remaining_time(dialog, monkeypatch):
+    from types import SimpleNamespace
+
+    from cowmata_tailring.workspace import collaboration_ui
+    clock = iter([100.0, 110.0])
+    monkeypatch.setattr(collaboration_ui, 'time', SimpleNamespace(monotonic=lambda: next(clock)))
+    dialog.progress_kind = 'bytes'
+    dialog.samples.clear()
+    dialog.progress_text(0, 1000 * 1024**2, '')
+    text = dialog.progress_text(100 * 1024**2, 1000 * 1024**2, '包 1/1 · a.mp4')
+    assert '10.0 MiB/s' in text and '剩余约 1 分 30 秒' in text and '包 1/1' in text
+
+
+def _wait(dialog, qt_application, seconds=60):
+    import time
+    deadline = time.monotonic() + seconds
+    while dialog.future is not None and time.monotonic() < deadline:
+        qt_application.processEvents()
+        time.sleep(0.01)
+    qt_application.processEvents()
+
+
+def test_dispatch_window_is_non_modal_scans_on_open_and_reports_each_package(farm, qt_application):
+    from PySide6.QtWidgets import QWidget
+
+    from cowmata_tailring.workspace.collaboration_ui import open_dispatch
+    window = QWidget()
+    dialog = open_dispatch(window, str(farm))
+    try:
+        assert not dialog.isModal() and open_dispatch(window, str(farm)) is dialog
+        for _ in range(50):
+            qt_application.processEvents()
+            if dialog.future is not None or dialog.planner.inventory_by_category:
+                break
+        _wait(dialog, qt_application)
+        assert dialog.planner.inventory_by_category['产犊']
+        dialog.count.setValue(2)
+        for pane, day in zip(dialog.planner.panes, ('2026-09-17', '2026-09-18')):
+            pane.selected_days.add(day)
+        dialog.planner.refresh()
+        dialog.preview_plan()
+        _wait(dialog, qt_application)
+        assert len(dialog.plans) == 2
+        blocked = farm / '科牧特_协作标注' / '原始数据包' / (dialog.plans[0]['base_name'] + '_原始.zip')
+        blocked.parent.mkdir(parents=True, exist_ok=True)
+        blocked.write_bytes(b'occupied')
+        second = {u['key'] for u in dialog.plans[1]['units']}
+        dialog.execute()
+        _wait(dialog, qt_application)
+        log = dialog.log.toPlainText()
+        assert '包 1：未生成' in log and '包 2：已生成' in log and '派包报告：' in log
+        sent = {u['key'] for units in dialog.planner.inventory_by_category.values() for u in units if u.get('dispatches')}
+        assert sent == second
+    finally:
+        dialog.timer.stop()
+        dialog.pool.shutdown(wait=True)
+        dialog.close()
+        window.close()

@@ -28,10 +28,12 @@ from .farm_layout import CATEGORY_PATHS
 
 
 def eligible(unit, purpose, allow_repackage=False):
-    complete = not ({'Motion', 'PPG', 'Temp'} - set(unit.get('modalities') or ()))
+    # 4.4.2: a device-day ships once it has an annotatable record (Motion or PPG); a Temp
+    # or PPG file that is still downloading is noted in the package instead of holding it back.
+    usable = bool({'Motion', 'PPG'} & set(unit.get('modalities') or ()))
     if purpose == 'review':
-        return complete and bool(unit.get('annotated_records'))
-    return complete and unit['annotation_status'] != 'done' and (allow_repackage or not unit['dispatches'])
+        return usable and bool(unit.get('annotated_records'))
+    return usable and unit['annotation_status'] != 'done' and (allow_repackage or not unit['dispatches'])
 
 
 class PackageSheet(QWidget):

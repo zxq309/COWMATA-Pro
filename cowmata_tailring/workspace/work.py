@@ -166,8 +166,8 @@ class SessionWork:
             else:
                 entry.update(label_index=label_index, label_code=target.code, confirmation='needs_review')
 
-    def checkpoint(self):
-        self.undo.push(self.to_dict())
+    def checkpoint(self, state=None):
+        self.undo.push(state if state is not None else self.to_dict())
         if self.progress.get("status") == "done":
             self.progress["status"] = "in_progress"
 
@@ -262,7 +262,7 @@ class SessionWork:
 
     def project_draft(self, draft, duration_ms):
         if not self.clock.anchors:
-            raise ValueError("请先钉住九轴与视频对应点，草稿已经保留")
+            raise ValueError("请先点“一次对齐”，让九轴与录像建立对应关系；草稿已经保留")
         start = self.clock.map(draft["reference_start"], inverse=True)
         end = self.clock.map(draft["reference_end"], inverse=True) if draft["reference_end"] is not None else None
         if end is not None:
@@ -273,7 +273,44 @@ class SessionWork:
             raise ValueError("这个动作点不落在当前九轴记录范围")
         return start, end
 
-    def confirm_draft(self, draft_id, duration_ms, *, source_available=True, evidence_validator=None):
+    def confirm_event(self, event_id, evidence, duration_ms, *, source_available=True, evidence_validator=None):
+        """Confirm a saved label that has no video draft (old project, team return, model).
+
+        The label is checked against the live video evidence exactly like a
+        draft. A temporary draft carries it through the same gate; on any
+        failure the label is left untouched, and one undo restores it.
+        """
+        event = next(e for e in self.project.events if e.id == event_id)
+        linked = event.extras.get("draft_id")
+        if linked and any(d["id"] == linked for d in self.drafts):
+            return self.confirm_draft(linked, duration_ms, source_available=source_available,
+                                      evidence_validator=evidence_validator)
+        if not self.clock.anchors:
+            raise ValueError("这条标注还没有九轴与录像的对应关系：请先点“一次对齐”，再确认。")
+        before = copy.deepcopy(self.to_dict())  # to_dict() shares the live drafts list
+        kept = {key: copy.deepcopy(value) for key, value in event.extras.items() if key not in {
+            "confirmation", "draft_id", "video_evidence", "mapping_revision", "alignment_quality",
+            "reference_start", "reference_end", "group_id", "asset_id", "screenshots", "model_candidate"}}
+        draft = {"id": uuid.uuid4().hex, "group_id": event.extras.get("group_id") or uuid.uuid4().hex,
+                 "label_index": event.li, "reference_start": self.clock.map(event.t0),
+                 "reference_end": self.clock.map(event.t1) if event.t1 is not None else None,
+                 "video_evidence": copy.deepcopy(evidence), "cow_id": self.project.cow_id,
+                 "confirmation": "video_draft", "note": event.note, "converted_from_event": event.id,
+                 "kept_extras": kept, **self.category_fields(), **self.identity_fields()}
+        for key in ("screenshots", "model_candidate"):
+            if event.extras.get(key):
+                draft[key] = copy.deepcopy(event.extras[key])
+        self.drafts.append(draft)
+        event.extras["draft_id"] = draft["id"]
+        try:
+            return self.confirm_draft(draft["id"], duration_ms, source_available=source_available,
+                                      evidence_validator=evidence_validator, undo_state=before)
+        except Exception:
+            self.drafts = [d for d in self.drafts if d["id"] != draft["id"]]
+            event.extras.pop("draft_id", None)
+            raise
+
+    def confirm_draft(self, draft_id, duration_ms, *, source_available=True, evidence_validator=None, undo_state=None):
         draft = next(d for d in self.drafts if d["id"] == draft_id)
         if self.project.extras.get("device_identity", {}).get("status") == "conflict":
             raise ValueError("目录耳标与本记录牛号存在冲突，请先在牛号框核对并按回车确认")
@@ -294,11 +331,12 @@ class SessionWork:
             raise ValueError("视频画面/时间映射尚未确认到位，请回看并更新证据")
         if evidence_validator is not None and not evidence_validator(evidence):
             raise ValueError("视频素材或相机校准版本已变化，请回看并更新画面证据")
-        self.checkpoint()
+        self.checkpoint(undo_state)
         previous = next((e for e in self.project.events if e.extras.get("draft_id") == draft_id), None)
         event = Event(previous.id if previous else self.project.next_event_id, draft["label_index"], start, end,
                       note=draft.get("note", ""), ev="video",
-                      extras={**self.category_fields(), **self.identity_fields(), "confirmation": "confirmed", "mapping_revision": self.clock.revision,
+                      extras={**copy.deepcopy(draft.get("kept_extras", {})),
+                              **self.category_fields(), **self.identity_fields(), "confirmation": "confirmed", "mapping_revision": self.clock.revision,
                               "alignment_quality": self.clock.quality(start),
                               "video_evidence": copy.deepcopy(evidence), "group_id": draft["group_id"],
                               "draft_id": draft_id, "asset_id": self.asset_id,

@@ -53,6 +53,27 @@ def label_text(label: object) -> str:
     return str(get("name", "") or get("en", ""))
 
 
+def install_qt_translations(app):
+    """Chinese text for Qt's own standard buttons (Save, Cancel, Close, Yes, No) in the Chinese UI."""
+    if _language != "zh":
+        return None
+    from pathlib import Path
+
+    from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
+    translator = QTranslator(app)
+    folders = [QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)]
+    try:
+        import PySide6
+        folders.append(str(Path(PySide6.__file__).resolve().parent / "translations"))
+    except (ImportError, OSError):
+        pass
+    locale_zh = QLocale(QLocale.Language.Chinese, QLocale.Country.China)
+    if any(translator.load(locale_zh, "qtbase", "_", folder) for folder in folders if folder):
+        app.installTranslator(translator)
+        return translator
+    return None
+
+
 def _self_check() -> None:
     assert t("保存") == "保存"
     set_language("en")

@@ -46,7 +46,7 @@ def metadata_from_name(path, relative, info, timeline=None):
             duration = hint
             duration_basis = "adjacent_filename"
     if duration is None:
-        raise ValueError("视频时长无法读取，请在数据准备中核对文件")
+        raise ValueError("视频时长无法读取：文件可能没下载完或已损坏。请重新下载这段录像，或用「下载 → 数据归类 → 录像转码与归类」重新处理")
     frame_ms = 40.0
     for key in ("avg_frame_rate", "r_frame_rate"):
         try:
@@ -103,7 +103,7 @@ def metadata_from_name(path, relative, info, timeline=None):
         result["intervals"][0]["warnings"] = list(result["warnings"])
     if timeline.discontinuities:
         result["needs_review"] = True
-        result["warnings"] = ["视频数据包时钟不连续，请在数据准备中核对"]
+        result["warnings"] = ["视频数据包时钟不连续（录像机中途断流或校时），需人工核验时间：左侧“核验” → 选中这段录像 → 核验所选视频时间"]
         for interval in result["intervals"]:
             interval["verified"] = False
             interval["warnings"] = result["warnings"]

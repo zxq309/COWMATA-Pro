@@ -152,7 +152,7 @@ class ProjectPicker(QDialog):
             if temp
             else "默认加载所选日期九轴、PPG、温度和对应录像；前日跨午夜录像按覆盖时间补充。"
             if dates
-            else "所选类别没有规范日期目录。请核对牧场根目录，或先在数据整理中归类。"
+            else "所选类别没有规范日期目录。请核对牧场根目录，或先用「下载 → 数据归类」归类。"
         )
 
     def selection(self):

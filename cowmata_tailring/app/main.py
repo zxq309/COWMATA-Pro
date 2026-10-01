@@ -98,6 +98,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     application = QApplication(sys.argv[:1])
+    from cowmata_tailring.ui.i18n import install_qt_translations
+    application._cowmata_qt_translator = install_qt_translations(application)
     icon_path = Path(__file__).resolve().parents[2] / 'assets' / 'app-icon' / 'cowmata.ico'
     if icon_path.is_file():
         application.setWindowIcon(QIcon(str(icon_path)))

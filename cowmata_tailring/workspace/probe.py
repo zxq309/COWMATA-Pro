@@ -327,6 +327,54 @@ class SourceInspector:
                 / path.name
             )
 
+    def recorder_timeline(self, path):
+        """The recorder's own playback clock for a raw PS file, or None when none is readable."""
+        from cowmata_tailring.media.classified_dahua import classified_dahua_timeline
+
+        try:
+            timeline = classified_dahua_timeline(path, self.stop.is_set)
+            if timeline:
+                return timeline
+        except (ValueError, OSError, InterruptedError) as exc:
+            self.progress(f"大华帧时钟不可用：{exc}")
+            if isinstance(exc, InterruptedError):
+                return None
+        try:
+            native = read_native_index(path, timezone_minutes=self.timezone_minutes, cancelled=self.stop.is_set)
+        except (ValueError, OSError) as exc:
+            self.progress(f"录像机原生时钟不可用，改读数据包时间轴：{exc}")
+            native = None
+        if native:
+            stat = path.stat()
+            duration = native["duration_ms"]
+            return MediaTimelineIndex(str(path.resolve()), stat.st_size, stat.st_mtime_ns, native["first_pts_ms"],
+                                      native["frame_ms"], (TimelineSegment(0, duration, 0, duration),), (), native=native)
+        try:
+            _, ffprobe = find_ffmpeg()
+            return probe_media_timeline(path, ffprobe, timeout_seconds=180, cancelled=self.stop.is_set)
+        except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            self.progress(f"数据包时间轴读取失败，保留相邻文件名时长：{exc}")
+            return None
+
+    @staticmethod
+    def checked_against_name(result, path, timeline):
+        """A recorder clock that disagrees with the classified name keeps the file for manual review."""
+        from .video_filename import filename_wall
+
+        native = (timeline.native or {}) if timeline else {}
+        named = filename_wall(path)
+        recorded = native.get("wall_start")
+        if named is None or not isinstance(recorded, int | float) or abs(recorded - named) <= 2000:
+            return result
+        warning = (f"文件名时间与录像机时钟相差 {abs(recorded - named) / 1000:.0f} 秒，需人工核验时间："
+                   "左侧“核验” → 选中这段录像 → 核验所选视频时间")
+        result["needs_review"] = True
+        result["warnings"] = list(result.get("warnings", [])) + [warning]
+        for interval in result.get("intervals", []):
+            interval["verified"] = False
+            interval["warnings"] = list(interval.get("warnings", [])) + [warning]
+        return result
+
     def video_hint(self, path: Path) -> dict:
         """Cheap routing OSD; never a verified interval or evidence identity."""
         from .video_filename import filename_wall
@@ -631,18 +679,15 @@ class SourceInspector:
                     return result
                 if result.get("duration_basis") == "adjacent_filename":
                     # The neighbouring filename is only a bounded browse guess
-                    # for raw Dahua PS recordings. Prefer the recorder's own
-                    # frame clock and byte seek keys so mid-file frames stay
-                    # decodable; keep the guess only when the scan fails.
-                    from cowmata_tailring.media.classified_dahua import classified_dahua_timeline
-
-                    try:
-                        dahua_timeline = classified_dahua_timeline(path, self.stop.is_set)
-                    except (ValueError, OSError, InterruptedError) as exc:
-                        self.progress(f"大华帧时钟不可用，保留相邻文件名时长：{exc}")
-                        dahua_timeline = None
-                    if dahua_timeline:
-                        return metadata_from_name(path, self.relative_path(path), info, dahua_timeline)
+                    # for raw recorder PS files. Prefer the recorder's own
+                    # clock and byte seek keys (Dahua frame clock, then the
+                    # native PS index of other brands, then packet PTS) so the
+                    # recording is timed, verified and decodable mid-file; keep
+                    # the guess only when every clock fails.
+                    timeline = self.recorder_timeline(path)
+                    if timeline is not None:
+                        return self.checked_against_name(
+                            metadata_from_name(path, self.relative_path(path), info, timeline), path, timeline)
                     return result
             except ValueError:
                 pass

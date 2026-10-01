@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>COWMATA Pro 4.4.3 · 新手图文教程（全系列）</title>
+<style>
+:root{--green:#8ADD66;--green-d:#4E9A2F;--teal:#35AFC8;--ink:#1C2530;--sub:#6B7685;--line:#E3E7ED;--bg:#F5F7FA;--amber:#B7791F;--amber-bg:#FFF4D6}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.75 -apple-system,"PingFang SC","Microsoft YaHei UI","Segoe UI",sans-serif}
+header{background:linear-gradient(90deg,#2BA6C4,#5FC37B);color:#fff;padding:24px 34px}
+header h1{margin:0;font-size:26px;letter-spacing:.5px}
+header p{margin:4px 0 0;opacity:.95}
+.layout{display:flex;max-width:1360px;margin:0 auto}
+nav{position:sticky;top:0;align-self:flex-start;width:250px;flex:none;max-height:100vh;overflow:auto;padding:18px 10px 40px 22px}
+nav b{display:block;color:var(--sub);font-size:12px;margin:14px 0 4px}
+nav a{display:block;color:var(--ink);text-decoration:none;font-size:14px;padding:3px 8px;border-radius:6px}
+nav a:hover{background:#E6F4F8;color:#167C92}
+main{flex:1;min-width:0;padding:22px 30px 70px 10px}
+section{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin:0 0 24px}
+h2{margin:0 0 6px;font-size:21px}
+h2 small{display:inline-block;min-width:30px;padding:0 8px;margin-right:8px;border-radius:8px;background:var(--teal);color:#fff;text-align:center;font-size:15px}
+h3{margin:22px 0 6px;font-size:17px}
+.lead{color:var(--sub);margin:0 0 14px}
+figure{margin:12px 0 18px}
+figure img{max-width:100%;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 8px rgba(28,37,48,.08)}
+figure.small img{max-width:420px}
+figure.mid img{max-width:760px}
+figcaption{color:var(--sub);font-size:13px;margin-top:4px}
+.menus{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;align-items:start}
+.menus figure{margin:0}
+.tip{border-left:4px solid var(--teal);background:#EAF7FA;border-radius:10px;padding:10px 16px;margin:12px 0}
+.warn{border-left:4px solid var(--amber);background:var(--amber-bg);border-radius:10px;padding:10px 16px;margin:12px 0}
+.new{display:inline-block;background:#E8F6E0;color:var(--green-d);border-radius:6px;padding:0 6px;font-size:12px;font-weight:700;margin-left:6px;vertical-align:2px}
+table{width:100%;border-collapse:collapse;margin:8px 0 12px}
+th,td{border-bottom:1px solid var(--line);text-align:left;vertical-align:top;padding:8px 10px}
+th{background:#F2F6F9;font-size:13px;color:var(--sub)}
+td:first-child{white-space:nowrap;font-weight:600}
+kbd{border:1px solid #c9d2dc;border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:13px;background:#fff;white-space:nowrap}
+b.m{color:var(--green-d)}
+ol li,ul li{margin:4px 0}
+.flow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.flow span{background:#EEF6F9;border:1px solid #D3E9F0;border-radius:20px;padding:4px 12px;font-weight:600;font-size:14px}
+.flow span:not(:last-child)::after{content:" →";color:var(--teal)}
+footer{text-align:center;color:var(--sub);font-size:13px;padding:20px}
+@media (max-width:900px){.layout{display:block}nav{position:static;width:auto;max-height:none}main{padding:10px}}
+</style>
+</head>
+<body>
+<header>
+<h1>COWMATA Pro 4.4.3 · 新手图文教程（全系列）</h1>
+<p>从安装登录到标注、核验、协作派包、上传下载，每个功能一步一图。看不懂某条提示，请看《提示信息说明》（帮助 → 提示信息说明…）。</p>
+</header>
+<div class="layout">
+<nav>
+<b>开始</b>
+<a href="#c0">0 先了解：一天怎么干</a>
+<a href="#c1">1 安装、登录与升级</a>
+<a href="#c2">2 认识主界面</a>
+<a href="#c3">3 七个菜单速查</a>
+<b>标注</b>
+<a href="#c4">4 打开工程</a>
+<a href="#c5">5 选择记录与视角</a>
+<a href="#c6">6 一次对齐</a>
+<a href="#c7">7 播放与定位</a>
+<a href="#c8">8 记录动作</a>
+<a href="#c9">9 确认真值与证据图</a>
+<a href="#c10">10 录像时间核验</a>
+<a href="#c11">11 修改、删除、完成本份</a>
+<a href="#c12">12 布局、画中画与设置</a>
+<a href="#c13">13 自动候选与逐项检查</a>
+<a href="#c14">14 导出与历史回看</a>
+<b>数据流转</b>
+<a href="#c15">15 协作：派包、回传、接收</a>
+<a href="#c16">16 上传台账</a>
+<a href="#c17">17 下载与数据归类</a>
+<b>其他</b>
+<a href="#c18">18 工具菜单</a>
+<a href="#c19">19 帮助、账号与关于</a>
+<a href="#c20">20 快捷键</a>
+<a href="#c21">21 常见问题</a>
+</nav>
+<main>
+
+<section id="c0">
+<h2><small>0</small>先了解：软件做什么、一天怎么干</h2>
+<p class="lead">COWMATA Annotator 把牛只佩戴的九轴（Motion）、PPG、温度数据和牛舍录像放在同一条时间轴上，由人看录像、在数据上标出动作（起立、躺卧、努责、产犊等），形成可训练算法的“真值”。</p>
+<div class="flow"><span>上传台账</span><span>下载端侧数据</span><span>数据归类</span><span>打开工程</span><span>对齐</span><span>记录动作</span><span>确认真值</span><span>完成本份</span><span>派包 / 回传</span></div>
+<table>
+<tr><th>目录</th><th>放什么</th></tr>
+<tr><td>1_下载器\&lt;牧场&gt;</td><td>下载的原始数据：产犊 / 发情 / 怀孕 / 正常 / 疫病 / 待产犊 等类别下的 Motion、PPG、Temp，牧场根目录下的“录像”，以及“台账”。</td></tr>
+<tr><td>2_标注器</td><td>标注软件与协作包：派出的原始数据包、收回的标注包在“科牧特_协作标注”。</td></tr>
+<tr><td>3_训练器</td><td>模型与训练数据（自动标注模型默认从这里读取）。</td></tr>
+<tr><td>4_决策器</td><td>实时决策器（下载时自动运行）。</td></tr>
+</table>
+<div class="tip"><b>三个原则：</b>① 软件从不改写原始 JSON 和录像；② 每一步自动保存，草稿不会因为一次失败而丢；③ 模型给出的候选不是真值，必须有人看录像确认。</div>
+</section>
+
+<section id="c1">
+<h2><small>1</small>安装、登录与升级</h2>
+<h3>安装</h3>
+<ol>
+<li>运行 <b>COWMATA-Pro-4.4.3-Setup.exe</b>，按提示安装。已装旧版的直接覆盖安装，账号、数据和设置都保留。</li>
+<li>也可以用便携版：解压 <b>COWMATA-Pro-4.4.3-Portable.zip</b>，双击 <b>COWMATA.exe</b>。</li>
+</ol>
+<h3>登录</h3>
+<figure class="small"><img src="operator-guide-443-assets/01-login.png" alt="登录"><figcaption>登录窗口：一个账号同时用于标注、上传、下载。</figcaption></figure>
+<ol>
+<li>选择 <b>操作员</b> 或 <b>管理员</b>。</li>
+<li>输入账号、密码。操作员在新电脑第一次登录时，还要填写管理员给的<b>一次性密钥</b>。</li>
+<li>可勾选“记住密码 / 自动登录”（只在本机当前 Windows 用户下加密保存）。点 <b>登录</b>。</li>
+</ol>
+<h3>升级</h3>
+<p><b class="m">帮助 → 关于 → 版本与更新…</b>：自动检查 GitHub 发布页的新版本，下载后原地升级，不需要逐个安装旧版本，也不会强制关闭正在标注的工程。</p>
+<figure class="mid"><img src="operator-guide-443-assets/34-about.png" alt="关于"><figcaption>关于窗口：版本号、更新、教程和提示信息说明。</figcaption></figure>
+</section>
+
+<section id="c2">
+<h2><small>2</small>认识主界面</h2>
+<figure><img src="operator-guide-443-assets/11-main-loaded.png" alt="主界面"><figcaption>打开一条九轴记录后的主界面。</figcaption></figure>
+<table>
+<tr><th>区域</th><th>作用</th></tr>
+<tr><td>顶部菜单栏</td><td>文件、编辑、上传、下载、标注、工具、帮助（按一天的工作顺序排列）。</td></tr>
+<tr><td>右上角四个按钮</td><td><b>素材</b>：显示/隐藏左侧面板；<b>观察</b>：录像大、波形在下；<b>多视角</b>：同时看多路录像；<b>波形</b>：波形大、录像变画中画。</td></tr>
+<tr><td>横幅（路径下方）</td><td>最近一次操作的结果或原因，看不懂就查《提示信息说明》。</td></tr>
+<tr><td>左侧“记录”</td><td>设备、日期、搜索框和记录列表。▶ 标注中、● 未完成、○ 未开始、✓ 完成。下面是牛号框、设备信息、数据类别和“视角”勾选，底部 <b>刷新</b>、<b>核验</b>。</td></tr>
+<tr><td>中间录像</td><td>当前主视角录像。暂停时显示“精确暂停帧 PTS … 原片”，代表画面已到位。</td></tr>
+<tr><td>信号曲线</td><td>九轴 / PPG / 温度波形，蓝线是当前时刻。上方：曲线分组、<b>更多</b>、<b>同步跟随</b>、<b>一次对齐</b>。</td></tr>
+<tr><td>标签轨道</td><td>已记录的动作色块。</td></tr>
+<tr><td>播放栏</td><td>−10s、‹帧、播放、帧›、+10s、倍速（0.25×–10×）、播放策略、日期时间 + <b>跳转</b>。</td></tr>
+<tr><td>标注栏</td><td>标签下拉框、开始/结束动作按钮、更多、标注列表、保存、完成、关闭。</td></tr>
+<tr><td>右侧“标注”</td><td>本份记录的视频草稿和标注（类型、标签、开始、结束、状态、备注），底部 <b>微调</b>、<b>编辑</b>、<b>操作</b>。</td></tr>
+<tr><td>底部状态栏</td><td>索引状态，例如“按需待命 · 仅处理当前九轴所需录像”。</td></tr>
+</table>
+<figure class="mid"><img src="operator-guide-443-assets/02-main-empty.png" alt="未打开工程"><figcaption>还没打开工程时的界面。</figcaption></figure>
+</section>
+
+<section id="c3">
+<h2><small>3</small>七个菜单速查</h2>
+<div class="menus">
+<figure><img src="operator-guide-443-assets/03-menu-file.png" alt="文件"><figcaption><b>文件</b>：打开工程 / 九轴 / 视频 / 协作数据包、历史回看、保存、导出、关闭工程、退出。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/03b-menu-file-export.png" alt="导出"><figcaption><b>文件 → 导出</b>：完整成果、所选片段、训练数据。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/04-menu-edit.png" alt="编辑"><figcaption><b>编辑</b>：撤销、重做、修改标签、批量修改、删除、查找记录。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/05-menu-upload.png" alt="上传"><figcaption><b>上传</b>：现场台账（导入、同步、核对、统计、导出、各表）。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/06-menu-download.png" alt="下载"><figcaption><b>下载</b>：端侧数据、开始/暂停、数据归类、决策 APP、设置、记录、检测连接。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/06b-menu-download-organize.png" alt="数据归类"><figcaption><b>下载 → 数据归类</b>。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/07-menu-annotate.png" alt="标注"><figcaption><b>标注</b>：自动候选、逐项检查、模型、完成本份、下一份、确认为真值、证据图、协作。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/07b-menu-annotate-team.png" alt="协作"><figcaption><b>标注 → 协作</b>：派包、生成/接收标注包、接收成果、回传设置。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/08-menu-tools.png" alt="工具"><figcaption><b>工具</b>：时间同步、录像、视图、性能诊断、硬件解码、旧版兼容、设置。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/08b-menu-tools-timing.png" alt="时间同步"><figcaption><b>工具 → 时间同步</b>。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/08c-menu-tools-video.png" alt="录像"><figcaption><b>工具 → 录像</b>。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/08d-menu-tools-view.png" alt="视图"><figcaption><b>工具 → 视图</b>。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/09-menu-help.png" alt="帮助"><figcaption><b>帮助</b>：快速开始、本教程、<b>提示信息说明</b><span class="new">4.4.3</span>、账号、关于。</figcaption></figure>
+</div>
+</section>
+
+<section id="c4">
+<h2><small>4</small>打开工程</h2>
+<ol>
+<li><b class="m">文件 → 打开工程…</b>（<kbd>Ctrl</kbd>+<kbd>O</kbd>），选择<b>牧场根目录</b>（例如 <code>F:\1_下载器\扬大_高邮牧场</code>；选到“产犊”等类别文件夹也可以）。</li>
+<li>在弹出的窗口确认牧场，选择 <b>数据类别</b>（产犊、发情…；怀孕还要选孕期阶段）、<b>原始数据类型</b>（全部 / 九轴 / PPG / 温度）和 <b>采集日期</b>（单选）。</li>
+<li>点 <b>确认牧场并打开该日</b>。软件只清点文件，不会一次性读完全部录像，打开很快。</li>
+</ol>
+<figure class="mid"><img src="operator-guide-443-assets/10-project-picker.png" alt="打开单日工程"><figcaption>打开单日工程：确认牧场、类别、数据类型和日期。</figcaption></figure>
+<div class="tip">其他打开方式：<b>打开九轴…</b>（<kbd>Ctrl</kbd>+<kbd>J</kbd>，单个 JSON）；<b>打开视频…</b>（单个视频配一个九轴）；<b>打开协作数据包…</b>（别人派给你的 ZIP，见第 15 章）。</div>
+</section>
+
+<section id="c5">
+<h2><small>5</small>选择记录与视角</h2>
+<ol>
+<li>左侧上方选择<b>设备</b>和<b>日期</b>（“全部日期”包括跨午夜的记录），可在搜索框按时间搜索；<kbd>Ctrl</kbd>+<kbd>F</kbd> 直接跳到搜索框。</li>
+<li>点一条记录（每条约 30–40 分钟）。软件在后台读取九轴，并只检索这段时间需要的录像。</li>
+<li>核对<b>牛号框</b>（例如 21267），不对就改正并按回车。确认真值必须有牛号。</li>
+<li>在“视角”里勾选能拍到这头牛的视角（一次最多 8 路）。悬停视角名可以看到该视角的录像覆盖情况。</li>
+</ol>
+<div class="tip">切换记录会自动保存。“未检索”不等于没有录像：画面一直出不来时，用 <b class="m">工具 → 录像 → 扩大检索</b>。</div>
+</section>
+
+<section id="c6">
+<h2><small>6</small>一次对齐（每份记录做一次）</h2>
+<p class="lead">九轴和相机的时钟各走各的。软件会先按设备采集时间自动联动，但要确认真值，每份记录需要人工“一次对齐”。</p>
+<figure><img src="operator-guide-443-assets/12-alignment.png" alt="一次对齐"><figcaption>点波形上方的“一次对齐”后：同步跟随暂停，录像和九轴可以分别拖动。</figcaption></figure>
+<ol>
+<li>点波形右上角 <b>一次对齐</b>。</li>
+<li>找一个明显的瞬间（例如牛起身、甩头），<b>拖动录像</b>和<b>拖动九轴</b>，让同一瞬间都落在播放线上。</li>
+<li>等画面到位后点 <b>完成对齐</b>。之后按钮变为“重新对齐”，同步跟随自动恢复。</li>
+</ol>
+<figure><img src="operator-guide-443-assets/12b-aligned.png" alt="对齐完成"><figcaption>对齐完成：波形下方显示“已一次对齐 · 固定时间差 · 当前记录有效”。</figcaption></figure>
+<div class="tip">越播越偏时，用 <b class="m">工具 → 时间同步 → 精细校准…</b> 在远处再加一个对应点（见第 18 章）。改动同步后，已确认的标签会变为“需复核”。</div>
+</section>
+
+<section id="c7">
+<h2><small>7</small>播放与定位</h2>
+<table>
+<tr><th>操作</th><th>说明</th></tr>
+<tr><td>播放 / 暂停</td><td>点“播放”或按空格。暂停后自动读取<b>精确暂停帧</b>，画面下方出现“精确暂停帧 PTS … · 原片”就是画面到位。</td></tr>
+<tr><td>−10s / +10s</td><td>前后跳 10 秒。</td></tr>
+<tr><td>‹帧 / 帧›</td><td>前后一帧，用于找准动作起止。</td></tr>
+<tr><td>倍速</td><td>0.25×、0.5×、1×、2×、4×、<b>8×、10×</b>。只看一个视角时可用 8×/10× 快速浏览；高倍速下原片可能跳帧，核对时请暂停或降速。</td></tr>
+<tr><td>播放策略</td><td><b>单路优先</b>（默认，只播主视角，其他视角显示暂停图，最流畅）、<b>流畅优先</b>、<b>多路全速</b>。</td></tr>
+<tr><td>跳转</td><td>在右下输入 <code>2026-09-06 10:23:31</code>（也接受 <code>10_23_31</code>），按回车或点“跳转”。</td></tr>
+<tr><td>点波形</td><td>开启“同步跟随”时，点波形任意位置，录像跟着跳过去。</td></tr>
+<tr><td>暂停再播放</td><td>从你看到的那一帧继续播放，不会往回跳几秒（4.4.2 修复）。</td></tr>
+</table>
+</section>
+
+<section id="c8">
+<h2><small>8</small>记录动作（生成视频草稿）</h2>
+<ol>
+<li>在标注栏的下拉框选择标签，例如 <b>[1] 起立过程</b>（方括号里是快捷键）。</li>
+<li>播放到动作<b>开始</b>的画面并暂停，等画面到位，点 <b>开始起立过程</b>（或按 <kbd>1</kbd>）。</li>
+</ol>
+<figure><img src="operator-guide-443-assets/13-recording.png" alt="正在记录"><figcaption>正在记录：按钮变为“结束…”，下方提示正在记录的动作和起点。</figcaption></figure>
+<ol start="3">
+<li>播放到动作<b>结束</b>的画面并暂停，再点 <b>结束起立过程</b>（或再按一次 <kbd>1</kbd>）。</li>
+<li>右侧出现一条 <b>视频草稿 · 九轴待确认</b>。</li>
+</ol>
+<figure><img src="operator-guide-443-assets/14-draft.png" alt="视频草稿"><figcaption>结束后：右侧多了一条视频草稿。</figcaption></figure>
+<ul>
+<li><b>点事件</b>（只有一个时刻的标签）按一次就记录。</li>
+<li>记错了：点“取消本次动作”，或之后在右侧删除。</li>
+<li>也可以在波形上拖选一段，再点 <b class="m">标注 → 用所选区间建立候选</b>。</li>
+</ul>
+</section>
+
+<section id="c9">
+<h2><small>9</small>确认真值与留存证据图</h2>
+<p class="lead">草稿要“确认为真值”才会进入训练数据。确认需要：牛号正确、已对齐、<b>画面到位</b>、<b>录像时间已核验</b>。</p>
+<ol>
+<li>在右侧选中一条草稿（或旧标注），<b>双击</b>它，视频跳到动作开头。</li>
+<li>等画面到位，点 <b>操作 → 确认真值</b>（或 <b class="m">标注 → 确认为真值</b>）。</li>
+<li>成功后状态变为 <b>已确认</b>，并自动打开“留存多视角证据图”。</li>
+</ol>
+<figure><img src="operator-guide-443-assets/17-confirmed.png" alt="已确认"><figcaption>确认后：右侧变为“九轴标注”，状态“已确认”。</figcaption></figure>
+<figure class="small"><img src="operator-guide-443-assets/15-ops-menu.png" alt="操作菜单"><figcaption>右侧“操作”菜单：生成候选、确认真值、编辑、补充证据、证据截图、回看结束点、删除。</figcaption></figure>
+<h3>4.4.3 起更省事<span class="new">新</span></h3>
+<ul>
+<li>点确认时视频不在这条动作上，软件<b>先自动跳过去</b>，等画面到位后再点一次即可。</li>
+<li><b>旧标注</b>（导入的旧工程、协作回传、模型生成的标签）不用再“建立视频草稿”：双击回到动作，等画面到位后直接点“确认真值”，一步完成，保留原编号和备注，可撤销。</li>
+<li>确认不了时，提示会<b>写明原因</b>：画面还在加载、哪个视角的哪个录像时间没核验、校准被修改、文件变了等。</li>
+</ul>
+<figure class="mid"><img src="operator-guide-443-assets/16-confirm-blocked.png" alt="还不能确认真值"><figcaption>录像时间还没核验时，点“去核验该录像”直接打开核验窗口（见第 10 章）。</figcaption></figure>
+<h3>留存证据图</h3>
+<figure class="mid"><img src="operator-guide-443-assets/18-evidence.png" alt="证据图"><figcaption>证据图：从原片按同一时刻为每个视角截一张；勾选核对说明后点“保存证据图”。证据图只给人复核用，不参与训练。</figcaption></figure>
+</section>
+
+<section id="c10">
+<h2><small>10</small>录像时间核验（黄色行）<span class="new">4.4.3 重做</span></h2>
+<p class="lead">软件要确认“录像画面上的时间”和九轴时间对得上，才允许确认真值。大部分录像会自动核验（读取文件名和录像机自带时钟）；只有时钟跳变、断流或读不出时钟的录像需要人工核验，它们显示为<b>黄色行</b>。</p>
+<div class="tip">4.4.3 改进：非大华品牌录像机的原始码流（MPEG-PS）现在也读取录像机自带时钟自动核验，需要人工核验的录像大幅减少。</div>
+<h3>找到需要核验的录像</h3>
+<ol>
+<li>点左侧底部 <b>核验</b>（或 <b class="m">工具 → 录像 → 素材核验…</b>）。</li>
+<li>默认显示 <b>当前记录用到的录像</b>：黄色行就是需要核验时间的，排在最前面。</li>
+<li>上方“显示”可以切换：<b>需要核验时间的录像</b>（整个工程）、<b>全部录像</b>、<b>全部素材</b>。</li>
+<li><b>定位当前画面录像</b>：一键选中主视角正在播放的那段录像。</li>
+</ol>
+<figure><img src="operator-guide-443-assets/19-source-manager.png" alt="素材核验"><figcaption>核验窗口：第 1 行为教程演示，第 2 行是真实的“数据包时钟不连续”录像。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/19b-source-manager-verify.png" alt="需要核验的录像"><figcaption>切换为“需要核验时间的录像”：一次看全所有待核验的录像。</figcaption></figure>
+<h3>核验一段录像（约 1 分钟）</h3>
+<ol>
+<li>选中黄色行，点 <b>核验所选视频时间 / 框选 ROI</b>（或直接双击黄色行）。</li>
+<li>点 <b>读取开头画面</b>。“画面读数”会按文件名时间<b>预填</b>。</li>
+<li>对照画面上的时间水印<b>逐字核对</b>（含日期），不一致就改成画面上的时间，点 <b>确认当前读数</b>。</li>
+<li>点 <b>读取结尾画面</b>，同样核对后点 <b>确认当前读数</b>。</li>
+<li>下方显示“第 x 秒到第 y 秒之间算已核验（约占全片 100%）”后，点 <b>保存</b>。</li>
+</ol>
+<figure><img src="operator-guide-443-assets/20-time-dialog.png" alt="录像时间核验"><figcaption>核验窗口：已确认开头读数，正在核对结尾读数。</figcaption></figure>
+<div class="warn">只有两个读数之间的录像算“已核验”。只确认一个读数只能粗定位，所以开头、结尾各确认一个最省事。时间水印太小可以先框选水印区域，再点“识别框选区域 / 四角”。</div>
+<table>
+<tr><th>状态</th><th>含义</th></tr>
+<tr><td>可用</td><td>时间已核验，可以直接确认真值。</td></tr>
+<tr><td>待复核 · 需核验时间</td><td>黄色行，按上面步骤核验。</td></tr>
+<tr><td>未索引</td><td>还没读出时长，不等于损坏。先在主界面选对应记录，或点“重新建立所选视频索引”。</td></tr>
+<tr><td>异常 / 缺失</td><td>文件坏了或被移走，重新下载或刷新。</td></tr>
+<tr><td>九轴 JSON（信息项）</td><td>只用于显示记录信息，不需要核验。</td></tr>
+</table>
+</section>
+
+<section id="c11">
+<h2><small>11</small>修改、删除、完成本份</h2>
+<h3>编辑与微调</h3>
+<ul>
+<li><b>编辑</b>（右侧按钮或 <b class="m">编辑 → 修改标签…</b>）：改标签、起止时间和备注。</li>
+<li><b>微调</b>：在波形上拖动草稿的左右边界。</li>
+<li><b class="m">编辑 → 批量修改…</b>：多选后一次改成同一标签（点事件和区间不能互换）。</li>
+<li><b>删除</b>：<b class="m">编辑 → 删除</b>，可以 <kbd>Ctrl</kbd>+<kbd>Z</kbd> 撤销。</li>
+</ul>
+<figure class="mid"><img src="operator-guide-443-assets/24-edit-dialog.png" alt="编辑标注"><figcaption>编辑标注：修改后需要重新确认真值。</figcaption></figure>
+<h3>完成本份</h3>
+<ol>
+<li>本份记录标完后点 <b>完成</b>（<kbd>Ctrl</kbd>+<kbd>Enter</kbd>），确认保存并标为已完成。</li>
+<li><b class="m">标注 → 下一份</b>（<kbd>Ctrl</kbd>+<kbd>PgDown</kbd>）跳到下一份未完成记录；<b>重新标注本份</b>可把已完成改回进行中。</li>
+</ol>
+<figure class="mid"><img src="operator-guide-443-assets/25-finish.png" alt="完成本份"><figcaption>完成本份前的确认。</figcaption></figure>
+</section>
+
+<section id="c12">
+<h2><small>12</small>布局、画中画与设置</h2>
+<figure><img src="operator-guide-443-assets/21-multiview.png" alt="多视角"><figcaption><b>多视角</b>：同时查看多路录像（最多 8 路，可分页）。</figcaption></figure>
+<figure><img src="operator-guide-443-assets/22-waveform.png" alt="波形"><figcaption><b>波形</b>：波形占满，录像变成画中画。</figcaption></figure>
+<ul>
+<li><b>画中画</b>：拖动标题移动位置，双击放大；<b>拖动右下角可以自由调整大小</b>（4.4.2 新增，自动记住为“画中画 · 自定义”）。</li>
+<li><b>放大视频</b>（<kbd>Ctrl</kbd>+<kbd>E</kbd>）：录像占满，波形留窄条；<b>波形分屏</b>（<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>）：把波形拖到第二个屏幕；<b>全屏</b> <kbd>F11</kbd>。</li>
+</ul>
+<figure><img src="operator-guide-443-assets/23-enlarge.png" alt="放大视频"><figcaption>放大视频。</figcaption></figure>
+<figure class="small"><img src="operator-guide-443-assets/33-settings.png" alt="设置"><figcaption><b class="m">工具 → 设置…</b>（<kbd>Ctrl</kbd>+<kbd>,</kbd>）：严格同步、兼容缓存、磨砂玻璃、画中画大小、底部波形高度、重置画中画位置、性能诊断。</figcaption></figure>
+</section>
+
+<section id="c13">
+<h2><small>13</small>自动候选与逐项检查</h2>
+<figure class="mid"><img src="operator-guide-443-assets/26-candidates.png" alt="自动候选"><figcaption><b class="m">标注 → 自动生成候选…</b>：选择模型版本与事件，点“扫描当前完整记录”。</figcaption></figure>
+<ol>
+<li>扫描后列出候选位置和分数。双击候选或点“定位九轴与录像”，看录像判断。</li>
+<li>动作确实存在：在波形上拖选真实起止，点“所选九轴区间建视频草稿”，再按第 9 章确认。</li>
+<li>看不清点“暂无法判断”，不是该动作点“排除该候选”。</li>
+</ol>
+<ul>
+<li><b class="m">标注 → 自动标注模型…</b>：选择行为识别模型目录（默认 <code>3_训练器\产犊\模型\&lt;版本&gt;\行为识别</code>）。</li>
+<li><b class="m">标注 → 逐项检查</b>：按单个行为（起立、努责、排尿…）用模型单独检查；“返回标注”回到主界面。</li>
+</ul>
+<figure class="small"><img src="operator-guide-443-assets/07c-menu-annotate-check.png" alt="逐项检查"><figcaption>逐项检查的行为列表。</figcaption></figure>
+</section>
+
+<section id="c14">
+<h2><small>14</small>导出与历史回看</h2>
+<table>
+<tr><th>菜单</th><th>作用</th></tr>
+<tr><td>文件 → 导出 → 完整成果…</td><td>把当前记录的标注保存成一个 <code>.标注.json</code>（含证据图），可放任意位置。</td></tr>
+<tr><td>文件 → 导出 → 所选片段…</td><td>先在波形上拖选一段，只导出这段（含标签）。</td></tr>
+<tr><td>文件 → 导出 → 训练数据…</td><td>批量导出训练与兼容格式（只含已确认真值；未确认、未看过的样本不会当成负样本）。</td></tr>
+<tr><td>文件 → 历史回看…</td><td>只读打开导出的标注文件，核对标签与录像（<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>）。</td></tr>
+</table>
+<figure><img src="operator-guide-443-assets/27-history.png" alt="历史回看"><figcaption>历史回看。</figcaption></figure>
+</section>
+
+<section id="c15">
+<h2><small>15</small>协作：派包、回传、接收</h2>
+<p class="lead">一个人“派包”（把原始数据分给多人），标注人员“打开协作数据包”标注后“生成标注数据包”，派包人“接收标注数据包”。</p>
+<h3>派发原始数据包（派包人）</h3>
+<figure><img src="operator-guide-443-assets/28-dispatch.png" alt="派发原始数据包"><figcaption><b class="m">标注 → 协作 → 派发原始数据包…</b>：打开即自动扫描（通常 1–2 秒），记住上次的牧场目录。</figcaption></figure>
+<ol>
+<li>确认<b>牧场根目录</b>，选择用途：<b>标注任务（跳过已完成）</b>或<b>复核任务</b>。</li>
+<li>设置派发几个包；每个包选择健康类别，勾选日期（单日或多日）。已派过的日期默认标记并跳过。</li>
+<li>可先点 <b>预览派包方案</b>，再点 <b>派发原始数据包</b>。进度显示速度和剩余时间。</li>
+<li>包生成在 <code>&lt;盘&gt;\2_标注器\科牧特_协作标注</code>（牧场在 <code>1_下载器</code> 下时），完成后写“派包报告”。</li>
+</ol>
+<div class="tip"><b>派包不等下载（4.4.2 起）：</b>下载正在进行、某个录像还在写入，都不会卡住派包；正在写入的文件会跳过并写进派包报告，其余照常打包。派包窗口不挡主界面，派包时可以继续标注。</div>
+<h3>打开协作数据包（标注人员）</h3>
+<figure class="mid"><img src="operator-guide-443-assets/31-open-package.png" alt="打开协作数据包"><figcaption><b class="m">文件 → 打开协作数据包…</b>：选择原始 ZIP 和解包位置，核验后直接打开工程。</figcaption></figure>
+<h3>生成标注数据包（标注人员）</h3>
+<figure class="mid"><img src="operator-guide-443-assets/29-returns.png" alt="生成标注数据包"><figcaption><b class="m">标注 → 协作 → 生成标注数据包…</b>：先保存，再生成只含标注和证据图的 ZIP，发回给派包人。</figcaption></figure>
+<h3>接收标注数据包（派包人）</h3>
+<figure class="mid"><img src="operator-guide-443-assets/30-receive.png" alt="接收标注数据包"><figcaption><b class="m">标注 → 协作 → 接收标注数据包…</b>：先关闭相关工程，选择一个或多个 ZIP；完整校验后接收，重复的跳过，冲突的保留并写报告。</figcaption></figure>
+<p><b class="m">接收成果… / 回传设置…</b>：按文件夹自动接收多人回传的 JSON（老流程），在回传设置里指定专用回传文件夹。</p>
+</section>
+
+<section id="c16">
+<h2><small>16</small>上传台账（上传 → 台账，<kbd>Ctrl</kbd>+<kbd>U</kbd>）</h2>
+<figure><img src="operator-guide-443-assets/40-ledger.png" alt="台账"><figcaption>现场台账（原“现场台账上传器”，已内置）。</figcaption></figure>
+<ol>
+<li><b>导入</b>：选择 Excel 或 CSV。软件兼容原表格式，新增、更新、重复分别统计。</li>
+<li>核对表格：双击单元格修改，右键更多操作，“…”查看详情。</li>
+<li><b>同步</b>：上传到服务器（SSH 加密、增量）。</li>
+<li>底部四张表：<b>样本试验台账、产犊登记、设备台账、待产犊</b>。</li>
+</ol>
+<figure><img src="operator-guide-443-assets/41-pending.png" alt="待产犊"><figcaption>待产犊表。</figcaption></figure>
+<table>
+<tr><th>产犊开始 / 结束</th><th>自动归类</th></tr>
+<tr><td>都为空</td><td>待产犊（尚未产犊）</td></tr>
+<tr><td>时间在佩戴期内</td><td>产犊</td></tr>
+<tr><td>填“/”，或产犊在拆除设备之后</td><td>孕晚期</td></tr>
+<tr><td>只填一项、先后颠倒、格式错误；死胎 / 难产 / 产后监测却没填时间</td><td>待核对</td></tr>
+</table>
+<p>其他命令：<b>同步修改</b>、<b>刷新服务器</b>、<b>新建记录…</b>、<b>核对冲突…</b>、<b>统计报告…</b>、<b>导出 CSV…</b>、<b>表</b>（直接打开某张表）、<b>上传设置…</b>。</p>
+</section>
+
+<section id="c17">
+<h2><small>17</small>下载与数据归类</h2>
+<h3>端侧数据（下载 → 端侧数据…，<kbd>Ctrl</kbd>+<kbd>D</kbd>）</h3>
+<figure><img src="operator-guide-443-assets/42-download.png" alt="端侧数据"><figcaption>只有一个“下载”按钮：按样本试验台账自动下载九轴、PPG、温度。</figcaption></figure>
+<ul>
+<li>点 <b>下载</b>：下载到当前时刻，每轮结束 1 分钟后自动继续；点 <b>暂停</b>：停止并删除未完成的临时文件，再点下载从断点继续。</li>
+<li>每轮开始先核对待产犊：台账补上产犊时间的，文件立即移到产犊或孕晚期。</li>
+<li>下载时自动运行实时决策器；<b class="m">下载 → 决策 APP</b> 查看结果。</li>
+<li><b>更多</b>里可重新下载所选记录；<b class="m">下载 → 下载记录</b> 查看运行记录、问题清单、备注；<b>检测连接</b> 检查服务器和数据接口；<b>下载设置…</b> 需先暂停。</li>
+</ul>
+<h3>数据归类（下载 → 数据归类）</h3>
+<figure><img src="operator-guide-443-assets/43-organize.png" alt="数据归类"><figcaption>录像转码与归类：录像机原盘的 Channel 01–20 自动对应视角01–20，按日期转为标准 MP4。</figcaption></figure>
+<ol>
+<li><b>录像转码与归类…</b>：选择录像机原盘（只读）和牧场目录，扫描后选择通道与时间范围，点“开始转码并归类”。可同时导入外部传感器 JSON。</li>
+<li><b>常规归类…</b>：把零散的九轴、视频按类别和日期放进规范目录（先审查、再预览、最后一键执行）。</li>
+<li><b>继续上次归类</b>：中断后续传；<b>归类记录…</b>：查看原因；<b>打开归类目录</b>。</li>
+</ol>
+<div class="tip">归类和标注可以同时进行。统一录像目录（工具 → 录像）会移动文件，需要先暂停下载。</div>
+</section>
+
+<section id="c18">
+<h2><small>18</small>工具菜单</h2>
+<h3>时间同步</h3>
+<ul>
+<li><b>精细校准…</b>：越播越偏时，在离原对应点较远处再加对应点；也可以标出“未确认的九轴区间”（不跨这些区间确认真值）。</li>
+<li><b>相机校准…</b>：校准当前主视角相机时钟（一般不用）。</li>
+<li><b>下一录像时段</b>：跳到下一个有录像的时段。</li>
+</ul>
+<figure class="mid"><img src="operator-guide-443-assets/32-mapping.png" alt="精细校准"><figcaption>精细校准。</figcaption></figure>
+<h3>录像</h3>
+<table>
+<tr><th>命令</th><th>作用</th></tr>
+<tr><td>统一录像目录…</td><td>把分类下旧的 Video 移到牧场根目录“录像”，并更新标注引用（先保存关闭工程、暂停下载）。</td></tr>
+<tr><td>导出标准 MP4…</td><td>把当前录像导出为通用 MP4（原件不动）。</td></tr>
+<tr><td>刷新素材 <kbd>F5</kbd></td><td>复制完新文件后重新核对。</td></tr>
+<tr><td>扩大检索</td><td>当前时刻找不到录像时，扩大检索范围。</td></tr>
+<tr><td>完整索引…</td><td>后台索引整个工程（可选、耗时）。</td></tr>
+<tr><td>暂停检索</td><td>暂停后台检索。</td></tr>
+<tr><td>素材核验…</td><td>打开核验窗口（同左侧“核验”，见第 10 章）。</td></tr>
+<tr><td>新建拷贝批次…</td><td>为同一视角的新一次导出建立独立批次，不覆盖旧批次。</td></tr>
+<tr><td>内容核验…</td><td>全文件内容校验（耗时）。</td></tr>
+<tr><td>归档核验…</td><td>核对录像归档副本，不删除原片。</td></tr>
+</table>
+<h3>视图与其他</h3>
+<ul>
+<li><b>视图</b>：放大视频、波形分屏、全屏、退出单路放大（<kbd>Esc</kbd>）、素材列表（<kbd>Ctrl</kbd>+<kbd>L</kbd>）、标注列表、双画面宽度、完整九轴（<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>）。</li>
+<li><b>性能诊断…</b>：查看解码、索引耗时，排查卡顿。</li>
+<li><b>切换硬件解码</b>：卡顿或花屏时切换，下次打开工程生效。</li>
+<li><b>旧版兼容</b>：导入旧单视频工程、打开旧版单视频窗口。</li>
+</ul>
+</section>
+
+<section id="c19">
+<h2><small>19</small>帮助、账号与关于</h2>
+<ul>
+<li><b>快速开始</b>（<kbd>F1</kbd>）：五步速记。</li>
+<li><b>新手图文教程…</b>：本教程。</li>
+<li><b>提示信息说明…</b><span class="new">4.4.3</span>：每条常见提示的原因和处理办法，可输入关键字筛选。</li>
+<li><b>账号 → 用户与密钥…</b>（管理员）：添加用户自动生成 8 位密码和一次性密钥（已复制），把三项发给本人；密钥只用于首次激活电脑。</li>
+<li><b>关于</b>：版本号、版本与更新、许可证。</li>
+</ul>
+<figure class="mid"><img src="operator-guide-443-assets/35-quick-help.png" alt="快速开始"><figcaption>快速开始。</figcaption></figure>
+<figure class="mid"><img src="operator-guide-443-assets/44-accounts.png" alt="账号"><figcaption>管理员：用户与密钥。</figcaption></figure>
+</section>
+
+<section id="c20">
+<h2><small>20</small>快捷键</h2>
+<table>
+<tr><th>快捷键</th><th>功能</th><th>快捷键</th><th>功能</th></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>打开工程</td><td><kbd>Ctrl</kbd>+<kbd>J</kbd></td><td>打开九轴</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>保存</td><td><kbd>Ctrl</kbd>+<kbd>W</kbd></td><td>关闭工程</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>撤销 / 重做</td><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>查找记录</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>完成本份</td><td><kbd>Ctrl</kbd>+<kbd>PgDown</kbd></td><td>下一份</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>U</kbd></td><td>台账</td><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>端侧数据下载</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>放大视频</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></td><td>波形分屏</td></tr>
+<tr><td><kbd>F11</kbd></td><td>全屏</td><td><kbd>Esc</kbd></td><td>退出单路放大</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>素材列表</td><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></td><td>完整九轴</td></tr>
+<tr><td><kbd>F5</kbd></td><td>刷新素材</td><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td><td>设置</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd></td><td>历史回看</td><td><kbd>F1</kbd></td><td>快速开始</td></tr>
+<tr><td><kbd>1</kbd>…<kbd>9</kbd> 等</td><td>标签快捷键（见标签下拉框方括号）</td><td><kbd>Ctrl</kbd>+<kbd>Q</kbd></td><td>退出</td></tr>
+<tr><td><kbd>空格</kbd></td><td>播放 / 暂停</td><td><kbd>[</kbd> / <kbd>]</kbd></td><td>后退 / 前进一帧</td></tr>
+<tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>后退 / 前进 0.1 秒</td><td><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>8</kbd></td><td>切换主视角</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>0</kbd></td><td>一次对齐</td><td></td><td></td></tr>
+</table>
+</section>
+
+<section id="c21">
+<h2><small>21</small>常见问题</h2>
+<h3>等画面到位后还是确认不了？</h3>
+<p>看提示里写的原因（4.4.3 起会写明）。最常见的是这段录像的时间没核验：点“去核验该录像”，开头、结尾各确认一个读数后保存（第 10 章）。</p>
+<h3>“旧标注需先建立视频草稿”怎么办？</h3>
+<p>4.4.3 起不用建立：双击旧标注回到动作，等画面到位，直接点“确认真值”。</p>
+<h3>列表里找不到要核验的是哪个？</h3>
+<p>左侧“核验”默认只列当前记录用到的录像，黄色行就是；也可切换“需要核验时间的录像”，或点“定位当前画面录像”。九轴 JSON 不需要核验。</p>
+<h3>画面一直出不来？</h3>
+<p>确认勾选的视角在这一时刻有录像；用“工具 → 录像 → 扩大检索”；同时播放路数太多时改为“单路优先”。</p>
+<h3>派包会不会被下载卡住？</h3>
+<p>不会。下载、派包、标注可以同时进行；正在写入的文件会跳过并写入派包报告。</p>
+<h3>界面按钮是英文？</h3>
+<p>4.4.3 起，“保存 / 取消 / 关闭 / 是 / 否”等系统按钮也显示中文。</p>
+<p>更多提示的含义和处理办法：<a href="prompt-guide-443.html">《提示信息说明与处理办法》</a>。</p>
+</section>
+
+</main>
+</div>
+<footer>杨凌园上园智能科技有限公司 · <a href="https://www.cowmata.com/">cowmata.com</a> · 截图来自 4.4.3 实际界面（教程数据为牧场真实数据的只读副本）</footer>
+</body>
+</html>

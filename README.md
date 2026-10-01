@@ -1,4 +1,4 @@
-# COWMATA Annotator 4.4.1
+# COWMATA Annotator 4.4.3
 
 **奶牛尾环数据工作台**：打开工程 → 上传台账 → 下载端侧数据 → 标注 → 工具。一个账号、一个窗口。
 
@@ -24,7 +24,7 @@ F:\4_决策器\产犊\                  预测算法（决策器）· 决策结�
 | 下载 | 端侧数据、开始下载、暂停下载、数据归类、决策 APP、下载设置、下载记录、检测连接、打开下载目录 |
 | 标注 | 自动生成候选、用所选区间建立候选、逐项检查、自动标注模型、完成本份 / 下一份、确认为真值、留存证据图、协作 |
 | 工具 | 时间同步、录像、视图、性能诊断、硬件解码、旧版兼容、设置 |
-| 帮助 | 快速开始、新手图文教程、账号、关于 |
+| 帮助 | 快速开始、新手图文教程、提示信息说明、账号、关于 |
 
 ## 下载：一个按钮
 
@@ -44,9 +44,9 @@ F:\4_决策器\产犊\                  预测算法（决策器）· 决策结�
 
 ## 安装与升级
 
-- 安装包 `COWMATA-Pro-4.4.1-Setup.exe`（NSIS）；便携包 `COWMATA-Pro-4.4.1-Portable.zip`；源码包 `COWMATA-Pro-4.4.1-Source.zip`。
-- 已安装的 4.3.x / 4.4.0：帮助 → 关于 → 检查更新，原地升级，工程、标注与设置保留。
+- 安装包 `COWMATA-Pro-4.4.3-Setup.exe`（NSIS）；便携包 `COWMATA-Pro-4.4.3-Portable.zip`；源码包 `COWMATA-Pro-4.4.3-Source.zip`。
+- 已安装的 4.3.x / 4.4.0 / 4.4.1 / 4.4.2：帮助 → 关于 → 检查更新，原地升级，工程、标注与设置保留。
 
-[新手图文教程](docs/operator-guide-440.html) · [更新记录](CHANGELOG.md) · [4.4.1 发布说明](docs/release-441.md)
+[新手图文教程](docs/operator-guide-443.html) · [提示信息说明](docs/prompt-guide-443.html) · [更新记录](CHANGELOG.md) · [4.4.3 发布说明](docs/release-443.md)
 
 开源许可：MIT（见 LICENSE / NOTICE）。界面图标：Fluent System Icons（MIT）。所属公司：杨凌园上园智能科技有限公司 · https://www.cowmata.com/

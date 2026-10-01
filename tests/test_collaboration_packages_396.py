@@ -1,6 +1,7 @@
 import base64
 import csv
 import json
+import os
 import struct
 import threading
 import zipfile
@@ -232,59 +233,179 @@ def test_completed_labels_are_review_tasks_with_baseline(farm, tmp_path):
 
 
 @pytest.mark.parametrize('kind', ['Motion', 'PPG', 'Temp'])
-def test_missing_modality_cannot_be_dispatched(farm, kind):
+def test_missing_modality_is_noted_but_never_blocks_dispatch(farm, kind):
+    """4.4.2: a record still downloading (one modality missing) ships with the rest and a note."""
     next((farm / '产犊' / kind).rglob('*.json')).unlink()
-    with pytest.raises(ValueError, match='缺少'):
-        plan_dispatch(farm, inventory(farm, '产犊'))
-    assert not list((farm / COLLABORATION).rglob('*.zip'))
+    plans = plan_dispatch(farm, inventory(farm, '产犊'))
+    assert any('缺少 ' + kind in w for w in plans[0]['readiness']['warnings'])
+    assert validate_archive(dispatch(farm, plans)[0])['units']
 
 
-def test_missing_or_short_video_never_has_confirmation_bypass(farm, monkeypatch):
+def test_missing_video_is_noted_and_recordings_are_never_probed(farm, monkeypatch):
     from cowmata_tailring.workspace import package_readiness as readiness
+
+    def probe(*_):
+        raise AssertionError('dispatch must not probe recordings')
+    monkeypatch.setattr(readiness, 'video_span', probe)
     for path in (farm / '录像').rglob('*.mp4'):
         path.unlink()
-    with pytest.raises(ValueError, match='缺少.*录像'):
-        plan_dispatch(farm, inventory(farm, '产犊'))
+    plans = plan_dispatch(farm, inventory(farm, '产犊'))
+    assert any('还没有录像文件' in w for w in plans[0]['readiness']['warnings'])
     path = farm / '录像/2026-09-17/视角01/2026-09-17_00-00-00.mp4'
-    path.write_bytes(b'fixture')
-    monkeypatch.setattr(readiness, 'video_span', lambda *_: (0, 1))
-    with pytest.raises(ValueError, match='未覆盖'):
-        plan_dispatch(farm, inventory(farm, '产犊'))
+    path.write_bytes(b'truncated recording')
+    plans = plan_dispatch(farm, inventory(farm, '产犊'))
+    with zipfile.ZipFile(dispatch(farm, plans)[0]) as archive:
+        assert archive.read(farm.name + '/录像/2026-09-17/视角01/2026-09-17_00-00-00.mp4') == b'truncated recording'
 
 
 @pytest.mark.parametrize('status', ['running', 'failed', 'canceled', 'outdated'])
-def test_unfinished_download_cycle_blocks_dispatch(farm, status):
+def test_unfinished_download_cycle_dispatches_with_warning(farm, status):
     path = farm / '.edge-download/csv-cycle.json'
     state = json.loads(path.read_text(encoding='utf-8'))
     state['status'] = status
     atomic_json(path, state)
-    with pytest.raises(ValueError, match='尚未完整结束'):
-        plan_dispatch(farm, inventory(farm, '产犊'))
-
-
-def test_csv_changes_block_preview_and_publication(farm):
-    from cowmata_tailring.edge_download.csv_targets import FILES
     plans = plan_dispatch(farm, inventory(farm, '产犊'))
-    cycle = json.loads((farm / '.edge-download/csv-cycle.json').read_text(encoding='utf-8'))
+    assert any('下载循环状态' in w for w in plans[0]['readiness']['warnings'])
+
+
+def test_video_still_being_written_is_left_out_but_dispatch_succeeds(farm, monkeypatch, tmp_path):
+    """4.4.2: a recording still held open for writing never blocks the package."""
+    from cowmata_tailring.workspace import collaboration_packages as packages
+    from cowmata_tailring.workspace.catalog import SourceBusyError
+    busy = farm / '录像/2026-09-17/视角01/2026-09-17_00-00-00.mp4'
+    busy.with_name('2026-09-17_00-00-30.mp4').write_bytes(b'fixture-video-2')
+    real = packages.assert_not_being_written
+
+    def fake(path):
+        if path.name == busy.name:
+            raise SourceBusyError('文件有写入占用，可能正在复制')
+        return real(path)
+    monkeypatch.setattr(packages, 'assert_not_being_written', fake)
+    report = {}
+    package = packages.dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')), report=report)[0]
+    with zipfile.ZipFile(package) as archive:
+        names = archive.namelist()
+    assert farm.name + '/录像/2026-09-17/视角01/2026-09-17_00-00-30.mp4' in names
+    assert not any(name.endswith(busy.name) for name in names)
+    assert report['packages'][0]['skipped'][0]['path'].endswith(busy.name)
+    assert open_raw_package(package, tmp_path / 'worker').is_dir()
+
+
+def test_read_failure_mid_file_drops_only_that_member(farm, monkeypatch, tmp_path):
+    from cowmata_tailring.workspace import collaboration_packages as packages
+    video = farm / '录像/2026-09-17/视角01/2026-09-17_00-00-00.mp4'
+    video.write_bytes(b'x' * (packages.CHUNK + 10))
+    real_open = packages._open_source
+
+    class Failing:
+        def __init__(self, stream):
+            self.stream, self.calls = stream, 0
+
+        def readinto(self, buffer):
+            self.calls += 1
+            if self.calls > 1:
+                raise OSError(5, 'injected read failure')
+            return self.stream.readinto(buffer)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self.stream.close()
+
+    def opener(path):
+        stream = real_open(path)
+        return Failing(stream) if path.name == video.name else stream
+    monkeypatch.setattr(packages, '_open_source', opener)
+    report = {}
+    package = packages.dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')), report=report)[0]
+    with zipfile.ZipFile(package) as archive:
+        assert archive.testzip() is None
+        names = archive.namelist()
+    assert not any(name.endswith(video.name) for name in names)
+    assert any(name.endswith('2026-09-18_00-00-00.mp4') for name in names)
+    assert any('injected' in item['reason'] for item in report['packages'][0]['skipped'])
+    assert open_raw_package(package, tmp_path / 'worker').is_dir()
+
+
+def test_one_failed_package_does_not_stop_the_others(farm):
+    plans = plan_dispatch(farm, inventory(farm, '产犊'), count=2)
+    blocked = farm / COLLABORATION / '原始数据包' / (plans[0]['base_name'] + '_原始.zip')
+    blocked.parent.mkdir(parents=True, exist_ok=True)
+    blocked.write_bytes(b'occupied')
+    report = {}
+    outputs = dispatch(farm, plans, report=report)
+    assert len(outputs) == 1 and outputs[0].is_file()
+    first, second = report['packages']
+    assert first['error'] and first['output'] is None
+    assert second['error'] is None and second['output'] == str(outputs[0])
+    marked = {u['key'] for u in inventory(farm, '产犊') if u['dispatches']}
+    assert marked == {u['key'] for u in plans[1]['units']}
+
+
+def test_dispatch_cleans_partials_left_by_an_interrupted_run(farm):
+    folder = farm / COLLABORATION / '原始数据包'
+    folder.mkdir(parents=True, exist_ok=True)
+    stale = folder / ('.' + 'a' * 32 + '.partial')
+    stale.write_bytes(b'x' * 1000)
+    kept = folder / 'notes.partial'
+    kept.write_bytes(b'user file')
+    report = {}
+    dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')), report=report)
+    assert not stale.exists() and kept.exists()
+    assert report['reclaimed_bytes'] == 1000
+
+
+def test_dispatch_runs_while_another_task_holds_the_farm(farm):
+    from cowmata_tailring.workspace.dataset_access import DatasetLease
+    with DatasetLease([farm], 'organize'):
+        outputs = dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')))
+    assert outputs and outputs[0].is_file()
+
+
+def test_rewritten_dispatched_record_is_reported_as_changed(farm):
+    rows = inventory(farm, '产犊')
+    dispatch(farm, plan_dispatch(farm, rows))
+    source = farm / rows[0]['paths'][0]
+    source.write_text(source.read_text(encoding='utf-8') + ' ', encoding='utf-8')
+    row = next(u for u in inventory(farm, '产犊') if u['key'] == rows[0]['key'])
+    assert row['changed_records'] == 1 and row['dispatch_status'] == 'changed'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='directory junctions are a Windows feature')
+def test_scan_never_follows_a_junction_inside_a_record_folder(farm, tmp_path):
+    import _winapi
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'stray.json').write_text('{}', encoding='utf-8')
+    owner = next((farm / '产犊/Motion/2026-09-17').iterdir())
+    _winapi.CreateJunction(str(outside), str(owner / 'linked'))
+    row = next(u for u in inventory(farm, '产犊') if u['owner'] == owner.name and u['day'] == '2026-09-17')
+    assert not any('stray.json' in p for p in row['paths'])
+    assert any(p.endswith('/linked') for p in row['skipped_files'])
+    plans = plan_dispatch(farm, [row])
+    assert any('linked' in w for w in plans[0]['readiness']['warnings'])
+
+
+def test_csv_changes_do_not_block_dispatch(farm):
+    from cowmata_tailring.edge_download.csv_targets import FILES
     from pathlib import Path
+    plan_dispatch(farm, inventory(farm, '产犊'))
+    cycle = json.loads((farm / '.edge-download/csv-cycle.json').read_text(encoding='utf-8'))
     ledger = Path(cycle['ledger_directory']) / FILES[0]
     original = ledger.read_bytes()
     ledger.write_bytes(original + b'\n')
-    with pytest.raises(ValueError, match='CSV 已更新'):
-        plan_dispatch(farm, inventory(farm, '产犊'))
-    ledger.write_bytes(original)
-    changed = False
-    def change_during_write(*_):
-        nonlocal changed
-        if not changed:
-            ledger.write_bytes(original + b'\n')
-            changed = True
-    with pytest.raises(ValueError, match='CSV 已更新'):
-        dispatch(farm, plans, progress=change_during_write)
-    assert not list((farm / COLLABORATION).rglob('*.zip'))
+    plans = plan_dispatch(farm, inventory(farm, '产犊'))
+    assert plans
 
 
-def test_new_data_is_reported_as_supplement_and_stale_plan_rejected(farm):
+def test_new_data_is_reported_as_supplement_and_additions_do_not_block_redispatch(farm):
+    """4.4.2: added (not deleted) source data must never hard-block dispatch.
+
+    Re-using the exact same stale plan object is still refused, but only
+    because that package was already written once (duplicate output name);
+    a fresh plan picks the new file straight up, same as any other dispatch.
+    """
     rows = inventory(farm, '产犊')
     plans = plan_dispatch(farm, rows)
     dispatch(farm, plans)
@@ -296,19 +417,42 @@ def test_new_data_is_reported_as_supplement_and_stale_plan_rejected(farm):
     latest = inventory(farm, '产犊')
     assert sum(u['new_records'] for u in latest) == 1
     assert any(u['dispatch_status'] == 'supplement' for u in latest)
-    with pytest.raises(ValueError, match='新增或删除'):
+    with pytest.raises(FileExistsError):
         dispatch(farm, plans)
+    fresh_plans = plan_dispatch(farm, inventory(farm, '产犊'))
+    outputs = dispatch(farm, fresh_plans)
+    assert outputs and all(path.is_file() for path in outputs)
 
 
-def test_downloader_and_dispatch_share_exclusive_lock(farm):
+def test_deleted_source_file_is_left_out_and_package_still_opens(farm, tmp_path):
+    rows = inventory(farm, '产犊')
+    plans = plan_dispatch(farm, rows)
+    gone = rows[0]['paths'][0]
+    (farm / gone).unlink()
+    package = dispatch(farm, plans)[0]
+    manifest = validate_archive(package)
+    assert gone not in {p for unit in manifest['units'] for p in unit['paths']}
+    assert any(gone in w for w in manifest['readiness']['warnings'])
+    assert open_raw_package(package, tmp_path / 'worker').is_dir()
+
+
+def test_dispatch_proceeds_while_downloader_holds_sync_lock(farm):
+    """4.4.2: dispatch must run concurrently with an active download, not wait for it.
+
+    Per-file write-handle checks and stamp re-checks already guard the files
+    that are actually packaged, so dispatch no longer takes an exclusive lock
+    against the downloader's sync.lock.
+    """
     from cowmata_tailring.edge_download.deduplication import RootSyncLock
     with RootSyncLock(farm, threading.Event()):
-        with pytest.raises(ValueError, match='下载正在写入'):
-            plan_dispatch(farm, inventory(farm, '产犊'))
+        plans = plan_dispatch(farm, inventory(farm, '产犊'))
+        outputs = dispatch(farm, plans)
+    assert outputs and all(path.is_file() for path in outputs)
 
 
 @pytest.mark.parametrize('change', ['bad_json', 'wrong_identity', 'wrong_date'])
-def test_bad_sensor_data_blocks_dispatch(farm, change):
+def test_sensor_content_is_packaged_as_is(farm, change):
+    """4.4.2: the operator has checked the data; dispatch neither parses nor rejects sensor JSON."""
     raw = next((farm / '产犊/Motion').rglob('*.json'))
     data = json.loads(raw.read_text(encoding='utf-8'))
     if change == 'bad_json':
@@ -316,8 +460,8 @@ def test_bad_sensor_data_blocks_dispatch(farm, change):
     else:
         data.update({'cow_id': '99999'} if change == 'wrong_identity' else {'create_time': data['create_time'] + 86400000})
         atomic_json(raw, data)
-    with pytest.raises(ValueError):
-        plan_dispatch(farm, inventory(farm, '产犊'))
+    with zipfile.ZipFile(dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')))[0]) as archive:
+        assert archive.read(farm.name + '/' + raw.relative_to(farm).as_posix()) == raw.read_bytes()
 
 
 def test_classified_video_filename_uses_beijing_epoch(monkeypatch, tmp_path):

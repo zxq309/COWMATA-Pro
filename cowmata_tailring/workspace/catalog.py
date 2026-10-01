@@ -683,10 +683,12 @@ class Catalog:
                 timeline = metadata.get("timeline") or {}
                 if timeline.get("native") or metadata.get("dahua"):
                     continue
+                if metadata.get("duration_basis") == "timeline":
+                    continue  # 4.4.3: already timed by the recorder's packet clock
                 self.db.execute("UPDATE assets SET metadata=json_set(metadata,'$.recheck',1) WHERE id=?",
                                 (row["asset_id"],))
                 self.db.execute("UPDATE locations SET state='pending',attempt_at=0,error=? WHERE path=?",
-                                ("大华时间轴规则已更新，等待重建索引；人工标注保留", row["path"]))
+                                ("录像时间轴规则已更新，等待重建索引；人工标注保留", row["path"]))
                 queued += 1
         return queued
 
