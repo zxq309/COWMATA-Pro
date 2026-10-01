@@ -233,12 +233,12 @@ class VideoTile(QFrame):
         self.forward = control(QStyle.StandardPixmap.SP_MediaSeekForward, "前进 5 秒 · 统一标注时间轴",
                                lambda: self.transportRequested.emit(self, "seek", 5000))
         self.speed_control = QComboBox(self.overlay)
-        self.speed_control.addItems(["0.25×", "0.5×", "1×", "2×", "4×"])
+        self.speed_control.addItems(["0.25×", "0.5×", "1×", "2×", "4×", "8×", "10×"])
         self.speed_control.setCurrentIndex(2)
         self.speed_control.setFixedWidth(65)
         self.speed_control.setToolTip("播放倍率 · 所有视角与九轴共用时间轴")
         self.speed_control.currentIndexChanged.connect(
-            lambda i: self.transportRequested.emit(self, "rate", [.25, .5, 1, 2, 4][i]))
+            lambda i: self.transportRequested.emit(self, "rate", [.25, .5, 1, 2, 4, 8, 10][i]))
         bar.addWidget(self.speed_control)
         self.zoom = control(QStyle.StandardPixmap.SP_TitleBarMaxButton, "放大此视角 / 恢复布局",
                             lambda: self.enlarged.emit(self))
@@ -383,7 +383,7 @@ class VideoTile(QFrame):
             self.zoom.setIcon(self.control_icon(
                 QStyle.StandardPixmap.SP_TitleBarNormalButton if expanded else QStyle.StandardPixmap.SP_TitleBarMaxButton))
             self.speed_control.blockSignals(True)
-            self.speed_control.setCurrentIndex([.25, .5, 1, 2, 4].index(rate))
+            self.speed_control.setCurrentIndex([.25, .5, 1, 2, 4, 8, 10].index(rate))
             self.speed_control.blockSignals(False)
         hovered = self.stack.isVisible() and self.stack.rect().contains(self.stack.mapFromGlobal(QCursor.pos()))
         if hovered or self.speed_control.view().isVisible():
@@ -659,7 +659,7 @@ class VideoBoard(QWidget):
             rate = float(rate)
         except (TypeError, ValueError):
             rate = float("nan")
-        if not math.isfinite(rate) or rate not in {.25, .5, 1, 2, 4}:
+        if not math.isfinite(rate) or rate not in {.25, .5, 1, 2, 4, 8, 10}:
             raise ValueError("播放倍率不支持")
         # 4.3.7: the requested rate is always applied. 4.3.5/4.3.6 silently kept 1x whenever an
         # optional compatibility cache had failed, while the rate box showed 4x (bug 4.3.4-1).
@@ -1134,6 +1134,11 @@ class VideoBoard(QWidget):
             tile.engine.pause(True)
         tile.precise_ms = actual
         tile.actual_ms = self.timeline.reference_time(tile.camera, tile.interval.wall_at(actual))
+        if tile.camera == self.main_camera and tile is not self.prewarm:
+            # Resume/play uses the shared reference clock. Keep that clock on the
+            # exact paused frame the operator is seeing, not the earlier request.
+            self.reference_ms = tile.actual_ms
+            self.timeChanged.emit(self.reference_ms)
         tile.frame_image = image
         tile.stack.setCurrentWidget(tile.frame_view)
         tile.stack.show()

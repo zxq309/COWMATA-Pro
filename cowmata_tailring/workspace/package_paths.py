@@ -1,22 +1,31 @@
 """Shared cancellation and archive path containment checks."""
 from pathlib import Path
 
+_RESERVED = {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)), *(f'LPT{i}' for i in range(1, 10))}
+
 
 def check(cancelled):
     if cancelled():
         raise InterruptedError('已取消；未完成的包不会标记为已派发')
 
 
-def safe_path(root, relative):
+def unsafe_relative(relative):
+    """Why a farm-relative POSIX path cannot be an archive member, or '' (string checks only)."""
     if not isinstance(relative, str) or not relative or '\\' in relative:
-        raise ValueError('压缩包路径格式无效')
-    parts = relative.split('/')
-    reserved = {'CON', 'PRN', 'AUX', 'NUL', *(f'COM{i}' for i in range(1, 10)), *(f'LPT{i}' for i in range(1, 10))}
-    if any(p in {'', '.', '..'} or p.endswith(('.', ' ')) or any(c in p for c in ':<>|?*')
-           or any(ord(c) < 32 for c in p) or p.split('.')[0].upper() in reserved for p in parts):
-        raise ValueError('压缩包含越界或不安全路径：' + relative)
+        return '压缩包路径格式无效'
+    for p in relative.split('/'):
+        if (p in {'', '.', '..'} or p.endswith(('.', ' ')) or any(c in p for c in ':<>|?*')
+                or any(ord(c) < 32 for c in p) or p.split('.')[0].upper() in _RESERVED):
+            return '压缩包含越界或不安全路径：' + relative
+    return ''
+
+
+def safe_path(root, relative):
+    reason = unsafe_relative(relative)
+    if reason:
+        raise ValueError(reason)
     root = Path(root).resolve()
-    target = root.joinpath(*parts)
+    target = root.joinpath(*relative.split('/'))
     for part in (target, *target.parents):
         if part == root:
             break

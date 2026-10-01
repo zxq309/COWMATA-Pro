@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
@@ -308,6 +308,35 @@ class DragHeader(QLabel):
             self.stage.toggle_video_focus()
 
 
+class PipResizeHandle(QFrame):
+    def __init__(self, stage):
+        super().__init__(stage.video)
+        self.stage = stage
+        self.origin = None
+        self.start_size = None
+        self.setFixedSize(18, 18)
+        self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        self.setToolTip("\u62d6\u52a8\u4ee5\u8c03\u6574\u753b\u4e2d\u753b\u5927\u5c0f")
+        self.setStyleSheet("background:rgba(82,169,232,0.28); border:1px solid #52a9e8; border-radius:3px;")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.stage.pip_active():
+            self.origin = event.globalPosition().toPoint()
+            self.start_size = self.stage.video.size()
+            self.grabMouse()
+
+    def mouseMoveEvent(self, event):
+        if self.origin is not None and self.start_size is not None:
+            delta = event.globalPosition().toPoint() - self.origin
+            self.stage.resize_pip_to(self.start_size.width() + delta.x(), self.start_size.height() + delta.y())
+
+    def mouseReleaseEvent(self, event):
+        self.origin = None
+        self.start_size = None
+        if self.mouseGrabber() is self:
+            self.releaseMouse()
+
+
 class WaveformWindow(QWidget):
     """Separate top-level window for the waveform, e.g. on a second monitor.
 
@@ -379,12 +408,14 @@ class WorkspaceStage(QWidget):
     waveform strip under a window-wide video (F11 makes it full screen), and
     波形分屏 moves the waveform to its own window so the video fills the stage.
     """
+    pipResized = Signal(QSize)
     FOCUS_WAVE_RATIO = .32
 
     def __init__(self, board, signal_panel, parent=None):
         super().__init__(parent)
         self.mode = "A"
         self.pip_scale = .34
+        self.pip_custom_size = None
         self.pip_position = (1.0, 0.0)
         self.wave_ratio = .55
         self.video_focus = False
@@ -416,6 +447,8 @@ class WorkspaceStage(QWidget):
         layout.addLayout(header)
         layout.addWidget(board, 1)
         self.board = board
+        self.resize_handle = PipResizeHandle(self)
+        self.resize_handle.hide()
         if hasattr(board, "expandedChanged"):
             board.expandedChanged.connect(lambda *_: self.arrange())
         self.setMinimumSize(540, 390)
@@ -494,6 +527,7 @@ class WorkspaceStage(QWidget):
                                  "录像 · 放大查看（双击标题恢复画中画）" if self.video_focus else
                                  "录像 · 拖动标题移动画中画，双击放大")
         if detached:
+            self.resize_handle.hide()
             self.video.setGeometry(0, 0, w, h)
             self.video.show()
             return
@@ -503,10 +537,17 @@ class WorkspaceStage(QWidget):
             self.signal_panel.setGeometry(0, h - wave_h, w, wave_h)
         elif self.mode == "C":
             self.signal_panel.setGeometry(0, 0, w, h)
-            pw = min(w, max(260, int(w * self.pip_scale)))
             self.pip_top = self.signal_panel.toolbar.sizeHint().height() + 5
             self.pip_bottom = self.signal_panel.scroll.height() + 5
-            ph = min(h - self.pip_top - self.pip_bottom, int(pw * 9 / 16) + 88)
+            default_width = min(w, max(260, int(w * self.pip_scale)))
+            default_height = min(h - self.pip_top - self.pip_bottom, int(default_width * 9 / 16) + 88)
+            if self.pip_custom_size is not None:
+                size = self._bounded_pip_size(self.pip_custom_size.width(), self.pip_custom_size.height(),
+                                              stage_width=w, stage_height=h, top=self.pip_top, bottom=self.pip_bottom)
+                self.pip_custom_size = QSize(size)
+                pw, ph = size.width(), size.height()
+            else:
+                pw, ph = default_width, default_height
             self.video.setGeometry(int((w - pw) * self.pip_position[0]),
                                    self.pip_top + int((h - ph - self.pip_top - self.pip_bottom) * self.pip_position[1]), pw, ph)
             self.video.raise_()
@@ -522,6 +563,13 @@ class WorkspaceStage(QWidget):
                 wave_h = min(available, max(240, int(h * self.wave_ratio)))
             self.video.setGeometry(0, 0, w, h - wave_h - 8)
             self.signal_panel.setGeometry(0, h - wave_h, w, wave_h)
+        active = self.pip_active()
+        self.resize_handle.setVisible(active)
+        if active:
+            margin = 6
+            self.resize_handle.move(max(margin, self.video.width() - self.resize_handle.width() - margin),
+                                    max(margin, self.video.height() - self.resize_handle.height() - margin))
+            self.resize_handle.raise_()
         self.signal_panel.show()
         self.video.show()
 
@@ -537,4 +585,24 @@ class WorkspaceStage(QWidget):
             # Moving native video children can copy stale border pixels into
             # the backing store. Recompose the exposed waveform from its cache;
             # update() coalesces drag events and does not rebuild the curves.
+            self.signal_panel.wave.update()
+
+    def _bounded_pip_size(self, width, height, *, stage_width=None, stage_height=None, top=None, bottom=None):
+        stage_width = self.width() if stage_width is None else stage_width
+        stage_height = self.height() if stage_height is None else stage_height
+        top = getattr(self, "pip_top", 0) if top is None else top
+        bottom = getattr(self, "pip_bottom", 0) if bottom is None else bottom
+        max_width = max(260, int(stage_width))
+        max_height = max(180, int(stage_height - top - bottom))
+        bounded = QSize(max(260, min(int(round(width)), max_width)),
+                        max(180, min(int(round(height)), max_height)))
+        return bounded
+
+    def resize_pip_to(self, width, height):
+        size = self._bounded_pip_size(width, height)
+        before = self.video.size()
+        self.pip_custom_size = QSize(size)
+        self.arrange()
+        if self.video.size() != before:
+            self.pipResized.emit(QSize(self.video.size()))
             self.signal_panel.wave.update()

@@ -168,7 +168,7 @@ MENU_ICONS = {
     "端侧数据…": "arrow_download", "数据归类": "folder_arrow_right", "下载设置…": "settings", "决策 APP": "data_trending",
     "自动生成候选…": "sparkle", "完成本份…": "checkmark_circle", "协作": "people_team",
     "时间同步": "clock", "录像": "video", "视图": "window_new", "设置…": "settings",
-    "快速开始": "book_open", "新手图文教程…": "book_open", "账号": "person", "关于": "info",
+    "快速开始": "book_open", "新手图文教程…": "book_open", "提示信息说明…": "info", "账号": "person", "关于": "info",
 }
 
 

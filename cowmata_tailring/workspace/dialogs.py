@@ -102,7 +102,9 @@ class SourceTimeDialog(QDialog):
         self.timeline = MediaTimelineIndex.from_dict(row["metadata"]["timeline"]) if row["metadata"].get("timeline") else None
         self.metadata = row["metadata"]
         layout = QVBoxLayout(self)
-        self.tip = QLabel("拖动框选时间戳。至少核对两个相隔较远的读数；单点只供粗定位。原始录像不会修改。")
+        self.tip = QLabel("操作：① 点“读取开头画面”；② 对照画面上的时间，核对或修改“画面读数”（日期也要核对）；"
+                          "③ 点“确认当前读数”；④ 点“读取结尾画面”，重复 ② ③；⑤ 点“保存”。"
+                          "两个读数之间的录像才算已核验，开头、结尾各确认一个最省事。原始录像不会修改。")
         self.tip.setWordWrap(True)
         layout.addWidget(self.tip)
         self.canvas = RegionCanvas()
@@ -125,7 +127,8 @@ class SourceTimeDialog(QDialog):
         form.addRow("逻辑视角名称", self.camera)
         layout.addLayout(form)
         buttons = QHBoxLayout()
-        for title, handler in (("读取这个位置的画面", self.load_frame), ("识别框选区域 / 四角", self.recognize),
+        for title, handler in (("读取开头画面", self.load_start), ("读取结尾画面", self.load_end),
+                               ("读取这个位置的画面", self.load_frame), ("识别框选区域 / 四角", self.recognize),
                                ("确认当前读数", self.accept_reading)):
             button = QPushButton(title)
             button.clicked.connect(handler)
@@ -136,6 +139,13 @@ class SourceTimeDialog(QDialog):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setMaximumHeight(140)
         layout.addWidget(self.table)
+        self.coverage = QLabel()
+        self.coverage.setWordWrap(True)
+        layout.addWidget(self.coverage)
+        # The reading field may be replaced by the next frame's predicted time
+        # until the operator types in it; typed text is never overwritten.
+        self.replaceable = True
+        self.timestamp.textEdited.connect(self.typed)
         self.readings = list(self.metadata.get("manual_readings", []))
         self.refresh_readings()
         end = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -161,9 +171,33 @@ class SourceTimeDialog(QDialog):
 
         threading.Thread(target=run, daemon=True).start()
 
+    def typed(self, *_):
+        self.replaceable = False
+
     def load_frame(self):
         position = self.position.value() * 1000
         self.background(lambda: extract_frame(self.catalog.source_path(self.row["path"]), position, self.timeline, cancelled=lambda: not self.alive), "frame")
+
+    def load_start(self):
+        self.position.setValue(0)
+        self.load_frame()
+
+    def load_end(self):
+        # One second before the end: the last packets of recorder files are
+        # often incomplete, and the edge second adds nothing to the check.
+        self.position.setValue(max(0.0, self.metadata.get("duration_ms", 0) / 1000 - 1.0))
+        self.load_frame()
+
+    def predicted_wall(self, media_ms):
+        """Wall time the index currently assumes for this frame, only as a typing aid."""
+        for item in self.metadata.get("intervals", []):
+            try:
+                if item["media_start"] <= media_ms <= item["media_end"] and item["media_end"] > item["media_start"]:
+                    share = (media_ms - item["media_start"]) / (item["media_end"] - item["media_start"])
+                    return item["wall_start"] + share * (item["wall_end"] - item["wall_start"])
+            except (KeyError, TypeError):
+                continue
+        return None
 
     def recognize(self):
         if self.frame is None:
@@ -181,7 +215,13 @@ class SourceTimeDialog(QDialog):
             data = self.frame.tobytes("raw", "RGB")
             self.canvas.image = QImage(data, self.frame.width, self.frame.height, self.frame.width * 3, QImage.Format.Format_RGB888).copy()
             self.canvas.update()
-            self.tip.setText(f"已解码实际位置 {self.actual_ms / 1000:.3f} 秒。框选时间戳后可识别，也可直接输入看到的读数。")
+            guess = self.predicted_wall(self.actual_ms)
+            if guess is not None and self.replaceable:
+                self.timestamp.setText(wall_text(guess))
+                self.tip.setText(f"已解码实际位置 {self.actual_ms / 1000:.3f} 秒，并按文件名/索引时间预填了读数。"
+                                 "请与画面上的时间逐字核对（含日期），不一致就改成画面上的时间，再点“确认当前读数”。")
+            else:
+                self.tip.setText(f"已解码实际位置 {self.actual_ms / 1000:.3f} 秒。框选时间戳后可识别，也可直接输入看到的读数。")
         else:
             self.report = value
             if value.get("timestamp"):
@@ -197,6 +237,7 @@ class SourceTimeDialog(QDialog):
             self.readings.append({"media_ms": self.actual_ms, "wall_ms": stamp, "source": "manual",
                                   "ocr": self.report, "roi": self.canvas.roi})
             self.readings.sort(key=lambda r: r["media_ms"])
+            self.replaceable = True
             self.refresh_readings()
         except ValueError as exc:
             self.tip.setText(str(exc))
@@ -208,6 +249,16 @@ class SourceTimeDialog(QDialog):
                 item = QTableWidgetItem(text)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(i, j, item)
+        duration = float(self.metadata.get("duration_ms") or 0)
+        if not self.readings:
+            self.coverage.setText("还没有读数。")
+        elif len(self.readings) == 1:
+            self.coverage.setText("已确认 1 个读数：只能粗定位，还不能确认真值。请再确认一个相隔较远的读数（建议录像结尾）。")
+        else:
+            first, last = self.readings[0]["media_ms"], self.readings[-1]["media_ms"]
+            share = (last - first) / duration if duration > 0 else 0
+            self.coverage.setText(f"已确认 {len(self.readings)} 个读数：第 {first / 1000:.1f} 秒到第 {last / 1000:.1f} 秒之间算已核验"
+                                  f"（约占全片 {max(0.0, min(1.0, share)):.0%}）。这段录像上的标注都在此范围内即可确认真值。")
 
     def validate_accept(self):
         try:

@@ -54,11 +54,16 @@ def create_about(parent=None):
                                          for name in ("LICENSE", "NOTICE") if (root / name).is_file()))
     license_text.setAccessibleName(t("许可证与版权声明"))
     layout.addWidget(license_text)
-    tutorial_path = root / "docs" / "operator-guide-440.html"
+    tutorial_path = root / "docs" / "operator-guide-443.html"
     tutorial = QPushButton(t("新手图文教程…"))
     tutorial.setEnabled(tutorial_path.is_file())
     tutorial.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(tutorial_path))))
     layout.addWidget(tutorial)
+    prompts_path = root / "docs" / "prompt-guide-443.html"
+    prompts = QPushButton(t("提示信息说明…"))
+    prompts.setEnabled(prompts_path.is_file())
+    prompts.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(prompts_path))))
+    layout.addWidget(prompts)
     from cowmata_tailring.app.update_ui import tr
     update = QPushButton(tr("版本与更新…", "Version and updates…"))
     update.setEnabled(parent is not None and hasattr(parent, "updater"))

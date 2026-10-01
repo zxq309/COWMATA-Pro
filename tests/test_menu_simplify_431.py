@@ -33,7 +33,7 @@ def test_menus_are_shallow_grouped_and_complete():
         assert top["下载"][:3] == ["端侧数据…", "开始下载", "暂停下载"] and "数据归类" in top["下载"]
         assert top["标注"][:4] == ["自动生成候选…", "用所选区间建立候选", "逐项检查", "自动标注模型…"]
         assert {"时间同步", "录像", "视图", "设置…"} <= set(top["工具"])
-        assert top["帮助"] == ["快速开始", "新手图文教程…", "账号", "关于"]
+        assert top["帮助"] == ["快速开始", "新手图文教程…", "提示信息说明…", "账号", "关于"]
         assert "派发原始数据包…" in [a.text() for a in w._collaboration_menu.actions()]
         view = next(a.menu() for a in menus["工具"].actions() if a.text() == "视图")
         assert [a.text() for a in view.actions()][:2] == ["放大视频", "波形分屏"]

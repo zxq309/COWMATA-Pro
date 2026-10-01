@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import threading
+import time
+import weakref
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QCoreApplication, QSettings, Qt, QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QCheckBox,
@@ -14,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -28,6 +32,7 @@ from .farm_layout import shared_farm
 from .native_folders import choose_folders
 from .theme import STYLE
 
+LAST_ROOT = 'collaboration/dispatch_root'
 TITLES = dict(dispatch='派发原始数据包', returns='生成标注数据包', receive='接收标注数据包', open='打开协作原始数据包', layout='统一牧场录像目录')
 
 
@@ -36,6 +41,17 @@ def size_text(value):
         if value < 1024 or unit == 'TiB':
             return f'{value:.1f} {unit}'
         value /= 1024
+
+
+def duration_text(seconds):
+    seconds = max(0, int(seconds))
+    hours, rest = divmod(seconds, 3600)
+    minutes, secs = divmod(rest, 60)
+    if hours:
+        return f'{hours} 小时 {minutes} 分'
+    if minutes:
+        return f'{minutes} 分 {secs} 秒'
+    return f'{secs} 秒'
 
 
 class CollaborationDialog(QDialog):
@@ -47,7 +63,13 @@ class CollaborationDialog(QDialog):
         self.pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='collaboration')
         self.stop = threading.Event()
         self.latest = (0, 0, '')
+        self.progress_kind = 'bytes'
+        self.samples = deque()
+        self.report = None
+        self.remember = False
         self.setWindowTitle('COWMATA Annotator · ' + TITLES[mode])
+        self.setWindowFlag(Qt.WindowType.WindowMinimizeButtonHint, True)
+        self.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, True)
         self.resize(1060, 740 if mode == 'dispatch' else 480)
         self.setStyleSheet(STYLE)
         layout = QVBoxLayout(self)
@@ -126,6 +148,10 @@ class CollaborationDialog(QDialog):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(100)
+        application = QCoreApplication.instance()
+        if application is not None:
+            # Quitting the application cancels a running task instead of waiting for it.
+            application.aboutToQuit.connect(self.stop.set)
 
     def choose_root(self):
         selected = choose_folders(self, '选择牧场根目录' if self.mode != 'open' else '选择解包位置', self.root.text())
@@ -175,11 +201,14 @@ class CollaborationDialog(QDialog):
         self.status.setText('正在扫描牧场资料与派发状态，请稍候…')
         self.log.appendPlainText('扫描根目录：' + root)
         def operation():
-            return {category: packages.inventory(root, category, cancelled=self.stop.is_set) for category in sorted(categories)}
+            return {category: packages.inventory(root, category, cancelled=self.stop.is_set, progress=self.on_progress)
+                    for category in sorted(categories)}
         def loaded(value):
             self.planner.load_inventory(value)
             self.status.setText('扫描完成。请在每个包中直接勾选单日或多日；已派日期默认标记并跳过。')
-        self.run(operation, loaded)
+            if self.remember:
+                QSettings().setValue(LAST_ROOT, root)
+        self.run(operation, loaded, 'count')
 
     def preview_plan(self, *, dispatch_after=False):
         self.plans = []
@@ -225,10 +254,13 @@ class CollaborationDialog(QDialog):
                 views = {e['path'].split('/')[-2] for e in plan['entries'] if Path(e['path']).suffix.lower() in VIDEO_SUFFIXES}
                 lines.append(f'包 {plan["part"]} · {"、".join(plan["categories"])} · 日期：{"、".join(plan["dates"])}')
                 lines.append(f'  {len(plan["units"])} 个设备日 · {len(plan["sensor_paths"])} 份记录 · 全量 {len(views)} 个视角 · 预计 {size_text(plan["estimated_bytes"])}')
+            lines.append('合计 ' + size_text(sum(plan['estimated_bytes'] for plan in plans)) + '；视频按原样存入，不重新压缩。')
             lines.append('完全按你在各包中勾选的日期派发，同日整组保留；不会自动均分或改动选择。')
             lines.append('按牧场原目录树保存所选日期的 JSON、视频及必要清单，不更改来源文件。')
-            for plan in plans:
-                lines.extend(plan.get('readiness', {}).get('warnings', []))
+            notes = list(dict.fromkeys(w for plan in plans for w in plan.get('readiness', {}).get('warnings', [])))
+            lines.extend(notes[:40])
+            if len(notes) > 40:
+                lines.append('……另有 ' + str(len(notes) - 40) + ' 条提示，派包完成后写入派包报告')
             self.log.setPlainText('\n'.join(lines))
             if dispatch_after:
                 self.execute()
@@ -250,19 +282,21 @@ class CollaborationDialog(QDialog):
                 self.preview_plan(dispatch_after=True)
                 return
             plans = self.plans
+            report = self.report = {}
             def completed(paths):
-                self.log.appendPlainText('\n'.join(str(p) for p in paths))
-                self.plans = []
-                self.status.setText('原始数据包已完成。已派日期标记已更新。')
-                completed_log = self.log.toPlainText()
-                sent = {u['key']: p['package_id'] for p in plans for u in p['units']}
+                records = report.get('packages', [])
+                sent = {key: r['package_id'] for r in records if not r['error'] for key in r['units']}
                 for units in self.planner.inventory_by_category.values():
                     for unit in units:
                         if unit['key'] in sent:
                             unit.setdefault('dispatches', []).append(sent[unit['key']])
                 self.planner.refresh()
-                self.log.setPlainText(completed_log)
-            self.run(lambda: packages.dispatch(root, plans, **options), completed)
+                self.plans = []
+                failed = sum(bool(r['error']) for r in records)
+                self.log.setPlainText('\n'.join(self.report_lines(report)))
+                self.status.setText('已生成 ' + str(len(paths)) + ' 个包，' + str(failed) + ' 个包未生成（原因见上方）。' if failed
+                                    else '原始数据包已完成。已派日期标记已更新。')
+            self.run(lambda: packages.dispatch(root, plans, report=report, **options), completed)
         elif self.mode == 'returns':
             self.run(lambda: packages.make_return(root, **options), lambda p: self.log.setPlainText(str(p)))
         elif self.mode == 'receive':
@@ -305,11 +339,62 @@ class CollaborationDialog(QDialog):
     def on_progress(self, done, total, text):
         self.latest = (done, total, text)
 
-    def run(self, operation, callback):
+    def progress_text(self, done, total, text):
+        if self.progress_kind == 'count':
+            return '正在扫描：' + text + ' · ' + str(done) + '/' + str(total)
+        now = time.monotonic()
+        if not self.samples or self.samples[-1][1] != done:
+            self.samples.append((now, done))
+        while len(self.samples) > 2 and now - self.samples[0][0] > 30:
+            self.samples.popleft()
+        parts = [size_text(done) + ' / ' + size_text(total)]
+        started, first = self.samples[0]
+        if now - started >= 2 and done > first:
+            rate = (done - first) / (now - started)
+            parts += [size_text(rate) + '/s', '剩余约 ' + duration_text((total - done) / rate)]
+        if text:
+            parts.append(text)
+        return ' · '.join(parts)
+
+    def report_lines(self, report):
+        lines = []
+        for record in report.get('packages', []):
+            head = '包 ' + str(record['part']) + '：'
+            if record['error']:
+                lines.append(head + '未生成 · ' + record['error'])
+                continue
+            lines.append(head + '已生成 · ' + record['output'])
+            if record['skipped']:
+                lines.append('  跳过 ' + str(len(record['skipped'])) + ' 个文件（正在写入、已移走或读取失败），其余照常打包')
+        if report.get('reclaimed_bytes'):
+            lines.append('已清理上次中断留下的临时文件 ' + size_text(report['reclaimed_bytes']))
+        saved = self.save_report(report)
+        if saved:
+            lines.append('派包报告：' + str(saved))
+        return lines
+
+    def save_report(self, report):
+        """Keep every dispatch result, including skipped files and per-package errors."""
+        from datetime import datetime
+        from uuid import uuid4
+
+        from .farm_layout import collaboration_home
+        from .storage import atomic_json
+        try:
+            root = packages.farm_root(self.root.text().strip())
+            path = collaboration_home(root) / '派包报告' / (datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid4().hex[:8] + '.json')
+            atomic_json(path, dict(root=str(root), **report), backup=False)
+        except (OSError, ValueError):
+            return None
+        return path
+
+    def run(self, operation, callback, kind='bytes'):
         if self.future:
             return
         self.stop.clear()
         self.latest = (0, 0, '')
+        self.progress_kind = kind
+        self.samples.clear()
         self.callback = callback
         for widget in self.controls:
             widget.setEnabled(False)
@@ -325,7 +410,7 @@ class CollaborationDialog(QDialog):
         if total:
             self.progress.setRange(0, 1000)
             self.progress.setValue(round(done / total * 1000))
-            self.status.setText(f'{size_text(done)} / {size_text(total)} · {text}')
+            self.status.setText(self.progress_text(done, total, text))
         if self.future.done():
             future, self.future = self.future, None
             for widget in self.controls:
@@ -354,7 +439,8 @@ class CollaborationDialog(QDialog):
             report = collaboration_home(root) / '派包报告' / (datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid4().hex[:8] + '.json')
             atomic_json(report, dict(error_type=type(exc).__name__, message=str(exc), root=str(root),
                 selected_packages=[[dict(category=u['category'], day=u['day'], owner=u['owner'])
-                                    for u in group] for group in self.planner.groups()]), backup=False)
+                                    for u in group] for group in self.planner.groups()],
+                packages=(self.report or {}).get('packages', [])), backup=False)
             self.log.appendPlainText('异常报告：' + str(report))
         except (OSError, ValueError) as report_error:
             self.log.appendPlainText('异常报告保存失败：' + str(report_error))
@@ -366,20 +452,28 @@ class CollaborationDialog(QDialog):
         else:
             self.reject()
 
+    def confirm_cancel(self):
+        """Esc or the window close button must not silently stop hours of packaging."""
+        if self.progress_kind == 'bytes' and not self.stop.is_set():
+            answer = QMessageBox.question(self, '取消任务', '任务仍在进行。取消后，已完成的包保留，未完成的包不会生成。确定取消？')
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self.cancel_or_close()
+
     def reject(self):
         if self.future:
-            self.cancel_or_close()
+            self.confirm_cancel()
             return
         self.pool.shutdown(wait=False)
         super().reject()
 
     def closeEvent(self, event):
         if self.future:
-            self.cancel_or_close()
+            self.confirm_cancel()
             event.ignore()
         else:
             self.pool.shutdown(wait=False)
-            event.accept()
+            super().closeEvent(event)
 
 
 def open_dialog(window, mode):
@@ -389,6 +483,9 @@ def open_dialog(window, mode):
         if window.dirty:
             return
     root = str(shared_farm(catalog.root) or catalog.root) if catalog else ''
+    if mode == 'dispatch':
+        open_dispatch(window, root)
+        return
     if mode == 'receive' and catalog:
         # Receiving requires exclusive access. Never close or discard unsaved work implicitly.
         window.tell('接收前请先保存并关闭相关标注工程；其他牧场可以继续打开。')
@@ -406,3 +503,30 @@ def open_dialog(window, mode):
                 choice = picker.selection()
                 window.open_project(choice['root'], day=choice['day'])
     dialog.pool.shutdown(wait=False)
+
+
+def open_dispatch(window, root):
+    """Non-modal (4.4.2): annotation and other work continue while packages are written."""
+    current = getattr(window, '_dispatch_dialog', None)
+    if current is not None:
+        current.showNormal()
+        current.raise_()
+        current.activateWindow()
+        return current
+    dialog = CollaborationDialog('dispatch', window, root or QSettings().value(LAST_ROOT, '', str))
+    dialog.remember = True
+    window._dispatch_dialog = dialog
+    # A weak reference: this slot must never be what keeps the parent window alive,
+    # or deleting the dialog would destroy its parent mid-destruction.
+    owner = weakref.ref(window)
+
+    def finished(*_):
+        parent = owner()
+        if parent is not None and getattr(parent, '_dispatch_dialog', None) is dialog:
+            parent._dispatch_dialog = None
+        dialog.deleteLater()
+    dialog.finished.connect(finished)
+    dialog.show()
+    if dialog.root.text().strip():
+        QTimer.singleShot(0, dialog.scan_inventory)
+    return dialog
