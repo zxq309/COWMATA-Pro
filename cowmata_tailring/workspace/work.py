@@ -229,7 +229,7 @@ class SessionWork:
                     if intersects(self.clock.map(event.t0), self.clock.map(event.t1)):
                         raise ValueError('站立、躺卧、行走互斥；当前区间与已有状态标签重叠，请先调整起止或修改原标签。')
 
-    def add_draft(self, label_index, start, end, evidence, *, group_id=None, note=""):
+    def add_draft(self, label_index, start, end, evidence, *, group_id=None, note="", origin=None):
         if end is not None and end < start:
             start, end = end, start
         if not math.isfinite(start) or end is not None and not math.isfinite(end):
@@ -242,6 +242,10 @@ class SessionWork:
                  "label_index": label_index, "reference_start": start, "reference_end": end,
                  "video_evidence": copy.deepcopy(evidence), "cow_id": self.project.cow_id,
                  "confirmation": "video_draft", "note": note, **self.category_fields(), **self.identity_fields()}
+        if origin:
+            # "marked": recorded with 开始/结束 on the live video; it completes
+            # itself once its evidence and the IMU alignment allow it.
+            draft["origin"] = origin
         self.drafts.append(draft)
         return draft
 
@@ -310,7 +314,10 @@ class SessionWork:
             event.extras.pop("draft_id", None)
             raise
 
-    def confirm_draft(self, draft_id, duration_ms, *, source_available=True, evidence_validator=None, undo_state=None):
+    def confirm_draft(self, draft_id, duration_ms, *, source_available=True, evidence_validator=None, undo_state=None,
+                      checkpoint=True):
+        """checkpoint=False: the caller's own undo step already covers this
+        (a label confirmed as it is recorded is undone in one step)."""
         draft = next(d for d in self.drafts if d["id"] == draft_id)
         if self.project.extras.get("device_identity", {}).get("status") == "conflict":
             raise ValueError("目录耳标与本记录牛号存在冲突，请先在牛号框核对并按回车确认")
@@ -331,7 +338,8 @@ class SessionWork:
             raise ValueError("视频画面/时间映射尚未确认到位，请回看并更新证据")
         if evidence_validator is not None and not evidence_validator(evidence):
             raise ValueError("视频素材或相机校准版本已变化，请回看并更新画面证据")
-        self.checkpoint(undo_state)
+        if checkpoint:
+            self.checkpoint(undo_state)
         previous = next((e for e in self.project.events if e.extras.get("draft_id") == draft_id), None)
         event = Event(previous.id if previous else self.project.next_event_id, draft["label_index"], start, end,
                       note=draft.get("note", ""), ev="video",

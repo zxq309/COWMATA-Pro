@@ -411,6 +411,13 @@ class VideoBoard(QWidget):
     preciseReady = Signal(object)
     compatibilityReady = Signal(object)
     compatibilityPrepared = Signal(object)
+    coverageNeeded = Signal(str, float)
+
+    # Recorder reconnects (~13 s) and file changes are crossed without stopping.
+    AUTO_SKIP_GAP_MS = 5 * 60 * 1000
+    # Ask the indexer for the next recording this long (IMU time, x rate) before it is needed.
+    PREFETCH_LEAD_MS = 60_000
+    COVERAGE_WAIT_S = 120
 
     def __init__(self, parent=None, *, engine_factory=None):
         super().__init__(parent)
@@ -433,6 +440,11 @@ class VideoBoard(QWidget):
         self.blocked_assets = set()
         self.reference_ms = 0.0
         self.playing = False
+        # Set by the window: (camera, reference_ms) -> "pending" | "invalid" | "review" | None.
+        self.coverage_probe = None
+        # While the next recording is being indexed: {"camera", "reference_ms", "since"}.
+        self.coverage_wait = None
+        self._coverage_requests = {}
         self.rate = 1.0
         self.strict_sync = False
         self._held = False
@@ -491,6 +503,107 @@ class VideoBoard(QWidget):
         for tile in self.pool:
             if tile.engine:
                 tile.engine.project_cache = catalog.meta / "cache"
+        self._resume_after_index()
+
+    def coverage_state(self, camera, reference_ms=None):
+        """Why a view has no picture: "pending" (an unindexed recording covers or soon
+        follows this moment), "invalid", "review", or None for a real recording gap."""
+        reference_ms = self.reference_ms if reference_ms is None else reference_ms
+        if self.coverage_probe is not None:
+            return self.coverage_probe(camera, reference_ms)
+        state = self.camera_discovery.get(camera)
+        return state if state in {"pending", "review"} else None
+
+    def _request_coverage(self, camera, reference_ms, *, force=False):
+        now = time.perf_counter()
+        key = (camera, round(reference_ms / 10_000))
+        if not force and now - self._coverage_requests.get(key, -1e9) < 10:
+            return
+        if len(self._coverage_requests) > 256:
+            self._coverage_requests.clear()
+        self._coverage_requests[key] = now
+        self.coverageNeeded.emit(camera, float(reference_ms))
+
+    def _resume_after_index(self):
+        """A newly indexed recording ends an automatic wait; playback continues by itself."""
+        wait = self.coverage_wait
+        if not wait:
+            return
+        camera, target = wait["camera"], wait["reference_ms"]
+        if camera not in self.tiles:
+            self.coverage_wait = None
+            return
+        match = self.timeline.locate(camera, target)
+        if match is None:
+            following = self.timeline.next_start(camera, target)
+            if following is not None and 0 <= following - target <= self.AUTO_SKIP_GAP_MS:
+                target, match = following, self.timeline.locate(camera, following)
+        if match is not None:
+            self.coverage_wait = None
+            self.seek(target)
+            QTimer.singleShot(0, lambda: None if self._closing or self.playing else self.play(True))
+            return
+        state = self.coverage_state(camera, target)
+        if state != "pending":
+            self.coverage_wait = None
+            self.notice.emit(self._gap_notice(camera, state, None))
+
+    def _gap_camera(self):
+        """The view whose missing picture decides playback, or None while any view plays."""
+        if not self.tiles or any(t.interval for t in self.tiles.values()):
+            return None
+        return self.main_camera if self.main_camera in self.tiles else next(iter(self.tiles))
+
+    def _gap_notice(self, camera, state, gap):
+        if state == "invalid":
+            return f"{camera} 这一时刻的录像无法读取，已暂停；可在左侧“核验”查看原因，或勾选其他视角。"
+        if gap is not None:
+            return (f"{camera} 此后约 {max(1, round(gap / 60000))} 分钟没有已索引的录像，已暂停；"
+                    f"可点“下一录像时段”跳到 {wall_text(self.reference_ms + gap)} 继续。")
+        if state == "review":
+            return f"{camera} 此后没有已核验时间的录像，已暂停；本视角还有录像时间待核验，可在左侧“核验”查看。"
+        return "所选视角此后没有已索引的录像，已暂停；可检查其他视角或跳到下一录像时段。"
+
+    def _handle_coverage_gap(self, camera):
+        """Playback reached a moment without a located picture (bug 4.4.3-2).
+
+        Short gaps (recorder reconnects, file changes) are crossed, an unindexed
+        next recording is waited for and playback resumes on its own; only a
+        long real gap or an unreadable recording stops.
+        """
+        following = self.timeline.next_start(camera, self.reference_ms)
+        gap = following - self.reference_ms if following is not None else None
+        if gap is not None and 0 <= gap <= self.AUTO_SKIP_GAP_MS:
+            self.seek(following)
+            if gap >= 2000:
+                self.notice.emit(f"{camera} 录像在此中断约 {gap / 1000:.0f} 秒（录像机断流或换段），已自动接到下一段继续播放。")
+            return
+        state = self.coverage_state(camera)
+        if state == "pending":
+            self.coverage_wait = {"camera": camera, "reference_ms": self.reference_ms, "since": time.perf_counter()}
+            self.play(False, keep_wait=True)
+            self._request_coverage(camera, self.reference_ms, force=True)
+            self.notice.emit("下一段录像正在建立索引；画面到位后会自动继续播放，无需拖动九轴。")
+            return
+        self.play(False)
+        self.notice.emit(self._gap_notice(camera, state, gap))
+
+    def _prefetch_next_recordings(self):
+        """Have the next recording indexed before the current one ends."""
+        lead = self.PREFETCH_LEAD_MS * max(1.0, self.rate)
+        for camera, tile in list(self.tiles.items()):
+            if tile.interval is None:
+                if self.coverage_state(camera) == "pending":
+                    self._request_coverage(camera, self.reference_ms)
+                continue
+            end = self.timeline.reference_time(camera, tile.interval.wall_end)
+            if not 0 <= end - self.reference_ms <= lead or self.timeline.locate(camera, end + 1) is not None:
+                continue
+            following = self.timeline.next_start(camera, end)
+            if following is not None and following - end <= self.AUTO_SKIP_GAP_MS:
+                continue
+            if self.coverage_state(camera, end + 1) == "pending":
+                self._request_coverage(camera, end + 1)
 
     def _new_tile(self):
         if len(self.pool) >= 9:
@@ -619,6 +732,8 @@ class VideoBoard(QWidget):
             tile.show()
 
     def seek(self, reference_ms):
+        if self.coverage_wait and abs(float(reference_ms) - self.coverage_wait["reference_ms"]) > 1000:
+            self.coverage_wait = None  # The operator moved elsewhere; stop the automatic wait.
         self.generation += 1
         for tile in self.pool:
             tile.priming_failures = 0
@@ -631,10 +746,15 @@ class VideoBoard(QWidget):
             self._position(camera, tile, force=True)
         self.timeChanged.emit(self.reference_ms)
 
-    def play(self, enabled=True):
+    def play(self, enabled=True, *, keep_wait=False):
         if enabled and not any(tile.interval for tile in self.tiles.values()):
+            if self.coverage_wait:
+                self.notice.emit("下一段录像正在建立索引；画面到位后会自动继续播放，无需拖动九轴。")
+                return
             enabled = False
             self.notice.emit("当前时刻的录像尚未就绪，请等待检索出画面后再播放")
+        if not keep_wait:
+            self.coverage_wait = None
         previous = self.playing
         self.playing = bool(enabled)
         if self.playing and not previous:
@@ -713,9 +833,11 @@ class VideoBoard(QWidget):
     def coverage_message(self, camera):
         if self.timeline.locate(camera, self.reference_ms):
             return "当前时刻有录像覆盖；仍需核对画面中的牛与同步时间。"
-        state = self.camera_discovery.get(camera)
+        state = self.coverage_state(camera)
         if state == "pending":
-            return "本视角仍有录像未索引，尚不能确认此时刻覆盖；可在索引核验中查看。"
+            return "这段录像尚未索引，正在后台建立；播放时会自动等待并接着播放，无需拖动九轴。"
+        if state == "invalid":
+            return "这一时刻的录像无法读取；可在左侧“核验”查看原因。不会用上一帧冒充现场。"
         if state == "review":
             return "本视角仍有录像时间待核验；请在索引核验中框选时间或输入读数。"
         return "此时刻无录像覆盖 · 不会用上一帧冒充现场"
@@ -936,9 +1058,16 @@ class VideoBoard(QWidget):
                     self.reference_ms += elapsed * 1000 * self.rate
             for camera, tile in list(self.tiles.items()):
                 self._position(camera, tile)
-            if not any(t.interval for t in self.tiles.values()) and self.tiles:
-                self.play(False)
-                self.notice.emit("所选视角当前没有已定位的录像画面；已暂停，可检查其他视角或跳到下一覆盖时段")
+            gap = self._gap_camera()
+            if gap is not None:
+                self._handle_coverage_gap(gap)
+            elif self.playing:
+                self._prefetch_next_recordings()
+        elif self.coverage_wait and now - self.coverage_wait["since"] > self.COVERAGE_WAIT_S:
+            camera = self.coverage_wait["camera"]
+            self.coverage_wait = None
+            self.notice.emit(f"{camera} 的下一段录像等待索引超过 2 分钟仍未就绪，已停止自动等待；"
+                             "可稍后点播放重试，或在左侧“核验”查看该录像。")
         for tile in list(self.tiles.values()):
             self._observe(tile, now)
         if self.prewarm:
@@ -958,6 +1087,11 @@ class VideoBoard(QWidget):
             end = self.timeline.reference_time(camera, tile.interval.wall_end)
             if 0 < end - self.reference_ms < 6000 * self.rate:
                 match = self.timeline.locate(camera, end + 1)
+                if match is None:
+                    # The next file may start a moment later (recorder file change).
+                    following = self.timeline.next_start(camera, end)
+                    if following is not None and following - end <= self.AUTO_SKIP_GAP_MS:
+                        match = self.timeline.locate(camera, following)
                 if match and match[0].asset_id != tile.asset_id:
                     candidates.append((end, camera, match))
         if not candidates:

@@ -57,6 +57,7 @@ def verified_source_digest(path, cache, cancelled):
 
 def archive_bounds(path, metadata):
     """Prefer the native start for naming; retain OCR status for evidence."""
+    from cowmata_tailring.media.native_ps import native_wall_at, native_wall_end
     if metadata.get("manual_readings"):
         from .clocks import manual_video_metadata
         metadata.update(manual_video_metadata(metadata, metadata["manual_readings"]))
@@ -75,7 +76,7 @@ def archive_bounds(path, metadata):
     if (native and readings and len(spans) == 1 and
             abs(spans[0]["wall_start"]-native["wall_start"]) < 1 and
             abs(spans[0]["wall_end"]-native["wall_start"]-native["duration_ms"]) < 1 and
-            all(abs(s["wall_ms"]-s["media_ms"]-native["wall_start"]) <= 2000 for s in readings)):
+            all(abs(s["wall_ms"]-native_wall_at(native,s["media_ms"])) <= 2000 for s in readings)):
         # Two independent clocks (packet clock and image OCR), not two
         # repeated scans. Full packet continuity was already validated.
         metadata["needs_review"] = False
@@ -97,15 +98,15 @@ def archive_bounds(path, metadata):
                 start = hint["start_ms"]
         return start, end, True
     opening = [s for s in readings if s["media_ms"] <= 5000]
-    if native and all(abs(s["wall_ms"]-s["media_ms"]-native["wall_start"]) <= 2000 for s in opening):
+    if native and all(abs(s["wall_ms"]-native_wall_at(native,s["media_ms"])) <= 2000 for s in opening):
         # User-selected policy: complete packet clocks may route an archive,
         # with an explicit pending name. This NEVER verifies evidence intervals.
         start = native["wall_start"]
         metadata["archive_time"] = {"start_verified": False, "start_ms": start,
                                    "basis": "native_packet_clock", "ocr_verified": False,
                                    "observations": len(opening),
-                                   "later_clock_conflicts": sum(abs(s["wall_ms"]-s["media_ms"]-start)>2000 for s in readings)}
-        return start, start + native["duration_ms"], False
+                                   "later_clock_conflicts": sum(abs(s["wall_ms"]-native_wall_at(native,s["media_ms"]))>2000 for s in readings)}
+        return start, native_wall_end(native), False
     from cowmata_tailring.media.native_ps import native_hint
     hint = native_hint(path)
     if not hint or hint.get("start_ms") is None:

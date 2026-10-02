@@ -15,7 +15,7 @@ from PIL import Image
 from cowmata_tailring.annotation.data import UnsupportedRecordError
 from cowmata_tailring.media.ffmpeg_tools import find_ffmpeg, probe_media
 from cowmata_tailring.media.native_ps import SIGNATURE as NATIVE_SIGNATURE
-from cowmata_tailring.media.native_ps import native_hint, read_native_index
+from cowmata_tailring.media.native_ps import native_hint, native_runs, native_wall_at, read_native_index
 from cowmata_tailring.media.subprocess_tools import run_cancellable
 from cowmata_tailring.media.timeline import (
     MediaTimelineIndex,
@@ -71,7 +71,10 @@ def extract_frame(
                 payload = transport.patch_bytes(start_byte, payload)
             finally:
                 transport.close()
-        filters = f"trim=start={max(0, target - base) / 1000:.6f},showinfo"
+        # Patched packet times are whole milliseconds; without a little slack the
+        # requested frame (e.g. 3933 ms for 3933.3 ms) is trimmed away and the
+        # last frame of a file can never be read ("读取结尾画面" failed).
+        filters = f"trim=start={max(0, target - base - 2) / 1000:.6f},showinfo"
         if preview_width is not None:
             filters += f",scale=w={int(preview_width)}:h=-2:force_original_aspect_ratio=decrease"
         command = [
@@ -572,14 +575,14 @@ class SourceInspector:
                 except (ValueError, OSError, subprocess.TimeoutExpired):
                     pass
         for sample in list(good):
-            if abs(sample["wall_ms"] - native["wall_start"] - sample["media_ms"]) <= 2000:
+            if abs(sample["wall_ms"] - native_wall_at(native, sample["media_ms"])) <= 2000:
                 continue
             # Re-read nearby pixels; never substitute the expected date/digit.
             matched = next(
                 (
                     s
                     for s in good
-                    if abs(s["wall_ms"] - native["wall_start"] - s["media_ms"]) <= 2000
+                    if abs(s["wall_ms"] - native_wall_at(native, s["media_ms"])) <= 2000
                 ),
                 None,
             )
@@ -601,7 +604,7 @@ class SourceInspector:
                     )
                     if (
                         report.get("success")
-                        and abs(report["wall_ms"] - native["wall_start"] - actual) <= 2000
+                        and abs(report["wall_ms"] - native_wall_at(native, actual)) <= 2000
                     ):
                         previous = dict(sample)
                         sample.update(
@@ -615,7 +618,7 @@ class SourceInspector:
                     pass
         good = [s for s in samples if s.get("wall_ms") is not None]
         conflict = any(
-            abs(s["wall_ms"] - native["wall_start"] - s["media_ms"]) > 2000 for s in good
+            abs(s["wall_ms"] - native_wall_at(native, s["media_ms"])) > 2000 for s in good
         )
         if conflict:
             warnings.append("原生时间与画面读数冲突；仅供粗定位，请框选时间戳或输入人工读数复核")
@@ -644,15 +647,18 @@ class SourceInspector:
             "duration_ms": duration,
             "timeline": timeline.to_dict(),
             "samples": samples,
+            # One span per recorder-clock run: a stream restart inside the
+            # file keeps its real gap instead of shifting later footage.
             "intervals": [
                 {
-                    "wall_start": start,
-                    "wall_end": start + duration,
-                    "media_start": 0,
-                    "media_end": duration,
+                    "wall_start": wall,
+                    "wall_end": wall + media_end - media_start,
+                    "media_start": media_start,
+                    "media_end": media_end,
                     "verified": verified,
                     "warnings": warnings,
                 }
+                for media_start, media_end, wall in native_runs(native)
             ],
             "roi": saved_roi,
             "warnings": warnings,

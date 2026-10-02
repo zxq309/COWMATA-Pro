@@ -257,6 +257,9 @@ class IndexWorker(QObject):
             upgraded_dahua = self.catalog.queue_dahua_timeline_upgrade()
             if upgraded_dahua:
                 self.progress.emit(f"录像时间轴规则已升级，{upgraded_dahua} 个原始码流录像等待重建索引；人工标注保留")
+            upgraded_clock = self.catalog.queue_recorder_clock_upgrade()
+            if upgraded_clock:
+                self.progress.emit(f"已支持录像机中途断流重连的录像，{upgraded_clock} 段录像等待重建索引；人工标注保留")
             while not self.stop.is_set():
                 while not self.commands.empty():
                     action, value = self.commands.get_nowait()
@@ -282,6 +285,10 @@ class IndexWorker(QObject):
                         self.bulk, self.window = False, None
                         self.focus_path = None
                         self.explicit.clear()
+                    elif action == "prefetch":
+                        # Playback needs these recordings next (the one under the
+                        # playhead or the following file). No directory rescan.
+                        self.explicit.update(value or [])
                     elif action in {"priority", "recheck"}:
                         paths = [value] if action == "recheck" else list(value or [])
                         self.explicit.update(paths)
