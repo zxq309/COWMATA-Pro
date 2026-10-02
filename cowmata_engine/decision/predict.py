@@ -32,8 +32,8 @@ FEATURE_TITLES = {key: title for key, (_, title) in FEATURE_MODULES.items()}
 OUTPUT_FIELDS = {
     "cow_id": "牛耳标",
     "decision_epoch_ms": "预测时刻（使用此刻之前已收到的数据）",
-    "risk": "产犊前 1 h / 2 h / 3 h / 6 h / 12 h 内的校准概率",
-    "risk_primary": "主提前量（模型训练提前量）产犊概率",
+    "risk": "产犊前 1 h / 2 h / 3 h / 6 h / 12 h 内的校准概率（逐时刻原值）",
+    "risk_primary": "主提前量（模型训练提前量）产犊概率，按预警规则逐牛平滑；与预警阈值、预警等级对应",
     "threshold": "主提前量预警阈值（按牛留出 Youden 指数最优）",
     "warning_level": "预警等级：正常 / 关注 / 高度关注 / 临产 / 数据不足",
     "advice": "处置建议",
@@ -204,13 +204,15 @@ def predict_rows(rows, model_folder):
         coverage = {k: round(float(row.get(f"coverage.{k}@6h") or 0.0), 3) for k in FEATURE_MODULES}
         missing = [k for k in used if coverage.get(k, 0) <= 0]
         risk = {h: float(stacked[i, j]) for j, h in enumerate(order)}
-        risk[manifest["horizon_hours"]] = float(alert_risk[i])
         low = sum(v > 0 for v in coverage.values()) == 0
-        level, advice = _level(manifest, risk, row, low)
+        # The primary threshold was chosen on the per-cow smoothed risk (alert rule): levels, ``risk_primary``
+        # (charts, CSV) and alert episodes use that, while ``risk`` stays raw for callers that apply each
+        # horizon's own rule (calving algorithm, 4.4.5).
+        level, advice = _level(manifest, {**risk, manifest["horizon_hours"]: float(alert_risk[i])}, row, low)
         item = dict(
             cow_id=row["cow_id"], devices=row.get("devices"), decision_epoch_ms=int(row["decision_epoch_ms"]),
             risk={f"{h}h": round(v, 4) for h, v in risk.items()},
-            risk_primary=round(risk[manifest["horizon_hours"]], 4),
+            risk_primary=round(float(alert_risk[i]), 4), risk_alert=round(float(alert_risk[i]), 4),
             threshold=float(manifest["thresholds"][str(manifest["horizon_hours"])]),
             warning_level=level, advice=advice, drivers=drivers[i], feature_coverage=coverage,
             missing_features=missing, history_hours=row.get("history_hours"),
@@ -235,7 +237,7 @@ def predict_rows(rows, model_folder):
     primary = manifest["horizon_hours"]
     for cow, items in by_cow.items():
         items.sort(key=lambda r: r["decision_epoch_ms"])
-        found = alert_episodes([r["decision_epoch_ms"] for r in items], np.asarray([r["risk_primary"] for r in items]),
+        found = alert_episodes([r["decision_epoch_ms"] for r in items], np.asarray([r["risk_alert"] for r in items]),
                                float(manifest["thresholds"][str(primary)]), persistence=manifest.get("persistence_hours", 2))
         for e in found:
             inside = [r for r in items if e["first"] <= r["decision_epoch_ms"] <= e["end"]]

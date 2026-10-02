@@ -4806,5 +4806,148 @@ ZH_TO_EN.update({
 })
 
 
+# 4.4.5: collaboration packages are folders (no ZIP) placed in a chosen target; receiving after the
+# dispatch record was lost; forward decider.
+ZH_TO_EN.update({
+    '此目录不是已派发任务：请选择原始数据包文件夹（含“协作清单.json”）或其中的牧场目录，或用“文件 → 打开协作数据包”打开后再标注':
+        'This folder is not an assigned task: choose the raw package folder (it holds the task list file) or the farm folder '
+        'inside it, or open it with “File → Open collaboration package” before annotating',
+    '所选目录缺少牧场标识（.cowmata-farm.json），请完整复制原始数据包文件夹':
+        'The folder has no farm marker (.cowmata-farm.json); copy the whole raw package folder',
+    '协作清单不是派发的原始数据包清单': 'The task list is not a raw package list',
+    '协作清单与所选牧场目录不属于同一牧场': 'The task list and the selected farm folder belong to different farms',
+    '协作包的标签范式与当前软件不一致；请用与派包相同版本的 COWMATA Annotator 标注':
+        'The package label schema differs from this software; annotate with the COWMATA Annotator version used to dispatch',
+    '数据包里的资料与协作清单不一致（': 'The package files do not match the task list (',
+    ' 个原始文件缺失或大小不同，例如 ': ' original files missing or of different size, e.g. ',
+    '）；请重新完整复制原始数据包文件夹（旧版 ZIP 请完整解压）':
+        '); copy the whole raw package folder again (unzip a legacy ZIP completely)',
+    '协作清单内容不完整，请重新完整复制原始数据包文件夹（': 'The task list is incomplete; copy the whole raw package folder again (',
+    '本机没有该任务的派发记录（派发记录\\': 'This computer has no dispatch record for the task (dispatch records\\',
+    '.json）：请把对应的原始数据包（文件夹或 ZIP）放入 ': '.json): put the matching raw package (folder or ZIP) into ',
+    ' 后重新接收，或请标注员用 4.4.5 及以上版本重新生成标注数据包':
+        ' and receive again, or ask the annotator to rebuild the return with version 4.4.5 or later',
+    '未找到正向决策器（5_正向决策器\\产犊\\推理算法\\<版本>），只下载不推理': 'Forward decider not found; downloading without inference',
+    '实时推理已启动：': 'Real-time inference started: ',
+    '（新数据到达即重新推理 待产犊 的牛）': ' (awaiting-calving cows are inferred again as new data arrives)',
+    '实时推理已停止': 'Real-time inference stopped',
+    '风险等级总览': 'Risk Overview',
+    '还没有风险等级总览：下载后由正向决策器生成': 'No risk overview yet: the forward decider builds it after downloading',
+    # Folder packages, candidate targets and moves.
+    '按所选目录和各包勾选日期一键派包，仅包含 JSON 与视频。每个包生成一个文件夹（不压缩），直接放到“派发到”选择的位置。已派日期默认标记并跳过；异常记录到派包报告。':
+        'Dispatch the dates ticked in each package in one go, JSON and video only. Each package becomes a folder (not compressed) '
+        'placed straight into the “Dispatch to” location. Dispatched dates are marked and skipped; issues go to the dispatch report.',
+    '保存标注后生成标注数据包文件夹（不压缩）：只含标注结果和证据图，保留任务编号及目录结构，直接放到“保存到”选择的位置。':
+        'After saving, create the annotation package folder (not compressed): annotations and evidence images only, keeping the task '
+        'ID and folder layout, placed straight into the “Save to” location.',
+    '选择标注数据包文件夹（可多选；旧版 ZIP 也可）。先完整校验任务、目录、原始数据和标签再接收，接收后把数据包文件夹移到“接收后移到”选择的位置。重复内容跳过；冲突保留并生成报告。':
+        'Choose annotation package folders (several at once; legacy ZIPs too). Task, folders, original data and labels are fully '
+        'verified before receiving; afterwards each package folder is moved to the “Move after receiving to” location. Duplicates '
+        'are skipped; conflicts are kept with a report.',
+    '选择派发的原始数据包文件夹（旧版 ZIP 也可）。软件核验后直接打开工程；“放到”选其他位置时先把整个文件夹移过去。':
+        'Choose the dispatched raw package folder (legacy ZIPs too). It is verified and opened directly; if “Place in” names another '
+        'location, the whole folder is moved there first.',
+    '任务目录': 'Task folder',
+    '派发到': 'Dispatch to',
+    '保存到': 'Save to',
+    '接收后移到': 'Move after receiving to',
+    '放到': 'Place in',
+    '派发到：': 'Dispatch to: ',
+    '（未选择）': '(not chosen)',
+    '候选位置：可直接选，也可输入或“选择其他位置…”': 'Suggested locations: pick one, type a folder or use “Choose another location…”',
+    '选择其他位置…': 'Choose another location…',
+    '选择目标位置': 'Choose target location',
+    '选择数据包文件夹…': 'Choose package folders…',
+    '旧版 ZIP…': 'Legacy ZIP…',
+    '4.4.4 及以前生成的 ZIP 数据包仍可': 'ZIP packages made by 4.4.4 or earlier can still be ',
+    '接收': 'received',
+    '解包打开': 'unpacked and opened',
+    '选择标注员交回的数据包文件夹（可多选）': 'Choose the package folders returned by annotators (several allowed)',
+    '选择派发的原始数据包文件夹（…_原始）': 'Choose the dispatched raw package folder',
+    '选择标注数据包文件夹（可多选）': 'Choose annotation package folders (several allowed)',
+    '选择原始数据包文件夹': 'Choose raw package folder',
+    '选择旧版标注 ZIP（可多选）': 'Choose legacy annotation ZIPs',
+    '选择旧版原始数据 ZIP': 'Choose legacy raw ZIP',
+    '选择任务目录（原始数据包文件夹或其中的牧场目录）': 'Choose the task folder (raw package folder or the farm folder inside it)',
+    '不移动（留在原位置）': 'Do not move (leave where it is)',
+    '接收后数据包文件夹留在原位置': 'After receiving, the package folder stays where it is',
+    '接收后数据包文件夹留在原位置，不移动。': 'After receiving, the package folder stays where it is.',
+    '就在原位置打开，不移动文件夹。': 'Opened where it is; the folder is not moved.',
+    '原始数据包文件夹': 'Raw package folder',
+    '标注数据包文件夹': 'Annotation package folder',
+    '接收完的标注数据包文件夹': 'Received annotation package folder',
+    '将放到：': ' goes to: ',
+    '请选择或输入目标位置。': 'Choose or type a target location.',
+    '请选择或输入目标位置（': 'Choose or type a target location (',
+    '请选择任务目录': 'Choose the task folder',
+    '请选择完整的目标位置（含盘符），例如 F:\\派包': 'Choose a full target location with drive letter, e.g. F:\\packages',
+    '请选择数据包的目标位置': 'Choose where the package goes',
+    '请选择标注数据包文件夹。': 'Choose annotation package folders.',
+    '请选择派发的原始数据包文件夹。': 'Choose the dispatched raw package folder.',
+    '旧版 ZIP 需要选择解包位置（放到）。': 'A legacy ZIP needs an unpack location (Place in).',
+    '旧版 ZIP 原始数据包需要选择解包位置': 'A legacy raw ZIP needs an unpack location',
+    '；每个包一个文件夹，按原样复制，不压缩。': '; one folder per package, copied as-is, not compressed.',
+    '原始数据包文件夹已生成到 ': 'Raw package folders created in ',
+    '。已派日期标记已更新。': '. Dispatched dates were updated.',
+    '标注数据包已生成到 ': 'Annotation package created in ',
+    '标注数据包文件夹：': 'Annotation package folder: ',
+    '\n把这个文件夹交回派包人，在“接收标注数据包”里选择它即可。':
+        '\nHand this folder back to the dispatcher, who selects it in “Receive annotation packages”.',
+    '拒绝接收（数据包未移动）：': 'Refused (package not moved): ',
+    '数据包已移到：': 'Package moved to: ',
+    '数据包未移动：': 'Package not moved: ',
+    '确认后会先生成新的数据包文件夹；新包校验成功后，才清理这些日期的旧派包（还没人打开的旧文件夹删除，已有人标注的旧文件夹保留）。':
+        'New package folders are created first; only after they verify are old packages for these dates cleaned up (old folders '
+        'nobody opened are deleted, folders already being annotated are kept).',
+    '确认清理旧派包（新包失败时保留旧包）': 'Clean up old packages (kept if the new package fails)',
+    '请勾选清理旧派包，或点击“否”取消本次再次派发。': 'Tick the clean-up option, or click “No” to cancel this re-dispatch.',
+    '  已清理旧派包：': '  Old package removed: ',
+    '  旧派包已有人打开或标注，保留：': '  Old package already opened or annotated, kept: ',
+    '默认 · ': 'Default · ',
+    '默认 · 本机协作目录': 'Default · this computer’s collaboration folder',
+    '默认 · 与原始数据包放在一起': 'Default · next to the raw package',
+    '默认 · 协作目录“已接收”': 'Default · collaboration folder “received”',
+    '原位置打开（不移动）': 'open where it is (not moved)',
+    '解包到 ZIP 所在文件夹': 'unpack beside the ZIP',
+    '最近使用': 'Recently used',
+    '本地磁盘': 'Local disk',
+    '移动磁盘': 'Removable disk',
+    '网络驱动器': 'Network drive',
+    '内存盘': 'RAM disk',
+    '可用 ': 'free ',
+    '所选文件夹不是协作数据包（里面没有“协作清单.json”）：': 'The selected folder is not a collaboration package (it has no task list file): ',
+    '协作清单内容不完整': 'The task list is incomplete',
+    '协作清单中的文件大小或内容摘要无效': 'The task list has an invalid file size or content hash',
+    '协作清单含重复路径': 'The task list has duplicate paths',
+    '数据包内含符号链接或目录联接，不能使用：': 'The package contains a symbolic link or junction and cannot be used: ',
+    '数据包含清单之外的文件：': 'The package contains a file not in its task list: ',
+    '数据包缺少清单里的文件：': 'The package is missing a file of its task list: ',
+    '数据包里的文件内容与清单不一致：': 'A package file differs from its task list: ',
+    '数据包里的文件大小与清单不一致：': 'A package file size differs from its task list: ',
+    '无法读取数据包文件夹：': 'Cannot read the package folder: ',
+    '标注数据包在核验期间被改动：': 'The annotation package changed during verification: ',
+    '清单列出的标注文件不在数据包里': 'A label file listed in the task list is not in the package',
+    '写入后的文件夹与清单不一致，请检查目标磁盘后重新生成': 'The written folder does not match its task list; check the target disk and create it again',
+    '目标位置不是文件夹：': 'The target is not a folder: ',
+    '目标位置不能在牧场数据目录里（会被当成牧场资料）；请选择其他位置':
+        'The target cannot be inside the farm data (it would be taken for farm data); choose another location',
+    '目标位置已有同名数据包，不能覆盖：': 'A package with this name already exists there and is never overwritten: ',
+    '目标位置已有同名数据包：': 'A package with this name already exists there: ',
+    '目标位置的路径太深：数据包里最长的文件路径会超过 Windows 260 个字符的限制，请选择更短的位置（例如 F:\\派包）':
+        'The target is too deep: the longest file path would exceed the Windows 260-character limit; choose a shorter location '
+        '(e.g. F:\\packages)',
+    '数据包所在位置的路径太深，标注时保存的文件会超过 Windows 260 个字符的限制：请在“放到”里选择更短的位置（例如 D:\\标注），软件会把整个文件夹移过去':
+        'The package sits too deep: files saved while annotating would exceed the Windows 260-character limit. Choose a shorter '
+        '“Place in” location (e.g. D:\\annotation) and the whole folder is moved there',
+    '目标磁盘剩余空间不足：': 'Not enough free space on the target disk: ',
+    '移动时源文件发生变化：': 'A source file changed while moving: ',
+    '不能把数据包移到它自己的文件夹里': 'A package cannot be moved into its own folder',
+    '不能把标注数据包移到它自己的文件夹里': 'An annotation package cannot be moved into its own folder',
+})
+NON_TRANSLATABLE = NON_TRANSLATABLE | {'4_逆向决策器', '5_正向决策器', '推理算法', '前端对接', '监测总览.html',
+                                       # folder names and folder-name keywords matched on disk
+                                       '_原始', '已接收', '不移动', '派包', '转移', '共享', '交换', '数据包'}
+
+
 if __name__ == "__main__":
     _coverage()

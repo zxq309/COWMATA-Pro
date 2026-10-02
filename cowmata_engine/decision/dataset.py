@@ -313,7 +313,37 @@ def _rolling_slope(values, n):
     return slope
 
 
-def derive_series(values, coverage):
+def _expanding(values, fn, min_periods):
+    import pandas as pd
+
+    ex = pd.Series(values).expanding(min_periods=min_periods)
+    return getattr(ex, fn)().to_numpy() if isinstance(fn, str) else fn(ex).to_numpy()
+
+
+def adaptive_baselines(v, m6, d24, z72):
+    """4.4.1 dynamic baseline: work from the first hours of a wearing instead of waiting 30 h.
+
+    Where the fixed 24 h / 72 h baselines are not yet defined, the cow's own expanding history is
+    used and the deviation is shrunk toward 0 by the share of history available (hours/24, hours/72).
+    Once the fixed windows exist the values are identical to 4.4.0, so long wearings are unchanged
+    and early rows carry a weak, honest signal that grows as data accumulates.
+    """
+    n = min(len(v), 78 * SLOTS_PER_HOUR)  # only the start of a wearing lacks the fixed baselines
+    hours = np.full(len(v), np.nan)
+    base, q75, q25 = (np.full(len(v), np.nan) for _ in range(3))
+    head = v[:n]
+    hours[:n] = np.cumsum(np.isfinite(head)) / SLOTS_PER_HOUR
+    base[:n] = _expanding(head, "median", 3)
+    q75[:n] = _expanding(head, lambda r: r.quantile(0.75), 6)
+    q25[:n] = _expanding(head, lambda r: r.quantile(0.25), 6)
+    scale = np.maximum((q75 - q25) / 1.349, 1e-3 * (np.abs(base) + 1.0))
+    with np.errstate(invalid="ignore", divide="ignore"):
+        early_d24 = (m6 - base) * np.clip(hours / 24.0, 0.0, 1.0)
+        early_z72 = np.clip((m6 - base) / scale, -20, 20) * np.clip(hours / 72.0, 0.0, 1.0)
+    return (np.where(np.isfinite(d24), d24, early_d24), np.where(np.isfinite(z72), z72, early_z72))
+
+
+def derive_series(values, coverage, *, adaptive=True):
     """All derivations on one regular 10 min series (index = slot, value at slot end)."""
     v = np.asarray(values, dtype=float)
     six, day, three = 6 * SLOTS_PER_HOUR, 24 * SLOTS_PER_HOUR, 72 * SLOTS_PER_HOUR
@@ -326,6 +356,9 @@ def derive_series(values, coverage):
     scale = np.maximum((q75 - q25) / 1.349, 1e-3 * (np.abs(base72) + 1.0))
     with np.errstate(invalid="ignore", divide="ignore"):
         z72 = np.clip((m6 - base72) / scale, -20, 20)
+    d24 = m6 - base24
+    if adaptive:
+        d24, z72 = adaptive_baselines(v, m6, d24, z72)
     same = np.vstack([_shift(m1, k * day) for k in (1, 2, 3)])
     enough = np.sum(np.isfinite(same), axis=0) >= 2
     with np.errstate(invalid="ignore"), warnings.catch_warnings():
@@ -333,7 +366,7 @@ def derive_series(values, coverage):
         circ = np.where(enough, m1 - np.nanmedian(same, axis=0), np.nan)
     slope = _rolling_slope(v, six) * SLOTS_PER_HOUR
     cov6 = _rolling(np.nan_to_num(np.asarray(coverage, dtype=float)), six, "mean", 1)
-    return {"1h": m1, "6h": m6, "d24": m6 - base24, "z72": z72, "slope6h": slope, "circ": circ}, cov6
+    return {"1h": m1, "6h": m6, "d24": d24, "z72": z72, "slope6h": slope, "circ": circ}, cov6
 
 
 def _grid(rows, columns, origin, count):

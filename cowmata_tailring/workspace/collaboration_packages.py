@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import hashlib
 import io
 import json
@@ -11,15 +12,16 @@ import re
 import shutil
 import stat
 import tempfile
+import time
 import zipfile
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 
 from .catalog import VIDEO_SUFFIXES, SourceBusyError, assert_not_being_written, digest_file, file_stamp
 from .dataset_access import DatasetLease
-from .farm_layout import CATEGORY_PATHS, COLLABORATION, MARKER, RECORDINGS, collaboration_home, farm_identity, shared_farm
+from .farm_layout import CATEGORY_PATHS, MARKER, RECORDINGS, collaboration_home, farm_identity, shared_farm
 from .package_paths import check, safe_path, unsafe_relative
 from .storage import ProjectLock, atomic_json, read_json
 
@@ -32,9 +34,19 @@ PRIMARY_KINDS = ('Motion', 'PPG')
 _DAY = re.compile(r'\d{4}-\d{2}-\d{2}')
 _VIEW = re.compile(r'视角\d{2}')
 _PARTIAL = re.compile(r'\.[0-9a-f]{32}\.partial')
+_PARTIAL_LOCK = re.compile(r'\.[0-9a-f]{32}\.partial\.lock')
 # Sequential-scan hint: hundreds of GB of recordings stream through without
 # evicting the file cache that annotation playback relies on.
 _SEQUENTIAL_READ = os.O_RDONLY | getattr(os, 'O_BINARY', 0) | getattr(os, 'O_SEQUENTIAL', 0)
+# 4.4.5: packages are plain folders (no ZIP), written straight into the folder the operator picks.
+RAW_SUFFIX = '_原始'
+RETURN_TAG = '_标注_'
+RAW_INBOX = '原始数据包'
+RECEIVED_INBOX = '已接收'
+CONFLICT_INBOX = '冲突待核对'
+_MAX_PATH = 259
+_TEMP_SUFFIX = 13  # atomic writes go through '<name>.<8 random>.tmp'
+_TARGET_HINTS = ('派包', '派发', '协作', '转移', '标注', '工程', '共享', '交换', '数据包')
 
 
 def farm_root(path):
@@ -441,12 +453,12 @@ def _open_source(path):
     return open(os.open(path, _SEQUENTIAL_READ), 'rb', buffering=0)
 
 
-def _copy_member(archive, info, source, cancelled, advance):
-    """Stream one member through a reused buffer; returns (bytes, sha256)."""
+def _copy_to_file(source, target, cancelled, advance):
+    """Stream one file into a new ``target`` through a reused buffer, flushed to disk; returns (bytes, sha256)."""
     digest, size = hashlib.sha256(), 0
     buffer = bytearray(CHUNK)
     view = memoryview(buffer)
-    with archive.open(info, 'w', force_zip64=True) as target:
+    with open(target, 'xb') as output:
         while True:
             check(cancelled)
             try:
@@ -456,36 +468,148 @@ def _copy_member(archive, info, source, cancelled, advance):
             if not count:
                 break
             chunk = view[:count]
-            target.write(chunk)
+            output.write(chunk)
             digest.update(chunk)
             size += count
             advance(count)
+        output.flush()
+        os.fsync(output.fileno())
     return size, digest.hexdigest()
 
 
-def _discard_last_member(archive, info):
-    """Drop the member written last after its source failed mid-read; the archive stays consistent."""
-    archive.filelist.remove(info)
-    archive.NameToInfo.pop(info.filename, None)
-    archive.fp.seek(info.header_offset)
-    archive.fp.truncate()
-    archive.start_dir = info.header_offset
+def _tree(folder):
+    """({casefold relative: (relative, size)}, [folder relatives]) below a package folder; links are refused."""
+    files, folders, stack = {}, [], [(str(folder), '')]
+    while stack:
+        path, prefix = stack.pop()
+        try:
+            with os.scandir(path) as listing:
+                entries = list(listing)
+        except OSError as exc:
+            raise OSError(exc.errno, '无法读取数据包文件夹：' + (exc.strerror or str(exc)), path) from exc
+        for entry in entries:
+            relative = prefix + entry.name
+            if _linked(entry):
+                raise ValueError('数据包内含符号链接或目录联接，不能使用：' + relative)
+            if entry.is_dir(follow_symlinks=False):
+                folders.append(relative)
+                stack.append((entry.path, relative + '/'))
+            else:
+                files[relative.casefold()] = (relative, entry.stat(follow_symlinks=False).st_size)
+    return files, folders
 
 
-def _write_zip(output, manifest, entries, *, cancelled, progress, before_publish=lambda _: None,
-               tolerant=False, finalize=None):
-    """One streaming pass; SHA/CRC from the exact bytes written, no media recompression.
+def _sizes(files):
+    return {key: size for key, (_, size) in files.items()}
 
-    ``tolerant`` (raw dispatch, 4.4.2): a source that vanished, is still held
-    open for writing, or fails while being read is left out instead of stopping
-    the package; an entry whose ``requires`` member was left out is skipped too.
-    ``finalize(manifest, skipped, changed, stamps)`` returns the stored manifest.
-    Annotation returns stay strict.
+
+def _long_path_check(parent, name_length, relatives, margin=0, *, opening=False):
+    """Fail before writing when a file would exceed the classic 260-character Windows path limit
+    (``margin``: room for the label files annotation adds inside a raw task)."""
+    longest = max((len(r) for r in relatives), default=0)
+    if len(str(parent)) + 1 + name_length + 1 + longest + margin > _MAX_PATH:
+        if opening:
+            raise ValueError('数据包所在位置的路径太深，标注时保存的文件会超过 Windows 260 个字符的限制：'
+                             '请在“放到”里选择更短的位置（例如 D:\\标注），软件会把整个文件夹移过去')
+        raise ValueError('目标位置的路径太深：数据包里最长的文件路径会超过 Windows 260 个字符的限制，'
+                         '请选择更短的位置（例如 F:\\派包）')
+
+
+def _rename_into_place(source, target):
+    """Rename a finished folder (or file) to its final name; retried while antivirus or indexing briefly holds new files."""
+    for attempt in range(40):
+        if os.path.lexists(target):
+            raise FileExistsError('目标位置已有同名数据包，不能覆盖：' + str(target))
+        try:
+            os.rename(source, target)
+            return
+        except PermissionError:
+            if attempt == 39:
+                raise
+            time.sleep(0.25)
+
+
+def _partial_lock(partial):
+    return Path(partial).with_name(Path(partial).name + '.lock')
+
+
+def _new_partial(parent):
+    """A hidden work folder next to the final package. Its writer lock sits beside it (``.<id>.partial.lock``)
+    and is taken before the folder exists and released only after it was renamed into place or removed,
+    so another run never mistakes a folder being finished for an abandoned one."""
+    partial = Path(parent) / ('.' + uuid4().hex + '.partial')
+    lock = ProjectLock(_partial_lock(partial))
+    try:
+        partial.mkdir()
+    except BaseException:
+        _release_partial(partial, lock)
+        raise
+    return partial, lock
+
+
+def _release_partial(partial, lock):
+    lock.close()
+    try:
+        _partial_lock(partial).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _drop_partial(partial, lock):
+    shutil.rmtree(partial, ignore_errors=True)
+    _release_partial(partial, lock)
+
+
+def _lock_free(path):
+    """True: the lock file exists and nobody holds it; False: a live writer holds it; None: there is none.
+    The file is never created here."""
+    try:
+        fd = os.open(path, os.O_RDWR | getattr(os, 'O_BINARY', 0))
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return False
+    try:
+        if os.name == 'nt':
+            import msvcrt
+            try:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            except OSError:
+                return False
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return False
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        return True
+    finally:
+        os.close(fd)
+
+
+def _abandoned(partial):
+    """A work folder nobody writes any more: its writer lock is free, or it never had one."""
+    return _lock_free(_partial_lock(partial)) is not False
+
+
+def _write_folder(output, manifest, entries, *, cancelled, progress, tolerant=False, finalize=None, margin=0):
+    """Write one package folder in a single streaming pass; nothing is compressed.
+
+    Files go into a hidden ``.<id>.partial`` folder next to ``output`` (locked while being written),
+    each flushed to disk with its SHA-256 taken from the bytes written; ``协作清单.json`` lists them,
+    and only the complete folder is renamed to ``output``. ``tolerant`` (raw dispatch, 4.4.2): a source
+    that vanished, is still held open for writing, or fails while being read is left out instead of
+    stopping the package; an entry whose ``requires`` member was left out is skipped too.
+    ``finalize(manifest, skipped, changed, stamps)`` returns the stored manifest. Returns stay strict.
     """
+    output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_name('.' + uuid4().hex + '.partial')
-    if output.exists():
-        raise FileExistsError('同名包已存在，不能覆盖：' + str(output))
+    if os.path.lexists(output):
+        raise FileExistsError('目标位置已有同名数据包，不能覆盖：' + str(output))
+    _long_path_check(output.parent, max(len(output.name), 42), [e['path'] for e in entries] + [MANIFEST], margin)
     total = sum(e['size'] for e in entries)
     if shutil.disk_usage(output.parent).free < total + 16 * 1024**2:
         raise OSError('磁盘剩余空间不足；请更换位置或减少所选范围')
@@ -496,99 +620,212 @@ def _write_zip(output, manifest, entries, *, cancelled, progress, before_publish
         done += count
         progress(done, total, label)
 
+    partial, lock = _new_partial(output.parent)
+    published = False
     try:
-        with zipfile.ZipFile(temporary, 'x', allowZip64=True, compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
-            for entry in entries:
-                check(cancelled)
-                start, path, before = done, entry.get('source'), None
-                if entry.get('requires') in {item['path'] for item in skipped}:
-                    skipped.append(dict(path=entry['path'], reason='对应的原始记录未打包'))
-                    continue
-                try:
-                    if path is None:
-                        source = io.BytesIO(entry['payload'])
-                    else:
-                        path = Path(path)
-                        assert_not_being_written(path)
-                        before = file_stamp(path)
-                        if not tolerant and entry.get('stamp') and before != entry['stamp']:
-                            raise ValueError('打包前原始数据发生变化，请重新扫描：' + str(path))
-                        source = _open_source(path)
-                except (OSError, ValueError) as exc:
-                    if not tolerant or path is None:
-                        raise
-                    skipped.append(dict(path=entry['path'], reason=_skip_reason(exc)))
-                    advance(entry['size'], entry['path'])
-                    continue
-                info = zipfile.ZipInfo(entry['path'])
-                info.compress_type = zipfile.ZIP_STORED if Path(entry['path']).suffix.lower() in VIDEO_SUFFIXES | {'.jpg', '.png'} else zipfile.ZIP_DEFLATED
-                info._compresslevel = 1
-                info.file_size = json.loads(before)[0] if before else entry['size']
-                try:
-                    with source:
-                        size, sha = _copy_member(archive, info, source, cancelled, lambda count: advance(count, entry['path']))
-                except _SourceReadError as exc:
-                    if not tolerant:
-                        raise
-                    _discard_last_member(archive, info)
-                    skipped.append(dict(path=entry['path'], reason=exc.strerror or str(exc)))
-                    advance(max(0, entry['size'] - (done - start)), entry['path'])
-                    continue
-                after = before
-                if path is not None:
-                    try:
-                        after = file_stamp(path)
-                    except OSError:
-                        after = None
+        for entry in entries:
+            check(cancelled)
+            start, path, before = done, entry.get('source'), None
+            if entry.get('requires') in {item['path'] for item in skipped}:
+                skipped.append(dict(path=entry['path'], reason='对应的原始记录未打包'))
+                continue
+            try:
+                if path is None:
+                    source = io.BytesIO(entry['payload'])
+                else:
+                    path = Path(path)
+                    assert_not_being_written(path)
+                    before = file_stamp(path)
+                    if not tolerant and entry.get('stamp') and before != entry['stamp']:
+                        raise ValueError('打包前原始数据发生变化，请重新扫描：' + str(path))
+                    source = _open_source(path)
+            except (OSError, ValueError) as exc:
+                if not tolerant or path is None:
+                    raise
+                skipped.append(dict(path=entry['path'], reason=_skip_reason(exc)))
+                advance(entry['size'], entry['path'])
+                continue
+            target = safe_path(partial, entry['path'])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with source:
+                    size, sha = _copy_to_file(source, target, cancelled, lambda count, label=entry['path']: advance(count, label))
+            except _SourceReadError as exc:
+                target.unlink(missing_ok=True)
                 if not tolerant:
-                    if size != entry['size'] or after != before:
-                        raise ValueError('打包期间源文件发生变化')
-                    if entry.get('sha256') and entry['sha256'] != sha:
-                        raise ValueError('文件内容与原始派发记录不一致')
-                elif path is not None:
-                    if after != before:
-                        changed.append(entry['path'])
-                    stamps[entry['path']] = before
-                members.append(dict(path=entry['path'], size=size, sha256=sha))
-            manifest = {**manifest, 'members': members, 'created_at': datetime.now(timezone.utc).isoformat()}
-            if finalize is not None:
-                manifest = finalize(manifest, skipped, changed, stamps)
-            archive.writestr(MANIFEST, canonical(manifest))
-        with temporary.open('rb+') as stream:
+                    raise
+                skipped.append(dict(path=entry['path'], reason=exc.strerror or str(exc)))
+                advance(max(0, entry['size'] - (done - start)), entry['path'])
+                continue
+            after = before
+            if path is not None:
+                try:
+                    after = file_stamp(path)
+                except OSError:
+                    after = None
+            if not tolerant:
+                if size != entry['size'] or after != before:
+                    raise ValueError('打包期间源文件发生变化')
+                if entry.get('sha256') and entry['sha256'] != sha:
+                    raise ValueError('文件内容与原始派发记录不一致')
+            elif path is not None:
+                if after != before:
+                    changed.append(entry['path'])
+                stamps[entry['path']] = before
+            members.append(dict(path=entry['path'], size=size, sha256=sha))
+        manifest = {**manifest, 'members': members, 'created_at': datetime.now(timezone.utc).isoformat()}
+        if finalize is not None:
+            manifest = finalize(manifest, skipped, changed, stamps)
+        with open(partial / MANIFEST, 'xb') as stream:
+            stream.write(canonical(manifest))
+            stream.flush()
             os.fsync(stream.fileno())
-        validate_archive(temporary)
         check(cancelled)
-        before_publish(manifest)
-        if os.name == 'nt':
-            temporary.rename(output)  # Windows rename refuses an existing destination.
-        else:
-            os.link(temporary, output)
-            temporary.unlink()
+        files, _ = _tree(partial)
+        files.pop(MANIFEST.casefold(), None)
+        if _sizes(files) != {m['path'].casefold(): m['size'] for m in manifest['members']}:
+            raise OSError('写入后的文件夹与清单不一致，请检查目标磁盘后重新生成')
+        _rename_into_place(partial, output)
+        published = True
         return manifest
     finally:
-        temporary.unlink(missing_ok=True)
+        if published:
+            _release_partial(partial, lock)
+        else:
+            _drop_partial(partial, lock)
 
 
 def _remove_stale_partials(folder):
-    """Delete temporary archives of an interrupted dispatch; only called while holding the dispatch lock."""
+    """Delete work folders (and ≤4.4.4 temporary archives) left by interrupted runs; one still being written stays."""
     reclaimed = 0
-    for entry in _listing(folder):
-        if _PARTIAL.fullmatch(entry.name) and entry.is_file(follow_symlinks=False):
-            try:
+    listing = _listing(folder)
+    for entry in listing:
+        if not _PARTIAL.fullmatch(entry.name) or _linked(entry):
+            continue
+        try:
+            if entry.is_file(follow_symlinks=False):
                 size = entry.stat(follow_symlinks=False).st_size
                 os.unlink(entry.path)
-            except OSError:
+            elif entry.is_dir(follow_symlinks=False) and _abandoned(Path(entry.path)):
+                size = sum(_sizes(_tree(entry.path)[0]).values())
+                shutil.rmtree(entry.path)
+                _partial_lock(entry.path).unlink(missing_ok=True)
+            else:
                 continue
-            reclaimed += size
+        except (OSError, ValueError):
+            continue
+        reclaimed += size
+    for entry in listing:  # a writer that died after its folder was gone leaves only the lock file
+        if _PARTIAL_LOCK.fullmatch(entry.name) and not os.path.lexists(entry.path[:-len('.lock')]) and _lock_free(entry.path):
+            try:
+                os.unlink(entry.path)
+            except OSError:
+                pass
     return reclaimed
 
-def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None, report=None):
-    """Write each planned package; one failing package never stops the others.
 
-    4.4.2: dispatch only reads the farm, so it takes no dataset lease and runs
-    alongside annotation, organisation and downloading. Files that vanished,
-    are still being written or fail while being read are left out and listed in
-    the package manifest and ``report['packages']``. Cancelling stops at once
+def check_destination(root, destination):
+    """The folder a package is written or moved into; never inside the farm data (its 协作 folder excepted)."""
+    if destination is None or not str(destination).strip():
+        raise ValueError('请选择数据包的目标位置')
+    target = Path(str(destination).strip())
+    if not target.is_absolute():
+        raise ValueError('请选择完整的目标位置（含盘符），例如 F:\\派包')
+    target = target.resolve()
+    farm = Path(root).resolve()
+    home = collaboration_home(farm).resolve()
+    if target == farm or (target.is_relative_to(farm) and not target.is_relative_to(home)):
+        raise ValueError('目标位置不能在牧场数据目录里（会被当成牧场资料）；请选择其他位置')
+    if os.path.lexists(target) and not target.is_dir():
+        raise ValueError('目标位置不是文件夹：' + str(target))
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _cross_device(exc):
+    return exc.errno == errno.EXDEV or getattr(exc, 'winerror', None) == 17
+
+
+def move_package(source, destination, *, cancelled=lambda: False, progress=lambda *_: None, expect=None):
+    """Move a package folder (or a ≤4.4.4 ZIP) into ``destination``; returns its new path.
+
+    Same disk: one rename. Another disk: copied into a locked hidden work folder (every file flushed and
+    size-checked), renamed into place, then the source is deleted. Cancelling or any failure before that
+    point leaves the source untouched. ``expect``: package paths that will be written there later (label
+    files of a raw task); the move is refused when they would exceed the Windows path limit.
+    """
+    source = Path(source).resolve(strict=True)
+    destination = Path(destination).resolve()
+    if source.parent == destination:
+        return source
+    if destination == source or destination.is_relative_to(source):
+        raise ValueError('不能把数据包移到它自己的文件夹里')
+    destination.mkdir(parents=True, exist_ok=True)
+    target = destination / source.name
+    if os.path.lexists(target):
+        raise FileExistsError('目标位置已有同名数据包：' + str(target))
+    if source.is_dir():
+        files, folders = _tree(source)
+    else:
+        files, folders = {source.name.casefold(): (source.name, source.stat().st_size)}, []
+    _long_path_check(destination, len(source.name), [relative for relative, _ in files.values()] if source.is_dir() else [])
+    if expect:
+        _long_path_check(destination, len(source.name), expect, _TEMP_SUFFIX, opening=True)
+    try:
+        _rename_into_place(source, target)
+        return target
+    except OSError as exc:
+        if not _cross_device(exc):
+            raise
+    total = sum(size for _, size in files.values())
+    _long_path_check(destination, 42, [relative for relative, _ in files.values()] if source.is_dir() else [source.name])
+    if shutil.disk_usage(destination).free < total + 16 * 1024**2:
+        raise OSError('目标磁盘剩余空间不足：' + str(destination))
+    done = 0
+
+    def advance(count, label):
+        nonlocal done
+        done += count
+        progress(done, total, label)
+
+    partial, lock = _new_partial(destination)
+    try:
+        if source.is_dir():
+            for relative in sorted(folders):
+                safe_path(partial, relative).mkdir(parents=True, exist_ok=True)
+            for relative, size in sorted(files.values()):
+                check(cancelled)
+                target_file = safe_path(partial, relative)
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                with _open_source(safe_path(source, relative)) as stream:
+                    written, _ = _copy_to_file(stream, target_file, cancelled, lambda count, label=relative: advance(count, label))
+                if written != size:
+                    raise OSError('移动时源文件发生变化：' + relative)
+            _rename_into_place(partial, target)
+        else:
+            copied = partial / source.name
+            with _open_source(source) as stream:
+                written, _ = _copy_to_file(stream, copied, cancelled, lambda count: advance(count, source.name))
+            if written != total:
+                raise OSError('移动时源文件发生变化：' + source.name)
+            _rename_into_place(copied, target)
+    finally:
+        _drop_partial(partial, lock)  # empty (or already renamed away) after success
+    if source.is_dir():
+        shutil.rmtree(source, ignore_errors=True)
+    else:
+        source.unlink(missing_ok=True)
+    return target
+
+
+def dispatch(root, plans, *, destination=None, cancelled=lambda: False, progress=lambda *_: None, report=None):
+    """Write each planned package as a folder in ``destination``; one failing package never stops the others.
+
+    4.4.5: packages are plain folders (协作清单.json + the farm tree), written straight into the
+    folder the operator picked (default 科牧特_协作标注\\原始数据包); nothing is compressed.
+    4.4.2: dispatch only reads the farm, so it takes no dataset lease and runs alongside annotation,
+    organisation and downloading. Files that vanished, are still being written or fail while being read
+    are left out and listed in the package manifest and ``report['packages']``. Cancelling stops at once
     (finished packages are kept); if every package fails, the first error is raised.
     """
     root = Path(root).resolve(strict=True)
@@ -602,7 +839,12 @@ def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None, 
     try:
         if not lock.acquired:
             raise ValueError('另一个派发任务正在运行，请等它完成后再派包')
-        report['reclaimed_bytes'] = _remove_stale_partials(home / '原始数据包')
+        target = check_destination(root, destination or home / RAW_INBOX)
+        report['destination'] = str(target)
+        reclaimed = _remove_stale_partials(target)
+        if target != (home / RAW_INBOX).resolve():
+            reclaimed += _remove_stale_partials(home / RAW_INBOX)
+        report['reclaimed_bytes'] = reclaimed
         sizes = [sum(e.get('size', 0) for e in plan.get('entries', [])) for plan in plans]
         total, offset = sum(sizes), 0
         for index, plan in enumerate(plans):
@@ -615,7 +857,7 @@ def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None, 
             def step(done, _total, text, base=offset, label=label):
                 progress(base + done, total, label + '/'.join(str(text).split('/')[-2:]))
             try:
-                output, manifest = _dispatch_one(root, identity, home, plan, cancelled, step)
+                output, manifest, replaced = _dispatch_one(root, identity, home, plan, target, cancelled, step)
             except InterruptedError:
                 raise
             except Exception as exc:
@@ -624,7 +866,8 @@ def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None, 
             else:
                 outputs.append(output)
                 record.update(output=str(output), units=[u['key'] for u in manifest['units']],
-                              warnings=manifest['readiness']['warnings'], skipped=manifest.get('skipped', []))
+                              warnings=manifest['readiness']['warnings'], skipped=manifest.get('skipped', []),
+                              replaced=replaced)
             offset += sizes[index]
             progress(offset, total, label + ('失败' if record['error'] else '完成'))
     finally:
@@ -634,7 +877,7 @@ def dispatch(root, plans, *, cancelled=lambda: False, progress=lambda *_: None, 
     return outputs
 
 
-def _dispatch_one(root, identity, home, plan, cancelled, progress):
+def _dispatch_one(root, identity, home, plan, destination, cancelled, progress):
     if plan['farm_id'] != identity['farm_id']:
         raise ValueError('派发方案不属于此牧场')
     units = copy.deepcopy(plan['units'])
@@ -652,7 +895,7 @@ def _dispatch_one(root, identity, home, plan, cancelled, progress):
                             source=os.path.join(root, *entry['path'].split('/'))))
     marker = canonical(identity)
     entries.append(dict(path=prefix + MARKER, payload=marker, size=len(marker)))
-    manifest = {k: copy.deepcopy(v) for k, v in plan.items() if k not in {'entries', 'sensor_paths'}}
+    manifest = {k: copy.deepcopy(v) for k, v in plan.items() if k not in {'entries', 'sensor_paths', 'replace_previous'}}
     manifest['units'] = units
     readiness = manifest['readiness'] = dict(manifest.get('readiness') or {})
     readiness['warnings'] = [*readiness.get('warnings', []), *notes]
@@ -686,7 +929,7 @@ def _dispatch_one(root, identity, home, plan, cancelled, progress):
             manifest['baseline_annotations'].append(rel)
             annotations[prefix + rel] = rel
             entries.append(dict(path=prefix + rel, payload=payload, size=len(payload), requires=prefix + relative))
-    output = home / '原始数据包' / (plan['base_name'] + '_原始.zip')
+    output = Path(destination) / (plan['base_name'] + RAW_SUFFIX)
 
     def finalize(manifest, skipped, changed, stamps):
         reasons = {**left_out, **{item['path'][len(prefix):]: item['reason'] for item in skipped}}
@@ -711,19 +954,37 @@ def _dispatch_one(root, identity, home, plan, cancelled, progress):
         manifest['skipped'] = [dict(path=p, reason=r) for p, r in sorted(reasons.items())]
         return manifest
 
-    result = _write_zip(output, manifest, entries, cancelled=cancelled, progress=progress, tolerant=True, finalize=finalize)
+    result = _write_folder(output, manifest, entries, cancelled=cancelled, progress=progress, tolerant=True, finalize=finalize)
     atomic_json(_registry(root) / (plan['package_id'] + '.json'),
-                dict(status='ready', manifest=result, output=str(output)), backup=False)
-    _cleanup_replaced_packages(root, plan, output)
-    return output, result
+                dict(status='ready', manifest=result, output=str(output), format='folder'), backup=False)
+    replaced = _cleanup_replaced_packages(root, plan, output)
+    return output, result, replaced
+
+
+def _pristine(folder, manifest):
+    """A package folder exactly as dispatched: nobody has opened or annotated it yet."""
+    try:
+        if read_json(folder / MANIFEST, {}).get('package_id') != manifest.get('package_id'):
+            return False
+        files, _ = _tree(folder)
+    except (OSError, ValueError, AttributeError):
+        return False
+    files.pop(MANIFEST.casefold(), None)
+    return _sizes(files) == {m['path'].casefold(): m['size'] for m in manifest.get('members', [])}
+
 
 def _cleanup_replaced_packages(root, plan, current_output):
-    """Remove only older packages covering the explicitly re-dispatched units."""
+    """Remove older packages covering the explicitly re-dispatched units.
+
+    A ≤4.4.4 ZIP in the collaboration folder and a package folder nobody has opened yet are deleted
+    with their dispatch record; a folder someone already works in is kept, with its record, so the
+    annotation it carries can still be received.
+    """
+    result = dict(removed=[], kept=[])
     if not plan.get('replace_previous'):
-        return []
+        return result
     keys = {u['key'] for u in plan.get('units', [])}
     registry = _registry(root)
-    removed = []
     for record in registry.glob('*.json'):
         value = read_json(record, {})
         manifest = value.get('manifest', {})
@@ -731,17 +992,62 @@ def _cleanup_replaced_packages(root, plan, current_output):
             continue
         if not keys.intersection({u.get('key') for u in manifest.get('units', [])}):
             continue
-        old = Path(value.get('output', ''))
-        if old == Path(current_output):
+        output = str(value.get('output') or '').strip()
+        old = Path(output) if output else None
+        if old is not None and old == Path(current_output):
             continue
-        if old.suffix.lower() == '.zip' and old.is_file() and old.resolve().is_relative_to(collaboration_home(root).resolve()):
-            old.unlink()
-            removed.append(str(old))
+        try:
+            if old is None:
+                pass  # recovered record without a known package location: only the record goes
+            elif old.suffix.lower() == '.zip' and old.is_file() and old.resolve().is_relative_to(collaboration_home(root).resolve()):
+                old.unlink()
+                result['removed'].append(str(old))
+            elif old.is_absolute() and old.is_dir():
+                if not _pristine(old, manifest):
+                    result['kept'].append(str(old))
+                    continue
+                shutil.rmtree(old)
+                result['removed'].append(str(old))
+        except OSError:
+            result['kept'].append(str(old))
+            continue
         record.unlink(missing_ok=True)
-    return removed
+    return result
+
+
+def _check_manifest(value):
+    """Checks shared by package folders and ≤4.4.4 ZIPs: format, identities, label schema and the member list."""
+    if not isinstance(value, dict) or value.get('schema') != SCHEMA or value.get('kind') not in {'raw', 'annotations'}:
+        raise ValueError('协作包格式或版本不支持')
+    try:
+        UUID(value['farm_id'])
+        UUID(value['task_id'])
+        package_id, members = value['package_id'], value['members']
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise ValueError('协作清单内容不完整') from exc
+    if not isinstance(package_id, str) or not re.fullmatch(re.escape(value['task_id']) + r'-P\d{3,}', package_id):
+        raise ValueError('任务与分包编号不一致')
+    if value.get('label_schema') != label_schema():
+        raise ValueError('协作包的标签范式与当前软件不一致')
+    if not isinstance(members, list):
+        raise ValueError('协作清单内容不完整')
+    seen = set()
+    for member in members:
+        if (not isinstance(member, dict) or type(member.get('size')) is not int or member['size'] < 0
+                or not isinstance(member.get('sha256'), str) or not re.fullmatch(r'[0-9a-f]{64}', member['sha256'])):
+            raise ValueError('协作清单中的文件大小或内容摘要无效')
+        reason = unsafe_relative(member.get('path'))
+        if reason:
+            raise ValueError(reason)
+        key = member['path'].casefold()
+        if key in seen or key == MANIFEST.casefold():
+            raise ValueError('协作清单含重复路径')
+        seen.add(key)
+    return value
 
 
 def validate_archive(path):
+    """Manifest of a ≤4.4.4 ZIP package after checking its members (still accepted when opened or received)."""
     with zipfile.ZipFile(path) as archive:
         infos = archive.infolist()
         names = set()
@@ -753,24 +1059,60 @@ def validate_archive(path):
             names.add(key)
         if MANIFEST not in archive.namelist() or archive.getinfo(MANIFEST).file_size > 64 * 1024**2:
             raise ValueError('缺少有效的协作清单')
-        value = json.loads(archive.read(MANIFEST))
-        if value.get('schema') != SCHEMA or value.get('kind') not in {'raw', 'annotations'}:
-            raise ValueError('协作包格式或版本不支持')
-        UUID(value['farm_id'])
-        UUID(value['task_id'])
-        if not re.fullmatch(re.escape(value['task_id']) + r'-P\d{3,}', value['package_id']):
-            raise ValueError('任务与分包编号不一致')
-        if value.get('label_schema') != label_schema():
-            raise ValueError('协作包的标签范式与当前软件不一致')
-        members = value.get('members', [])
-        declared = {m['path'].casefold() for m in members}
-        if len(declared) != len(members) or declared != names - {MANIFEST.casefold()}:
+        value = _check_manifest(json.loads(archive.read(MANIFEST)))
+        if {m['path'].casefold() for m in value['members']} != names - {MANIFEST.casefold()}:
             raise ValueError('ZIP 内容与清单不一致')
-        for member in members:
-            info = archive.getinfo(member['path'])
-            if info.file_size != member['size'] or not re.fullmatch(r'[0-9a-f]{64}', member['sha256']):
+        for member in value['members']:
+            if archive.getinfo(member['path']).file_size != member['size']:
                 raise ValueError('ZIP 文件大小或内容摘要无效')
         return value
+
+
+NOT_A_PACKAGE = '所选文件夹不是协作数据包（里面没有“协作清单.json”）：'
+
+
+def _peek_folder(folder):
+    """The checked 协作清单.json of a package folder, without touching any other file."""
+    folder = Path(folder)
+    listed = folder / MANIFEST
+    try:
+        if listed.is_symlink() or not listed.is_file() or listed.stat().st_size > 64 * 1024**2:
+            raise ValueError(NOT_A_PACKAGE + str(folder))
+        value = json.loads(listed.read_bytes())
+    except (OSError, ValueError) as exc:
+        raise ValueError(NOT_A_PACKAGE + str(folder)) from exc
+    return _check_manifest(value)
+
+
+def validate_folder(folder, *, strict=True, cancelled=lambda: False):
+    """Manifest of a package folder after checking its files.
+
+    ``strict`` (annotation returns): exactly the listed files with their sizes and SHA-256, nothing else.
+    Otherwise (raw tasks, annotated where they are): every listed file present with its listed size;
+    files added by annotation are allowed.
+    """
+    folder = Path(folder)
+    value = _peek_folder(folder)
+    files, _ = _tree(folder)
+    files.pop(MANIFEST.casefold(), None)
+    for member in value['members']:
+        check(cancelled)
+        found = files.pop(member['path'].casefold(), None)
+        if found is None:
+            raise ValueError('数据包缺少清单里的文件：' + member['path'])
+        if found[1] != member['size']:
+            raise ValueError('数据包里的文件大小与清单不一致：' + member['path'])
+        if strict and digest_file(safe_path(folder, member['path'])) != member['sha256']:
+            raise ValueError('数据包里的文件内容与清单不一致：' + member['path'])
+    if strict and files:
+        raise ValueError('数据包含清单之外的文件：' + sorted(relative for relative, _ in files.values())[0])
+    return value
+
+
+def read_package(path, *, strict=True):
+    """Manifest of a package folder (4.4.5) or a ≤4.4.4 ZIP."""
+    path = Path(path)
+    return validate_folder(path, strict=strict) if path.is_dir() else validate_archive(path)
 
 
 def _extract(path, directory, manifest, cancelled, progress):
@@ -798,14 +1140,14 @@ def _extract(path, directory, manifest, cancelled, progress):
                 raise ValueError('ZIP 内容校验失败：' + member['path'])
 
 
-def open_raw_package(path, destination, *, cancelled=lambda: False, progress=lambda *_: None):
-    manifest = validate_archive(path)
+def _check_raw_members(manifest):
+    """Farm folder name of a raw package whose members are all authorised raw / review paths."""
     if manifest['kind'] != 'raw':
         raise ValueError('请选择派发的原始数据包')
     name = manifest['farm_name']
-    safe_path(Path.cwd(), name)
-    if '/' in name:
+    if not isinstance(name, str) or '/' in name:
         raise ValueError('牧场名称不能包含路径')
+    safe_path(Path.cwd(), name)
     for member in manifest['members']:
         relative = PurePosixPath(member['path'])
         if relative.parts[0] != name:
@@ -815,6 +1157,22 @@ def open_raw_package(path, destination, *, cancelled=lambda: False, progress=lam
         is_evidence = rel in manifest.get('baseline_evidence', []) and '/标注工程/证据/' in rel and rel.endswith('.jpg')
         if rel != MARKER and not _raw_relative(rel, manifest) and not is_annotation and not is_evidence:
             raise ValueError('原始包包含非授权资料路径')
+    return name
+
+
+def open_raw_package(path, destination=None, *, cancelled=lambda: False, progress=lambda *_: None):
+    """Farm root of a dispatched raw task, ready to annotate.
+
+    4.4.5: a package folder is opened where it is, or first moved into ``destination`` when another
+    folder is chosen; nothing is unpacked. A ≤4.4.4 ZIP is verified and unpacked into ``destination``.
+    """
+    path = Path(path)
+    if path.is_dir():
+        return _open_raw_folder(path, destination, cancelled, progress)
+    if destination is None or not str(destination).strip():
+        raise ValueError('旧版 ZIP 原始数据包需要选择解包位置')
+    manifest = validate_archive(path)
+    name = _check_raw_members(manifest)
     destination = Path(destination).resolve()
     destination.mkdir(parents=True, exist_ok=True)
     final = destination / manifest['package_id']
@@ -844,6 +1202,49 @@ def open_raw_package(path, destination, *, cancelled=lambda: False, progress=lam
         check(cancelled)
         staging.rename(final)
     return final / name
+
+
+def _label_paths(manifest):
+    """Package paths of the label files annotating this raw task will write (标注工程\\…\\*.标注.json)."""
+    prefix = manifest['farm_name'] + '/'
+    found = []
+    for member in manifest['members']:
+        relative = member['path'][len(prefix):] if member['path'].startswith(prefix) else ''
+        if '/Motion/' in relative or '/PPG/' in relative:
+            try:
+                found.append(prefix + _annotation_path(Path(), relative).as_posix())
+            except ValueError:
+                continue
+    return found
+
+
+def _open_raw_folder(path, destination, cancelled, progress):
+    package = Path(path).resolve(strict=True)
+    if not (package / MANIFEST).is_file() and (package.parent / MANIFEST).is_file():
+        package = package.parent  # the farm folder inside the package was picked
+    manifest = validate_folder(package, strict=False)
+    name = _check_raw_members(manifest)
+    expect = [m['path'] for m in manifest['members']] + _label_paths(manifest)
+    target = Path(destination).resolve() if destination is not None and str(destination).strip() else package.parent
+    if target != package.parent and target != package and not target.is_relative_to(package):
+        package = move_package(package, target, cancelled=cancelled, progress=progress, expect=expect)
+    else:
+        _long_path_check(package.parent, len(package.name), expect, _TEMP_SUFFIX, opening=True)
+    farm = package / name
+    identity = farm_identity(farm)
+    if not identity or identity['farm_id'] != manifest['farm_id']:
+        raise ValueError('牧场标识不一致')
+    root, _assignment = task_assignment(farm)
+    for relative in manifest.get('baseline_annotations', []):
+        try:
+            label = safe_path(root, relative)
+            doc = read_json(label, {})
+            if doc['source'].get('project_root_hint') != str(root):
+                doc['source']['project_root_hint'] = str(root)
+                atomic_json(label, doc, backup=False)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return root
 
 
 def _raw_relative(relative, manifest):
@@ -959,11 +1360,106 @@ def _evidence_entries(doc, label, root):
     return entries
 
 
-def make_return(root, *, cancelled=lambda: False, progress=lambda *_: None):
-    root = Path(root).resolve(strict=True)
+NOT_A_TASK = ('此目录不是已派发任务：请选择原始数据包文件夹（含“协作清单.json”）或其中的牧场目录，'
+              '或用“文件 → 打开协作数据包”打开后再标注')
+
+
+def _raw_task(value):
+    return isinstance(value, dict) and value.get('schema') == SCHEMA and value.get('kind') == 'raw'
+
+
+def _manifest_digest(value):
+    return hashlib.sha256(canonical(value)).hexdigest()
+
+
+def _check_unpacked_task(manifest, root):
+    """A ``协作清单.json`` found beside a farm folder must describe exactly this farm and these files."""
+    identity = farm_identity(root)
+    if not identity:
+        raise ValueError('所选目录缺少牧场标识（.cowmata-farm.json），请完整复制原始数据包文件夹')
+    if not _raw_task(manifest):
+        raise ValueError('协作清单不是派发的原始数据包清单')
+    if manifest.get('farm_id') != identity['farm_id']:
+        raise ValueError('协作清单与所选牧场目录不属于同一牧场')
+    UUID(manifest['task_id'])
+    UUID(manifest['farm_id'])
+    if not re.fullmatch(re.escape(manifest['task_id']) + r'-P\d{3,}', manifest['package_id']):
+        raise ValueError('任务与分包编号不一致')
+    if manifest.get('label_schema') != label_schema():
+        raise ValueError('协作包的标签范式与当前软件不一致；请用与派包相同版本的 COWMATA Annotator 标注')
+    prefix = manifest['farm_name'] + '/'
+    bad = []
+    for member in manifest.get('members', []):
+        relative = member['path'][len(prefix):] if member['path'].startswith(prefix) else None
+        # Only original data is checked here: review-task label files are meant to be edited.
+        if relative is None or not _raw_relative(relative, manifest):
+            continue
+        try:
+            if safe_path(root, relative).stat().st_size != member['size']:
+                bad.append(relative)
+        except OSError:
+            bad.append(relative)
+    if bad:
+        raise ValueError(f'数据包里的资料与协作清单不一致（{len(bad)} 个原始文件缺失或大小不同，例如 {bad[0]}）；'
+                         '请重新完整复制原始数据包文件夹（旧版 ZIP 请完整解压）')
+
+
+def task_assignment(path, *, adopt=True):
+    """Farm root and raw-task manifest of an unpacked collaboration package.
+
+    Packages opened in the app carry ``.cowmata-assignment.json``. A 4.4.5 package folder (or a
+    ≤4.4.4 ZIP unzipped by hand) has ``<folder>\\协作清单.json`` beside ``<folder>\\<牧场>`` instead;
+    that manifest is checked against the farm marker, the label schema and every raw file size,
+    then adopted exactly as ``open_raw_package`` writes it. The farm folder, one of its category
+    folders or the package folder itself may be selected.
+    """
+    start = Path(path).resolve(strict=True)
+    root = None
+    if (start / MANIFEST).is_file():  # the package folder itself, even when it is kept inside another farm
+        listed = read_json(start / MANIFEST, {})
+        named = start / str(listed.get('farm_name', '')) if isinstance(listed, dict) else start
+        candidates = [named, *(d for d in sorted(start.iterdir()) if d.is_dir())]
+        root = next((d for d in candidates if d.is_dir() and d != start and farm_identity(d)), None)
+    if root is None:
+        root = shared_farm(start)
+    if root is None:
+        raise ValueError(NOT_A_TASK)
     assignment = read_json(root / ASSIGNMENT, {})
-    if assignment.get('schema') != SCHEMA or assignment.get('kind') != 'raw':
-        raise ValueError('此目录不是已派发任务；请从原始数据包打开工程')
+    if _raw_task(assignment):
+        return root, assignment
+    if not (root.parent / MANIFEST).is_file():
+        raise ValueError(NOT_A_TASK)
+    manifest = read_json(root.parent / MANIFEST, {})
+    try:
+        _check_unpacked_task(manifest, root)
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError('协作清单内容不完整，请重新完整复制原始数据包文件夹（' + str(exc) + '）') from exc
+    if adopt:
+        for category in manifest['categories']:
+            layout = safe_path(root, category + '/标注工程/annotation-layout.json')
+            if not layout.is_file():
+                atomic_json(layout, {'schema': 'dated-annotations-v1'}, backup=False)
+        atomic_json(root / ASSIGNMENT, manifest, backup=False)
+    return root, manifest
+
+
+def adopt_unpacked_task(path):
+    """Best effort on project open: an unpacked task becomes a normal assigned task; anything else is left alone."""
+    try:
+        return task_assignment(path)[1]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def default_return_destination(root):
+    """Where an annotation return goes by default: next to the raw package folder the task came in."""
+    return Path(root).resolve().parent.parent
+
+
+def make_return(root, *, destination=None, cancelled=lambda: False, progress=lambda *_: None):
+    """Annotation return of an assigned task: a folder with the labels, their evidence images and
+    ``协作清单.json``, written into ``destination`` (default: next to the raw package folder)."""
+    root, assignment = task_assignment(root)
     entries, annotations = {}, []
     with DatasetLease([root], 'review'):
         for relative in _raw_members(assignment):
@@ -987,10 +1483,15 @@ def make_return(root, *, cancelled=lambda: False, progress=lambda *_: None):
         if not annotations:
             raise ValueError('本任务尚未保存标注结果')
         manifest = {k: copy.deepcopy(assignment[k]) for k in ('schema', 'task_id', 'package_id', 'farm_id', 'farm_name', 'label_schema', 'base_name')}
+        # 4.4.5: the task manifest travels with the return, so a dispatcher whose 派发记录 was lost
+        # (new computer, restored backup) can still verify and receive it against its own raw data.
         manifest.update(kind='annotations', revision=uuid4().hex, annotations=annotations,
-                        source_manifest_sha256=hashlib.sha256(canonical(assignment)).hexdigest(), purpose=assignment.get('purpose', 'annotation'))
-        output = collaboration_home(root) / '标注数据包' / (manifest['base_name'] + '_标注_' + manifest['revision'][:12] + '.zip')
-        _write_zip(output, manifest, list(entries.values()), cancelled=cancelled, progress=progress)
+                        source_manifest_sha256=_manifest_digest(assignment), source_manifest=copy.deepcopy(assignment),
+                        purpose=assignment.get('purpose', 'annotation'))
+        target = check_destination(root, destination or default_return_destination(root))
+        _remove_stale_partials(target)
+        output = target / (manifest['base_name'] + RETURN_TAG + manifest['revision'][:12])
+        _write_folder(output, manifest, list(entries.values()), cancelled=cancelled, progress=progress)
         return output
 
 
@@ -1017,7 +1518,7 @@ def _recover_receives(root):
         atomic_json(journal_path, journal, backup=False)
 
 
-def _publish_annotation(root, relative, payload, source, journal, journal_path):
+def _publish_annotation(root, relative, payload, source, journal, journal_path, expected=None):
     """Publish a fully flushed file atomically; never expose a partial label."""
     target = safe_path(root, relative)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1032,7 +1533,8 @@ def _publish_annotation(root, relative, payload, source, journal, journal_path):
             output.flush()
             os.fsync(output.fileno())
         sha = digest_file(temporary)
-        expected = digest_file(source) if source is not None else hashlib.sha256(payload).hexdigest()
+        if expected is None:
+            expected = digest_file(source) if source is not None else hashlib.sha256(payload).hexdigest()
         if sha != expected:
             raise OSError('Annotation staging verification failed')
         if target.exists():
@@ -1051,25 +1553,90 @@ def _publish_annotation(root, relative, payload, source, journal, journal_path):
         temporary.unlink(missing_ok=True)
 
 
-def receive_return(root, path, *, cancelled=lambda: False, progress=lambda *_: None):
+def _kept_raw_manifests(root):
+    """(source, manifest) of the raw packages kept in 科牧特_协作标注\\原始数据包: folders and ≤4.4.4 ZIPs."""
+    found = []
+    for entry in _listing(collaboration_home(root) / RAW_INBOX):
+        if _linked(entry) or _PARTIAL.fullmatch(entry.name):
+            continue
+        try:
+            if entry.is_dir(follow_symlinks=False):
+                listed = Path(entry.path) / MANIFEST
+                if listed.is_file() and listed.stat().st_size <= 64 * 1024**2:
+                    found.append((entry.path, json.loads(listed.read_bytes())))
+            elif entry.name.lower().endswith('.zip'):
+                with zipfile.ZipFile(entry.path) as bundle:
+                    if MANIFEST in bundle.namelist() and bundle.getinfo(MANIFEST).file_size <= 64 * 1024**2:
+                        found.append((entry.path, json.loads(bundle.read(MANIFEST))))
+        except (OSError, ValueError, zipfile.BadZipFile):
+            continue
+    return found
+
+
+def _recover_assignment(root, manifest):
+    """4.4.5: rebuild a missing dispatch record (``派发记录``), e.g. after moving to a new computer.
+
+    Candidates are the task manifest carried by the return itself and the raw packages kept in
+    ``科牧特_协作标注\\原始数据包`` (only their small 协作清单.json is read). A candidate is used
+    only if its digest equals the one the annotator signed into the return and it belongs to this
+    farm; every label is then still verified against this computer's own raw bytes.
+    """
+    digest = manifest.get('source_manifest_sha256')
+    identity = farm_identity(root) or {}
+    candidates = []
+    if isinstance(manifest.get('source_manifest'), dict):
+        candidates.append(('', manifest['source_manifest']))
+    candidates += _kept_raw_manifests(root)
+    for source, value in candidates:
+        if (_raw_task(value) and value.get('package_id') == manifest['package_id']
+                and value.get('farm_id') == identity.get('farm_id') and digest and _manifest_digest(value) == digest):
+            return value, source
+    raise ValueError('本机没有该任务的派发记录（派发记录\\' + manifest['package_id'] + '.json）：请把对应的原始数据包（文件夹或 ZIP）放入 '
+                     + str(collaboration_home(root) / RAW_INBOX) + ' 后重新接收，或请标注员用 4.4.5 及以上版本重新生成标注数据包')
+
+
+def receive_return(root, path, *, archive_to=None, cancelled=lambda: False, progress=lambda *_: None):
+    """Verify one annotation return (a folder, or a ≤4.4.4 ZIP) completely, then merge it into the farm.
+
+    ``archive_to`` (4.4.5): after the merge the return is moved into this folder; a return held back
+    for conflicts is moved into 科牧特_协作标注\\冲突待核对\\<任务> beside its report; a refused one
+    stays where it is. Without ``archive_to`` the return is left in place (a conflicting one is copied).
+    """
     root = Path(root).resolve(strict=True)
-    manifest = validate_archive(path)
-    if manifest['kind'] != 'annotations' or manifest['farm_id'] != farm_identity(root)['farm_id']:
-        raise ValueError('标注包不属于此牧场')
-    original = read_json(_registry(root) / (manifest['package_id'] + '.json'), {})
-    assignment = original.get('manifest', {})
-    if original.get('status') != 'ready' or hashlib.sha256(canonical(assignment)).hexdigest() != manifest.get('source_manifest_sha256'):
-        raise ValueError('找不到对应的原始派发记录或任务清单不一致')
+    path = Path(path).resolve(strict=True)
+    folder = path.is_dir()
+    manifest = _peek_folder(path) if folder else validate_archive(path)
+    identity = farm_identity(root)
+    if manifest['kind'] != 'annotations' or not identity or manifest['farm_id'] != identity['farm_id']:
+        raise ValueError('标注包不属于此牧场' if manifest['kind'] == 'annotations' else '这是原始数据包，不是标注数据包')
+    if folder:  # only now hash the (small) return, file by file
+        manifest = validate_folder(path, strict=True, cancelled=cancelled)
+    if archive_to is not None:
+        archive_to = check_destination(root, archive_to)
+        if archive_to == path or archive_to.is_relative_to(path):
+            raise ValueError('不能把标注数据包移到它自己的文件夹里')
+    record = _registry(root) / (manifest['package_id'] + '.json')
+    original = read_json(record, {})
+    recovered = None
+    if original:
+        assignment = original.get('manifest', {})
+        if original.get('status') != 'ready' or _manifest_digest(assignment) != manifest.get('source_manifest_sha256'):
+            raise ValueError('找不到对应的原始派发记录或任务清单不一致')
+    else:
+        assignment, recovered = _recover_assignment(root, manifest)
     annotations = manifest.get('annotations', [])
     if not annotations or len(set(annotations)) != len(annotations):
         raise ValueError('没有有效且唯一的标注记录')
-    for member in manifest['members']:
-        relative = member['path']
+    members = {m['path']: m for m in manifest['members']}
+    for relative in members:
         safe_path(root, relative)
         if relative not in annotations and not ('/标注工程/' in relative and '/证据/' in relative and relative.endswith('.jpg')):
             raise ValueError('回传包含未授权文件或原始数据')
+    if not set(annotations) <= set(members):
+        raise ValueError('清单列出的标注文件不在数据包里')
     home = collaboration_home(root)
-    report = dict(package_id=manifest['package_id'], imported=0, unchanged=0, conflicts=[], files=[])
+    report = dict(package_id=manifest['package_id'], package=str(path), imported=0, unchanged=0, conflicts=[], files=[])
+    held = journal_dir = None
     with DatasetLease([root], 'organize'), ExitStack() as locks, tempfile.TemporaryDirectory(prefix='cowmata-receive-') as temporary:
         for category in {u['category'] for u in assignment['units']}:
             meta = safe_path(root, category + '/标注工程')
@@ -1079,13 +1646,19 @@ def receive_return(root, path, *, cancelled=lambda: False, progress=lambda *_: N
             if not lock.acquired:
                 raise ValueError('相关标注工程正在使用，请保存并关闭该工程后接收')
         _recover_receives(root)
-        staging = Path(temporary)
-        _extract(path, staging, manifest, cancelled, progress)
+        if folder:
+            staging = path  # verified file by file below against the SHA-256 in 协作清单.json
+        else:
+            staging = Path(temporary)
+            _extract(path, staging, manifest, cancelled, progress)
         pending, allowed_evidence = [], set()
         for relative in annotations:
             check(cancelled)
             saved = safe_path(staging, relative)
-            doc = json.loads(saved.read_text(encoding='utf-8'))
+            data = saved.read_bytes()
+            if hashlib.sha256(data).hexdigest() != members[relative]['sha256']:
+                raise ValueError('标注数据包在核验期间被改动：' + relative)
+            doc = json.loads(data.decode('utf-8-sig'))
             target = _validate_document(doc, root, assignment)
             if target.relative_to(root).as_posix() != relative:
                 raise ValueError('标注包目录树与本地目录不一致')
@@ -1100,46 +1673,165 @@ def receive_return(root, path, *, cancelled=lambda: False, progress=lambda *_: N
                     report['conflicts'].append(relative)
             else:
                 pending.append((relative, canonical(doc)))
-        declared = {m['path'] for m in manifest['members']}
-        if declared != set(annotations) | allowed_evidence:
+        if set(members) != set(annotations) | allowed_evidence:
             raise ValueError('清单存在未引用或缺失的证据图')
+        if recovered is not None:
+            # Every label has now been verified against this farm's own raw bytes.
+            atomic_json(record, dict(status='ready', manifest=assignment, output=recovered,
+                                     recovered=dict(source=recovered or path.name,
+                                                    at=datetime.now(timezone.utc).isoformat())), backup=False)
+            report['recovered_dispatch_record'] = str(record)
         if report['conflicts']:
             # Entire return is held, never partially applied across conflicting records.
-            archive_dir = home / '冲突待核对' / (manifest['package_id'] + '-' + uuid4().hex)
-            archive_dir.mkdir(parents=True)
-            shutil.copyfile(path, archive_dir / '待核对标注包.zip')
-            report['archive'] = str(archive_dir)
-            atomic_json(archive_dir / '核验报告.json', report, backup=False)
-            return report
-        for relative in allowed_evidence:
-            target = safe_path(root, relative)
-            source = safe_path(staging, relative)
-            if target.exists() and digest_file(target) != digest_file(source):
-                raise ValueError('本地证据图同名但内容不同，停止接收')
-        check(cancelled)
-        journal_dir = home / '接收记录' / (manifest['package_id'] + '-' + uuid4().hex)
-        journal_dir.mkdir(parents=True)
-        journal = dict(status='committing', package_id=manifest['package_id'], created=[], publications=[], planned=[r for r, _ in pending])
-        atomic_json(journal_dir / '事务.json', journal, backup=False)
-        try:
-            for relative in sorted(allowed_evidence):
+            held = home / CONFLICT_INBOX / (manifest['package_id'] + '-' + uuid4().hex[:8])
+            held.mkdir(parents=True)
+            report['archive'] = str(held)
+            atomic_json(held / '核验报告.json', report, backup=False)
+        else:
+            for relative in allowed_evidence:
                 target = safe_path(root, relative)
-                if not target.exists():
-                    _publish_annotation(root, relative, None, safe_path(staging, relative), journal, journal_dir / '事务.json')
-            for relative, payload in pending:
-                _publish_annotation(root, relative, payload, None, journal, journal_dir / '事务.json')
-                report['imported'] += 1
-                report['files'].append(relative)
-            for category in {u['category'] for u in assignment['units']}:
-                atomic_json(safe_path(root, category + '/标注工程/annotation-layout.json'), {'schema': 'dated-annotations-v1'}, backup=False)
-            journal['status'] = 'complete'
+                if target.exists() and digest_file(target) != members[relative]['sha256']:
+                    raise ValueError('本地证据图同名但内容不同，停止接收')
+            check(cancelled)
+            journal_dir = home / '接收记录' / (manifest['package_id'] + '-' + uuid4().hex)
+            journal_dir.mkdir(parents=True)
+            journal = dict(status='committing', package_id=manifest['package_id'], created=[], publications=[], planned=[r for r, _ in pending])
             atomic_json(journal_dir / '事务.json', journal, backup=False)
-            atomic_json(journal_dir / '核验报告.json', report, backup=False)
-        except Exception:
-            # Only paths exclusively created by this transaction, never pre-existing work.
-            for relative in reversed(journal['created']):
-                safe_path(root, relative).unlink()
-            journal['status'] = 'rolled_back'
-            atomic_json(journal_dir / '事务.json', journal, backup=False)
-            raise
+            try:
+                for relative in sorted(allowed_evidence):
+                    target = safe_path(root, relative)
+                    if not target.exists():
+                        _publish_annotation(root, relative, None, safe_path(staging, relative), journal, journal_dir / '事务.json',
+                                            expected=members[relative]['sha256'])
+                for relative, payload in pending:
+                    _publish_annotation(root, relative, payload, None, journal, journal_dir / '事务.json')
+                    report['imported'] += 1
+                    report['files'].append(relative)
+                for category in {u['category'] for u in assignment['units']}:
+                    atomic_json(safe_path(root, category + '/标注工程/annotation-layout.json'), {'schema': 'dated-annotations-v1'}, backup=False)
+                journal['status'] = 'complete'
+                atomic_json(journal_dir / '事务.json', journal, backup=False)
+                atomic_json(journal_dir / '核验报告.json', report, backup=False)
+            except Exception:
+                # Only paths exclusively created by this transaction, never pre-existing work.
+                for relative in reversed(journal['created']):
+                    safe_path(root, relative).unlink()
+                journal['status'] = 'rolled_back'
+                atomic_json(journal_dir / '事务.json', journal, backup=False)
+                raise
+    # The farm is released; moving the return itself never touches labelled data.
+    try:
+        if held is not None and archive_to is not None:
+            report['moved_to'] = str(move_package(path, held, cancelled=cancelled, progress=progress))
+        elif held is not None:
+            if folder:
+                shutil.copytree(path, held / path.name)
+            else:
+                shutil.copyfile(path, held / '待核对标注包.zip')
+        elif archive_to is not None:
+            report['moved_to'] = str(move_package(path, archive_to, cancelled=cancelled, progress=progress))
+    except (OSError, ValueError) as exc:
+        report['not_moved'] = str(exc)
+    if held is not None or (journal_dir is not None and ('moved_to' in report or 'not_moved' in report)):
+        atomic_json((held or journal_dir) / '核验报告.json', report, backup=False)
     return report
+
+
+def drive_roots():
+    """[(root, kind)] of usable drives: local, removable and network (optical drives are left out)."""
+    if os.name != 'nt':
+        return []
+    import ctypes
+    kinds = {2: '移动磁盘', 3: '本地磁盘', 4: '网络驱动器', 6: '内存盘'}
+    try:
+        drives = os.listdrives()
+    except (AttributeError, OSError):
+        drives = [letter + ':\\' for letter in 'CDEFGHIJKLMNOPQRSTUVWXYZ' if os.path.exists(letter + ':\\')]
+    found = []
+    for drive in drives:
+        kind = kinds.get(ctypes.windll.kernel32.GetDriveTypeW(ctypes.c_wchar_p(drive)))
+        if kind:
+            found.append((drive, kind))
+    return found
+
+
+@contextmanager
+def _no_drive_popups():
+    """Probing an empty card reader or removed media must not raise a Windows “no disk” dialog."""
+    if os.name != 'nt':
+        yield
+        return
+    import ctypes
+    kernel32 = ctypes.windll.kernel32
+    previous = ctypes.c_uint()
+    changed = kernel32.SetThreadErrorMode(0x0001 | 0x8000, ctypes.byref(previous))  # FAILCRITICALERRORS | NOOPENFILEERRORBOX
+    try:
+        yield
+    finally:
+        if changed:
+            kernel32.SetThreadErrorMode(previous.value, None)
+
+
+def _free_text(path):
+    try:
+        free = shutil.disk_usage(path).free
+    except OSError:
+        return ''
+    return '可用 ' + (f'{free / 1024**4:.1f} TB' if free >= 1024**4 else f'{free / 1024**3:.0f} GB')
+
+
+def destination_candidates(mode, root=None, *, package=None, recent=(), drives=None):
+    """Suggested target folders of one collaboration task as [(folder, note)]: default first, no duplicates.
+
+    Defaults — dispatch: 科牧特_协作标注\\原始数据包; returns: next to the task's raw package folder;
+    receive: 科牧特_协作标注\\已接收; open: where the package is now (opened in place). Then recently
+    used folders and, for dispatch / returns / open, the drive roots (the system drive only when there is
+    no other) with their first-level folders whose names suggest an exchange folder (派包、协作、转移 …).
+    """
+    found, seen = [], set()
+
+    def add(folder, note):
+        key = os.path.normcase(os.path.abspath(str(folder)))
+        if key not in seen:
+            seen.add(key)
+            found.append((str(Path(folder)), note))
+
+    farm = None
+    if root and str(root).strip():
+        try:
+            start = Path(str(root).strip()).resolve()
+            if (start / MANIFEST).is_file():  # a package folder (wherever it is kept): its farm sits inside
+                name = read_json(start / MANIFEST, {}).get('farm_name')
+                farm = start / name if isinstance(name, str) and farm_identity(start / name) else None
+            if farm is None:
+                farm = shared_farm(start)
+        except (OSError, ValueError, TypeError, AttributeError):
+            farm = None
+    if mode == 'dispatch' and farm is not None:
+        add(collaboration_home(farm) / RAW_INBOX, '默认 · 本机协作目录')
+    elif mode == 'returns' and farm is not None:
+        add(default_return_destination(farm), '默认 · 与原始数据包放在一起')
+    elif mode == 'receive' and farm is not None:
+        add(collaboration_home(farm) / RECEIVED_INBOX, '默认 · 协作目录“已接收”')
+    elif mode == 'open' and package:
+        source = Path(package).resolve()
+        if source.suffix.lower() != '.zip' and not (source / MANIFEST).is_file() and (source.parent / MANIFEST).is_file():
+            source = source.parent  # the farm folder inside the package was picked
+        add(source.parent, '默认 · ' + ('解包到 ZIP 所在文件夹' if source.suffix.lower() == '.zip' else '原位置打开（不移动）'))
+    for folder in recent or ():
+        if folder and Path(folder).is_dir():
+            add(folder, '最近使用')
+    if mode in {'dispatch', 'returns', 'open'}:
+        with _no_drive_popups():
+            roots = drive_roots() if drives is None else list(drives)
+            system = os.path.splitdrive(os.environ.get('SystemRoot', 'C:\\'))[0].upper()
+            others = [item for item in roots if os.path.splitdrive(item[0])[0].upper() != system]
+            for drive, kind in others or roots:
+                add(drive, kind + ('' if kind == '网络驱动器' else ' · ' + _free_text(drive)))
+                if kind == '网络驱动器':
+                    continue
+                for entry in _folders(drive):
+                    if (not re.match(r'\d_', entry.name) and not entry.name.startswith(('$', '.'))
+                            and any(hint in entry.name for hint in _TARGET_HINTS)):
+                        add(entry.path, kind)
+    return found[:24]

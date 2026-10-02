@@ -477,7 +477,7 @@ class MainWindow(ControllerWindow):
         self._action(organize, "归类记录…", lambda: self._organization_command("export_report"))
         self._action(organize, "打开归类目录", lambda: self._organization_command("open_destination"))
         download.addSeparator()
-        self._action(download, "决策 APP", lambda: downloader.run(lambda d: d.open_decision_app(), show=False))
+        self._action(download, "风险等级总览", lambda: downloader.run(lambda d: d.open_decision_app(), show=False))
         self._action(download, "下载设置…", lambda: downloader.run(lambda d: d.open_configuration(), show=False))
         records = menu(download, "下载记录")
         self._action(records, "运行记录…", lambda: downloader.run(lambda d: d.log_dialog.show(), show=False))

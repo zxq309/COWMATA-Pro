@@ -1,4 +1,4 @@
-import base64,json,struct,time,zipfile
+import base64,json,struct,time
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
@@ -29,11 +29,12 @@ def test_selected_date_package_preserves_exact_tree_and_bytes(tmp_path,monkeypat
     units=[u for u in packages.inventory(root,'产犊') if u['day']=='2026-08-17']
     plans=packages.plan_dispatch_groups(root,[units])
     out=packages.dispatch(root,plans)[0]
-    with zipfile.ZipFile(out) as z:
-        chosen={r:body for r,body in paths.items() if '/2026-08-17/' in r}
-        for rel,body in chosen.items():assert z.read(root.name+'/'+rel)==body
-        assert not any('/2026-08-18/' in n for n in z.namelist())
-        assert all(n.endswith(('.json','.mp4')) for n in z.namelist())
+    assert out.is_dir() and not out.name.endswith('.zip')
+    names=[p.relative_to(out).as_posix() for p in out.rglob('*') if p.is_file()]
+    chosen={r:body for r,body in paths.items() if '/2026-08-17/' in r}
+    for rel,body in chosen.items():assert (out/root.name/rel).read_bytes()==body
+    assert not any('/2026-08-18/' in n for n in names)
+    assert all(n.endswith(('.json','.mp4')) for n in names)
 
 
 def test_compact_controls_and_close_annotation_releases_lease(tmp_path):
