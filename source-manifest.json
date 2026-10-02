@@ -1,5 +1,5 @@
 {
-  "version": "4.4.6",
+  "version": "4.4.7",
   "product": "COWMATA Annotator",
   "files": [
     {
@@ -49,13 +49,13 @@
     },
     {
       "path": "CHANGELOG.md",
-      "size": 102442,
-      "sha256": "f679b83b0c584116f09fc395435a1611473a94f883685e634918f6988f6ba47f"
+      "size": 104023,
+      "sha256": "052886b8ce4f6d4072467506f2e085edcf36e69c842ae95fe2933fe4c13066dc"
     },
     {
       "path": "CITATION.cff",
       "size": 834,
-      "sha256": "8cd1c133d03992410505ce42c5090d00b66b98b312e73857596a8e6972deb0ca"
+      "sha256": "91b876024b001536e8ccc6af288829d8f99722760fc11c04e3c95da1d4687225"
     },
     {
       "path": "CONTRIBUTING.md",
@@ -74,13 +74,13 @@
     },
     {
       "path": "README.md",
-      "size": 6210,
-      "sha256": "aad5f2b99b552a36871611d2d7d2df93e99afe64c4c1b313fcac4ba320f85761"
+      "size": 6255,
+      "sha256": "93657b79b89fd678ef2758d2cbc0e5b9c2d562dee31b53a8e1a60211f720d49a"
     },
     {
       "path": "README.zh-CN.md",
       "size": 141,
-      "sha256": "926a1a293d26f315a1893aeea9522d00e091bbbbbb5e5966f01e405646619bad"
+      "sha256": "41069d1c47505739a49176629eeda9c543e3f6c4a38b6cbade9446aecb4af42f"
     },
     {
       "path": "SECURITY.md",
@@ -1224,8 +1224,8 @@
     },
     {
       "path": "cowmata_engine/api.py",
-      "size": 6486,
-      "sha256": "052aa270d928455be03877027fb922b5e6b98838160b5c6ac5b57a3fa0389d67"
+      "size": 6621,
+      "sha256": "ad66c4b2d5556ad792eadbac1d5aa3a835865c8660866a51948d9c9b6a9130c7"
     },
     {
       "path": "cowmata_engine/behavior/__init__.py",
@@ -1339,8 +1339,8 @@
     },
     {
       "path": "cowmata_engine/server.py",
-      "size": 3612,
-      "sha256": "5efc5cbb581f31a32ca678bc31aefaaeaadd6d5ab482a36560a578c079563cf2"
+      "size": 4010,
+      "sha256": "0092f449b852392d280dcc59add25abc1825a471f4204567b264956e93162aef"
     },
     {
       "path": "cowmata_security/TRANSPORT.md",
@@ -1435,7 +1435,7 @@
     {
       "path": "cowmata_tailring/__init__.py",
       "size": 193,
-      "sha256": "66ead7cfa5aa05d48962f85ec6f2b255a8e50f6824d42c73252f226cc272e1da"
+      "sha256": "67dd38eb33b032f9175e515e63b758eb3025b7c07c43fb785b72ba3f7939004a"
     },
     {
       "path": "cowmata_tailring/__main__.py",
@@ -2604,8 +2604,8 @@
     },
     {
       "path": "cowmata_tailring/ui/translations.py",
-      "size": 501042,
-      "sha256": "5b6d5596376865beb3b5feb716acb5afc0bb6fae6cfbeb01efdae014183fd7f7"
+      "size": 504260,
+      "sha256": "f273ca2b2eed02b8e2a9dc255dbb63ee0c545c48c5287a7cca10a2a9052734e7"
     },
     {
       "path": "cowmata_tailring/ui/video_timeline.py",
@@ -2929,8 +2929,8 @@
     },
     {
       "path": "cowmata_tailring/workspace/modern_window.py",
-      "size": 57543,
-      "sha256": "f0914709ba198b6f0b44b391e695135da61f063d5f5eab4f3db11a34d66d93f5"
+      "size": 61938,
+      "sha256": "8c7fb49202ce4d4ee3cc97847f58b9bc9b35f7b9245b09519fa881be93176695"
     },
     {
       "path": "cowmata_tailring/workspace/mother_dataset.py",
@@ -4373,6 +4373,11 @@
       "sha256": "058fb047797ebfef50f6a82c08fcf26f3a67eb131ec03b4e2848598e7d90f5c8"
     },
     {
+      "path": "docs/release-447.md",
+      "size": 6045,
+      "sha256": "032a3a30297bc52448d438064f48bce242c8522e33f4819bec9a3add8f08b60d"
+    },
+    {
       "path": "docs/release-notes-v2.2.0.md",
       "size": 5827,
       "sha256": "bc8f0b9acec046baabfba72bce4b404d69af8995322a9cacac6d01663b0b6f79"
@@ -4574,8 +4579,8 @@
     },
     {
       "path": "scripts/build_portable.py",
-      "size": 11972,
-      "sha256": "64c12b78c341d4485095553bdfae6d4d8d90d3f42a3c7e96bfc2c1a3d9097d8b"
+      "size": 11990,
+      "sha256": "455cfce16bb3431e55c847f8d3eb3de44d4ea456d13fc65be9601a2d004d070c"
     },
     {
       "path": "scripts/build_quick_start_pdf.py",
@@ -5218,6 +5223,11 @@
       "sha256": "9496627e6f9ea4f32ee53bf5e82f4a584a2575b02c5139ebedf081cc2299afc0"
     },
     {
+      "path": "tests/test_engine_http_contract.py",
+      "size": 2109,
+      "sha256": "c57e0d75b3d8b1f4117533f9a7ecea6f0c5ab120056926bf525de3271a02af5c"
+    },
+    {
       "path": "tests/test_event_models.py",
       "size": 9602,
       "sha256": "d11c7c48150a23351dfec5c49ee3b4fc02c670fc711481cd8c0a8a593db9e6d2"
@@ -5848,6 +5858,11 @@
       "sha256": "a474164af5ab8892a267a4fb703c968a8b8bdb6da560a6c3f50228f685f327b9"
     },
     {
+      "path": "tests/test_workflow_navigation.py",
+      "size": 3504,
+      "sha256": "a851471314a50cf0c5016714f8e151b9cde0bdf8a8f67e5cece73b8c7585161e"
+    },
+    {
       "path": "tests/test_workflow_shell_v370.py",
       "size": 5354,
       "sha256": "6c35970620fed83c510a69865f1d2e560d7b3576458a61639a99a85ef40a81f4"
@@ -5910,7 +5925,7 @@
     {
       "path": "使用说明.txt",
       "size": 1598,
-      "sha256": "1a67826c2032f1ed96d511e5017f8dac134585e3e0d5e6637693af039b78b68a"
+      "sha256": "8de8ff762a729b0ac2c468fa8c0613617b643629737da80d2d9f07c1b2fe1ece"
     }
   ]
 }

@@ -52,13 +52,20 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, dict(ok=False, error="未知路径"))
 
     def do_POST(self):
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._send(400, dict(ok=False, error="Content-Length 必须是非负整数"))
+        if length < 0:
+            return self._send(400, dict(ok=False, error="Content-Length 必须是非负整数"))
         if length > MAX_BODY:
             return self._send(413, dict(ok=False, error="请求过大"))
         try:
             request = json.loads(self.rfile.read(length).decode("utf-8-sig") or "{}")
         except ValueError:
             return self._send(400, dict(ok=False, error="请求不是 JSON"))
+        if not isinstance(request, dict):
+            return self._send(400, dict(ok=False, error="请求必须是 JSON 对象"))
         if self.path.startswith("/api/jobs/") and self.path.endswith("/cancel"):
             job = _JOBS.get(self.path.split("/")[3])
             if job:

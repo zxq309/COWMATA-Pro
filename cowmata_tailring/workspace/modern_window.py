@@ -106,6 +106,10 @@ class MainWindow(ControllerWindow):
             self.layout_buttons.addButton(button, i)
             header.addWidget(button)
         self.layout_buttons.idClicked.connect(lambda i: self.set_presentation("ABC"[i]))
+        self.workflow_button = QPushButton("业务流程")
+        self.workflow_button.setToolTip("台账、下载、标注、推理设置与风险报告的操作入口（F1）")
+        self.workflow_button.clicked.connect(self.quick_help)
+        header.addWidget(self.workflow_button)
         self._build_menubar()
         self.menuBar().show()
         for toolbar in self.findChildren(QToolBar):
@@ -468,6 +472,8 @@ class MainWindow(ControllerWindow):
         downloader.action.setShortcut(QKeySequence("Ctrl+D"))
         self._action(download, "开始下载", lambda: downloader.run(lambda d: d.start_download()))
         self._action(download, "暂停下载", lambda: downloader.run(lambda d: d.pause_download(), show=False))
+        self._action(download, "重试失败批次", self.retry_download_failures).setToolTip(
+            "继续下载同一台账中的失败批次；已下载的数据由原下载流程核对并跳过")
         download.addSeparator()
         organize = menu(download, "数据归类")
         self._action(organize, "录像转码与归类…", lambda: self.open_organization(1, mode=0))
@@ -477,7 +483,7 @@ class MainWindow(ControllerWindow):
         self._action(organize, "归类记录…", lambda: self._organization_command("export_report"))
         self._action(organize, "打开归类目录", lambda: self._organization_command("open_destination"))
         download.addSeparator()
-        self._action(download, "风险等级总览", lambda: downloader.run(lambda d: d.open_decision_app(), show=False))
+        self._action(download, "风险等级总览", self.open_risk_overview)
         self._action(download, "下载设置…", lambda: downloader.run(lambda d: d.open_configuration(), show=False))
         records = menu(download, "下载记录")
         self._action(records, "运行记录…", lambda: downloader.run(lambda d: d.log_dialog.show(), show=False))
@@ -932,16 +938,83 @@ class MainWindow(ControllerWindow):
         self.event_status.setStyleSheet("font-size:12px; font-weight:600; color:#B7791F" if self.active_event
                                        else "font-size:12px; color:#6B7785")
 
+    def retry_download_failures(self):
+        self._downloader.run(lambda dialog: dialog.retry_failed())
+
+    def open_risk_overview(self):
+        """Existing reports open directly; missing reports leave visible recovery guidance."""
+        from cowmata_tailring.edge_download.decider import decision_app
+
+        dialog = self._downloader.ensure()
+        page = decision_app(tracks=dialog.store.value.get("forward_tracks"))
+        if page is not None:
+            dialog.open_decision_app()
+            return
+        self._downloader.open()
+        dialog.open_decision_app()
+        self.tell("风险总览尚未生成。请在下载设置中核对推理路线，完成下载后查看运行记录。")
+        self.banner.show()
+
     def quick_help(self):
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "快速开始",
-            "1  文件 → 打开工程\n"
-            "2  上传 → 台账：导入表格并同步\n"
-            "3  下载 → 端侧数据；下载 → 数据归类\n"
-            "4  标注：选择记录，标记动作起止，完成本份\n"
-            "5  工具：时间同步、录像索引、视图与设置\n\n"
-            "看不懂某条提示：帮助 → 提示信息说明；完整步骤：帮助 → 新手图文教程。\n\n"
-            "Ctrl+O 打开 · Ctrl+S 保存 · Ctrl+U 台账 · Ctrl+D 下载 · Ctrl+E 放大视频 · F1 帮助")
+        """Keep the workflow beside the work; every button uses the existing guarded command."""
+        if not hasattr(self, "workflow_dialog"):
+            self.workflow_dialog = TaskWindow(self)
+            self.workflow_dialog.setWindowTitle("快速开始 · 业务流程")
+            self.workflow_dialog.resize(780, 540)
+            layout = QVBoxLayout(self.workflow_dialog)
+            layout.setSpacing(12)
+            title = QLabel("从台账到风险报告")
+            title.setStyleSheet("font-size:20px; font-weight:600; padding:6px 0")
+            layout.addWidget(title)
+            intro = QLabel("按需要进入下一步；这个窗口可以保持打开，随时返回标注工作。")
+            intro.setWordWrap(True)
+            layout.addWidget(intro)
+            self.workflow_actions = {}
+            steps = (
+                ("ledger", "1  核对台账", "导入或维护牛号、设备与佩戴时间，核对后同步，让下载能找到对应数据。",
+                 "打开台账", lambda: self._ledger_host.open()),
+                ("download", "2  下载与归类", "按台账下载端侧数据；需要整理录像与记录时，使用「下载 → 数据归类」。",
+                 "打开下载", lambda: self._downloader.open()),
+                ("annotate", "3  打开工程并标注", "选择记录，核对视频与九轴时间，标记动作起止；保存并完成本份。",
+                 "打开工程", lambda: self.choose_project()),
+                ("inference", "4  核对推理设置", "在下载设置中选择本机需要的推理路线；对应模型与数据就绪后，随下载运行推理。",
+                 "推理设置", lambda: self._downloader.run(lambda dialog: dialog.open_configuration(), show=False)),
+                ("report", "5  查看风险报告", "打开已生成的风险等级总览，再从总览查看各牛的监测记录与报告。",
+                 "风险总览", self.open_risk_overview),
+            )
+            for key, heading, explanation, button_text, callback in steps:
+                row = QHBoxLayout()
+                text = QLabel(f"<b>{heading}</b><br>{explanation}")
+                text.setWordWrap(True)
+                text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+                row.addWidget(text, 1)
+                button = QPushButton(button_text)
+                button.setMinimumWidth(110)
+                button.setAccessibleName(heading + "：" + button_text)
+                button.clicked.connect(callback)
+                row.addWidget(button)
+                self.workflow_actions[key] = button
+                layout.addLayout(row)
+            note = QLabel("手工标注用于复核与保存标注成果；实时推理依据台账与下载数据运行。")
+            note.setWordWrap(True)
+            note.setStyleSheet("color:#6B7785; padding-top:4px")
+            layout.addWidget(note)
+            recovery = QHBoxLayout()
+            recovery.addWidget(QLabel("遇到下载失败："))
+            self._button("重试失败批次", self.retry_download_failures, recovery)
+            self._button("查看运行记录", lambda: self._downloader.run(
+                lambda dialog: dialog.log_dialog.show(), show=False), recovery)
+            recovery.addStretch(1)
+            layout.addLayout(recovery)
+            self._button("新手图文教程", self.open_tutorial, layout)
+            layout.addStretch(1)
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+            buttons.button(QDialogButtonBox.StandardButton.Close).setText("关闭")
+            buttons.rejected.connect(self.workflow_dialog.hide)
+            layout.addWidget(buttons)
+        self.workflow_dialog.show()
+        self.workflow_dialog.raise_()
+        self.workflow_dialog.activateWindow()
 
     def toggle_events(self):
         if self._algorithm_restore is not None:

@@ -1,4 +1,4 @@
-# COWMATA Annotator 4.4.6
+# COWMATA Annotator 4.4.7
 
 **奶牛尾环数据工作台**：打开工程 → 上传台账 → 下载端侧数据 → 标注 → 工具。一个账号、一个窗口。
 
@@ -57,10 +57,10 @@
 
 ## 安装与升级
 
-- 安装包 `COWMATA-Pro-4.4.6-Setup.exe`（NSIS）；便携包 `COWMATA-Pro-4.4.6-Portable.zip`；源码包 `COWMATA-Pro-4.4.6-Source.zip`。
+- 安装包 `COWMATA-Pro-4.4.7-Setup.exe`（NSIS）；便携包 `COWMATA-Pro-4.4.7-Portable.zip`；源码包 `COWMATA-Pro-4.4.7-Source.zip`。
 - 已安装的 4.3.x / 4.4.0–4.4.5：帮助 → 关于 → 检查更新，原地升级，工程、标注与设置保留。
 - 便携包也可直接解压到 `<目录树>\2_标注器\<版本>\` 运行：软件就用它所在的这棵目录树。
 
-[新手图文教程](docs/operator-guide-443.html) · [提示信息说明](docs/prompt-guide-443.html) · [更新记录](CHANGELOG.md) · [4.4.6 发布说明](docs/release-446.md)
+[新手图文教程](docs/operator-guide-443.html) · [提示信息说明](docs/prompt-guide-443.html) · [更新记录](CHANGELOG.md) · [4.4.7 发布说明](docs/release-447.md) · [4.4.6 发布说明](docs/release-446.md)
 
 开源许可：MIT（见 LICENSE / NOTICE）。界面图标：Fluent System Icons（MIT）。所属公司：杨凌园上园智能科技有限公司 · https://www.cowmata.com/
