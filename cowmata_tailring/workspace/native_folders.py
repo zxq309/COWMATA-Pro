@@ -120,6 +120,10 @@ def choose_folders(parent, title, initial="", *, multiple=False):
     from PySide6.QtCore import QEventLoop, QTimer
     from PySide6.QtWidgets import QFileDialog
 
+    if not initial:
+        from cowmata_tailring.edge_download.paths import start_folder
+
+        initial = str(start_folder())
     if os.name != "nt":
         selected = QFileDialog.getExistingDirectory(parent, title, initial)
         return [selected] if selected else []

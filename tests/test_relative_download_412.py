@@ -25,25 +25,90 @@ def isolated_store(tmp_path, monkeypatch):
     return ProSettings(tmp_path / "config", app_root=root)
 
 
-def test_relocation_uses_application_location_not_working_directory(isolated_store, tmp_path, monkeypatch):
-    store = isolated_store
+def site_tree(base):
+    """A minimal 4.4.6 site tree with the portable app unpacked under 2_标注器."""
+    farm = base / "1_下载器" / "扬大_高邮牧场"
+    (farm / "台账").mkdir(parents=True)
+    app = base / "2_标注器" / "4.4.6" / "COWMATA-Pro-4.4.6-Portable"
+    app.mkdir(parents=True)
+    return farm, app
+
+
+def test_relocation_uses_application_location_not_working_directory(tmp_path, monkeypatch):
+    """4.4.6: locations are saved relative to the directory tree and follow it to another drive or computer."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    farm, app = site_tree(tmp_path / "E")
+    store = ProSettings(tmp_path / "config", app_root=app)
+    assert Path(store.value["data_root"]) == farm and Path(store.value["ledger_directory"]) == farm / "台账"
     store.save()
     saved = json.loads(store.path.read_text(encoding="utf-8"))
-    assert saved["data_root"] == "../COWMATA Pro 数据/下载数据"
-    assert saved["ledger_directory"] == "../COWMATA Pro 数据/现场台账"
-    old_parent = store.app_root.parent
-    raw = Path(store.value["data_root"]) / "existing.json"
-    raw.parent.mkdir(parents=True)
-    raw.write_bytes(b"original data")
-    moved = tmp_path / "moved"
-    shutil.move(str(old_parent), moved)
+    assert saved["data_root"] == "目录树/1_下载器/扬大_高邮牧场"
+    assert saved["ledger_directory"] == "目录树/1_下载器/扬大_高邮牧场/台账"
+    (farm / "existing.json").write_bytes(b"original data")
+    shutil.move(str(tmp_path / "E"), tmp_path / "F")  # the whole tree on another drive
     cwd = tmp_path / "unrelated"
     cwd.mkdir()
     monkeypatch.chdir(cwd)
-    loaded = ProSettings(store.directory, app_root=moved / "Pro")
-    assert Path(loaded.value["data_root"]) / "existing.json" == moved / "COWMATA Pro 数据/下载数据/existing.json"
+    moved_app = tmp_path / "F" / "2_标注器" / "4.4.6" / "COWMATA-Pro-4.4.6-Portable"
+    loaded = ProSettings(store.directory, app_root=moved_app)
+    assert Path(loaded.value["data_root"]) == tmp_path / "F" / "1_下载器" / "扬大_高邮牧场"
     assert (Path(loaded.value["data_root"]) / "existing.json").read_bytes() == b"original data"
-    assert not (cwd / "COWMATA Pro 数据").exists()
+    assert not any(cwd.iterdir())
+
+
+def test_tree_on_another_drive_is_found_and_missing_tree_never_writes_elsewhere(tmp_path, monkeypatch):
+    from cowmata_tailring.edge_download import paths
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    farm, _ = site_tree(tmp_path / "E")
+    app = tmp_path / "D" / "COWMATA Annotator"  # installed outside the tree
+    app.mkdir(parents=True)
+    monkeypatch.setenv("COWMATA_SITE_TREE", str(tmp_path / "E"))
+    store = ProSettings(tmp_path / "config", app_root=app)
+    assert Path(store.value["data_root"]) == farm
+    store.save()
+    assert json.loads(store.path.read_text("utf-8"))["data_root"] == "目录树/1_下载器/扬大_高邮牧场"
+    monkeypatch.setenv("COWMATA_SITE_TREE", str(tmp_path / "unplugged"))  # the tree's drive is not plugged in
+    offline = ProSettings(tmp_path / "config", app_root=app)
+    assert offline.tree_missing and offline.display_path(offline.value["data_root"]) == "目录树/1_下载器/扬大_高邮牧场"
+    with pytest.raises(DownloadError, match="目录树"):
+        offline.check_tree()
+    offline.save(sync_ledger=True)  # saving other settings keeps the tree location
+    assert json.loads(store.path.read_text("utf-8"))["data_root"] == "目录树/1_下载器/扬大_高邮牧场"
+    assert not any(p.name == "1_下载器" for p in tmp_path.rglob("*") if p.is_dir() and "E" not in p.parts)
+    monkeypatch.setenv("COWMATA_SITE_TREE", str(tmp_path / "E"))
+    back = ProSettings(tmp_path / "config", app_root=app)
+    back.check_tree()
+    assert Path(back.value["data_root"]) == farm and paths.tree_root(app) == tmp_path / "E"
+
+
+def test_files_of_the_old_default_folder_move_into_the_tree(tmp_path, monkeypatch):
+    from cowmata_tailring.edge_download.site_adopt import adopt_all
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    farm, _ = site_tree(tmp_path / "E")
+    app = tmp_path / "D" / "COWMATA Annotator"
+    app.mkdir(parents=True)
+    old = tmp_path / "D" / "COWMATA Pro 数据" / "下载数据"
+    (old / "产犊" / "Motion" / "2026-09-01" / "A-1").mkdir(parents=True)
+    (old / "产犊" / "Motion" / "2026-09-01" / "A-1" / "x.json").write_bytes(b"new file")
+    (old / "产犊" / "Motion" / "2026-09-01" / "A-1" / "same.json").write_bytes(b"same")
+    (farm / "产犊" / "Motion" / "2026-09-01" / "A-1").mkdir(parents=True)
+    (farm / "产犊" / "Motion" / "2026-09-01" / "A-1" / "same.json").write_bytes(b"same")
+    (old / ".edge-download").mkdir()
+    (old / ".edge-download" / "csv-provenance.jsonl").write_bytes(b'{"path":"x"}\n')
+    settings = tmp_path / "config"
+    settings.mkdir()
+    (settings / "automatic-download.json").write_text(json.dumps(dict(
+        defaults_value(), data_root="../COWMATA Pro 数据/下载数据", ledger_directory="../COWMATA Pro 数据/现场台账")),
+        encoding="utf-8")
+    monkeypatch.setenv("COWMATA_SITE_TREE", str(tmp_path / "E"))
+    store = ProSettings(settings, app_root=app)
+    assert Path(store.value["data_root"]) == farm and "目录树" in store.notice
+    assert [(Path(a), Path(b)) for a, b in store.adopt] == [(old, farm)]
+    messages = []
+    adopt_all(store.adopt, messages.append)
+    assert (farm / "产犊" / "Motion" / "2026-09-01" / "A-1" / "x.json").read_bytes() == b"new file"
+    assert (farm / ".edge-download" / "csv-provenance.jsonl").read_bytes() == b'{"path":"x"}\n'
+    assert not (tmp_path / "D" / "COWMATA Pro 数据").exists() and "移入 1" in messages[0]
 
 
 def test_upgrade_replaces_program_tree_without_touching_sibling_data(isolated_store):
@@ -91,7 +156,15 @@ def test_missing_legacy_drive_is_backed_up_without_rewriting_source(isolated_sto
     assert store.path.read_bytes() == original
     loaded.save()
     assert store.path.with_name("automatic-download.before-4.1.2.json").read_bytes() == original
-    assert json.loads(store.path.read_text("utf-8"))["data_root"].startswith("../")
+    # 4.4.6: the old F: folders switch to the tree's farm (test mode: the tree beside the app).
+    assert Path(loaded.value["data_root"]) == store.app_root.parent / "1_下载器" / "扬大_高邮牧场"
+
+
+def defaults_value():
+    from cowmata_tailring.edge_download.site_records import settings_defaults
+    value = dict(defaults(Path("C:/placeholder")), **settings_defaults())
+    value.update(schema_390=1, kinds=["motion", "pulse", "temp"], server="http://device.cowmata.com:8010")
+    return value
 
 
 def test_standalone_downloader_retains_absolute_settings_contract(tmp_path):
@@ -181,7 +254,7 @@ def test_one_click_fetches_all_csv_before_downloading_and_keeps_cache_on_failure
     monkeypatch.setattr(ui, "raw_connection", lambda *args: nullcontext())
     dialog = ui.ProDownloadDialog(store=store, worker_factory=factory)
     try:
-        assert dialog.directory.text().startswith("../")
+        assert Path(dialog.directory.text()) == store.app_root.parent / "1_下载器" / "扬大_高邮牧场"
         dialog.download_button.click()
         spin(qt_application, lambda: not dialog.running)
         assert operations == ["all"]

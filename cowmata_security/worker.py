@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import threading
+from .authority import IMPLIED
 from .client import Session, current_session, install_session, read_config, AccessDenied
 from .device_store import DeviceStore
 
@@ -19,7 +20,8 @@ def authorize_worker(root, capability):
     if not isinstance(token,str) or len(token)!=43:
         raise AccessDenied('Invalid worker authorization')
     transport=read_config(root)
-    result=transport({'action':'authorize','session':token,'product':'pro','capability':capability})
+    # A server set up before 4.4.6 knows operators only by 'annotate' for these business functions.
+    result=transport({'action':'authorize','session':token,'product':'pro','capability':IMPLIED.get(capability,capability)})
     session=Session(transport,'pro',device_store=DeviceStore('pro'));session._accept(result);session.token=token
     session.require(capability);install_session(session)
     def monitor():

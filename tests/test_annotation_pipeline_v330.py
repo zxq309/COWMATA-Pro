@@ -432,13 +432,19 @@ def test_same_device_reused_on_different_dates_keeps_each_cow_on_gui_reopen(wind
         catalog.index_one(path.relative_to(catalog.root).as_posix(), lambda *_: {"duration_ms": 1000, "device": "0C3D5EA22E36"}, now=11)
     window.rows = catalog.rows()
     monkeypatch.setattr(window.board, "seek", lambda value: None)  # No encoded video is involved in record identity loading.
-    for path, cow, mark in [*records, *reversed(records)]:
+    for index, (path, cow, mark) in enumerate([*records, *reversed(records)]):
         row = next(r for r in window.rows if r["path"] == path.relative_to(catalog.root).as_posix())
         motion = load_motion_json(path)
         window._motion_loaded((window.load_generation, row, motion, row["stamp"], False))
         assert window.cow.text() == cow
         assert window.work.project.extras["device_identity"]["field_mark"] == mark
         window.save_current()
+        if index < len(records):
+            # 4.4.6: opening a record is not annotation and writes no 标注.json; the identity is
+            # re-derived from the folder on every reopen and saved with the first label.
+            assert not catalog.work_path(row["asset_id"]).exists()
+            window.work.project.add_event(0, 100, 300)
+            window.save_current()
         saved = read_json(catalog.work_path(row["asset_id"]))
         assert saved["project"]["cow_id"] == cow
         doc = build_label_file(window.work, motion, catalog.root, window.rows, {})

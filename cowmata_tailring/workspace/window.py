@@ -72,8 +72,8 @@ from .playback import VideoBoard
 from .review_guidance import SOURCE_STATE_TEXT, confirmation_text, file_label, needs_time_check
 from .sensor_records import load_sensor_json as load_motion_json
 from .signal_panel import TimePositionSpinBox, reference_text
-from .storage import SnapshotWriter, atomic_json, read_json, unique_batch
-from .work import SessionWork
+from .storage import SnapshotWriter, atomic_json, read_json, remove_json, unique_batch
+from .work import SessionWork, stored_human_work
 from .worker import IndexWorker
 
 
@@ -127,6 +127,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self._end_prompt_asset = None
         self.coverage_timeline = None
         self._saved_work_assets = set()
+        self._wrote_work = set()  # records whose 标注.json this session wrote (bug 4.4.4-3)
         self._team_observed = {}
         self._team_scanning = False
         self._status_history = deque(maxlen=500)
@@ -487,8 +488,9 @@ class MainWindow(AlignmentMixin, QMainWindow):
         from .project_picker import ProjectPicker
         from .farm_layout import shared_farm
         settings=QSettings()
+        from cowmata_tailring.edge_download.paths import start_folder
         root = QFileDialog.getExistingDirectory(self, '第一步：选择本批数据所属的牧场根目录',
-            settings.value('workspace/last_farm','',type=str))
+            settings.value('workspace/last_farm','',type=str) or str(start_folder()))
         if not root:
             return
         # Selecting a visible category folder (for example 产犊) should still
@@ -2879,9 +2881,14 @@ class MainWindow(AlignmentMixin, QMainWindow):
             else:
                 self.snapshot_writer.flush()
             snapshot = []
-            if self.work:
+            if self.work and not self.human_work():
+                # Opening or browsing a record is not annotation: it never creates a 标注.json, and an
+                # empty one left by an earlier version is removed (bug 4.4.4-3).
+                self.drop_empty_work()
+            elif self.work:
                 self.work.progress.update(imu_ms=self.imu_ms, reference_ms=self.board.reference_ms)
                 destination=self.catalog.work_path(self.work.asset_id,for_write=True)
+                self._wrote_work.add(self.work.asset_id)
                 if self.catalog.dated_annotations and self.motion:
                     from .annotation_store import LAYOUT, work_document
                     snapshot.append((destination,work_document(self.catalog,self.work,self.motion,self.settings)))
@@ -2918,6 +2925,40 @@ class MainWindow(AlignmentMixin, QMainWindow):
         except (OSError, ValueError) as exc:
             self.dirty = True
             self.tell("保存失败，内存中的成果仍保留，请勿关闭：" + str(exc))
+
+    def human_work(self):
+        """True once this record holds something a person did: labels or drafts (also an action being
+        recorded), a manual alignment, a confirmed cow number or data category, or 完成本份."""
+        work = self.work
+        if (work.project.events or work.drafts or work.progress.get("status") == "done"
+                or work.clock.anchors and work.clock.basis == "manual"):
+            return True
+        if self.active_event and work.asset_id in self.active_event.get("assets", ()):
+            return True
+        identity = work.project.extras.get("device_identity") or {}
+        automatic_cow = identity.get("cow_id_origin") == "folder" and work.project.cow_id == identity.get("folder_cow_id")
+        if work.project.cow_id.strip() and not automatic_cow or identity.get("status") == "manual_override":
+            return True
+        return (work.project.extras.get("collection_context") or {}).get("assigned_by") == "manual_record_review"
+
+    def drop_empty_work(self):
+        """Remove this record's 标注.json when it holds no human work (called with the snapshot writer idle).
+
+        A file this session wrote follows the record (every label deleted → removed). A file found on
+        disk is removed only when it parses and holds no human work itself, so a label file that failed
+        to load, or was written elsewhere, is never lost."""
+        asset = self.work.asset_id
+        path = self.catalog.work_path(asset, for_write=True)
+        if path.is_file():
+            saved = read_json(path, None)
+            if not isinstance(saved, dict) or asset not in self._wrote_work and stored_human_work(saved.get("work", saved)):
+                return
+            remove_json(path)
+        self._wrote_work.discard(asset)
+        if self.current_row:
+            self.settings.get("review_progress", {}).pop(self.current_row["path"], None)
+            self.settings["current_path"] = self.current_row["path"]
+        self._saved_work_assets.discard(asset)
 
     def auto_save(self):
         try:
@@ -3297,7 +3338,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
     def export_training(self):
         if not self.work or not self.catalog or not self.motion or self._export_running:
             return
-        directory = QFileDialog.getExistingDirectory(self, "选择导出位置")
+        directory = QFileDialog.getExistingDirectory(self, "选择导出位置", str(self.catalog.root))
         if not directory:
             return
         try:

@@ -92,8 +92,9 @@ class Session:
             self.clear()
             raise AccessDenied('Invalid authorization response')
         # Local policy is an upper bound even if a malformed response adds privileges.
-        from .authority import CAPABILITIES
+        from .authority import CAPABILITIES, IMPLIED
         caps=set(result.get('capabilities',[])) & set(CAPABILITIES[role])
+        caps|={cap for cap,base in IMPLIED.items() if base in caps and cap in CAPABILITIES[role]}
         self.identity={**result,'capabilities':sorted(caps)}
         for secret in ('session','device_secret','device_id'):self.identity.pop(secret,None)
         self.last_refresh=self.clock()

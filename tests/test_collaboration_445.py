@@ -184,4 +184,4 @@ def test_unverifiable_return_is_refused_when_record_is_lost(farm, tmp_path, chan
 def test_release_identifies_as_4_4_5():
     from cowmata_tailring import __build__, __version__
 
-    assert __version__ == "4.4.5" and __build__.startswith("annotator-445-")
+    assert tuple(map(int, __version__.split("."))) >= (4, 4, 5) and __build__.startswith("annotator-")

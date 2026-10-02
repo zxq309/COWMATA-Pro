@@ -17,7 +17,10 @@ def test_draft_confirmation_and_recalibration_never_moves_labels():
     event = value.confirm_draft(draft["id"], 1000)
     assert event.t0 == 100 and event.t1 == 200
     assert len(value.training_project().events) == 1
-    value.calibrate(500, 10550, {"manual": True})
+    value.calibrate(500, 10520, {"manual": True})  # moves this label's video moment by under one frame
+    assert event.t0 == 100 and event.t1 == 200 and event.extras["confirmation"] == "confirmed"
+    assert len(value.training_project().events) == 1
+    value.calibrate(500, 10800, {"manual": True})  # 60–120 ms: the label needs another look
     assert event.t0 == 100 and event.t1 == 200
     assert event.extras["confirmation"] == "needs_review"
     with pytest.raises(ValueError):

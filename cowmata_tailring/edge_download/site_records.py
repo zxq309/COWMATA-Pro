@@ -18,7 +18,7 @@ from pathlib import Path, PureWindowsPath
 from .core import Cancelled, DownloadError
 from .deduplication import RootSyncLock, _safe
 from .ledger_direct import DirectBridge, clean_environment
-from .paths import DEFAULT_LEDGER_ROOT
+from .paths import default_ledger_root
 from .settings import atomic_json
 
 SCHEMAS = {
@@ -115,10 +115,9 @@ SCHEMAS = {
         ],
     },
 }
+# Folder of the ledger CSVs ON THE SERVER (its own site tree; part of the server contract and configurable in
+# 下载设置). The local mirror is <目录树>\1_下载器\<牧场>\台账 (paths.default_ledger_root), never a fixed drive.
 SERVER_DIRECTORY = r"F:\1_下载器\扬大_高邮牧场\台账"
-# A local mirror is kept in the user's standard COWMATA data area.  The
-# server-side Windows path above is independent and remains configurable.
-LOCAL_DIRECTORY = str(DEFAULT_LEDGER_ROOT)
 DEFAULT_HOST = "61.177.77.222"
 DEFAULT_PORT = 8022
 DEFAULT_USER = "cowmata_upload"
@@ -164,13 +163,15 @@ def default_key():
     return str(next((p for p in candidates if p.is_file()), candidates[0]))
 
 
-def settings_defaults():
+def settings_defaults(app_root=None):
+    from .paths import APP_ROOT
+
     return dict(
         ledger_host=DEFAULT_HOST,
         ledger_port=DEFAULT_PORT,
         ledger_user=DEFAULT_USER,
         ledger_server_directory=SERVER_DIRECTORY,
-        ledger_directory=LOCAL_DIRECTORY,
+        ledger_directory=str(default_ledger_root(app_root or APP_ROOT)),
         ledger_key=default_key(),
         sync_ledger=True,
     )
@@ -367,11 +368,34 @@ def _write(path, raw):
 
 
 def records_state_directory(folder):
-    """Keep locks, history and recoverable CSV backups out of the CSV directory."""
+    """Keep locks, history and recoverable CSV backups out of the CSV directory.
+
+    4.4.6: a 台账 folder of a farm keeps them in the farm's own state folder,
+    ``<牧场>\\.edge-download\\ledger-sync`` (inside the site tree, moving with it); the state an earlier
+    version kept in the Windows profile is moved there once. Other folders keep the profile location.
+    """
+    from cowmata_tailring.workspace.farm_layout import farm_identity
+
     local = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
     identity = os.path.normcase(str(Path(folder).resolve()))
     key = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
-    return local / "COWMATA-Pro" / "site-records" / key
+    legacy = local / "COWMATA-Pro" / "site-records" / key
+    farm = Path(folder).resolve().parent
+    try:
+        in_farm = farm_identity(farm) is not None
+    except (OSError, ValueError, KeyError):
+        in_farm = False
+    if not in_farm:
+        return legacy
+    target = farm / ".edge-download" / "ledger-sync"
+    if legacy.is_dir() and not target.exists():
+        from .site_adopt import move_tree
+
+        try:
+            move_tree(legacy, target)
+        except OSError:
+            return legacy
+    return target
 
 
 def backup_path(state_root, sheet, content):
@@ -419,7 +443,6 @@ def refresh_records(values, cancel, log=lambda message: None, client_factory=Led
         if cancel.is_set():
             raise Cancelled()
         # Keep a content-addressed backup outside the three business filenames.
-        backup = state_root / "csv-backups"
         for sheet in changed:
             old = previous[sheet]
             if old is not None:

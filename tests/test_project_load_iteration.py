@@ -331,7 +331,8 @@ def test_saved_completed_label_can_be_edited_deleted_and_undone_after_reopen(tmp
     window.events.selectRow(0)
     monkeypatch.setattr(QMessageBox, "question", lambda *_: QMessageBox.StandardButton.Yes)
     window.delete_selected()
-    assert not read_json(path)["project"]["events"]
+    # 4.4.6: no label left and not completed → the record has no 标注.json (nor a recovery copy that could bring it back)
+    assert read_json(path) is None
     assert window.work.undo_once()
     assert window.work.project.events[0].note == event.note
     window.close()

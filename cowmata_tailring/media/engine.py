@@ -59,8 +59,9 @@ class MediaEngine(QObject):
         metadata probing or supplied later with :meth:`set_video_widget`.
     vlc_path:
         VLC directory, ``libvlc.dll`` path, or ``vlc.exe`` path.  If omitted,
-        common Windows locations (including ``F:\\Applications\\VLC``) and the
-        ``VLC_HOME``/``VLC_PATH`` environment variables are checked.
+        the package's ``vendor\\vlc``, the ``VLC_HOME``/``VLC_PATH`` environment
+        variables, ``<drive>\\Applications\\VLC`` on any local drive and the
+        Program Files locations are checked (no fixed drive letter).
     force_avformat:
         Force VLC's avformat demuxer.  This is enabled by default because it
         correctly detects the project's disguised MPEG-PS ``hiv*.mp4`` files.
@@ -157,9 +158,11 @@ class MediaEngine(QObject):
             if value:
                 candidates.append(Path(value))
 
+        from .ffmpeg_tools import application_folders
+
+        candidates.extend(folder / "VLC" for folder in application_folders())
         candidates.extend(
             (
-                Path(r"F:\Applications\VLC"),
                 Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
                 / "VideoLAN"
                 / "VLC",

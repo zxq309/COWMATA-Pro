@@ -217,6 +217,10 @@ def test_gui_organize_then_open_preserves_collection_category(tmp_path, monkeypa
         assert window.data_category.currentData() == category
         assert len(beats) >= 2
         window.save_current()
+        # 4.4.6: opening an organised record writes no 标注.json; the category comes from its folder.
+        assert not window.catalog.work_path(window.work.asset_id).exists()
+        window.work.project.add_event(0, 100, 300)
+        window.save_current()
         saved = json.loads(window.catalog.work_path(window.work.asset_id).read_text(encoding="utf-8"))
         assert saved.get('work',saved)["project"]["dataset_category"] == category
     finally:

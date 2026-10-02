@@ -415,6 +415,10 @@ class VideoBoard(QWidget):
 
     # Recorder reconnects (~13 s) and file changes are crossed without stopping.
     AUTO_SKIP_GAP_MS = 5 * 60 * 1000
+    # 4.4.6 (bug 4.4.4-1): resuming or seeking while playing continues from the requested moment.
+    EXACT_START_AHEAD_MS = 300
+    EXACT_START_BEHIND_MS = 80
+    EXACT_START_ATTEMPTS = 3
     # Ask the indexer for the next recording this long (IMU time, x rate) before it is needed.
     PREFETCH_LEAD_MS = 60_000
     COVERAGE_WAIT_S = 120
@@ -964,13 +968,33 @@ class VideoBoard(QWidget):
                     pending["attempts"] += 1
                     tile.engine.set_time_ms(max(0, pending["target"] - 400 - 250 * pending["attempts"]))
                     pending["seek_at"] = now
+            # The main view drives the shared clock (IMU cursor and every video). A seek that lands
+            # late (keyframe / byte seeks of NVR recordings) or a decoder that ran on is started again
+            # before the target and played up to it, instead of accepting the late frame and moving the
+            # clock ahead of where the operator paused or clicked (bug 4.4.4-1).
+            exact = (self.playing and tile.camera == self.main_camera and tile is not self.prewarm
+                     and pending.get("attempts", 0) < self.EXACT_START_ATTEMPTS)
+            if (exact and pending["phase"] == "seeking" and current > pending["target"] + self.EXACT_START_AHEAD_MS
+                    and now - pending["seek_at"] > .4):
+                pending["attempts"] = pending.get("attempts", 0) + 1
+                back = 1000 * 2 ** (pending["attempts"] - 1)
+                tile.engine.set_time_ms(max(0, pending["target"] - back))
+                tile.engine.set_rate(4.0 if back > 1500 else 1.0)
+                pending["phase"] = "preroll" if back > 1500 else "seeking"
+                pending["seek_at"] = now
+                pending["baseline"] = 0 if getattr(tile.engine, "_dahua_duration_index", None) else (
+                    stats.displayed_pictures if stats else pending["baseline"])
+                return
             # Vout + displayed-picture progress + decoder time must all agree.
             visible = bool(stats and (stats.displayed_pictures > pending["baseline"] or tile is self.prewarm and stats.decoded_video > 3) and tile.engine.video_output_count())
             # While playing the decoder keeps advancing at the requested rate: allow the time it
             # has run since the seek (bug 4.3.4-4: at 2x/4x a cold seek ran past the fixed +1.8 s
             # window, never became ready and looped on "正在准备真实画面…").
             ahead = 1800 + 1000 * max(1.0, self.rate) * max(0.0, now - pending.get("seek_at", now))
-            near = (-150 <= current - pending["target"] <= ahead) if self.playing else abs(current - pending["target"]) <= 650
+            if exact:
+                near = -self.EXACT_START_BEHIND_MS <= current - pending["target"] <= self.EXACT_START_AHEAD_MS
+            else:
+                near = (-150 <= current - pending["target"] <= ahead) if self.playing else abs(current - pending["target"]) <= 650
             if pending["phase"] in {"seeking", "verifying_frame"} and visible and near:
                 tile.pending = None
                 tile.ready = True

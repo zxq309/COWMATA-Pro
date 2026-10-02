@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PySide6.QtWidgets import QTableWidgetItem
 from test_download_repair_391 import make_dialog
 
@@ -48,7 +50,8 @@ def test_default_cache_is_installation_relative_and_custom_directory_is_preserve
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     root = tmp_path / "app"
     store = ProSettings(tmp_path / "settings", app_root=root)
-    assert store.display_path(store.value["ledger_directory"]) == "../COWMATA Pro 数据/现场台账"
+    # 4.4.6: the 台账 of the tree's farm (no tree yet: one starts beside the app in test mode).
+    assert Path(store.value["ledger_directory"]) == tmp_path / "1_下载器" / "扬大_高邮牧场" / "台账"
     custom = tmp_path / "custom-records"
     store.save(ledger_directory=str(custom))
     assert ProSettings(tmp_path / "settings", app_root=root).value["ledger_directory"] == str(custom)

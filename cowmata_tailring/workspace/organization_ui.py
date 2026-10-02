@@ -310,10 +310,12 @@ class OrganizationWindow(TaskWindow):
         target_bar.addWidget(QLabel("数据工程"))
         self.target = QLineEdit()
         current = getattr(window, "catalog", None)
+        from cowmata_tailring.edge_download.paths import site_farm
+
         self.target.setText(
             str(current.root)
             if current
-            else self.settings.value("organization/target", "", type=str)
+            else self.settings.value("organization/target", "", type=str) or str(site_farm() or "")
         )
         self.target.setPlaceholderText("选择已有数据工程，或填写新工程的绝对目录")
         target_bar.addWidget(self.target, 1)
@@ -818,7 +820,9 @@ class OrganizationWindow(TaskWindow):
         self.render()
 
     def choose_target(self):
-        value = QFileDialog.getExistingDirectory(self, "选择数据工程目录", self.target.text())
+        from cowmata_tailring.edge_download.paths import start_folder
+
+        value = QFileDialog.getExistingDirectory(self, "选择数据工程目录", self.target.text() or str(start_folder()))
         if value:
             self.target.setText(value)
             selected = Path(value)
@@ -842,8 +846,10 @@ class OrganizationWindow(TaskWindow):
             self.invalidate_plan()
 
     def choose_farm(self):
+        from cowmata_tailring.edge_download.paths import start_folder
+
         value = QFileDialog.getExistingDirectory(
-            self, "选择已整理九轴和标签的牧场目录", self.farm.text() or self.target.text()
+            self, "选择已整理九轴和标签的牧场目录", self.farm.text() or self.target.text() or str(start_folder())
         )
         if value:
             self.farm.setText(value)

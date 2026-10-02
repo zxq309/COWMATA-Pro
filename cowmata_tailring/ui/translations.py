@@ -4880,7 +4880,7 @@ ZH_TO_EN.update({
     '请选择或输入目标位置。': 'Choose or type a target location.',
     '请选择或输入目标位置（': 'Choose or type a target location (',
     '请选择任务目录': 'Choose the task folder',
-    '请选择完整的目标位置（含盘符），例如 F:\\派包': 'Choose a full target location with drive letter, e.g. F:\\packages',
+    '请选择完整的目标位置（含盘符），例如 E:\\2_标注器\\派包': 'Choose a full target location including the drive letter, e.g. a short folder in the annotator area of the site tree',
     '请选择数据包的目标位置': 'Choose where the package goes',
     '请选择标注数据包文件夹。': 'Choose annotation package folders.',
     '请选择派发的原始数据包文件夹。': 'Choose the dispatched raw package folder.',
@@ -4933,12 +4933,12 @@ ZH_TO_EN.update({
         'The target cannot be inside the farm data (it would be taken for farm data); choose another location',
     '目标位置已有同名数据包，不能覆盖：': 'A package with this name already exists there and is never overwritten: ',
     '目标位置已有同名数据包：': 'A package with this name already exists there: ',
-    '目标位置的路径太深：数据包里最长的文件路径会超过 Windows 260 个字符的限制，请选择更短的位置（例如 F:\\派包）':
+    '目标位置的路径太深：数据包里最长的文件路径会超过 Windows 260 个字符的限制，请选择更短的位置（例如 E:\\2_标注器\\派包）':
         'The target is too deep: the longest file path would exceed the Windows 260-character limit; choose a shorter location '
-        '(e.g. F:\\packages)',
-    '数据包所在位置的路径太深，标注时保存的文件会超过 Windows 260 个字符的限制：请在“放到”里选择更短的位置（例如 D:\\标注），软件会把整个文件夹移过去':
+        '(e.g. a short folder in the annotator area of the site tree)',
+    '数据包所在位置的路径太深，标注时保存的文件会超过 Windows 260 个字符的限制：请在“放到”里选择更短的位置（例如 E:\\2_标注器\\标注），软件会把整个文件夹移过去':
         'The package sits too deep: files saved while annotating would exceed the Windows 260-character limit. Choose a shorter '
-        '“Place in” location (e.g. D:\\annotation) and the whole folder is moved there',
+        '“Place in” location (e.g. a short folder in the annotator area of the site tree) and the whole folder is moved there',
     '目标磁盘剩余空间不足：': 'Not enough free space on the target disk: ',
     '移动时源文件发生变化：': 'A source file changed while moving: ',
     '不能把数据包移到它自己的文件夹里': 'A package cannot be moved into its own folder',
@@ -4947,6 +4947,47 @@ ZH_TO_EN.update({
 NON_TRANSLATABLE = NON_TRANSLATABLE | {'4_逆向决策器', '5_正向决策器', '推理算法', '前端对接', '监测总览.html',
                                        # folder names and folder-name keywords matched on disk
                                        '_原始', '已接收', '不移动', '派包', '转移', '共享', '交换', '数据包'}
+
+# 4.4.6: every business file in the site tree (目录树), relative locations, algorithm routes.
+ZH_TO_EN.update({
+    '找不到目录树（含 1_下载器 的磁盘或文件夹）：请插上存放目录树的磁盘后重试。数据只保存在目录树里，不会改存到其他位置':
+        'The directory tree (the drive or folder holding the 1_ downloads folder) was not found: plug in its drive and try again. '
+        'Data is only kept in the directory tree and is never saved anywhere else',
+    '未找到目录树（含 1_下载器 的磁盘或文件夹）：请插上存放目录树的磁盘。数据只保存在目录树里，不会改存到别处。':
+        'Directory tree (the drive or folder holding the 1_ downloads folder) not found: plug in its drive. Data is only kept in the '
+        'directory tree and is never saved anywhere else.',
+    '数据请放在目录树的 1_下载器 里，不要放进软件目录（升级时会被替换）':
+        'Keep data in the 1_ downloads folder of the directory tree, not in the program folder (it is replaced on upgrade)',
+    '目录树内的位置无效：': 'Invalid location in the directory tree: ',
+    '目录树：': 'Directory tree: ',
+    '　数据在 1_下载器\\<牧场>，台账在其中的 台账 文件夹；按目录树内的相对位置保存，整个目录树换盘或拷到别的电脑后自动跟随，无需重设。':
+        '  Data goes to <downloads folder 1_>\\<farm>, the ledger to its ledger folder; saved relative to the tree, so moving the whole tree '
+        'to another drive or computer needs no new setting.',
+    '下载数据与台账已改到目录树：': 'Downloads and the ledger now go to the directory tree: ',
+    '；原保存位置的文件在下一轮下载开始时移入目录树': '; files in the old location are moved into the tree when the next round starts',
+    '已把 ': 'Moved the files of ',
+    '的文件移入目录树 ': ' into the directory tree ',
+    '：移入 ': ': moved ',
+    '，相同已去重 ': ', identical already present ',
+    ' 个文件与目录树里的不同，保留在原位置，请核对': ' files differ from the ones in the tree and stay in the old location; please check',
+    '移入目录树未完成（': 'Moving into the directory tree did not finish (',
+    '；下一轮继续': '; it continues in the next round',
+    '复制核对失败：': 'Copy verification failed: ',
+    '随下载启动的正向决策器': 'Forward deciders started with download',
+    '下载时在本机启动 ': 'Start the real-time inference of ',
+    '\\5_正向决策器 的实时推理（每台电脑分别设置）': '\\<forward decider folder 5_> on this computer when downloading (set per computer)',
+    '下载设置里没有选择随下载启动的正向决策器，只下载不推理':
+        'No forward decider is selected to start with download in the settings: downloading without inference',
+    '未找到正向决策器（目录树的 ': 'Forward decider not found (',
+    '\\5_正向决策器\\产犊\\<版本>\\推理算法），': '\\<forward decider folder 5_>\\<calving>\\<version>\\<inference package> of the directory tree): ',
+    ' 不推理': ' does not infer',
+    '实时推理已停止：': 'Real-time inference stopped: ',
+    'FFmpeg 无法启动。请重新解压完整软件包（vendor\\ffmpeg），或把 ffmpeg 放进任一磁盘的 Applications 文件夹':
+        'FFmpeg could not start. Unpack the complete package again (vendor\\ffmpeg) or put ffmpeg into an Applications folder '
+        'on any drive',
+})
+# Folder names of the algorithm routes and the saved-location prefix are identifiers, never translated.
+NON_TRANSLATABLE = NON_TRANSLATABLE | {'常规经典算法', 'AI大模型算法', '目录树/'}
 
 
 if __name__ == "__main__":

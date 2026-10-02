@@ -294,7 +294,7 @@ class CollaborationDialog(QDialog):
         if not text or text == KEEP_IN_PLACE:
             return ''
         if not Path(text).is_absolute():
-            raise ValueError('请选择完整的目标位置（含盘符），例如 F:\\派包')
+            raise ValueError('请选择完整的目标位置（含盘符），例如 E:\\2_标注器\\派包')
         return str(Path(text))
 
     def invalidate(self, *_):
@@ -686,7 +686,10 @@ def open_dispatch(window, root):
         current.raise_()
         current.activateWindow()
         return current
-    dialog = CollaborationDialog('dispatch', window, root or QSettings().value(LAST_ROOT, '', str))
+    from cowmata_tailring.edge_download.paths import site_farm
+
+    root = root or QSettings().value(LAST_ROOT, '', str) or str(site_farm() or '')
+    dialog = CollaborationDialog('dispatch', window, root)
     dialog.remember = True
     window._dispatch_dialog = dialog
     # A weak reference: this slot must never be what keeps the parent window alive,

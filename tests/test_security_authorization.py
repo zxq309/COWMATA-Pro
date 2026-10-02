@@ -82,10 +82,10 @@ class AuthorizationTests(unittest.TestCase):
                         "product": "pro",
                     },
                 )
-        for cap in ["behavior", "health", "dataset", "accounts"]:
-            with self.assertRaises(Denied):
-                self.auth.authorize(token, "pro", cap)
-        self.auth.authorize(token, "pro", "annotate")
+        with self.assertRaises(Denied):
+            self.auth.authorize(token, "pro", "accounts")
+        for cap in ["annotate", "prepare", "upload", "behavior", "health", "dataset"]:
+            self.auth.authorize(token, "pro", cap)  # 4.4.6: every business function, account management excepted
 
     def test_disable_revokes_codes_and_sessions(self):
         token = self.auth.redeem("worker", self.code(), "pro")["session"]
@@ -174,8 +174,9 @@ class AuthorizationTests(unittest.TestCase):
         clock[0] = 899
         self.assertFalse(client.refresh())
         client.require("annotate")
+        client.require("behavior")
         with self.assertRaises(AccessDenied):
-            client.require("behavior")
+            client.require("accounts")
         clock[0] = 900
         with self.assertRaises(AccessDenied):
             client.refresh()
@@ -364,6 +365,7 @@ class AuthorizationTests(unittest.TestCase):
         )
         self.assertFalse(client.allows("accounts"))
         self.assertTrue(client.allows("annotate"))
+        self.assertTrue(client.allows("behavior"))
 
 
 if __name__ == "__main__":
