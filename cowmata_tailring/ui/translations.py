@@ -4756,5 +4756,55 @@ ZH_TO_EN.update({
 })
 
 
+# 4.4.4: labels finish on their end mark; playback continues across recordings; recorder PTS restarts.
+ZH_TO_EN.update({
+    '已完成：': 'Done: ',
+    '）已确认为九轴真值；无需截图或再点确认，可编辑、删除或撤销（Ctrl+Z）。':
+        ') is confirmed as IMU ground truth; no screenshot or extra confirmation needed. Edit, delete or undo (Ctrl+Z) if required.',
+    '已保存为待确认草稿：': ' was saved as a draft awaiting confirmation: ',
+    '当前没有打开九轴记录。': 'No IMU record is open.',
+    '通常不需要：标签结束即自动确认。仅用于未能自动确认的草稿（未一次对齐、录像时间待核验或牛号未确认），处理后选中草稿再点此项':
+        'Usually not needed: a label is confirmed automatically when it ends. Only for drafts that could not be confirmed '
+        '(not aligned, recording time unchecked or cow number unconfirmed): fix that, select the draft and click this.',
+    '通常不需要：标签结束即自动确认为真值。仅当草稿未能自动确认（未一次对齐、录像时间待核验或牛号未确认）时，处理后选中草稿再点此项':
+        'Usually not needed: a label is confirmed as ground truth automatically when it ends. Only when a draft could not be '
+        'confirmed (not aligned, recording time unchecked or cow number unconfirmed): fix that, select the draft and click this.',
+    '证据截图（可选）…': 'Evidence Screenshots (optional)…',
+    ' 录像在此中断约 ': ' recording breaks here for about ',
+    ' 秒（录像机断流或换段），已自动接到下一段继续播放。':
+        ' s (recorder reconnect or file change); playback continued with the next part automatically.',
+    '下一段录像正在建立索引；画面到位后会自动继续播放，无需拖动九轴。':
+        'The next recording is being indexed; playback continues by itself once its picture is ready. No need to drag the IMU.',
+    '这段录像尚未索引，正在后台建立；播放时会自动等待并接着播放，无需拖动九轴。':
+        'This recording is not indexed yet and is being indexed in the background; playback waits and continues by itself. No need to drag the IMU.',
+    '这一时刻的录像无法读取；可在左侧“核验”查看原因。不会用上一帧冒充现场。':
+        'The recording at this moment cannot be read; see Verify on the left for the reason. An earlier frame is never shown in its place.',
+    ' 这一时刻的录像无法读取，已暂停；可在左侧“核验”查看原因，或勾选其他视角。':
+        ': the recording at this moment cannot be read. Paused; see Verify on the left for the reason, or tick another view.',
+    ' 此后约 ': ': no indexed recording for about ',
+    ' 分钟没有已索引的录像，已暂停；可点“下一录像时段”跳到 ': ' min. Paused; click Next Recording Window to jump to ',
+    ' 继续。': ' and continue.',
+    ' 此后没有已核验时间的录像，已暂停；本视角还有录像时间待核验，可在左侧“核验”查看。':
+        ': no recording with a checked time follows. Paused; this view still has recordings whose time needs checking, see Verify on the left.',
+    '所选视角此后没有已索引的录像，已暂停；可检查其他视角或跳到下一录像时段。':
+        'No indexed recording follows in the selected views. Paused; check other views or jump to the next recording window.',
+    ' 的下一段录像等待索引超过 2 分钟仍未就绪，已停止自动等待；可稍后点播放重试，或在左侧“核验”查看该录像。':
+        ': the next recording is still not indexed after 2 minutes, so the automatic wait stopped. Press Play later to retry, or check it under Verify on the left.',
+    '原生录像 PTS 跳变且该段缺少画面时钟，转入分段 OCR 复核':
+        'Recorder PTS restarts and this part has no picture clock; segment-wise OCR review instead',
+    '原生录像 PTS 跳变处画面时钟不连续，转入分段 OCR 复核':
+        'The picture clock is not continuous where the recorder PTS restarts; segment-wise OCR review instead',
+    '原生音视频包时间与录像分段不符，需复核': 'Recorder audio/video packet times do not match the recording parts; review needed',
+    '录像机在这段录像中途断流重连（流内时间分段），本功能只导出连续录像；原始录像可直接标注。':
+        'The recorder reconnected during this recording (the stream time restarts). Only continuous recordings are exported; the original can be annotated directly.',
+    '录像机断流分段规则已更新，等待重建索引；人工标注保留':
+        'Recorder-reconnect rule updated; waiting to rebuild the index. Manual annotations are kept',
+    '已支持录像机中途断流重连的录像，': 'Recordings with recorder reconnects are now supported: ',
+    ' 段录像等待重建索引；人工标注保留': ' recordings wait for a rebuilt index. Manual annotations are kept',
+    '本段没有人工读数，按录像机时钟仅供浏览；需复核':
+        'No manual reading in this part; shown by the recorder clock for browsing only. Review needed',
+})
+
+
 if __name__ == "__main__":
     _coverage()

@@ -5,11 +5,16 @@ OSD observations prioritize work; neither can rule out an unobserved recording.
 """
 from __future__ import annotations
 
+import bisect
 import re
 from collections import defaultdict
 from pathlib import PurePosixPath
 
 from .device_identity import source_device_folder
+
+# A recording whose end is not known yet is assumed to cover at most this long
+# (the longest recorder segment accepted elsewhere is 6 h).
+UNKNOWN_SPAN_LIMIT_MS = 6 * 60 * 60 * 1000
 
 
 def natural_key(path):
@@ -234,3 +239,84 @@ def relevant_rows(rows, start, end, maps=None, overrides=None):
         if any(s["wall_start"] <= hi and s["wall_end"] >= lo for s in spans):
             selected.append(row)
     return selected
+
+
+def coverage_index(inventory, hints):
+    """Per view, every recording with a known start (index, filename or hint).
+
+    Lets playback tell "the next recording is not indexed yet" from a real
+    recording gap at any moment, instead of judging the whole view at once.
+    """
+    index = {}
+    for camera, group in inventory.items():
+        known, unknown, uncertain = [], False, False
+        for row in group:
+            if row["kind"] != "video" or row["state"] in {"missing", "ignored"}:
+                continue
+            spans = row["metadata"].get("intervals") or []
+            # A recording with an unchecked time may really cover any nearby
+            # moment, so this view can never claim a verified absence.
+            uncertain = uncertain or row["state"] in {"review", "invalid"} or (
+                row["state"] == "ready" and any(not s.get("verified") for s in spans))
+            span = source_span(row, hints)
+            if span is None:
+                unknown = unknown or row["state"] == "pending"
+                continue
+            known.append((span[0], span[1], row["state"], row["path"], bool(spans)))
+        known.sort(key=lambda item: (item[0], item[3]))
+        index[camera] = ([item[0] for item in known], known, unknown, uncertain)
+    return index
+
+
+def _covers(item, wall_ms):
+    start, end = item[0], item[1]
+    return wall_ms < end if end is not None else wall_ms - start <= UNKNOWN_SPAN_LIMIT_MS
+
+
+def coverage_state(index, camera, wall_ms, *, ahead_ms=300_000):
+    """Why a view has no located picture at wall_ms (that view's own clock).
+
+    "pending": an unindexed recording started before this moment and may cover
+    it, starts within ahead_ms after it, or an unread file's time is unknown;
+    "invalid": the recording covering it could not be read; "review": this
+    view still has recordings whose time is unchecked; None: the indexed,
+    verified recordings show a real gap here.
+    """
+    entry = index.get(camera)
+    if not entry:
+        return None
+    starts, known, unknown, uncertain = entry
+    i = bisect.bisect_right(starts, wall_ms)
+    if i:
+        previous = known[i - 1]
+        if _covers(previous, wall_ms):
+            if previous[2] == "pending":
+                return "pending"
+            if previous[2] == "invalid":
+                return "invalid"
+    for item in known[i:]:
+        if item[0] - wall_ms > ahead_ms or item[2] in {"ready", "review"}:
+            break
+        if item[2] == "pending":
+            return "pending"
+    if unknown:
+        return "pending"
+    return "review" if uncertain else None
+
+
+def pending_near(index, camera, wall_ms, *, ahead_ms=300_000, limit=2):
+    """Unindexed recordings that cover or soon follow wall_ms, nearest first."""
+    entry = index.get(camera)
+    if not entry:
+        return []
+    starts, known, _unknown, _uncertain = entry
+    i = bisect.bisect_right(starts, wall_ms)
+    paths = []
+    if i and known[i - 1][2] == "pending" and _covers(known[i - 1], wall_ms):
+        paths.append(known[i - 1][3])
+    for item in known[i:]:
+        if item[0] - wall_ms > ahead_ms or len(paths) >= limit:
+            break
+        if item[2] == "pending":
+            paths.append(item[3])
+    return paths[:limit]

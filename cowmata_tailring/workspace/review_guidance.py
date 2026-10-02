@@ -25,7 +25,8 @@ def effective_intervals(row):
     """Intervals the player uses, after any saved manual readings."""
     metadata = row.get("metadata") or {}
     readings = metadata.get("manual_readings")
-    if readings and metadata.get("duration_ms"):
+    # Readings that agree with a recorder-verified clock keep the recorder spans.
+    if readings and metadata.get("duration_ms") and not metadata.get("manual_readings_agree"):
         from .clocks import manual_video_metadata
         try:
             return manual_video_metadata(metadata, readings).get("intervals", [])

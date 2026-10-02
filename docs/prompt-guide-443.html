@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>COWMATA Pro 4.4.3 · 提示信息说明与处理办法</title>
+<title>COWMATA Pro 4.4.4 · 提示信息说明与处理办法</title>
 <style>
 :root{--green:#8ADD66;--green-d:#4E9A2F;--teal:#35AFC8;--ink:#1C2530;--sub:#6B7685;--line:#E3E7ED;--bg:#F5F7FA;--amber:#B7791F;--amber-bg:#FFF4D6}
 *{box-sizing:border-box}
@@ -38,13 +38,44 @@ ol li,ul li{margin:3px 0}
 <body>
 <header>
 <h1>提示信息说明与处理办法</h1>
-<p>COWMATA Pro 4.4.3 · 软件里出现的提示是什么意思、为什么出现、下一步怎么做</p>
+<p>COWMATA Pro 4.4.4 · 软件里出现的提示是什么意思、为什么出现、下一步怎么做</p>
 </header>
 <nav>
-<a href="#read">怎么看提示</a><a href="#top3">三条最常问</a><a href="#confirm">确认真值</a><a href="#record">记录动作</a><a href="#align">对齐</a><a href="#play">播放</a><a href="#verify">素材与核验</a><a href="#team">协作派包</a><a href="#data">下载 / 归类 / 台账</a><a href="#save">保存与更新</a>
+<a href="#new444">4.4.4 新提示</a><a href="#read">怎么看提示</a><a href="#top3">三条最常问</a><a href="#confirm">确认真值</a><a href="#record">记录动作</a><a href="#align">对齐</a><a href="#play">播放</a><a href="#verify">素材与核验</a><a href="#team">协作派包</a><a href="#data">下载 / 归类 / 台账</a><a href="#save">保存与更新</a>
 <input id="filter" type="search" placeholder="输入提示里的几个字筛选，例如：画面到位" aria-label="筛选提示">
 </nav>
 <main>
+
+<section id="new444">
+<h2>4.4.4 新出现或改写的提示</h2>
+<div class="key">
+<div class="msg">已完成：起立过程（10:23:31 – 10:24:05）已确认为九轴真值；无需截图或再点确认……</div>
+<p><b>含义：</b>标签开始、标签结束后这条标注就完成了，已经是真值。<b>怎么做：</b>继续标下一条。需要改就选中后“编辑”或“删除”，刚标错可按 <kbd>Ctrl</kbd>+<kbd>Z</kbd>。</p>
+</div>
+<div class="key">
+<div class="msg">……已保存为待确认草稿：（后面写明原因）</div>
+<p><b>含义：</b>动作已经记下，但自动确认的条件还不满足，原因就写在冒号后面：常见的是“该范围尚未完成对齐”（本份还没做一次对齐）、“某视角的录像时间还没有核验”、“请先确认本记录对应牛号”。</p>
+<p><b>怎么做：</b>按原因处理（点“一次对齐”、去核验该录像、在牛号框确认牛号），然后在右侧<b>双击</b>这条草稿，等画面到位后点 <b>操作 → 确认真值</b>。建议每份记录先做一次对齐再开始标注，就不会出现这条。</p>
+</div>
+<div class="key">
+<div class="msg">下一段录像正在建立索引；画面到位后会自动继续播放，无需拖动九轴。</div>
+<p><b>含义：</b>当前录像播完了，九轴还没完，下一段录像刚开始建立索引。软件已暂停并优先处理它。<b>怎么做：</b>等几秒，画面到位后会自己接着播放。超过 2 分钟仍未就绪时会提示“等待索引超过 2 分钟……已停止自动等待”，这时可稍后点播放重试，或在左侧“核验”看该录像的状态。</p>
+</div>
+<div class="key">
+<div class="msg">视角02 录像在此中断约 13 秒（录像机断流或换段），已自动接到下一段继续播放。</div>
+<p><b>含义：</b>录像机在这里换文件或断流重连，中间几秒确实没有画面，软件已自动跳过并继续播放。九轴光标同步跳过这几秒。<b>怎么做：</b>不需要处理。</p>
+</div>
+<div class="key">
+<div class="msg">视角07 此后约 45 分钟没有已索引的录像，已暂停；可点“下一录像时段”跳到 …… 继续。</div>
+<p><b>含义：</b>后面很长一段时间确实没有录像（或还没下载）。<b>怎么做：</b>点 <b class="m">工具 → 时间同步 → 下一录像时段</b> 跳过去，或勾选其他有画面的视角。</p>
+</div>
+<div class="key">
+<div class="msg">这段录像尚未索引，正在后台建立；播放时会自动等待并接着播放，无需拖动九轴。</div>
+<p><b>含义：</b>视频窗口里显示，代替 4.4.3 的“本视角仍有录像未索引，尚不能确认此时刻覆盖；可在索引核验中查看”。<b>怎么做：</b>播放时软件会自己等待；暂停时等几秒画面就会出现。</p>
+</div>
+<p class="note">不再出现的提示：“主视角到达录像缺口，已暂停；可切换其他有覆盖的视角继续”（录像间的短间隔现在自动跳过）；确认真值后自动弹出的“留存多视角证据图”窗口（截图已移到 工具 → 旧版兼容 → 证据截图（可选）…）。
+核验时“读取结尾画面 → 无法解码所选位置真实画面”：多数是录像机中途断流重连造成的，4.4.4 已能读取，升级后这类录像会自动重建一次索引（人工标注保留）。</p>
+</section>
 
 <section id="read">
 <h2>先看这里：提示出现在哪里</h2>

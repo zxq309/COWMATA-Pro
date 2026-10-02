@@ -609,9 +609,12 @@ class Catalog:
                     if correction.get("camera"):
                         metadata["camera"] = correction["camera"]
                     if correction.get("readings"):
-                        from .clocks import manual_video_metadata
+                        from .clocks import manual_video_metadata, recorder_confirms
                         if metadata.get('duration_ms') and all('media_ms' in r and 'wall_ms' in r for r in correction['readings']):
-                            metadata = manual_video_metadata(metadata,correction['readings'])
+                            if recorder_confirms(metadata, correction['readings']):
+                                metadata['manual_readings_agree'] = True
+                            else:
+                                metadata = manual_video_metadata(metadata,correction['readings'])
                         else:
                             metadata['intervals']=correction.get('intervals',[])
                             metadata['needs_review']=len(correction['readings'])<2
@@ -690,6 +693,47 @@ class Catalog:
                 self.db.execute("UPDATE locations SET state='pending',attempt_at=0,error=? WHERE path=?",
                                 ("录像时间轴规则已更新，等待重建索引；人工标注保留", row["path"]))
                 queued += 1
+        return queued
+
+    RECORDER_CLOCK_RULE = "native-ps-runs-444"
+
+    def queue_recorder_clock_upgrade(self) -> int:
+        """Re-index PS recordings once after 4.4.4 learned recorder stream restarts.
+
+        4.4.3 rejected the recorder clock of files whose PTS restarted (camera
+        reconnects) and fell back to the packet timeline, which measured them
+        too short and could not decode past the first restart. Identity,
+        annotations and manual readings are kept; readings are re-applied.
+        """
+        self._write_check()
+        marker = self.meta / "recorder-clock-upgrade.json"
+        if read_json(marker, {}).get("rule") == self.RECORDER_CLOCK_RULE:
+            return 0
+        videos = self.rows(kind="video")
+        if not videos:
+            # Nothing indexed yet (new or still loading project): no marker, so
+            # a cancelled first load still leaves no metadata behind.
+            return 0
+        queued = 0
+        with self.mutex, self.db:
+            for row in videos:
+                metadata = row["metadata"]
+                if row["state"] not in {"ready", "review"}:
+                    continue
+                fmt = str(metadata.get("format", ""))
+                if "mpeg" not in fmt or "mp4" in fmt:
+                    continue
+                timeline = metadata.get("timeline") or {}
+                if timeline.get("native") or metadata.get("dahua"):
+                    continue
+                if not (timeline.get("discontinuities") or metadata.get("needs_review")):
+                    continue
+                self.db.execute("UPDATE assets SET metadata=json_set(metadata,'$.recheck',1) WHERE id=?",
+                                (row["asset_id"],))
+                self.db.execute("UPDATE locations SET state='pending',attempt_at=0,error=? WHERE path=?",
+                                ("录像机断流分段规则已更新，等待重建索引；人工标注保留", row["path"]))
+                queued += 1
+        atomic_json(marker, {"rule": self.RECORDER_CLOCK_RULE, "queued": queued})
         return queued
 
     def archived_record(self,relative):

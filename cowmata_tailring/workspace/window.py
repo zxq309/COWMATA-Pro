@@ -57,9 +57,13 @@ from .clocks import ClockMap, VideoTimeline, intervals_from_rows, wall_ms, wall_
 from .coverage import continuation_target, video_coverage
 from .demand import (
     camera_inventory,
+    coverage_index,
+    coverage_state,
     device_aliases,
     device_name,
     natural_key,
+    next_video_task,
+    pending_near,
     relevant_rows,
     resolve_camera_choices,
 )
@@ -340,6 +344,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.board = self.create_board()
         self.board.timeChanged.connect(self.video_time_changed)
         self.board.playbackChanged.connect(self.playback_changed)
+        self.board.coverageNeeded.connect(self.request_video_coverage)
         self.board.notice.connect(self.tell)
         video_layout.addWidget(self.board, 1)
         controls = QHBoxLayout()
@@ -400,7 +405,6 @@ class MainWindow(AlignmentMixin, QMainWindow):
         editing = QHBoxLayout()
         self._button("九轴起止微调", self.refine_selected, editing)
         self._button("编辑标签 / 边界 / 备注", self.edit_selected, editing)
-        self._button("补充当前画面证据", self.update_evidence, editing)
         self._button("回看所选结束点", lambda: self.review_selected(at_end=True), editing)
         self._button("批量改标签", self.bulk_relabel, editing)
         self._button("删除所选", self.delete_selected, editing)
@@ -1163,8 +1167,11 @@ class MainWindow(AlignmentMixin, QMainWindow):
         timeline = VideoTimeline(intervals, mappings)
         self.coverage_timeline = VideoTimeline(intervals_from_rows(
             [r for r in self.rows if r["kind"] == "video"], self.settings.get("camera_overrides", {})), mappings)
-        self.board.configure(self.catalog, videos, timeline)
         inventory = camera_inventory(self.rows, self.settings.get("camera_overrides", {}))
+        hints = self.catalog.video_hints() if hasattr(self.catalog, "video_hints") else {}
+        self._coverage_index = coverage_index(inventory, hints)
+        self.board.coverage_probe = self.video_coverage_state
+        self.board.configure(self.catalog, videos, timeline)
         self.board.camera_discovery = {
             name: ("pending" if any(r["state"] == "pending" for r in group) else
                    "review" if any(r["state"] in {"review", "invalid"} or not r["metadata"].get("intervals") for r in group) else "indexed")
@@ -1630,6 +1637,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 self.tell("当前动作属于另一牛号，已保留起点；请先结束该动作再切换标注对象。")
             else:
                 self.active_event["assets"].add(row["asset_id"])
+        self.auto_confirm_marked_drafts()
         self.refresh_events()
         self.update_alignment_text()
         if follow:
@@ -1938,6 +1946,34 @@ class MainWindow(AlignmentMixin, QMainWindow):
         if self.worker:
             self.worker.playback_busy.set() if playing else self.worker.playback_busy.clear()
 
+    def video_coverage_state(self, camera, reference_ms):
+        """Board probe: is an unindexed recording behind this view's missing picture?"""
+        wall = self.board.timeline.camera_time(camera, reference_ms)
+        return coverage_state(getattr(self, "_coverage_index", {}), camera, wall,
+                              ahead_ms=self.board.AUTO_SKIP_GAP_MS)
+
+    def request_video_coverage(self, camera, reference_ms):
+        """Index the recording playback needs next ahead of other work (bug 4.4.3-2).
+
+        Uses the cheap "prefetch" request only: replacing the index window here
+        would cancel the very inspection playback is waiting for.
+        """
+        if not self.worker or not self.catalog:
+            return
+        wall = self.board.timeline.camera_time(camera, reference_ms)
+        paths = pending_near(getattr(self, "_coverage_index", {}), camera, wall,
+                             ahead_ms=self.board.AUTO_SKIP_GAP_MS)
+        if not paths:
+            overrides = self.settings.get("camera_overrides", {})
+            maps = {name: ClockMap.from_dict(value) for name, value in self.settings.get("camera_maps", {}).items()}
+            task = next_video_task(camera_inventory(self.rows, overrides).get(camera, []), self.catalog.video_hints(),
+                                   reference_ms - 10_000, reference_ms + self.board.AUTO_SKIP_GAP_MS,
+                                   maps=maps, overrides=overrides, explore=True)
+            if task and task[1]["state"] == "pending":
+                paths = [task[1]["path"]]
+        if paths:
+            self.worker.request("prefetch", paths)
+
     def writable_work(self):
         if not self.work or not self.catalog or self.catalog.readonly:
             self.tell("请先选择九轴记录；只读工程不能修改人工成果。")
@@ -2070,7 +2106,7 @@ class MainWindow(AlignmentMixin, QMainWindow):
             return
         value = main["reference_ms"]
         if label.is_point:
-            latest = self.work.add_draft(index, value, None, evidence)
+            latest = self.work.add_draft(index, value, None, evidence, origin="marked")
         elif self.active_event is None:
             try:
                 self.work.assert_state_interval(index, value, None)
@@ -2123,7 +2159,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 self.snapshot_writer.flush()
                 for asset_id, target, target_index in targets:
                     if not any(draft["group_id"] == active["group_id"] for draft in target.drafts):
-                        target.add_draft(target_index, active["start"], active["end"], active["evidence"] + active["end_evidence"], group_id=active["group_id"])
+                        target.add_draft(target_index, active["start"], active["end"], active["evidence"] + active["end_evidence"],
+                                         group_id=active["group_id"], origin="marked")
                     if target is self.work:
                         latest = next(d for d in target.drafts if d["group_id"] == active["group_id"])
                     from .annotation_store import updated_work
@@ -2135,10 +2172,58 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 self.tell("保存失败，内存中的成果仍保留，请勿关闭：" + str(exc))
                 return
             self.active_event = None
-            self.event_status.setText("动作已保存为视频草稿；同步核对后可确认对应九轴范围。")
-        self.refresh_events(preferred=("draft", latest["id"]))
+        self.finish_marked_label(latest, label)
+
+    def finish_marked_label(self, draft, label):
+        """标签开始 → 标签结束 → 本条完成 (bug 4.4.3-1): no screenshot, no extra confirmation."""
+        problem = self.auto_confirm(draft)
+        if problem is None:
+            event = next(e for e in self.work.project.events if e.extras.get("draft_id") == draft["id"])
+            self.refresh_events(preferred=("event", event.id))
+            span = wall_text(draft["reference_start"])[11:]
+            if draft["reference_end"] is not None:
+                span += " – " + wall_text(draft["reference_end"])[11:]
+            text = f"已完成：{label.name}（{span}）已确认为九轴真值；无需截图或再点确认，可编辑、删除或撤销（Ctrl+Z）。"
+        else:
+            self.refresh_events(preferred=("draft", draft["id"]))
+            text = f"{label.name}已保存为待确认草稿：{problem}"
+            self.tell(text)
+        self.event_status.setText(text)
+        self.event_status.setToolTip(text)
         self.dirty = True
         self.save_current()
+
+    def auto_confirm(self, draft):
+        """Confirm a label recorded with 开始/结束 as soon as it ends.
+
+        The frames on screen at its start and end are its evidence, so there is
+        no screenshot and no separate “确认真值” click. Returns None when it is
+        confirmed, otherwise the plain reason it stays a draft (alignment, the
+        recording's time check, cow number); “确认真值” remains for those.
+        """
+        if not self.work or self.motion is None:
+            return "当前没有打开九轴记录。"
+        evidence = draft.get("video_evidence", [])
+        if not self.validate_evidence(evidence):
+            return self.evidence_problem(evidence)[0]
+        self.check_active_sources()
+        try:
+            self.work.confirm_draft(draft["id"], self.motion.duration_ms, source_available=self.source_available,
+                                    evidence_validator=self.validate_evidence, checkpoint=False)
+        except ValueError as exc:
+            return str(exc)
+        return None
+
+    def auto_confirm_marked_drafts(self):
+        """Complete earlier 开始/结束 labels that could not be confirmed when recorded
+        (the part of a cross-record action stored in this record, a busy source)."""
+        if not self.work or self.motion is None or not self.catalog or self.catalog.readonly:
+            return 0
+        done = sum(self.auto_confirm(draft) is None for draft in list(self.work.drafts)
+                   if draft.get("origin") == "marked" and draft.get("confirmation") == "video_draft")
+        if done:
+            self.dirty = True
+        return done
 
     def mark_selection(self):
         if not self.writable_work() or not self.selection:
@@ -2428,8 +2513,6 @@ class MainWindow(AlignmentMixin, QMainWindow):
             self.dirty = True
             self.save_current()
             self.tell("已确认九轴真值，保留视频资产、真实样本范围和同步版本。")
-            if self.isVisible():
-                self.capture_evidence(event=confirmed)
         except (ValueError, StopIteration) as exc:
             self.event_status.setText(str(exc))
             self.event_status.setToolTip(str(exc))
@@ -3492,4 +3575,3 @@ class MainWindow(AlignmentMixin, QMainWindow):
             catalog.close()
         self.retired.clear()
         event.accept()
-

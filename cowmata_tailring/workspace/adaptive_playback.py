@@ -90,10 +90,6 @@ class AdaptiveVideoBoard(VideoBoard):
         if not self._closing and self.playing and self.playback_policy == "full" and len(self.selected) >= 4 and inference_active():
             self.set_policy("full")  # guarded policy; no automatic oscillation back
         result = super().tick()
-        main = self.tiles.get(self.main_camera)
-        if self.playing and self.playback_policy == "focus" and main and main.interval is None:
-            self.play(False)
-            self.notice.emit("主视角到达录像缺口，已暂停；可切换其他有覆盖的视角继续。")
         waiting = (self.playing and self.playback_policy == "full" and len(self.selected) >= 4
                    and (self._held or any(t.interval and (not t.ready or t.pending) for t in self.tiles.values())))
         if not waiting:
@@ -107,6 +103,14 @@ class AdaptiveVideoBoard(VideoBoard):
 
     def is_preview(self, camera):
         return self.playing and self.playback_policy in {"balanced", "focus"} and camera != self.main_camera
+
+    def _gap_camera(self):
+        # Single-view priority follows the main view: its gap is skipped,
+        # waited for or reported even while preview views still have pictures.
+        main = self.tiles.get(self.main_camera)
+        if self.playback_policy == "focus" and main is not None and main.interval is None:
+            return self.main_camera
+        return super()._gap_camera()
 
     def seek(self, reference_ms):
         self.frozen_previews.clear()

@@ -245,11 +245,21 @@ def manual_video_metadata(metadata, readings):
     if duration<=0 or any(not 0<=r['media_ms']<duration for r in readings):
         raise ValueError('人工读数位置超出录像实际时长，请重新读取画面。')
     timeline=MediaTimelineIndex.from_dict(value['timeline']) if value.get('timeline') else None
-    ranges=[(s.public_start_ms,s.public_end_ms) for s in timeline.segments] if timeline else [(0,duration)]
+    runs=(timeline.native or {}).get('runs') if timeline else None
+    if runs:
+        # A recorder stream restart is a real gap; never interpolate across it.
+        ranges=[(float(r[0]),float(r[1])) for r in runs]
+    else:
+        ranges=[(s.public_start_ms,s.public_end_ms) for s in timeline.segments] if timeline else [(0,duration)]
+    automatic=[i for i in value.get('intervals',[]) if isinstance(i,dict)]
     intervals=[]
     for lo,hi in ranges:
         points=[r for r in readings if lo<=r['media_ms']<hi]
         if not points:
+            if runs:
+                # Keep the recorder-clock span browsable; it is not confirmed.
+                intervals.extend(dict(i,verified=False,warnings=['本段没有人工读数，按录像机时钟仅供浏览；需复核'])
+                                 for i in automatic if lo-1<=i['media_start'] and i['media_end']<=hi+1)
             continue
         local=ClockMap([Anchor(r['media_ms'],r['wall_ms']) for r in points])
         edges=sorted(set([lo,hi]+[r['media_ms'] for r in points]))
@@ -262,7 +272,30 @@ def manual_video_metadata(metadata, readings):
         native_check_pending=False,start_display=wall_text(mapping.map(0),filename=True),
         warnings=[])
     value.pop('recheck',None)
+    value.pop('manual_readings_agree',None)
     return value
+
+
+def recorder_confirms(metadata, readings, tolerance_ms=2000):
+    """True when the recorder clock already verified every span and each human reading agrees.
+
+    A single opening reading cannot verify a recording by itself; when the
+    recorder clock covers the whole file and agrees, it must not downgrade
+    the file to an extrapolated, unverified guess.
+    """
+    spans=[i for i in metadata.get('intervals',[]) if isinstance(i,dict)]
+    if (not (metadata.get('timeline') or {}).get('native') or metadata.get('needs_review') or not spans
+            or not all(i.get('verified') for i in spans) or not readings):
+        return False
+    for reading in readings:
+        media=reading.get('media_ms')
+        span=next((i for i in spans if media is not None and i['media_start']<=media<=i['media_end']),None)
+        if span is None or span['media_end']<=span['media_start']:
+            return False
+        expected=span['wall_start']+(media-span['media_start'])*(span['wall_end']-span['wall_start'])/(span['media_end']-span['media_start'])
+        if abs(expected-reading.get('wall_ms',float('inf')))>tolerance_ms:
+            return False
+    return True
 
 
 def intervals_from_rows(rows: list[dict], camera_overrides: dict[str, str] | None = None):
@@ -274,7 +307,8 @@ def intervals_from_rows(rows: list[dict], camera_overrides: dict[str, str] | Non
         if row["state"] not in {"ready", "review"} or not row["asset_id"]:
             continue
         metadata = row["metadata"]
-        if metadata.get('manual_readings') and metadata.get('duration_ms') and all('media_ms' in r and 'wall_ms' in r for r in metadata['manual_readings']):
+        if (metadata.get('manual_readings') and not metadata.get('manual_readings_agree') and metadata.get('duration_ms')
+                and all('media_ms' in r and 'wall_ms' in r for r in metadata['manual_readings'])):
             try:
                 metadata = manual_video_metadata(metadata,metadata['manual_readings'])
             except ValueError:

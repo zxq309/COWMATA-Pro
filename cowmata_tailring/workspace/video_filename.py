@@ -15,6 +15,22 @@ from .video_names import adjacent_filename_duration, filename_wall
 SIGNATURE = "cowmata-classified-filename-2"
 
 
+def named_intervals(start, duration, native=None, *, verified=True, warnings=()):
+    """Spans anchored at the confirmed filename time.
+
+    A recorder that restarted its stream inside the file (see
+    native_ps._clock_runs) contributes one span per run, offset by its own
+    clock, so footage after each restart keeps its real time.
+    """
+    from cowmata_tailring.media.native_ps import native_runs
+
+    runs = native_runs(native) if native and native.get("runs") else [(0.0, float(duration), 0.0)]
+    origin = runs[0][2]
+    return [dict(wall_start=start + wall - origin, wall_end=start + wall - origin + media_end - media_start,
+                 media_start=media_start, media_end=media_end, verified=verified, warnings=list(warnings))
+            for media_start, media_end, wall in runs]
+
+
 def metadata_from_name(path, relative, info, timeline=None):
     start = filename_wall(path)
     if start is None:
@@ -80,16 +96,7 @@ def metadata_from_name(path, relative, info, timeline=None):
         time_basis="classified_filename",
         filename_anchor=Path(path).name,
         filename_wall_ms=start,
-        intervals=[
-            dict(
-                wall_start=start,
-                wall_end=start + duration,
-                media_start=0,
-                media_end=duration,
-                verified=True,
-                warnings=[],
-            )
-        ],
+        intervals=named_intervals(start, duration, timeline.native),
         samples=[],
         warnings=[],
         needs_review=duration_basis == "adjacent_filename",
@@ -132,14 +139,7 @@ def bind_filename_location(metadata, relative, stamp):
             **timeline,
             "source": {**timeline.get("source", {}), "size": size, "mtimeNs": mtime},
         },
-        "intervals": [
-            dict(
-                wall_start=start,
-                wall_end=start + duration,
-                media_start=0,
-                media_end=duration,
-                verified=not metadata.get("needs_review", False),
-                warnings=metadata.get("warnings", []),
-            )
-        ],
+        "intervals": named_intervals(start, duration, timeline.get("native"),
+                                     verified=not metadata.get("needs_review", False),
+                                     warnings=metadata.get("warnings", [])),
     }

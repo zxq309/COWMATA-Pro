@@ -28,6 +28,8 @@ def export_standard_video(source,target):
     native=read_native_index(source)
     if not native:
         raise ValueError('未找到连续且可核验的流内时间，本功能不猜测录像时长。')
+    if native.get('runs'):
+        raise ValueError('录像机在这段录像中途断流重连（流内时间分段），本功能只导出连续录像；原始录像可直接标注。')
     ffmpeg,ffprobe=find_ffmpeg()
     target.parent.mkdir(parents=True,exist_ok=True)
     command=[str(ffmpeg),'-hide_banner','-loglevel','warning','-n','-fflags','+genpts','-i',str(source),

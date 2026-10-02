@@ -264,10 +264,8 @@ class MainWindow(ControllerWindow):
         details.addLayout(boundary_actions)
         event_actions = QMenu(self)
         for title, explanation, handler in (("生成候选", "先打开九轴记录，选择标签并拖选波形区间，再生成候选；候选需要人工复核", self.mark_selection),
-                               ("确认真值", "先选一条视频草稿，核对牛号、有效同步、到位画面和动作起止；已有标签请直接修改", self.confirm_selected),
+                               ("确认真值", "通常不需要：标签结束即自动确认为真值。仅当草稿未能自动确认（未一次对齐、录像时间待核验或牛号未确认）时，处理后选中草稿再点此项", self.confirm_selected),
                                ("编辑", "编辑标签、起止边界和备注", self.edit_selected),
-                               ("补充证据", "先选已有标签或草稿，再将录像定位到动作画面；补充证据会保留原记录编号", self.update_evidence),
-                               ("证据截图…", "先选记录，定位有效的原片画面，再为已就绪视角保存证据图；截图不自动确认真值", self.capture_evidence),
                                ("回看结束点", "跳到所选标注的结束位置", lambda: self.review_selected(at_end=True)),
                                ("删除", "删除所选标注或草稿，可撤销", self.delete_selected)):
             action = self._action(event_actions, title, handler)
@@ -501,8 +499,8 @@ class MainWindow(ControllerWindow):
         take(annotate, "下一份未完成九轴", "下一份", "Ctrl+PgDown")
         take(annotate, "将本份重新标为进行中", "重新标注本份")
         annotate.addSeparator()
-        take(annotate, "确认所选草稿为九轴真值", "确认为真值")
-        take(annotate, "留存多视角证据图（每视角一张）…", "留存证据图…")
+        take(annotate, "确认所选草稿为九轴真值", "确认为真值").setToolTip(
+            "通常不需要：标签结束即自动确认。仅用于未能自动确认的草稿（未一次对齐、录像时间待核验或牛号未确认），处理后选中草稿再点此项")
         annotate.addSeparator()
         team = menu(annotate, "协作")
         self._collaboration_menu = team
@@ -548,6 +546,8 @@ class MainWindow(ControllerWindow):
         self._legacy_menu = legacy
         take(legacy, "导入旧单视频工程…")
         take(legacy, "打开旧版单视频窗口")
+        # 4.4.4: screenshots are no longer part of labelling; kept for older saved evidence.
+        take(legacy, "留存多视角证据图（每视角一张）…", "证据截图（可选）…")
         tools.addSeparator()
         self._action(tools, "设置…", self.presentation_settings, "Ctrl+,")
 
