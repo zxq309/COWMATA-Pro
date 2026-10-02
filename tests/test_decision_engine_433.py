@@ -123,6 +123,9 @@ def test_build_train_predict_end_to_end(trained):
     result = predict_rows(rows[:300], root / "model")
     first = result["rows"][0]
     assert set(first["risk"]) == {"1h", "2h", "3h", "6h", "12h"}
+    # 4.4.5: ``risk`` stays raw per horizon (the calving algorithm applies each horizon's own rule), while
+    # ``risk_primary`` is the smoothed value that the threshold, warning level and alert episodes refer to.
+    assert all(r["risk_primary"] == r["risk_alert"] for r in result["rows"])
     assert first["warning_level"] in {"正常", "关注", "高度关注", "临产", "数据不足"}
     assert "hours_to_calving_p50" in first
     assert "heart_rate" not in result["used_features"]
@@ -174,6 +177,10 @@ def test_decision_window_renders_training_and_prediction(qt_application, trained
     window._set_model(root / "model", quiet=True)
     window.show_prediction(predict_rows(ds.read_table(root / "set")[:200], root / "model"))
     assert window.leaderboard.rowCount() == 4 and window.folder_table.rowCount() == 200
+    shown, primary = window.prediction["rows"][0], window.prediction["model"]["horizon_hours"]
+    other = next(h for h in (1, 2, 3, 6, 12) if h != primary)
+    assert window._shown_risk(shown, primary) == shown["risk_primary"]
+    assert window._shown_risk(shown, other) == shown["risk"][f"{other}h"]
     assert window.roc_chart.series and window.loss_chart is not None
     assert window.feature_table.rowCount() == 9  # 4.3.8 behavior_events
     calls = []

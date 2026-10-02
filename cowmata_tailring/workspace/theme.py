@@ -165,7 +165,7 @@ MENU_ICONS = {
     "打开工程…": "folder_open", "保存": "save", "导出": "share", "关闭工程": "dismiss",
     "撤销": "arrow_undo", "重做": "arrow_redo", "修改标签…": "tag", "批量修改…": "edit", "查找记录": "search",
     "台账": "table", "导入表格…": "arrow_upload", "同步修改": "arrow_sync", "上传设置…": "settings",
-    "端侧数据…": "arrow_download", "数据归类": "folder_arrow_right", "下载设置…": "settings", "决策 APP": "data_trending",
+    "端侧数据…": "arrow_download", "数据归类": "folder_arrow_right", "下载设置…": "settings", "风险等级总览": "data_trending",
     "自动生成候选…": "sparkle", "完成本份…": "checkmark_circle", "协作": "people_team",
     "时间同步": "clock", "录像": "video", "视图": "window_new", "设置…": "settings",
     "快速开始": "book_open", "新手图文教程…": "book_open", "提示信息说明…": "info", "账号": "person", "关于": "info",

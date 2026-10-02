@@ -746,7 +746,7 @@ class DecisionWindow(JobWindow):
         self.prediction = result
         rows = result["rows"]
         fill(self.folder_table, [[
-            r["cow_id"], self.at(r["decision_epoch_ms"]), " / ".join(f"{h}h={pct(r["risk"].get(f"{h}h"))}" for h in (1, 2, 3, 6, 12)),
+            r["cow_id"], self.at(r["decision_epoch_ms"]), " / ".join(f"{h}h={pct(self._shown_risk(r, h))}" for h in (1, 2, 3, 6, 12)),
             r["warning_level"],
             (f"{r['hours_to_calving_p10']}–{r['hours_to_calving_p50']}–{r['hours_to_calving_p90']}"
              if r.get("hours_to_calving_p50") is not None else "—"),
@@ -781,6 +781,14 @@ class DecisionWindow(JobWindow):
                                     f"{len(result.get('alert_episodes', []))} 段连续预警；"
                                     + "，".join(f"{k} {v}" for k, v in levels.items()) + f"。使用特征：{used}。")
 
+    def _shown_risk(self, row, hours):
+        """The primary horizon is shown as ``risk_primary`` (smoothed by the alert rule, the value its threshold
+        and warning level refer to); other horizons as their calibrated per-hour probability."""
+        primary = (self.prediction or {}).get("model", {}).get("horizon_hours")
+        if hours == primary and row.get("risk_primary") is not None:
+            return row["risk_primary"]
+        return row["risk"].get(f"{hours}h")
+
     def _color_levels(self):
         from PySide6.QtGui import QColor
 
@@ -799,7 +807,7 @@ class DecisionWindow(JobWindow):
         hours = [(r["decision_epoch_ms"] - rows[0]["decision_epoch_ms"]) / 3_600_000 for r in rows]
         ticks = [(hours[i], self.at(rows[i]["decision_epoch_ms"])) for i in range(0, len(rows), max(1, len(rows) // 6))]
         self.risk_chart.set_data(f"牛 {cow} · 产犊前 12 小时内多时间点概率", [
-            (f"{h} h 内", [(x, r["risk"][f"{h}h"]) for x, r in zip(hours, rows) if r["risk"].get(f"{h}h") is not None])
+            (f"{h} h 内", [(x, self._shown_risk(r, h)) for x, r in zip(hours, rows) if self._shown_risk(r, h) is not None])
             for h in (1, 2, 3, 6, 12)],
             hlines=[("主提前量阈值", rows[0]["threshold"])], yrange=(0, 1), xticks=ticks)
         if rows[0].get("hours_to_calving_p50") is not None:

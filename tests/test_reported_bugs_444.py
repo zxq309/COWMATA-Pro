@@ -529,7 +529,8 @@ def test_screenshot_and_add_evidence_steps_left_the_labelling_menus(app):
         app.processEvents()
 
 
-def test_release_identifies_as_4_4_4():
+def test_release_identifies_as_4_4_4_or_later():
     from cowmata_tailring import __build__, __version__
 
-    assert __version__ == "4.4.4" and __build__.startswith("annotator-444-")
+    assert tuple(int(part) for part in __version__.split(".")) >= (4, 4, 4)
+    assert __build__.startswith("annotator-" + __version__.replace(".", "") + "-")

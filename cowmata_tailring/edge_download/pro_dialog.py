@@ -683,7 +683,7 @@ class ProDownloadDialog(TaskWindow):
                     QUrl.fromLocalFile(str(self.store.resolve_path(edit.text())))
                 ),
             )
-        self.more_menu.addAction("决策 APP", self.open_decision_app)
+        self.more_menu.addAction("风险等级总览", self.open_decision_app)
         self._download_days = set()
         self.refresh_plan(reconcile=True)
         self.update_summary()
@@ -948,7 +948,7 @@ class ProDownloadDialog(TaskWindow):
 
         app = decision_app()
         if app is None:
-            self.status.setText("还没有决策 APP：下载后由决策器生成")
+            self.status.setText("还没有风险等级总览：下载后由正向决策器生成")
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(app)))
 

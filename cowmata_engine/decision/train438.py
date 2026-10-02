@@ -216,6 +216,46 @@ def pick_rule(rows, prob, *, budget, max_alert, window_h, rule="active", spans=(
     return rule_doc, curves[(rule_doc["ewma_span"], rule_doc["persistence"])]
 
 
+def alert_state(rows, sm, threshold, persistence):
+    """Per row: is a sustained alert active at this decision (causal: needs ``persistence`` hours >= threshold)."""
+    on = np.zeros(len(rows), bool)
+    by = defaultdict(list)
+    for i, r in enumerate(rows):
+        by[r["cow_id"]].append((r["decision_epoch_ms"], i))
+    for items in by.values():
+        items.sort()
+        run, last = 0, None
+        for t, i in items:
+            v = sm[i]
+            if np.isfinite(v) and v >= threshold and (last is None or t - last <= HOUR_MS):
+                run += 1
+            elif np.isfinite(v) and v >= threshold:
+                run = 1
+            else:
+                run = 0
+            on[i] = run >= persistence
+            last = t
+    return on
+
+
+def recall_curve(rows, on, *, max_h=24):
+    """Share of calvings with an alert active k hours before onset (k = 1..max_h), sensor data required."""
+    hit, n = np.zeros(max_h + 1), np.zeros(max_h + 1)
+    seen = defaultdict(dict)
+    for i, r in enumerate(rows):
+        h = r["hours_to_calving"]
+        if h is None or h <= 0 or h > max_h or not sensor_ok(r):
+            continue
+        k = int(np.ceil(h))
+        key = (r["cow_id"], int(r["calving_epoch_ms"]))
+        seen[key][k] = seen[key].get(k, False) or bool(on[i])
+    for bins in seen.values():
+        for k, v in bins.items():
+            n[k] += 1
+            hit[k] += v
+    return [dict(hours_before=k, recall=float(hit[k] / n[k]) if n[k] else None, n=int(n[k])) for k in range(1, max_h + 1)]
+
+
 def _matrix(rows, columns):
     return np.asarray([[np.nan if r.get(c) is None else r[c] for c in columns] for r in rows], dtype=float)
 
@@ -347,6 +387,30 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
                   gold_strict=board[0]["gold_heldout_strict"], gold_strict_per_event=held_strict["per_event"],
                   gold_strict_ci95=wilson(held_strict["detected"], held_strict["evaluable"]),
                   hard_negative_weight=hard_negative_weight)
+    # 4.3.9 learning curve: same protocol with a random subset of the weak-label (ledger) cows in every
+    # training fold. If detection still rises at 100 %, more cows would help (not converged).
+    learning = []
+    rng = np.random.default_rng(439)
+    weak_cows = sorted(set(groups[~gold]))
+    for frac in (0.25, 0.5, 0.75, 1.0) if weak_cows else ():  # no ledger-only cows (weak_label_weight 0): no curve
+        size = min(len(weak_cows), max(3, int(round(len(weak_cows) * frac))))
+        keep = set(rng.choice(weak_cows, size, replace=False)) | gold_cows
+        oof_f = np.full(len(y), np.nan)
+        for number, (tr, te) in enumerate(split, 1):
+            sub = np.asarray([i for i in tr if groups[i] in keep])
+            oof_f[te] = predict_model(fit_model(best, x[sub], y[sub], columns, groups=groups[sub], primaries=primaries,
+                                                seed=438 + number, sample_weight=w[sub]), x[te])
+        cal_f = cross_calibrate(oof_f, y, split)
+        rule_f, _ = pick_rule(weak_rows, cal_f[~gold], budget=fa_budget, max_alert=max_alert, window_h=window_h, rule=rule)
+        sm_f = smooth_by_cow(labelled, cal_f, rule_f["ewma_span"])
+        lf = event_eval(weak_rows, sm_f[~gold], rule_f["threshold"], persistence=rule_f["persistence"], window_h=window_h, rule=rule)
+        gf = event_eval(gold_rows, sm_f[gold], rule_f["threshold"], persistence=rule_f["persistence"], window_h=window_h, rule=rule)
+        from sklearn.metrics import roc_auc_score
+        okf = np.isfinite(cal_f)
+        learning.append(dict(fraction=frac, training_cows=len(keep), ledger_detection=lf["detection"],
+                             gold_detection=gf["detection"], auc=float(roc_auc_score(y[okf], cal_f[okf]))))
+        progress(f"learning curve {frac:.0%}: cows={len(keep)} ledger={lf['detection']:.3f} gold={gf['detection']:.3f} auc={learning[-1]['auc']:.3f}")
+    result["learning_curve"] = learning
     gold_curve = []
     for t in GRID:
         m = event_eval(gold_rows, sm[gold], float(t), persistence=persistence, window_h=window_h, rule=rule)
@@ -359,7 +423,9 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     version = version or f"calving-438-{best}-{datetime.now():%Y%m%d-%H%M%S}"
-    files, calibrators, thresholds, horizon_metrics = {}, {}, {}, {}
+    files, calibrators, thresholds, horizon_metrics, horizon_events = {}, {}, {}, {}, {}
+    oof_by_horizon = {}  # 4.4.5: out-of-fold calibrated risk of every horizon, for the reverse decider's replay
+    on_any = np.zeros(len(labelled), bool)  # what the farmer sees: any horizon's alert is on
     for h in sorted(set(horizons) | {horizon}):
         yh = (hrs <= h).astype(int)
         if h == horizon:
@@ -372,6 +438,34 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
             cal_h = cross_calibrate(oof_h, yh, split)
             thr_h = choose_threshold(cal_h[np.isfinite(cal_h)], yh[np.isfinite(cal_h)])
         ok = np.isfinite(oof_h)
+        oof_by_horizon[int(h)] = cal_h
+        # 4.3.9: every horizon gets its own ledger-selected alert rule and a gold held-out detection rate
+        # ("产前 h 小时内检出"), so 1/2/3/6/12 h accuracies are reported side by side.
+        if h == horizon:
+            rule_h, sm_h = rule_doc, sm
+        else:
+            rule_h, _ = pick_rule(weak_rows, cal_h[~gold], budget=fa_budget, max_alert=max_alert * max(h, 3) / horizon,
+                                  window_h=h, rule=rule)
+            sm_h = smooth_by_cow(labelled, cal_h, rule_h["ewma_span"])
+        ev_h = lambda rs, pr, **kw: event_eval(rs, pr, rule_h["threshold"], persistence=rule_h["persistence"], window_h=h, **kw)
+        g_act, g_str = ev_h(gold_rows, sm_h[gold], rule=rule, detail=True), ev_h(gold_rows, sm_h[gold], rule="start")
+        l_act, l_str = ev_h(weak_rows, sm_h[~gold], rule=rule), ev_h(weak_rows, sm_h[~gold], rule="start")
+        on_h = alert_state(labelled, sm_h, rule_h["threshold"], rule_h["persistence"])
+        on_any |= on_h
+        horizon_events[str(h)] = dict(
+            horizon_hours=int(h), rule=rule_h,
+            gold=dict(detected=g_act["detected"], evaluable=g_act["evaluable"], detection=g_act["detection"],
+                      ci95=wilson(g_act["detected"], g_act["evaluable"]), fa_per_cow_day=g_act["fa_per_cow_day"],
+                      alert_time_fraction=g_act["alert_time_fraction"], lead_median_h=g_act["lead_median_h"],
+                      strict_detected=g_str["detected"], strict_detection=g_str["detection"]),
+            ledger=dict(detected=l_act["detected"], evaluable=l_act["evaluable"], detection=l_act["detection"],
+                        ci95=wilson(l_act["detected"], l_act["evaluable"]), fa_per_cow_day=l_act["fa_per_cow_day"],
+                        alert_time_fraction=l_act["alert_time_fraction"], lead_median_h=l_act["lead_median_h"],
+                        strict_detected=l_str["detected"], strict_detection=l_str["detection"]),
+            recall_gold=recall_curve(gold_rows, on_h[gold]), recall_ledger=recall_curve(weak_rows, on_h[~gold]))
+        progress(f"horizon {h:>2}h rule={rule_h} | ledger {l_act['detected']}/{l_act['evaluable']}={l_act['detection']:.3f} "
+                 f"fa/d={l_act['fa_per_cow_day'] or 0:.2f} | gold {g_act['detected']}/{g_act['evaluable']}={g_act['detection']:.3f} "
+                 f"strict {g_str['detected']}/{g_str['evaluable']}")
         final = fit_model(best, x, yh, columns, groups=groups, primaries=primaries, sample_weight=w)
         calibrators[str(h)] = _isotonic(oof_h[ok], yh[ok])
         thresholds[str(h)] = float(thr_h)
@@ -381,6 +475,20 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
         (output / name).write_text(json.dumps(final), encoding="utf-8")
         files[str(h)] = dict(file=name, sha256=hashlib.sha256((output / name).read_bytes()).hexdigest())
         progress(f"deploy horizon {h}h thr={thr_h:.2f}")
+    # 4.3.9 "越临近越准": share of calvings in alert (any horizon) at k hours before onset, and the
+    # false-alert burden of that combined alert. Rises towards calving by construction of a good model.
+    cov = lambda rs, on: {int(p["hours_before"]): p for p in recall_curve(rs, on)}
+    any_g, any_l = cov(gold_rows, on_any[gold]), cov(weak_rows, on_any[~gold])
+    burden_l = event_eval(weak_rows, on_any[~gold].astype(float), 0.5, persistence=1, window_h=horizon, rule=rule)
+    burden_g = event_eval(gold_rows, on_any[gold].astype(float), 0.5, persistence=1, window_h=horizon, rule=rule)
+    coverage = dict(
+        by_hour_gold=[any_g[k] for k in sorted(any_g)], by_hour_ledger=[any_l[k] for k in sorted(any_l)],
+        at_horizons={str(h): dict(gold=any_g.get(h), ledger=any_l.get(h)) for h in sorted(set(horizons) | {horizon})},
+        fa_per_cow_day_ledger=burden_l["fa_per_cow_day"], fa_per_cow_day_gold=burden_g["fa_per_cow_day"],
+        alert_time_fraction_ledger=burden_l["alert_time_fraction"], detected_ledger=[burden_l["detected"], burden_l["evaluable"]],
+        detected_gold=[burden_g["detected"], burden_g["evaluable"]])
+    progress("coverage (any alert on at k h before onset): " + " ".join(
+        f"{h}h L={(any_l.get(h) or {}).get('recall') or 0:.2f}/G={(any_g.get(h) or {}).get('recall') or 0:.2f}" for h in (12, 6, 3, 2, 1)))
     tte_doc = fit_time_to_event(x, hrs, columns)
     pred = np.full((len(hrs), 3), np.nan)
     for tr, te in split:
@@ -408,7 +516,7 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
         metrics=best_row["gold_window"], events=best_row["gold_heldout"], horizon_metrics=horizon_metrics,
         selection=best_row["selection_ledger"], gold_ci95=result["gold_ci95"], weak_weight=weak_weight,
         gold_strict=best_row["gold_heldout_strict"], gold_strict_ci95=result["gold_strict_ci95"],
-        selection_strict=best_row["selection_ledger_strict"],
+        selection_strict=best_row["selection_ledger_strict"], horizon_events=horizon_events, coverage=coverage,
         alert_rule=dict(window_h=window_h, persistence_hours=persistence, ewma_span_hours=rule_doc["ewma_span"],
                         fa_budget_per_cow_day=fa_budget, max_alert_time_fraction=max_alert, threshold=thr, metric=rule,
                         rule=(f"12 小时产犊风险取本牛 {rule_doc['ewma_span']} 小时指数平滑（0=不平滑），连续 {persistence} 个小时 ≥ {thr:.2f} 即预警；"
@@ -426,7 +534,11 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
     (output / "training-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     with (output / "oof_predictions.csv").open("w", encoding="utf-8-sig", newline="") as s:
         wr = csv.writer(s)
-        wr.writerow(["cow_id", "decision_epoch_ms", "hours_to_calving", "label_quality", "y", "risk_oof_calibrated"])
-        for r, a, b in zip(labelled, y, cal):
-            wr.writerow([r["cow_id"], int(r["decision_epoch_ms"]), r["hours_to_calving"], r.get("label_quality"), a, f"{b:.6f}"])
+        order = sorted(oof_by_horizon)
+        wr.writerow(["cow_id", "decision_epoch_ms", "hours_to_calving", "label_quality", "y", "risk_oof_calibrated",
+                     "calving_epoch_ms", "label_source", *[f"risk_{h}h" for h in order]])
+        for i, (r, a, b) in enumerate(zip(labelled, y, cal)):
+            wr.writerow([r["cow_id"], int(r["decision_epoch_ms"]), r["hours_to_calving"], r.get("label_quality"), a, f"{b:.6f}",
+                         "" if r.get("calving_epoch_ms") is None else int(r["calving_epoch_ms"]), r.get("label_source") or "",
+                         *[f"{oof_by_horizon[h][i]:.6f}" for h in order]])
     return report

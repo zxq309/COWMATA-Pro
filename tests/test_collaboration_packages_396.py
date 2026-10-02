@@ -17,6 +17,7 @@ from cowmata_tailring.workspace.collaboration_packages import (
     make_return,
     open_raw_package,
     plan_dispatch,
+    read_package,
     receive_return,
     validate_archive,
 )
@@ -84,6 +85,11 @@ def farm(tmp_path, monkeypatch):
     return root
 
 
+def package_files(folder):
+    """Relative POSIX paths of every file in a package folder."""
+    return sorted(p.relative_to(folder).as_posix() for p in folder.rglob('*') if p.is_file())
+
+
 def prepared(farm, tmp_path):
     rows = inventory(farm, '产犊')
     plans = plan_dispatch(farm, rows, count=2)
@@ -120,10 +126,10 @@ def test_balanced_all_records_no_capacity_limit(farm):
 def test_raw_return_roundtrip_is_annotation_only_and_idempotent(farm, tmp_path):
     packages, destination, raw, label, result = prepared(farm, tmp_path)
     assert len(packages) == 2 and packages[0] != packages[1]
-    with zipfile.ZipFile(result) as archive:
-        names = archive.namelist()
-        assert not any(name.endswith('.mp4') for name in names)
-        assert all('标注工程/' in name or name == '协作清单.json' for name in names)
+    assert result.is_dir() and result.parent == destination.parent.parent and not list(tmp_path.rglob('*.zip'))
+    names = package_files(result)
+    assert not any(name.endswith('.mp4') for name in names)
+    assert all('标注工程/' in name or name == '协作清单.json' for name in names)
     report = receive_return(farm, result)
     assert report['imported'] == 1 and report['conflicts'] == []
     assert receive_return(farm, result)['unchanged'] == 1
@@ -169,7 +175,7 @@ def test_cancelled_dispatch_never_marks_unit_sent(farm):
     with pytest.raises(InterruptedError):
         dispatch(farm, plans, cancelled=lambda: True)
     assert not any(row['dispatches'] for row in inventory(farm, '产犊'))
-    assert not list((farm / COLLABORATION).rglob('*.zip'))
+    assert not list((farm / COLLABORATION / '原始数据包').iterdir())
 
 
 def test_failed_publication_removes_new_labels_only(farm, tmp_path, monkeypatch):
@@ -223,13 +229,13 @@ def test_completed_labels_are_review_tasks_with_baseline(farm, tmp_path):
         plan_dispatch(farm, [unit])
     plan = plan_dispatch(farm, [unit], purpose='review')
     package = dispatch(farm, plan)[0]
-    reviewed = open_raw_package(package, tmp_path / 'reviewer')
+    reviewed = open_raw_package(package, tmp_path / 'rv')
     saved = reviewed / local.relative_to(farm)
     assert saved.exists()
     review_doc = json.loads(saved.read_text(encoding='utf-8'))
     assert review_doc['work']['progress']['status'] == 'done'
     assert review_doc['work']['project']['events'] == doc['work']['project']['events']
-    assert validate_archive(make_return(reviewed))['purpose'] == 'review'
+    assert read_package(make_return(reviewed))['purpose'] == 'review'
 
 
 @pytest.mark.parametrize('kind', ['Motion', 'PPG', 'Temp'])
@@ -238,7 +244,7 @@ def test_missing_modality_is_noted_but_never_blocks_dispatch(farm, kind):
     next((farm / '产犊' / kind).rglob('*.json')).unlink()
     plans = plan_dispatch(farm, inventory(farm, '产犊'))
     assert any('缺少 ' + kind in w for w in plans[0]['readiness']['warnings'])
-    assert validate_archive(dispatch(farm, plans)[0])['units']
+    assert read_package(dispatch(farm, plans)[0], strict=False)['units']
 
 
 def test_missing_video_is_noted_and_recordings_are_never_probed(farm, monkeypatch):
@@ -254,8 +260,8 @@ def test_missing_video_is_noted_and_recordings_are_never_probed(farm, monkeypatc
     path = farm / '录像/2026-09-17/视角01/2026-09-17_00-00-00.mp4'
     path.write_bytes(b'truncated recording')
     plans = plan_dispatch(farm, inventory(farm, '产犊'))
-    with zipfile.ZipFile(dispatch(farm, plans)[0]) as archive:
-        assert archive.read(farm.name + '/录像/2026-09-17/视角01/2026-09-17_00-00-00.mp4') == b'truncated recording'
+    package = dispatch(farm, plans)[0]
+    assert (package / farm.name / '录像/2026-09-17/视角01/2026-09-17_00-00-00.mp4').read_bytes() == b'truncated recording'
 
 
 @pytest.mark.parametrize('status', ['running', 'failed', 'canceled', 'outdated'])
@@ -283,8 +289,7 @@ def test_video_still_being_written_is_left_out_but_dispatch_succeeds(farm, monke
     monkeypatch.setattr(packages, 'assert_not_being_written', fake)
     report = {}
     package = packages.dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')), report=report)[0]
-    with zipfile.ZipFile(package) as archive:
-        names = archive.namelist()
+    names = package_files(package)
     assert farm.name + '/录像/2026-09-17/视角01/2026-09-17_00-00-30.mp4' in names
     assert not any(name.endswith(busy.name) for name in names)
     assert report['packages'][0]['skipped'][0]['path'].endswith(busy.name)
@@ -319,9 +324,8 @@ def test_read_failure_mid_file_drops_only_that_member(farm, monkeypatch, tmp_pat
     monkeypatch.setattr(packages, '_open_source', opener)
     report = {}
     package = packages.dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')), report=report)[0]
-    with zipfile.ZipFile(package) as archive:
-        assert archive.testzip() is None
-        names = archive.namelist()
+    assert read_package(package, strict=False)
+    names = package_files(package)
     assert not any(name.endswith(video.name) for name in names)
     assert any(name.endswith('2026-09-18_00-00-00.mp4') for name in names)
     assert any('injected' in item['reason'] for item in report['packages'][0]['skipped'])
@@ -330,12 +334,13 @@ def test_read_failure_mid_file_drops_only_that_member(farm, monkeypatch, tmp_pat
 
 def test_one_failed_package_does_not_stop_the_others(farm):
     plans = plan_dispatch(farm, inventory(farm, '产犊'), count=2)
-    blocked = farm / COLLABORATION / '原始数据包' / (plans[0]['base_name'] + '_原始.zip')
-    blocked.parent.mkdir(parents=True, exist_ok=True)
-    blocked.write_bytes(b'occupied')
+    blocked = farm / COLLABORATION / '原始数据包' / (plans[0]['base_name'] + '_原始')
+    blocked.mkdir(parents=True)
+    (blocked / 'notes.txt').write_text('occupied', encoding='utf-8')
     report = {}
     outputs = dispatch(farm, plans, report=report)
-    assert len(outputs) == 1 and outputs[0].is_file()
+    assert len(outputs) == 1 and outputs[0].is_dir()
+    assert (blocked / 'notes.txt').read_text(encoding='utf-8') == 'occupied'
     first, second = report['packages']
     assert first['error'] and first['output'] is None
     assert second['error'] is None and second['output'] == str(outputs[0])
@@ -344,23 +349,40 @@ def test_one_failed_package_does_not_stop_the_others(farm):
 
 
 def test_dispatch_cleans_partials_left_by_an_interrupted_run(farm):
+    from pathlib import Path
+
+    from cowmata_tailring.workspace.storage import ProjectLock
     folder = farm / COLLABORATION / '原始数据包'
     folder.mkdir(parents=True, exist_ok=True)
     stale = folder / ('.' + 'a' * 32 + '.partial')
-    stale.write_bytes(b'x' * 1000)
+    stale.write_bytes(b'x' * 1000)  # a <=4.4.4 temporary archive
+    abandoned = folder / ('.' + 'b' * 32 + '.partial')
+    (abandoned / 'farm').mkdir(parents=True)
+    (abandoned / 'farm' / 'a.json').write_bytes(b'y' * 500)
+    ProjectLock(Path(str(abandoned) + '.lock')).close()  # its writer is gone
+    live = folder / ('.' + 'c' * 32 + '.partial')
+    live.mkdir()
+    writer = ProjectLock(Path(str(live) + '.lock'))  # still being written by another dispatch
+    orphan = folder / ('.' + 'd' * 32 + '.partial.lock')
+    ProjectLock(orphan).close()  # its writer died after the folder was already gone
     kept = folder / 'notes.partial'
     kept.write_bytes(b'user file')
     report = {}
-    dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')), report=report)
-    assert not stale.exists() and kept.exists()
-    assert report['reclaimed_bytes'] == 1000
+    try:
+        dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')), report=report)
+    finally:
+        writer.close()
+    assert not stale.exists() and not abandoned.exists() and not Path(str(abandoned) + '.lock').exists()
+    assert live.exists() and Path(str(live) + '.lock').exists() and kept.exists() and not orphan.exists()
+    assert report['reclaimed_bytes'] == 1000 + 500
+    assert not [p for p in folder.iterdir() if p.name.endswith(('.partial', '.lock')) and p not in (live, Path(str(live) + '.lock'), kept)]
 
 
 def test_dispatch_runs_while_another_task_holds_the_farm(farm):
     from cowmata_tailring.workspace.dataset_access import DatasetLease
     with DatasetLease([farm], 'organize'):
         outputs = dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')))
-    assert outputs and outputs[0].is_file()
+    assert outputs and outputs[0].is_dir()
 
 
 def test_rewritten_dispatched_record_is_reported_as_changed(farm):
@@ -421,7 +443,7 @@ def test_new_data_is_reported_as_supplement_and_additions_do_not_block_redispatc
         dispatch(farm, plans)
     fresh_plans = plan_dispatch(farm, inventory(farm, '产犊'))
     outputs = dispatch(farm, fresh_plans)
-    assert outputs and all(path.is_file() for path in outputs)
+    assert outputs and all(path.is_dir() for path in outputs)
 
 
 def test_deleted_source_file_is_left_out_and_package_still_opens(farm, tmp_path):
@@ -430,7 +452,7 @@ def test_deleted_source_file_is_left_out_and_package_still_opens(farm, tmp_path)
     gone = rows[0]['paths'][0]
     (farm / gone).unlink()
     package = dispatch(farm, plans)[0]
-    manifest = validate_archive(package)
+    manifest = read_package(package, strict=False)
     assert gone not in {p for unit in manifest['units'] for p in unit['paths']}
     assert any(gone in w for w in manifest['readiness']['warnings'])
     assert open_raw_package(package, tmp_path / 'worker').is_dir()
@@ -447,7 +469,7 @@ def test_dispatch_proceeds_while_downloader_holds_sync_lock(farm):
     with RootSyncLock(farm, threading.Event()):
         plans = plan_dispatch(farm, inventory(farm, '产犊'))
         outputs = dispatch(farm, plans)
-    assert outputs and all(path.is_file() for path in outputs)
+    assert outputs and all(path.is_dir() for path in outputs)
 
 
 @pytest.mark.parametrize('change', ['bad_json', 'wrong_identity', 'wrong_date'])
@@ -460,8 +482,8 @@ def test_sensor_content_is_packaged_as_is(farm, change):
     else:
         data.update({'cow_id': '99999'} if change == 'wrong_identity' else {'create_time': data['create_time'] + 86400000})
         atomic_json(raw, data)
-    with zipfile.ZipFile(dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')))[0]) as archive:
-        assert archive.read(farm.name + '/' + raw.relative_to(farm).as_posix()) == raw.read_bytes()
+    package = dispatch(farm, plan_dispatch(farm, inventory(farm, '产犊')))[0]
+    assert (package / farm.name / raw.relative_to(farm)).read_bytes() == raw.read_bytes()
 
 
 def test_classified_video_filename_uses_beijing_epoch(monkeypatch, tmp_path):

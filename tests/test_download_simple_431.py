@@ -35,7 +35,7 @@ def test_one_table_and_short_more_menu(isolated_store, qt_application):  # noqa:
         dialog.search.clear()
         top = [a.text() for a in dialog.more_menu.actions() if not a.isSeparator()]
         assert top == ["设置…", "运行记录…", "问题清单…", "备注记录…", "只刷新台账", "检测连接", "重新下载所选…",
-                       "打开目录", "决策 APP"]
+                       "打开目录", "风险等级总览"]
         assert dialog.download_button.objectName() == "primary" and dialog.download_button.isCheckable()
     finally:
         dialog.deleteLater()

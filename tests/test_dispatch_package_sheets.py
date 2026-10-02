@@ -1,5 +1,4 @@
 import copy
-import zipfile
 
 import pytest
 from PySide6.QtCore import Qt
@@ -137,9 +136,8 @@ def test_new_camera_after_preview_keeps_frozen_scan_and_still_dispatches(farm):
     new.parent.mkdir()
     new.write_bytes(old.read_bytes())
     outputs = packages.dispatch(farm, plans)
-    with zipfile.ZipFile(outputs[0]) as archive:
-        names = archive.namelist()
-    assert not any('视角02' in name for name in names)
+    names = [p.relative_to(outputs[0]).as_posix() for p in outputs[0].rglob('*') if p.is_file()]
+    assert names and not any('视角02' in name for name in names)
 
 
 def test_multi_day_package_stays_together(farm):
@@ -193,14 +191,16 @@ def test_dispatch_window_is_non_modal_scans_on_open_and_reports_each_package(far
         dialog.preview_plan()
         _wait(dialog, qt_application)
         assert len(dialog.plans) == 2
-        blocked = farm / '科牧特_协作标注' / '原始数据包' / (dialog.plans[0]['base_name'] + '_原始.zip')
-        blocked.parent.mkdir(parents=True, exist_ok=True)
-        blocked.write_bytes(b'occupied')
+        assert dialog.target_path() == str(farm / '科牧特_协作标注' / '原始数据包')
+        blocked = farm / '科牧特_协作标注' / '原始数据包' / (dialog.plans[0]['base_name'] + '_原始')
+        blocked.mkdir(parents=True)
         second = {u['key'] for u in dialog.plans[1]['units']}
+        dialog_plans_names = [plan['base_name'] for plan in dialog.plans]
         dialog.execute()
         _wait(dialog, qt_application)
         log = dialog.log.toPlainText()
         assert '包 1：未生成' in log and '包 2：已生成' in log and '派包报告：' in log
+        assert (blocked.parent / (dialog_plans_names[1] + '_原始')).is_dir()
         sent = {u['key'] for units in dialog.planner.inventory_by_category.values() for u in units if u.get('dispatches')}
         assert sent == second
     finally:

@@ -65,8 +65,8 @@ def relative_location(value, app_root=APP_ROOT):
 DEFAULT_DATA_ROOT = resolve_location(RELATIVE_DATA_ROOT)
 DEFAULT_LEDGER_ROOT = resolve_location(RELATIVE_LEDGER_ROOT)
 
-# 4.4.1 site layout: <drive>\1_下载器\<牧场>  (raw data by category + 台账 CSVs),
-# <drive>\2_标注器 (this app + 科牧特_协作标注), <drive>\3_训练器, <drive>\4_决策器.
+# 4.4.5 site layout: <drive>\1_下载器\<牧场>  (raw data by category + 台账 CSVs),
+# <drive>\2_标注器 (this app + 科牧特_协作标注), <drive>\3_训练器, <drive>\4_逆向决策器, <drive>\5_正向决策器.
 DOWNLOADS = "1_下载器"
 ANNOTATOR = "2_标注器"
 LEDGER_FOLDER = "台账"

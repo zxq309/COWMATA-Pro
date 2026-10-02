@@ -884,6 +884,9 @@ class MainWindow(AlignmentMixin, QMainWindow):
                 self._standalone_saved_path=''
                 self._standalone_saved_signature=None
             else:
+                # 4.4.5: a raw package unzipped by hand becomes a normal assigned task on open.
+                from .collaboration_packages import adopt_unpacked_task
+                adopt_unpacked_task(root)
                 self.catalog = Catalog(root, load_session=True,day=day)
             self.settings = self.catalog.settings()
             selected_modalities = modalities or 'all'
