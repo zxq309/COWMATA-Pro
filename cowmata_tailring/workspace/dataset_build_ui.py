@@ -236,7 +236,8 @@ class DatasetBuildWindow(TaskWindow):
             self.output=''
             self.job=None
     def add_source(self):
-        path=QFileDialog.getExistingDirectory(self,'选择牧场或类别目录')
+        from cowmata_tailring.edge_download.paths import start_folder
+        path=QFileDialog.getExistingDirectory(self,'选择牧场或类别目录',str(start_folder()))
         if path:
             self.sources.appendPlainText(path)
     def choose_output(self):

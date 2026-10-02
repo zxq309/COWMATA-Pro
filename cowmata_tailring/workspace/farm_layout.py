@@ -15,17 +15,19 @@ CATEGORY_PATHS = ("产犊", "发情", "怀孕/孕早期", "怀孕/孕中期", "�
 
 
 def collaboration_home(root):
-    """科牧特_协作标注 of a farm.
+    """科牧特_协作标注 of a farm: inside the farm (4.4.6), e.g. <目录树>\\1_下载器\\<牧场>\\科牧特_协作标注.
 
-    4.4.1 site layout keeps annotation packages with the Annotator: a farm at
-    <drive>\\1_下载器\\<牧场> uses <drive>\\2_标注器\\科牧特_协作标注. Other farms keep it inside the farm.
+    Dispatching, returns and receiving stay with the data they describe and move with the directory tree;
+    2_标注器 holds only the app's release packages. A site that still keeps the folder where 4.4.1–4.4.5 put
+    it (<目录树>\\2_标注器\\科牧特_协作标注) and has none in the farm keeps using that one.
     """
     root = Path(root)
-    if root.parent.name == "1_下载器":
-        site = root.parent.parent / "2_标注器"
-        if site.is_dir():
-            return site / COLLABORATION
-    return root / COLLABORATION
+    home = root / COLLABORATION
+    if root.parent.name == "1_下载器" and not home.exists():
+        legacy = root.parent.parent / "2_标注器" / COLLABORATION
+        if legacy.is_dir():
+            return legacy
+    return home
 
 
 def farm_identity(root):

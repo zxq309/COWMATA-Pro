@@ -33,10 +33,30 @@ def configure():
 
 
 def data_root(account):
-    """Per-account local ledger cache, separate from the standalone uploader's folder."""
+    """Per-account local working copy of the uploader (上传 · 台账), separate from the standalone uploader's folder.
+
+    4.4.6: kept in the site tree, ``<目录树>\\1_下载器\\<牧场>\\台账\\上传\\<账号>``, next to the 台账 it uploads, so every
+    business file lives in the one tree. A working copy an earlier version kept in the Windows profile is moved
+    there once, unsynced edits included; without a tree the profile folder is used as before.
+    """
     base = os.environ.get("COWMATA_LEDGER_HOME")
-    base = Path(base) if base else Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "COWMATA Annotator" / "ledger"
-    return base / account
+    if base:
+        return Path(base) / account
+    legacy = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "COWMATA Annotator" / "ledger" / account
+    from cowmata_tailring.edge_download.paths import UPLOAD_FOLDER, site_ledger
+
+    ledger = site_ledger()
+    if ledger is None:
+        return legacy
+    target = ledger / UPLOAD_FOLDER / account
+    if legacy.is_dir() and not target.exists():
+        from cowmata_tailring.edge_download.site_adopt import move_tree
+
+        try:
+            move_tree(legacy, target)
+        except OSError:
+            return legacy  # never lose unsynced edits: keep working where they are and retry next time
+    return target
 
 
 def _window_class():

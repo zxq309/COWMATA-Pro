@@ -209,7 +209,9 @@ class HistoryWindow(QMainWindow):
         return True
 
     def choose_root(self):
-        root = QFileDialog.getExistingDirectory(self, "选择包含原始九轴与录像的数据工程")
+        from cowmata_tailring.edge_download.paths import start_folder
+
+        root = QFileDialog.getExistingDirectory(self, "选择包含原始九轴与录像的数据工程", str(start_folder()))
         if root:
             self.begin_load(root)
 

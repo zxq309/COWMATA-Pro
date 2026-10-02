@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -50,7 +49,7 @@ from .core import CHINA, Cancelled, Job
 from .csv_download import run_csv_job
 from .csv_targets import CsvPlan
 from .download_notes import NotesStore, notes_path
-from .download_status import STATES, day_cutoff, record_day
+from .download_status import STATES
 from .pro_settings import ProSettings
 from .raw_connection import raw_connection
 from .site_records import SCHEMAS, LedgerClient, refresh_records
@@ -132,6 +131,10 @@ class SyncWorker(QThread):
                     report["errors"].append(str(exc))
                     self.status.emit("motion", str(exc))
             else:
+                if values.get("adopt"):
+                    from .site_adopt import adopt_all
+
+                    adopt_all(values["adopt"], self.message.emit)
                 if values["sync_ledger"] or self.operation == "ledger":
                     report["ledger_attempted"] = True
                     try:
@@ -534,9 +537,23 @@ class ProDownloadDialog(TaskWindow):
             row.addWidget(button)
             button.clicked.connect(lambda checked=False, edit=field: self.choose_folder(edit))
             form.addRow(label, row)
-        self.path_hint = QLabel("默认：数据 1_下载器\\扬大_高邮牧场，台账 1_下载器\\扬大_高邮牧场\\台账。")
+        self.path_hint = QLabel(self._tree_hint())
         self.path_hint.setWordWrap(True)
         form.addRow(self.path_hint)
+        from .decider import DEFAULT_TRACKS
+        from .paths import TRACKS
+
+        tracks_row = QHBoxLayout()
+        chosen = self.store.value.get("forward_tracks", list(DEFAULT_TRACKS))
+        self.forward_tracks = {}
+        for track in TRACKS:
+            box = QCheckBox(track)
+            box.setChecked(track in chosen)
+            box.setToolTip(f"下载时在本机启动 {track}\\5_正向决策器 的实时推理（每台电脑分别设置）")
+            self.forward_tracks[track] = box
+            tracks_row.addWidget(box)
+        tracks_row.addStretch(1)
+        form.addRow("随下载启动的正向决策器", tracks_row)
         self.start_at = QDateTimeEdit()
         self.start_at.setCalendarPopup(True)
         self.start_at.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
@@ -677,12 +694,7 @@ class ProDownloadDialog(TaskWindow):
         self.more_menu.addSeparator()
         folders_menu = self.more_menu.addMenu("打开目录")
         for label, field in (("数据", self.directory), ("台账", self.ledger_directory)):
-            folders_menu.addAction(
-                label,
-                lambda checked=False, edit=field: QDesktopServices.openUrl(
-                    QUrl.fromLocalFile(str(self.store.resolve_path(edit.text())))
-                ),
-            )
+            folders_menu.addAction(label, lambda checked=False, edit=field: self.open_folder(edit))
         self.more_menu.addAction("风险等级总览", self.open_decision_app)
         self._download_days = set()
         self.refresh_plan(reconcile=True)
@@ -785,8 +797,33 @@ class ProDownloadDialog(TaskWindow):
             self.log_pending.clear()
         self.log_timer.stop()
 
+    def _tree_hint(self):
+        from .paths import tree_root
+
+        tree = tree_root(self.store.app_root)
+        if tree is None:
+            return "未找到目录树（含 1_下载器 的磁盘或文件夹）：请插上存放目录树的磁盘。数据只保存在目录树里，不会改存到别处。"
+        return (f"目录树：{tree}　数据在 1_下载器\\<牧场>，台账在其中的 台账 文件夹；"
+                "按目录树内的相对位置保存，整个目录树换盘或拷到别的电脑后自动跟随，无需重设。")
+
+    def _folder_of(self, field):
+        try:
+            return self.store.resolve_path(field.text())
+        except ValueError as exc:
+            self.status.setText(str(exc))
+            return None
+
+    def open_folder(self, field):
+        folder = self._folder_of(field)
+        if folder is not None:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
     def choose_folder(self, field):
-        selected = QFileDialog.getExistingDirectory(self, "选择保存位置", str(self.store.resolve_path(field.text())))
+        folder = self._folder_of(field)
+        from .paths import start_folder
+
+        start = folder if folder is not None and folder.exists() else start_folder(self.store.app_root)
+        selected = QFileDialog.getExistingDirectory(self, "选择保存位置", str(start))
         if selected:
             field.setText(self.store.display_path(selected))
 
@@ -834,6 +871,7 @@ class ProDownloadDialog(TaskWindow):
                 raw_user=self.raw_user.text().strip(),
                 raw_key=self.raw_key.text().strip(),
                 raw_remote_port=self.raw_port.value(),
+                forward_tracks=[t for t, box in self.forward_tracks.items() if box.isChecked()],
             )
             return True
         except (ValueError, OSError, KeyError) as exc:
@@ -863,7 +901,7 @@ class ProDownloadDialog(TaskWindow):
         self.scheduling_stopped = False
         from .decider import start as start_decider
 
-        start_decider(self.append)
+        start_decider(self.append, tracks=self.store.value.get("forward_tracks"))
         self.refresh_info_line()
         if self.running:
             return
@@ -946,7 +984,7 @@ class ProDownloadDialog(TaskWindow):
     def open_decision_app(self):
         from .decider import decision_app
 
-        app = decision_app()
+        app = decision_app(tracks=self.store.value.get("forward_tracks"))
         if app is None:
             self.status.setText("还没有风险等级总览：下载后由正向决策器生成")
             return
@@ -968,8 +1006,21 @@ class ProDownloadDialog(TaskWindow):
         self.scheduling_stopped = False
         if not self.save_settings():
             return
+        try:
+            self.store.check_tree()
+        except ValueError as exc:
+            # A saved 目录树/… location whose tree is not plugged in: never download somewhere else.
+            self.status.setText(str(exc))
+            self.append(str(exc))
+            return
+        self.directory.setText(self.store.display_path(self.store.value["data_root"]))
+        self.ledger_directory.setText(self.store.display_path(self.store.value["ledger_directory"]))
+        self.path_hint.setText(self._tree_hint())
         self.timer.stop()
         values = dict(self.store.value)
+        if self.store.adopt and operation in ("all", "ledger"):
+            values["adopt"] = [(str(old), str(new)) for old, new in self.store.adopt]
+            self.store.adopt = []
         if refresh_ledger:
             values['sync_ledger'] = True
         if skip_ledger:

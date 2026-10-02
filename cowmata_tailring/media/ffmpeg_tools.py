@@ -7,9 +7,17 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-FFMPEG_HOME = Path(r"F:\Applications\ffmpeg-8.1.2-full_build")
+# The package's own copy (vendor\ffmpeg) is the default; no fixed drive letter is assumed anywhere.
+FFMPEG_HOME = Path(__file__).resolve().parents[2] / "vendor" / "ffmpeg"
 FFMPEG = FFMPEG_HOME / "bin" / "ffmpeg.exe"
 FFPROBE = FFMPEG_HOME / "bin" / "ffprobe.exe"
+
+
+def application_folders() -> list[Path]:
+    """``<盘>\\Applications`` of every local drive (tools installed by hand), drive order."""
+    from cowmata_tailring.edge_download.paths import _drives
+
+    return [drive / "Applications" for drive in _drives() if (drive / "Applications").is_dir()]
 
 
 class FFmpegToolError(RuntimeError):
@@ -18,18 +26,13 @@ class FFmpegToolError(RuntimeError):
 
 def _candidate_dirs() -> list[Path]:
     """Places to look for ffmpeg.exe/ffprobe.exe, most specific first."""
-    dirs: list[Path] = [Path(__file__).resolve().parents[2] / "vendor" / "ffmpeg"]
+    dirs: list[Path] = [FFMPEG_HOME]
     for env_name in ("FFMPEG_HOME", "FFMPEG_DIR"):
         value = os.environ.get(env_name)
         if value:
             dirs.append(Path(value))
-    dirs.append(FFMPEG_HOME)
-    for root in (r"F:\Applications", r"C:\Applications", r"D:\Applications"):
-        base = Path(root)
-        if base.is_dir():
-            dirs.extend(
-                p for p in sorted(base.glob("ffmpeg*")) if p.is_dir()
-            )
+    for base in application_folders():
+        dirs.extend(p for p in sorted(base.glob("ffmpeg*")) if p.is_dir())
     return dirs
 
 

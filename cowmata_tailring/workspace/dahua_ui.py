@@ -330,8 +330,10 @@ class DahuaPanel(QWidget):
             self.scan()
 
     def choose_target(self):
+        from cowmata_tailring.edge_download.paths import start_folder
+
         directory = QFileDialog.getExistingDirectory(
-            self, "选择输出牧场", self.target.text(), QFileDialog.Option.DontUseNativeDialog
+            self, "选择输出牧场", self.target.text() or str(start_folder()), QFileDialog.Option.DontUseNativeDialog
         )
         if directory:
             self.target.setText(directory)

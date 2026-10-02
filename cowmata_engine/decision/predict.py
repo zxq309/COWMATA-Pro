@@ -166,6 +166,11 @@ def predict_rows(rows, model_folder):
     columns = manifest["columns"]
     if not rows:
         return dict(schema=RESULT_SCHEMA, rows=[], model=manifest)
+    if manifest.get("salience") and any(c.startswith("salience@") for c in columns):
+        # 4.4.6: per-horizon salience composites, computed exactly as in training (weights from the manifest).
+        from .salience import apply as apply_salience
+
+        apply_salience(rows, manifest["salience"])
     # 4.3.7: inputs are exactly the columns the model was trained with. 4.3.5/4.3.6 blanked
     # every @d24/@z72/@circ baseline column here although the deployed model was trained
     # with them (train/serve skew). Causality is guaranteed upstream: every derived value

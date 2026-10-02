@@ -181,6 +181,10 @@ def test_save_progress_is_only_in_project_metadata(window):
     window.work = SessionWork(row["asset_id"])
     window.imu_ms = 4321
     window.work.progress["status"] = "in_progress"
+    window.save_current()  # 4.4.6: browsing alone is not saved as work
+    assert "nine.json" not in read_json(window.catalog.meta / "project.json", {}).get("review_progress", {})
+    assert read_json(window.catalog.work_path(row["asset_id"])) is None
+    window.work.project.add_event(0, 100, 300)
     window.save_current()
     saved = read_json(window.catalog.meta / "project.json", {})
     assert saved["review_progress"]["nine.json"]["imu_ms"] == 4321

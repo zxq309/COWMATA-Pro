@@ -2,11 +2,30 @@
 
 import os
 import time
+from pathlib import Path
 
 import pytest
 
 # Downloads in tests never launch the real forward decider (5_正向决策器\产犊\推理算法\<版本>).
 os.environ["COWMATA_DECIDER"] = "0"
+# Tests never discover the real site tree (E:\1_下载器 …) on the build computer; tree tests set their own.
+os.environ["COWMATA_SITE_TREE"] = "0"
+
+
+@pytest.fixture(autouse=True)
+def isolated_site_tree(monkeypatch, tmp_path_factory):
+    """A tree started through default locations of the real program folder (the source checkout) goes to a
+    per-test temporary folder, never beside the checkout, where later tests would find it."""
+    from cowmata_tailring.edge_download import paths, pro_settings
+
+    real, program = paths.new_tree_root, Path(paths.APP_ROOT).resolve()
+    sandbox = tmp_path_factory.mktemp("site-tree")
+
+    def new_tree_root(app_root=paths.APP_ROOT):
+        return sandbox if Path(app_root).resolve() == program else real(app_root)
+
+    monkeypatch.setattr(paths, "new_tree_root", new_tree_root)
+    monkeypatch.setattr(pro_settings, "new_tree_root", new_tree_root)
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -77,6 +77,16 @@ def recovery_path(path):
     return path.with_suffix(path.suffix + ".bak")
 
 
+def remove_json(path: Path) -> None:
+    """Delete a document with its recovery copies, so reading it can never bring back an older version."""
+    path = Path(path)
+    for item in {path, recovery_path(path), path.with_suffix(path.suffix + ".bak")}:
+        try:
+            item.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def atomic_json(path: Path, value: Any, *, backup=True, indent=2) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(value, ensure_ascii=False, indent=indent, allow_nan=False)

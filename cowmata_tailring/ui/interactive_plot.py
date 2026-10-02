@@ -4,8 +4,17 @@ from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPen
+from PySide6.QtWidgets import QApplication
 
 from cowmata_tailring.ui.cached_widgets import CachedSignalPlotWidget
+
+
+def drag_threshold() -> int:
+    """Pixels a held label must travel before it moves: a click only selects it (bug 4.4.4-2).
+
+    One pixel can be seconds of a long record, so the jitter of a click used to shift a confirmed
+    label and send it back to 需复核."""
+    return max(QApplication.startDragDistance(), 6)
 
 
 class InteractiveSignalPlotWidget(CachedSignalPlotWidget):
@@ -246,6 +255,11 @@ class InteractiveSignalPlotWidget(CachedSignalPlotWidget):
             super().mouseMoveEvent(event)
             return
         drag = self._event_drag
+        if not drag.get("moved"):
+            if abs(event.position().x() - drag["start_x"]) < drag_threshold():
+                event.accept()
+                return
+            drag["moved"] = True
         target = drag["event"]
         start_time = self._time_for_x(drag["start_x"])
         now = self._time_for_x(event.position().x())

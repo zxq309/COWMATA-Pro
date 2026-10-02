@@ -9,7 +9,10 @@ import time
 from .csv_store import CsvStore, record, find
 
 PRODUCTS=frozenset({'pro','ledger'})
-CAPABILITIES={'operator':['annotate','prepare','upload'], 'admin':['annotate','prepare','upload','behavior','health','dataset','accounts']}
+# 4.4.6: operators use every business function; only account administration ('accounts') stays with the administrator.
+CAPABILITIES={'operator':['annotate','prepare','upload','behavior','health','dataset'], 'admin':['annotate','prepare','upload','behavior','health','dataset','accounts']}
+# Servers set up before 4.4.6 list operators with annotate/prepare/upload only: these business capabilities follow 'annotate'.
+IMPLIED={'behavior':'annotate','health':'annotate','dataset':'annotate'}
 GRANT_TTL=600
 LEASE_TTL=900
 SESSION_TTL=8*3600

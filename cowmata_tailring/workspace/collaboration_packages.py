@@ -510,9 +510,9 @@ def _long_path_check(parent, name_length, relatives, margin=0, *, opening=False)
     if len(str(parent)) + 1 + name_length + 1 + longest + margin > _MAX_PATH:
         if opening:
             raise ValueError('数据包所在位置的路径太深，标注时保存的文件会超过 Windows 260 个字符的限制：'
-                             '请在“放到”里选择更短的位置（例如 D:\\标注），软件会把整个文件夹移过去')
+                             '请在“放到”里选择更短的位置（例如 E:\\2_标注器\\标注），软件会把整个文件夹移过去')
         raise ValueError('目标位置的路径太深：数据包里最长的文件路径会超过 Windows 260 个字符的限制，'
-                         '请选择更短的位置（例如 F:\\派包）')
+                         '请选择更短的位置（例如 E:\\2_标注器\\派包）')
 
 
 def _rename_into_place(source, target):
@@ -730,7 +730,7 @@ def check_destination(root, destination):
         raise ValueError('请选择数据包的目标位置')
     target = Path(str(destination).strip())
     if not target.is_absolute():
-        raise ValueError('请选择完整的目标位置（含盘符），例如 F:\\派包')
+        raise ValueError('请选择完整的目标位置（含盘符），例如 E:\\2_标注器\\派包')
     target = target.resolve()
     farm = Path(root).resolve()
     home = collaboration_home(farm).resolve()

@@ -11,6 +11,20 @@ from cowmata_tailring.annotation.core import Event, Project, UndoStack, new_proj
 from .clocks import ClockMap
 
 
+def stored_human_work(work):
+    """Whether a saved record document holds something a person did (labels, drafts, a manual alignment,
+    a confirmed cow number or data category, 完成本份); opening or browsing a record is not (bug 4.4.4-3)."""
+    project = work.get("project") or {}
+    identity = project.get("device_identity") or {}
+    clock = work.get("clock") or {}
+    automatic_cow = identity.get("cow_id_origin") == "folder" and project.get("cow_id") == identity.get("folder_cow_id")
+    return bool(project.get("events") or work.get("drafts") or (work.get("progress") or {}).get("status") == "done"
+                or clock.get("anchors") and clock.get("basis", "manual") == "manual"
+                or str(project.get("cow_id") or "").strip() and not automatic_cow
+                or identity.get("status") == "manual_override"
+                or (project.get("collection_context") or {}).get("assigned_by") == "manual_record_review")
+
+
 @dataclass
 class SessionWork:
     asset_id: str
@@ -21,6 +35,7 @@ class SessionWork:
     progress: dict = field(default_factory=dict)
     undo: UndoStack = field(default_factory=lambda: UndoStack(limit=100), repr=False)
     history_video: dict = field(default_factory=dict)
+    SAME_MOMENT_MS = 40.0  # one video frame: a new alignment moving a label less than this keeps it confirmed
 
     def set_category(self, code, *, context=None):
         from .data_category import category_fields
@@ -205,9 +220,19 @@ class SessionWork:
                 if draft.get('confirmation')!='confirmed':
                     draft['confirmation']='needs_review'
                 draft['video_evidence']=[]
-        self.clock = updated
+        previous, self.clock = self.clock, updated
         for event in self.project.events:
-            if event.extras.get("confirmation") == "confirmed":
+            if event.extras.get("confirmation") != "confirmed":
+                continue
+            # A label whose video moment the new alignment leaves where it was (within one frame)
+            # keeps its confirmation; only labels that really moved need another look (bug 4.4.4-2:
+            # re-aligning used to send every earlier label back to 需复核).
+            ends = [event.t0] + ([event.t1] if event.t1 is not None else [])
+            if previous.anchors and updated.anchors and all(abs(updated.map(t) - previous.map(t)) <= self.SAME_MOMENT_MS for t in ends):
+                event.extras["mapping_revision"] = updated.revision
+                event.extras["reference_start"] = updated.map(event.t0)
+                event.extras["reference_end"] = updated.map(event.t1) if event.t1 is not None else None
+            else:
                 event.extras["confirmation"] = "needs_review"
 
     def assert_state_interval(self, label_index, start, end, *, exclude_draft=None, exclude_event=None):

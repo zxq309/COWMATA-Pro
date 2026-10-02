@@ -21,10 +21,10 @@ class PlaybackMixin:
             self._show_error("原生播放器不可用，请检查 VLC 安装。")
             return
         if path is None or isinstance(path, bool):
-            start = self.settings.value(
-                "last_video_dir",
-                "G:\\" if Path("G:\\").exists() else str(Path.cwd()),
-            )
+            from cowmata_tailring.edge_download.paths import start_folder
+
+            # The last folder used, else the directory tree's farm (never a fixed drive).
+            start = self.settings.value("last_video_dir", str(start_folder()))
             path, _ = QFileDialog.getOpenFileName(
                 self,
                 "打开视频或录像块",

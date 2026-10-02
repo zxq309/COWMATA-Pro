@@ -1,22 +1,36 @@
-"""Independent Pro download preferences; reuse tested downloader settings on first use."""
+"""Independent Pro download preferences; reuse tested downloader settings on first use.
+
+4.4.6: data and 台账 live in the site tree (``<目录树>\\1_下载器\\<牧场>`` and its ``台账``) and are saved
+relative to it (``目录树/1_下载器/<牧场>``): a tree moved to another drive or computer is followed with no
+setting change, and nothing is written outside the tree — a saved tree location whose tree is not plugged in
+stops downloading instead of writing somewhere else. Defaults of earlier versions (the data folder beside
+the app, Documents, the pre-4.4.1 F: folders) switch to the tree; files still in those folders are moved
+into the tree at the start of the next download round (``adopt``).
+"""
 
 import json
 import os
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath
 
 from .core import DownloadError
-from .paths import (APP_ROOT, LEGACY_DATA_ROOTS, LEGACY_LEDGER_ROOTS, RELATIVE_DATA_ROOT, RELATIVE_LEDGER_ROOT,
-                    documents_root, is_legacy, relative_location, resolve_location, site_farm, site_ledger)
-from .site_records import SERVER_DIRECTORY
+from .paths import (APP_ROOT, LEDGER_FOLDER, LEGACY_DATA_ROOTS, LEGACY_LEDGER_ROOTS, RELATIVE_DATA_ROOT,
+                    RELATIVE_LEDGER_ROOT, TREE_MISSING, TREE_PREFIX, default_data_root, documents_root, in_tree,
+                    is_legacy, new_tree_root, relative_location, resolve_location, tree_root)
 from .settings import SettingsStore, validated
-from .site_records import settings_defaults, validate_connection
+from .site_records import SERVER_DIRECTORY, settings_defaults, validate_connection
+
+LOCATIONS = ("data_root", "ledger_directory")
 
 
 class ProSettings(SettingsStore):
     def __init__(self, directory=None, *, app_root=None):
         self.app_root = Path(app_root).resolve() if app_root else APP_ROOT
-        self.default_data_root = resolve_location(RELATIVE_DATA_ROOT, self.app_root)
-        self.default_ledger_root = resolve_location(RELATIVE_LEDGER_ROOT, self.app_root)
+        self.default_data_root = default_data_root(self.app_root)
+        self.default_ledger_root = self.default_data_root / LEDGER_FOLDER
+        # Saved 目录树/… locations whose tree is not plugged in: {key: (stand-in path, saved text)}.
+        self._unresolved = {}
+        # (earlier default folder, tree folder) pairs still holding files; moved by the next download round.
+        self.adopt = []
         local = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
         directory = Path(directory) if directory else local / "COWMATA/EdgeDownloadPro"
         self._local_root = local
@@ -32,7 +46,7 @@ class ProSettings(SettingsStore):
                 except (OSError, ValueError, KeyError, TypeError):
                     self.notice = "独立下载器配置未能读取，请检查当前保存目录和连接设置。"
         self.value = {
-            **settings_defaults(),
+            **settings_defaults(self.app_root),
             "ledger_directory": str(self.default_ledger_root),
             "raw_connection": "authorized_task",
             "raw_user": "administrator",
@@ -64,68 +78,106 @@ class ProSettings(SettingsStore):
             self.value["download_mode"] = "manual"
         self.value.setdefault("scheduled_time", "")
         self.value.setdefault("end_time", "")
+        # Forward deciders started with 下载 on this computer (4.4.6): one route per computer is typical.
+        if not isinstance(self.value.get("forward_tracks"), list):
+            self.value["forward_tracks"] = ["常规经典算法"]
+
+    @property
+    def tree_missing(self):
+        """A saved 目录树/… location could not be found: downloading is refused until the tree is back."""
+        return bool(self._unresolved)
+
+    def _earlier_defaults(self):
+        """Default folders of earlier versions, per setting: beside the app (4.1.2–4.4.5) and in Documents."""
+        return {
+            "data_root": {resolve_location(RELATIVE_DATA_ROOT, self.app_root),
+                          documents_root() / "COWMATA Pro/下载数据"},
+            "ledger_directory": {resolve_location(RELATIVE_LEDGER_ROOT, self.app_root), self.directory / "现场台账",
+                                 documents_root() / "COWMATA Pro/现场台账"},
+        }
 
     def _repair_legacy_paths(self):
-        """Move pre-4.4.1 fixed locations to the site layout; preserve custom/removable paths."""
+        """Switch earlier default and pre-4.4.1 locations to the site tree; keep folders the operator chose."""
+        if self._unresolved:
+            return
         old = dict(self.value)
-        data = Path(self.value["data_root"])
-        records = Path(self.value["ledger_directory"])
-        farm, ledger = site_farm(self.app_root), site_ledger(self.app_root)
-        if is_legacy(data, LEGACY_DATA_ROOTS) and not data.is_dir():
-            self.value["data_root"] = str(farm) if farm is not None else str(self._previous_data_root())
-        if is_legacy(records, LEGACY_LEDGER_ROOTS) and not records.is_dir():
-            self.value["ledger_directory"] = str(ledger) if ledger is not None and ledger.is_dir() else str(self.default_ledger_root)
+        earlier = self._earlier_defaults()
+        legacy = {"data_root": LEGACY_DATA_ROOTS, "ledger_directory": LEGACY_LEDGER_ROOTS}
+        target = {"data_root": self.default_data_root, "ledger_directory": self.default_ledger_root}
+        for key in LOCATIONS:
+            path = Path(self.value[key])
+            if (is_legacy(path, legacy[key]) and not path.is_dir()) or path in earlier[key]:
+                self.value[key] = str(target[key])
         if is_legacy(self.value.get("ledger_server_directory", ""), LEGACY_LEDGER_ROOTS):
             self.value["ledger_server_directory"] = SERVER_DIRECTORY
-        # Replace generated defaults only when they contain no existing files.
-        # Existing datasets/caches retain their location and exact bytes.
-        generated = {
-            "data_root": {documents_root() / "COWMATA Pro/下载数据"},
-            "ledger_directory": {self.directory / "现场台账", documents_root() / "COWMATA Pro/现场台账"},
-        }
-        for key, candidates in generated.items():
-            path = Path(self.value[key])
-            if path in candidates and not path.exists():
-                site = farm if key == "data_root" else ledger
-                if site is not None and site.is_dir():
-                    self.value[key] = str(site)
-                else:
-                    self.value[key] = str(self.default_data_root if key == "data_root" else self.default_ledger_root)
+        # Files an earlier version saved in its default folders move into the tree with the next round.
+        tree = tree_root(self.app_root)
+        for key in LOCATIONS:
+            current = Path(self.value[key])
+            if tree is None or not current.is_relative_to(tree):
+                continue
+            for folder in sorted(earlier[key]):
+                try:
+                    holds_files = folder.is_dir() and folder != current and any(folder.iterdir())
+                except OSError:
+                    holds_files = False
+                if holds_files:
+                    self.adopt.append((folder, current))
         if old != self.value:
-            self.notice = "已自动定位数据目录。更新台账后即可下载，原文件保留。"
+            self.notice = (f"下载数据与台账已改到目录树：{self.value['data_root']}"
+                           + ("；原保存位置的文件在下一轮下载开始时移入目录树" if self.adopt else ""))
             if self.path.is_file():
                 self._before_path_repair = self.path.read_bytes()
 
-    def _previous_data_root(self):
-        """Reuse an existing standalone-downloader root when the old F: drive is gone."""
-        path = self._local_root / "COWMATA/AutoDownloader/automatic-download.json"
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-            candidate = Path(value.get("data_root", ""))
-            if candidate.is_absolute() and candidate != Path(candidate.anchor) and candidate.is_dir():
-                return candidate
-        except (OSError, ValueError, TypeError):
-            pass
-        return self.default_data_root
+    def check_tree(self):
+        """Before every download or 台账 round: a saved 目录树/… location must be found — never write elsewhere."""
+        if not self._unresolved:
+            return
+        if tree_root(self.app_root) is None:
+            raise DownloadError(TREE_MISSING)
+        for key, (stand_in, saved) in list(self._unresolved.items()):
+            if str(self.value.get(key)) == stand_in:
+                self.value[key] = str(resolve_location(saved, self.app_root))
+            del self._unresolved[key]
 
     def decode(self, value):
         if not isinstance(value, dict):
             return value
         value = dict(value)
-        for key in ("data_root", "ledger_directory"):
-            if key in value:
-                value[key] = str(resolve_location(value[key], self.app_root))
+        for key in LOCATIONS:
+            if key not in value:
+                continue
+            saved = value[key]
+            try:
+                value[key] = str(resolve_location(saved, self.app_root))
+            except DownloadError:
+                if not (in_tree(saved) and tree_root(self.app_root) is None):
+                    raise
+                # The tree is not plugged in: keep the saved location and refuse to download (check_tree).
+                rest = PurePosixPath(saved.replace("\\", "/")[len(TREE_PREFIX):]).parts
+                stand_in = str(new_tree_root(self.app_root).joinpath(*rest))
+                self._unresolved[key] = (stand_in, saved)
+                value[key] = stand_in
         return value
 
     def encode(self, value):
         value = dict(value)
-        for key in ("data_root", "ledger_directory"):
-            if key in value:
+        for key in LOCATIONS:
+            if key not in value:
+                continue
+            missing = self._unresolved.get(key)
+            if missing and str(value[key]) == missing[0]:
+                value[key] = missing[1]
+            else:
                 value[key] = relative_location(value[key], self.app_root)
         return value
 
     def display_path(self, value):
-        return relative_location(value, self.app_root)
+        """Folder shown in the settings: the real folder; a saved tree location while its tree is missing."""
+        for stand_in, saved in self._unresolved.values():
+            if str(value) == stand_in:
+                return saved
+        return str(resolve_location(str(value), self.app_root))
 
     def resolve_path(self, value):
         return resolve_location(value, self.app_root)
@@ -139,7 +191,7 @@ class ProSettings(SettingsStore):
         # Login credentials and sessions must never reach preferences on disk.
         if any(k in changes for k in ("session_token", "password", "ledger_password")):
             raise DownloadError("登录凭据不能保存到下载设置")
-        for key in ("data_root", "ledger_directory"):
+        for key in LOCATIONS:
             p = Path(value[key])
             if not p.is_absolute() or p == Path(p.anchor):
                 raise DownloadError("请选择独立的数据与台账文件夹")

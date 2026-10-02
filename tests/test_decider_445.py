@@ -39,7 +39,7 @@ def test_trainer_or_reverse_decider_alone_starts_nothing(tmp_path, monkeypatch):
 
     assert decider.algorithm_home(app_root="Q:\\COWMATA") is None
     monkeypatch.setenv("COWMATA_DECIDER", "1")
-    monkeypatch.setattr(decider, "_process", None)
+    monkeypatch.setattr(decider, "_processes", {})
     assert decider.start(messages.append, app_root="Q:\\COWMATA") is False
     assert messages and "5_正向决策器" in messages[0]
 

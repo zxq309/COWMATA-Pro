@@ -310,7 +310,7 @@ class SessionController:
                 if '数据集构建' in title:cap='dataset'
                 if cap:
                     action.setEnabled(session.allows(cap))
-                    if not session.allows(cap):action.setToolTip('此功能仅管理员可用')
+                    if not session.allows(cap):action.setToolTip('当前账号无权使用此功能，或登录已过期')
                 if action.menu():visit(action.menu(),cap)
         visit(self.window.menuBar())
     def tick(self):

@@ -33,6 +33,9 @@ def data_root() -> Path:
 # 4.4.1 layout: <drive>\3_训练器\产犊\模型\<version>\行为识别 (训练器 owns datasets, models and results).
 MODEL_LIBRARY = ("3_训练器", "产犊", "模型")
 BEHAVIOR_FOLDER = "行为识别"
+# 4.4.5: <tree>\3_训练器\产犊\<version>\模型\行为识别; 4.4.6: the same inside each algorithm route
+# (<tree>\常规经典算法\3_训练器\… and <tree>\AI大模型算法\3_训练器\…).
+ROUTES = ("常规经典算法", "AI大模型算法")
 
 
 def library_under(base: Path) -> Path:
@@ -53,11 +56,31 @@ def has_suites(home: Path) -> bool:
         return False
 
 
+def _version_homes(base: Path):
+    """(version, 行为识别 folder) pairs under one root, for every trainer layout (4.4.6, 4.4.5, 4.4.1)."""
+    trainers = [base.joinpath(route, "3_训练器", "产犊") for route in ROUTES] + [base / "3_训练器" / "产犊"]
+    for trainer in trainers:
+        try:
+            folders = [p for p in trainer.iterdir() if p.is_dir()]
+        except OSError:
+            continue
+        for folder in folders:
+            if folder.name == MODEL_LIBRARY[-1]:
+                try:
+                    yield from ((v.name, v / BEHAVIOR_FOLDER) for v in folder.iterdir() if v.is_dir())
+                except OSError:
+                    continue
+            else:
+                yield folder.name, folder / MODEL_LIBRARY[-1] / BEHAVIOR_FOLDER
+
+
 def discover_model_homes() -> list[Path]:
     """Behaviour-model folders of the versioned model library, newest version first.
 
-    4.4.1 layout: ``<drive>\\3_训练器\\产犊\\模型\\<version>\\行为识别\\versions\\<suite>\\suite.json``.
-    Roots searched: the application's parent folders (e.g. …\\2_标注器\\…) and every local drive root.
+    Layouts: ``<tree>\\<路线>\\3_训练器\\产犊\\<version>\\模型\\行为识别`` (4.4.6),
+    ``<tree>\\3_训练器\\产犊\\<version>\\模型\\行为识别`` (4.4.5) and
+    ``<drive>\\3_训练器\\产犊\\模型\\<version>\\行为识别`` (4.4.1), each with ``versions\\<suite>\\suite.json``.
+    Roots searched: the site tree, the application's parent folders and every local drive root.
     """
     import time
 
@@ -68,29 +91,24 @@ def discover_model_homes() -> list[Path]:
     cached = _DISCOVERY.get(key)
     if cached and time.monotonic() - cached[0] < 60:
         return list(cached[1])
-    if explicit:
-        roots = [Path(explicit).expanduser()]
-    else:
-        roots = [library_under(base) for base in APP_ROOT.parents]
-        if os.name == "nt":
-            import ctypes
-            import string
-
-            mask = ctypes.windll.kernel32.GetLogicalDrives()
-            # Local fixed / removable drives only (DRIVE_REMOVABLE=2, DRIVE_FIXED=3): network drives may hang.
-            for i, letter in enumerate(string.ascii_uppercase):
-                if mask >> i & 1 and ctypes.windll.kernel32.GetDriveTypeW(f"{letter}:\\") in (2, 3):
-                    roots.append(library_under(Path(f"{letter}:\\")))
     found, seen = [], set()
-    for library in roots:
+    if explicit:
+        library = Path(explicit).expanduser()
         try:
-            if not library.is_dir():
-                continue
-            versions = sorted((p for p in library.iterdir() if p.is_dir()), key=lambda p: _version_key(p.name), reverse=True)
+            candidates = [(p.name, p / BEHAVIOR_FOLDER) for p in library.iterdir() if p.is_dir()]
         except OSError:
-            continue
-        for folder in versions:
-            home = (folder / BEHAVIOR_FOLDER).resolve()
+            candidates = []
+        groups = [candidates]
+    else:
+        from cowmata_tailring.edge_download.paths import _drives, tree_root
+
+        bases = [b for b in (tree_root(), *APP_ROOT.parents, *_drives()) if b is not None]
+        groups = []
+        for base in dict.fromkeys(bases):
+            groups.append(list(_version_homes(base)))
+    for candidates in groups:
+        for _, home in sorted(candidates, key=lambda pair: _version_key(pair[0]), reverse=True):
+            home = home.resolve()
             if home not in seen and has_suites(home):
                 seen.add(home)
                 found.append(home)

@@ -329,10 +329,54 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
         w = w * np.where((hrs > horizon) & (hrs <= horizon + 24), float(hard_negative_weight), 1.0)
     gold_cows = set(groups[gold])
     split = split_folds(groups, gold_cows, folds)
+    # 4.4.6: time-resolved salience → one composite input per horizon (cross-fitted by cow, no fold sees its labels).
+    from . import salience as sal
+    sal_horizons = sorted({int(h) for h in horizons} | {int(horizon)})
+    composite, sal_stats, sal_weights = sal.cross_fit(x, hrs, columns, split, sal_horizons)
+    base_columns = list(columns)
+    sal_columns = [sal.column_name(h) for h in sal_horizons]
+    for i, row in enumerate(labelled):
+        for k, name in enumerate(sal_columns):
+            row[name] = float(composite[i, k]) if np.isfinite(composite[i, k]) else None
+    progress("salience: " + " ".join(f"{h}h→" + ",".join(list(sal_weights[str(h)])[:3]) for h in sal_horizons))
     primaries = _primaries()
     for key, info in summary.get("features", {}).items():
         cols = info.get("columns") or []
         primaries[key] = info["primary"] if info.get("primary") in cols else (primaries.get(key) if primaries.get(key) in cols else (cols or [None])[0])
+    probe = "xgboost" if "xgboost" in algorithms else algorithms[0]
+    weak_probe = [r for r, g in zip(labelled, gold) if not g]
+    gold_probe = [r for r, g in zip(labelled, gold) if g]
+
+    def _probe(x_variant, columns_variant):
+        """Selection protocol (ledger cows only) for one input set; gold cows are reported, never used to choose."""
+        from sklearn.metrics import roc_auc_score
+        oof_v = np.full(len(y), np.nan)
+        for number, (tr, te) in enumerate(split, 1):
+            oof_v[te] = predict_model(fit_model(probe, x_variant[tr], y[tr], columns_variant, groups=groups[tr], primaries=primaries,
+                                                seed=438 + number, sample_weight=w[tr]), x_variant[te])
+        cal_v = cross_calibrate(oof_v, y, split)
+        rule_v, _ = pick_rule(weak_probe, cal_v[~gold], budget=fa_budget, max_alert=max_alert, window_h=window_h, rule=rule)
+        sm_v = smooth_by_cow(labelled, cal_v, rule_v["ewma_span"])
+        sel_v = event_eval(weak_probe, sm_v[~gold], rule_v["threshold"], persistence=rule_v["persistence"], window_h=window_h, rule=rule)
+        held_v = event_eval(gold_probe, sm_v[gold], rule_v["threshold"], persistence=rule_v["persistence"], window_h=window_h, rule=rule)
+        ok = np.isfinite(cal_v)
+        return dict(auc=round(float(roc_auc_score(y[ok], cal_v[ok])), 4) if len(set(y[ok])) == 2 else None,
+                    ledger=[sel_v["detected"], sel_v["evaluable"]], ledger_fa_per_cow_day=sel_v["fa_per_cow_day"],
+                    gold=[held_v["detected"], held_v["evaluable"]], gold_fa_per_cow_day=held_v["fa_per_cow_day"],
+                    lead_median_h=held_v["lead_median_h"], score=(sel_v["detection"], -(sel_v["fa_per_cow_day"] or 0)))
+
+    x_with = np.hstack([x, composite])
+    with_salience = _probe(x_with, base_columns + sal_columns)
+    without_salience = _probe(x, base_columns)
+    use_salience = with_salience.pop("score") > without_salience.pop("score")
+    if use_salience:
+        columns, x = base_columns + sal_columns, x_with
+    column_keys = column_key_map(columns, summary.get("features"))
+    salience_ablation = dict(horizon_hours=int(horizon), algorithm=probe, used_as_input=bool(use_salience),
+                             rule="按台账牛的预警检出（误报预算内）与误报选择；金标准牛只报告、不参与选择",
+                             with_salience=with_salience, without_salience=without_salience)
+    progress(f"salience probe ({probe}): with {with_salience} | without {without_salience} → "
+             + ("显著性分数作为模型输入" if use_salience else "不加入显著性分数（只用于解释与报告）"))
     progress(f"rows={len(y)} gold_rows={int(gold.sum())} gold_cows={len(gold_cows)} weak_cows={len(set(groups[~gold]))} "
              f"columns={len(columns)} positives={int(y.sum())}")
     gold_rows = [r for r, g in zip(labelled, gold) if g]
@@ -389,6 +433,8 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
                   hard_negative_weight=hard_negative_weight)
     # 4.3.9 learning curve: same protocol with a random subset of the weak-label (ledger) cows in every
     # training fold. If detection still rises at 100 %, more cows would help (not converged).
+    from sklearn.metrics import roc_auc_score
+
     learning = []
     rng = np.random.default_rng(439)
     weak_cows = sorted(set(groups[~gold]))
@@ -405,7 +451,6 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
         sm_f = smooth_by_cow(labelled, cal_f, rule_f["ewma_span"])
         lf = event_eval(weak_rows, sm_f[~gold], rule_f["threshold"], persistence=rule_f["persistence"], window_h=window_h, rule=rule)
         gf = event_eval(gold_rows, sm_f[gold], rule_f["threshold"], persistence=rule_f["persistence"], window_h=window_h, rule=rule)
-        from sklearn.metrics import roc_auc_score
         okf = np.isfinite(cal_f)
         learning.append(dict(fraction=frac, training_cows=len(keep), ledger_detection=lf["detection"],
                              gold_detection=gf["detection"], auc=float(roc_auc_score(y[okf], cal_f[okf]))))
@@ -425,6 +470,7 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
     version = version or f"calving-438-{best}-{datetime.now():%Y%m%d-%H%M%S}"
     files, calibrators, thresholds, horizon_metrics, horizon_events = {}, {}, {}, {}, {}
     oof_by_horizon = {}  # 4.4.5: out-of-fold calibrated risk of every horizon, for the reverse decider's replay
+    salience_share = {}  # 4.4.6: share of each horizon model's importance carried by the salience composites
     on_any = np.zeros(len(labelled), bool)  # what the farmer sees: any horizon's alert is on
     for h in sorted(set(horizons) | {horizon}):
         yh = (hrs <= h).astype(int)
@@ -472,6 +518,9 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
         if len(set(yh[gold])) == 2:
             horizon_metrics[str(h)] = window_metrics(yh[gold], cal_h[gold], thr_h, groups[gold], bootstrap=0)
         name = f"model-{h}h.json"
+        if final.get("importance"):
+            share = sum(v for c, v in zip(columns, final["importance"]) if c in sal_columns)
+            salience_share[str(h)] = round(float(share) / (float(np.sum(final["importance"])) or 1.0), 4)
         (output / name).write_text(json.dumps(final), encoding="utf-8")
         files[str(h)] = dict(file=name, sha256=hashlib.sha256((output / name).read_bytes()).hexdigest())
         progress(f"deploy horizon {h}h thr={thr_h:.2f}")
@@ -504,6 +553,10 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
     tte = dict(file="model-time-to-calving.json",
                sha256=hashlib.sha256((output / "model-time-to-calving.json").read_bytes()).hexdigest())
     best_row = board[0]
+    from .predict import FEATURE_TITLES
+    salience_block = sal.manifest(sal_stats, sal_weights, column_keys, FEATURE_TITLES)
+    salience_block.update(ablation=salience_ablation, model_share=salience_share, used_as_input=bool(use_salience),
+                          horizon_choice={str(h): ("salience" if use_salience else "base") for h in sal_horizons})
     manifest = dict(
         schema=MANIFEST_SCHEMA, model_schema=MODEL_SCHEMA, protocol=PROTOCOL, version=version,
         created_at=datetime.now().isoformat(timespec="seconds"), algorithm=best, algorithm_title=ALGORITHMS[best]["title"],
@@ -517,6 +570,7 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
         selection=best_row["selection_ledger"], gold_ci95=result["gold_ci95"], weak_weight=weak_weight,
         gold_strict=best_row["gold_heldout_strict"], gold_strict_ci95=result["gold_strict_ci95"],
         selection_strict=best_row["selection_ledger_strict"], horizon_events=horizon_events, coverage=coverage,
+        salience=salience_block,
         alert_rule=dict(window_h=window_h, persistence_hours=persistence, ewma_span_hours=rule_doc["ewma_span"],
                         fa_budget_per_cow_day=fa_budget, max_alert_time_fraction=max_alert, threshold=thr, metric=rule,
                         rule=(f"12 小时产犊风险取本牛 {rule_doc['ewma_span']} 小时指数平滑（0=不平滑），连续 {persistence} 个小时 ≥ {thr:.2f} 即预警；"

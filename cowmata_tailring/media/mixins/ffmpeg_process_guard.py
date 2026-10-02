@@ -38,8 +38,8 @@ class FFmpegProcessGuardMixin:
                 pass
         if not getattr(self, "_release_closing", False):
             self._show_error(
-                "FFmpeg 无法启动。请检查 "
-                r"F:\Applications\ffmpeg-8.1.2-full_build"
+                "FFmpeg 无法启动。请重新解压完整软件包（vendor\\ffmpeg），"
+                "或把 ffmpeg 放进任一磁盘的 Applications 文件夹"
             )
 
     def closeEvent(self, event) -> None:  # noqa: N802
