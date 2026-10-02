@@ -4989,6 +4989,47 @@ ZH_TO_EN.update({
 # Folder names of the algorithm routes and the saved-location prefix are identifiers, never translated.
 NON_TRANSLATABLE = NON_TRANSLATABLE | {'常规经典算法', 'AI大模型算法', '目录树/'}
 
+# 4.4.7: workflow guide (F1 / 业务流程), retry of failed download batches, risk-overview guidance.
+ZH_TO_EN.update({
+    '业务流程': 'Workflow',
+    '台账、下载、标注、推理设置与风险报告的操作入口（F1）': 'Ledger, download, annotation, inference settings and risk reports in one place (F1)',
+    '快速开始 · 业务流程': 'Quick start · Workflow',
+    '从台账到风险报告': 'From ledger to risk report',
+    '按需要进入下一步；这个窗口可以保持打开，随时返回标注工作。':
+        'Go to the step you need; this window can stay open while you return to annotation at any time.',
+    '1  核对台账': '1  Check the ledger',
+    '导入或维护牛号、设备与佩戴时间，核对后同步，让下载能找到对应数据。':
+        'Import or maintain cow numbers, devices and wearing times, check them and sync, so the download finds the matching data.',
+    '打开台账': 'Open ledger',
+    '2  下载与归类': '2  Download and organise',
+    '按台账下载端侧数据；需要整理录像与记录时，使用「下载 → 数据归类」。':
+        'Download the edge data by the ledger; to organise recordings and records, use "Download → Organise data".',
+    '打开下载': 'Open download',
+    '3  打开工程并标注': '3  Open a project and annotate',
+    '选择记录，核对视频与九轴时间，标记动作起止；保存并完成本份。':
+        'Choose a record, check the video and nine-axis times, mark the start and end of each behaviour; save and complete it.',
+    '4  核对推理设置': '4  Check the inference settings',
+    '在下载设置中选择本机需要的推理路线；对应模型与数据就绪后，随下载运行推理。':
+        'Choose the inference routes this computer needs in the download settings; once their models and data are ready, '
+        'inference runs with the download.',
+    '推理设置': 'Inference settings',
+    '5  查看风险报告': '5  View the risk report',
+    '打开已生成的风险等级总览，再从总览查看各牛的监测记录与报告。':
+        'Open the generated risk-level overview, then each cow\'s monitoring records and report from there.',
+    '风险总览': 'Risk overview',
+    '手工标注用于复核与保存标注成果；实时推理依据台账与下载数据运行。':
+        'Manual annotation reviews and keeps the labels; real-time inference runs on the ledger and the downloaded data.',
+    '遇到下载失败：': 'When a download fails: ',
+    '重试失败批次': 'Retry failed batches',
+    '查看运行记录': 'View run log',
+    '新手图文教程': 'Illustrated beginner tutorial',
+    '继续下载同一台账中的失败批次；已下载的数据由原下载流程核对并跳过':
+        'Continue the failed batches of the same ledger; data already downloaded is checked and skipped by the download itself',
+    '风险总览尚未生成。请在下载设置中核对推理路线，完成下载后查看运行记录。':
+        'The risk overview has not been generated yet. Check the inference routes in the download settings, and the run log after '
+        'the download.',
+})
+
 
 if __name__ == "__main__":
     _coverage()

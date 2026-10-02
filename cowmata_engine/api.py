@@ -139,9 +139,12 @@ ACTIONS = {
 
 
 def handle(request, *, progress=lambda *_: None, cancelled=lambda: False, raise_errors=False):
-    action = (request or {}).get("action")
-    envelope = dict(api=ENGINE_API, action=action)
+    envelope = dict(api=ENGINE_API, action=None)
     try:
+        if not isinstance(request, dict):
+            raise ValueError("请求必须是 JSON 对象")
+        action = request.get("action")
+        envelope["action"] = action
         if action not in ACTIONS:
             raise ValueError(f"未知操作：{action}；可用操作：{', '.join(sorted(ACTIONS))}")
         result = ACTIONS[action](request, progress=progress, cancelled=cancelled)
