@@ -31,6 +31,7 @@ import numpy as np
 from .dataset import column_key_map, model_columns, read_table
 from .models import (ALGORITHMS, MODEL_SCHEMA, conformal_offset, fit_model, fit_time_to_event, importance,
                      predict_model, predict_time_to_event)
+from .runtime import hkey, hval
 from .train import (HOUR_MS, MANIFEST_SCHEMA, _isotonic, _primaries, alert_episodes, choose_threshold,
                     cross_calibrate, dynamic_levels, group_importance, scope_mask, threshold_policy, window_metrics)
 
@@ -294,17 +295,47 @@ def add_due(rows, due_dates):
     return rows
 
 
+def _risk_levels_block(levels, horizons):
+    """Manifest declaration of the three-level output (None for legacy multi-horizon models)."""
+    if not levels:
+        return None
+    bounds = {k: hval(v) for k, v in levels.items()}
+    missing = [k for k in ("高风险", "中风险") if k not in bounds or bounds[k] not in set(horizons)]
+    if missing or not bounds["高风险"] < bounds["中风险"]:
+        raise ValueError(f"三级风险边界须是训练的提前量且 高风险 < 中风险：{levels} / {list(horizons)}")
+    return dict(schema="cowmata-risk-levels-1", order=["低风险", "中风险", "高风险"], codes={"低风险": 1, "中风险": 2, "高风险": 3},
+                boundaries_h=bounds, probabilities=["low", "medium", "high"],
+                model="有序三分类：两个累积边界模型（产前 {高}/{中} 小时内开始产犊）+ 单调约束，P(低)+P(中)+P(高)=1".format(
+                    高=hkey(bounds["高风险"]), 中=hkey(bounds["中风险"])),
+                reference="开始产犊 = 胎儿任一部位首次可见（视频金标准）；台账产犊开始时间为近似弱标签",
+                medium_note="中风险边界为暂行时间窗口径，待独立临产征象标注验证")
+
+
 def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), weak_weight=0.3,
                   algorithms=ALGOS_438, folds=5, persistence=2, window_h=12, fa_budget=0.30, max_alert=0.15,
-                  rule="active", features=None, version=None, due_dates=None, hard_negative_weight=3.0, progress=print):
+                  rule="active", features=None, version=None, due_dates=None, hard_negative_weight=3.0, progress=print,
+                  exclude=(), salience_input=None, learning_curve=True, cows=None, risk_levels=None):
+    """``exclude``: column base names / name prefixes left out of the model (4.4.8: 金姆脉诊 harmonics do not train).
+    ``salience_input``: True / False skips the salience probe and uses that decision (cow-held-out fold models reuse the
+    production model's choice). ``learning_curve`` False skips the learning curve. ``cows``: train on these cow ids only.
+    ``risk_levels`` (4.4.8): {"高风险": 2.5, "中风险": 12} — the horizons are then the boundaries of an ordinal
+    three-level model (two cumulative models with a monotone constraint) and the manifest declares the classes."""
     started = time.monotonic()
+    horizon = hval(horizon)
+    horizons = tuple(sorted({hval(h) for h in horizons}))
     dataset = Path(dataset)
     folder = dataset if dataset.is_dir() else dataset.parent
     summary = json.loads((folder / "decision-dataset.json").read_text(encoding="utf-8"))
     rows = read_table(dataset)
+    if cows is not None:
+        keep_cows = {str(c) for c in cows}
+        rows = [r for r in rows if str(r.get("cow_id")) in keep_cows]
     if due_dates:
         add_due(rows, due_dates)
     all_columns = model_columns(rows)
+    if exclude:
+        prefixes = tuple(str(e) for e in exclude)
+        all_columns = [c for c in all_columns if not c.split("@")[0].startswith(prefixes)]
     keys = column_key_map(all_columns, summary.get("features"))
     if features:
         all_columns = [c for c in all_columns if keys.get(c) in set(features) or keys.get(c) == "context"]
@@ -331,14 +362,14 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
     split = split_folds(groups, gold_cows, folds)
     # 4.4.6: time-resolved salience → one composite input per horizon (cross-fitted by cow, no fold sees its labels).
     from . import salience as sal
-    sal_horizons = sorted({int(h) for h in horizons} | {int(horizon)})
+    sal_horizons = sorted(set(horizons) | {horizon})
     composite, sal_stats, sal_weights = sal.cross_fit(x, hrs, columns, split, sal_horizons)
     base_columns = list(columns)
     sal_columns = [sal.column_name(h) for h in sal_horizons]
     for i, row in enumerate(labelled):
         for k, name in enumerate(sal_columns):
             row[name] = float(composite[i, k]) if np.isfinite(composite[i, k]) else None
-    progress("salience: " + " ".join(f"{h}h→" + ",".join(list(sal_weights[str(h)])[:3]) for h in sal_horizons))
+    progress("salience: " + " ".join(f"{hkey(h)}h→" + ",".join(list(sal_weights[hkey(h)])[:3]) for h in sal_horizons))
     primaries = _primaries()
     for key, info in summary.get("features", {}).items():
         cols = info.get("columns") or []
@@ -366,9 +397,13 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
                     lead_median_h=held_v["lead_median_h"], score=(sel_v["detection"], -(sel_v["fa_per_cow_day"] or 0)))
 
     x_with = np.hstack([x, composite])
-    with_salience = _probe(x_with, base_columns + sal_columns)
-    without_salience = _probe(x, base_columns)
-    use_salience = with_salience.pop("score") > without_salience.pop("score")
+    if salience_input is None:
+        with_salience = _probe(x_with, base_columns + sal_columns)
+        without_salience = _probe(x, base_columns)
+        use_salience = with_salience.pop("score") > without_salience.pop("score")
+    else:
+        with_salience = without_salience = None
+        use_salience = bool(salience_input)
     if use_salience:
         columns, x = base_columns + sal_columns, x_with
     column_keys = column_key_map(columns, summary.get("features"))
@@ -438,7 +473,7 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
     learning = []
     rng = np.random.default_rng(439)
     weak_cows = sorted(set(groups[~gold]))
-    for frac in (0.25, 0.5, 0.75, 1.0) if weak_cows else ():  # no ledger-only cows (weak_label_weight 0): no curve
+    for frac in (0.25, 0.5, 0.75, 1.0) if weak_cows and learning_curve else ():  # no ledger-only cows (weak_label_weight 0): no curve
         size = min(len(weak_cows), max(3, int(round(len(weak_cows) * frac))))
         keep = set(rng.choice(weak_cows, size, replace=False)) | gold_cows
         oof_f = np.full(len(y), np.nan)
@@ -484,7 +519,7 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
             cal_h = cross_calibrate(oof_h, yh, split)
             thr_h = choose_threshold(cal_h[np.isfinite(cal_h)], yh[np.isfinite(cal_h)])
         ok = np.isfinite(oof_h)
-        oof_by_horizon[int(h)] = cal_h
+        oof_by_horizon[h] = cal_h
         # 4.3.9: every horizon gets its own ledger-selected alert rule and a gold held-out detection rate
         # ("产前 h 小时内检出"), so 1/2/3/6/12 h accuracies are reported side by side.
         if h == horizon:
@@ -498,8 +533,8 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
         l_act, l_str = ev_h(weak_rows, sm_h[~gold], rule=rule), ev_h(weak_rows, sm_h[~gold], rule="start")
         on_h = alert_state(labelled, sm_h, rule_h["threshold"], rule_h["persistence"])
         on_any |= on_h
-        horizon_events[str(h)] = dict(
-            horizon_hours=int(h), rule=rule_h,
+        horizon_events[hkey(h)] = dict(
+            horizon_hours=h, rule=rule_h,
             gold=dict(detected=g_act["detected"], evaluable=g_act["evaluable"], detection=g_act["detection"],
                       ci95=wilson(g_act["detected"], g_act["evaluable"]), fa_per_cow_day=g_act["fa_per_cow_day"],
                       alert_time_fraction=g_act["alert_time_fraction"], lead_median_h=g_act["lead_median_h"],
@@ -513,17 +548,17 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
                  f"fa/d={l_act['fa_per_cow_day'] or 0:.2f} | gold {g_act['detected']}/{g_act['evaluable']}={g_act['detection']:.3f} "
                  f"strict {g_str['detected']}/{g_str['evaluable']}")
         final = fit_model(best, x, yh, columns, groups=groups, primaries=primaries, sample_weight=w)
-        calibrators[str(h)] = _isotonic(oof_h[ok], yh[ok])
-        thresholds[str(h)] = float(thr_h)
+        calibrators[hkey(h)] = _isotonic(oof_h[ok], yh[ok])
+        thresholds[hkey(h)] = float(thr_h)
         if len(set(yh[gold])) == 2:
-            horizon_metrics[str(h)] = window_metrics(yh[gold], cal_h[gold], thr_h, groups[gold], bootstrap=0)
-        name = f"model-{h}h.json"
+            horizon_metrics[hkey(h)] = window_metrics(yh[gold], cal_h[gold], thr_h, groups[gold], bootstrap=0)
+        name = f"model-{hkey(h)}h.json"
         if final.get("importance"):
             share = sum(v for c, v in zip(columns, final["importance"]) if c in sal_columns)
-            salience_share[str(h)] = round(float(share) / (float(np.sum(final["importance"])) or 1.0), 4)
+            salience_share[hkey(h)] = round(float(share) / (float(np.sum(final["importance"])) or 1.0), 4)
         (output / name).write_text(json.dumps(final), encoding="utf-8")
-        files[str(h)] = dict(file=name, sha256=hashlib.sha256((output / name).read_bytes()).hexdigest())
-        progress(f"deploy horizon {h}h thr={thr_h:.2f}")
+        files[hkey(h)] = dict(file=name, sha256=hashlib.sha256((output / name).read_bytes()).hexdigest())
+        progress(f"deploy horizon {hkey(h)}h thr={thr_h:.2f}")
     # 4.3.9 "越临近越准": share of calvings in alert (any horizon) at k hours before onset, and the
     # false-alert burden of that combined alert. Rises towards calving by construction of a good model.
     cov = lambda rs, on: {int(p["hours_before"]): p for p in recall_curve(rs, on)}
@@ -532,7 +567,7 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
     burden_g = event_eval(gold_rows, on_any[gold].astype(float), 0.5, persistence=1, window_h=horizon, rule=rule)
     coverage = dict(
         by_hour_gold=[any_g[k] for k in sorted(any_g)], by_hour_ledger=[any_l[k] for k in sorted(any_l)],
-        at_horizons={str(h): dict(gold=any_g.get(h), ledger=any_l.get(h)) for h in sorted(set(horizons) | {horizon})},
+        at_horizons={hkey(h): dict(gold=any_g.get(h), ledger=any_l.get(h)) for h in sorted(set(horizons) | {horizon})},
         fa_per_cow_day_ledger=burden_l["fa_per_cow_day"], fa_per_cow_day_gold=burden_g["fa_per_cow_day"],
         alert_time_fraction_ledger=burden_l["alert_time_fraction"], detected_ledger=[burden_l["detected"], burden_l["evaluable"]],
         detected_gold=[burden_g["detected"], burden_g["evaluable"]])
@@ -556,11 +591,13 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
     from .predict import FEATURE_TITLES
     salience_block = sal.manifest(sal_stats, sal_weights, column_keys, FEATURE_TITLES)
     salience_block.update(ablation=salience_ablation, model_share=salience_share, used_as_input=bool(use_salience),
-                          horizon_choice={str(h): ("salience" if use_salience else "base") for h in sal_horizons})
+                          horizon_choice={hkey(h): ("salience" if use_salience else "base") for h in sal_horizons})
     manifest = dict(
         schema=MANIFEST_SCHEMA, model_schema=MODEL_SCHEMA, protocol=PROTOCOL, version=version,
         created_at=datetime.now().isoformat(timespec="seconds"), algorithm=best, algorithm_title=ALGORITHMS[best]["title"],
-        horizon_hours=horizon, horizons=[int(h) for h in files], columns=columns, column_keys=column_keys,
+        horizon_hours=horizon, horizons=[hval(h) for h in files], columns=columns, column_keys=column_keys,
+        excluded_columns=list(exclude or ()),
+        risk_levels=_risk_levels_block(risk_levels, horizons),
         primaries=primaries, files=files, time_to_calving=tte, calibrators=calibrators, thresholds=thresholds,
         persistence_hours=persistence, threshold_policy=threshold_policy(thresholds, horizon),
         levels=dynamic_levels(thresholds, horizon),
@@ -582,7 +619,7 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
     (output / "decision.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
     groups_importance = group_importance(docs_by[best], split, x, y, columns, column_keys)
     report = dict(result, manifest=manifest, group_importance=groups_importance, time_to_calving_eval=tte_eval,
-                  column_importance=sorted(importance(json.loads((output / files[str(horizon)]["file"]).read_text(encoding="utf-8"))).items(),
+                  column_importance=sorted(importance(json.loads((output / files[hkey(horizon)]["file"]).read_text(encoding="utf-8"))).items(),
                                            key=lambda kv: -kv[1])[:30],
                   elapsed_seconds=round(time.monotonic() - started, 1))
     (output / "training-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -590,7 +627,7 @@ def train_calving(dataset, output, *, horizon=12, horizons=(1, 2, 3, 6, 12), wea
         wr = csv.writer(s)
         order = sorted(oof_by_horizon)
         wr.writerow(["cow_id", "decision_epoch_ms", "hours_to_calving", "label_quality", "y", "risk_oof_calibrated",
-                     "calving_epoch_ms", "label_source", *[f"risk_{h}h" for h in order]])
+                     "calving_epoch_ms", "label_source", *[f"risk_{hkey(h)}h" for h in order]])
         for i, (r, a, b) in enumerate(zip(labelled, y, cal)):
             wr.writerow([r["cow_id"], int(r["decision_epoch_ms"]), r["hours_to_calving"], r.get("label_quality"), a, f"{b:.6f}",
                          "" if r.get("calving_epoch_ms") is None else int(r["calving_epoch_ms"]), r.get("label_source") or "",

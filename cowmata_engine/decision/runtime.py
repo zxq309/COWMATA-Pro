@@ -7,6 +7,17 @@ HOUR_MS = 3_600_000
 MANIFEST_SCHEMA = "cowmata-decision-4.3.8"
 
 
+def hval(h):
+    """A prediction boundary in hours as a number: 12 / 2.5 (accepts 12, "12", "12h", 2.5, "2.5h")."""
+    value = float(str(h).strip().rstrip("hH"))
+    return int(value) if value.is_integer() else value
+
+
+def hkey(h):
+    """Canonical text key of a boundary: "12", "2.5" (manifest keys, column names ``risk_<key>h``)."""
+    return f"{hval(h):g}"
+
+
 def alert_episodes(times, prob, threshold, *, persistence=2, gap_ms=HOUR_MS):
     """Return sustained alert episodes using a model-provided threshold."""
     threshold = float(threshold)

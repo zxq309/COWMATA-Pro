@@ -61,6 +61,6 @@
 - 已安装的 4.3.x / 4.4.0–4.4.5：帮助 → 关于 → 检查更新，原地升级，工程、标注与设置保留。
 - 便携包也可直接解压到 `<目录树>\2_标注器\<版本>\` 运行：软件就用它所在的这棵目录树。
 
-[新手图文教程](docs/operator-guide-443.html) · [提示信息说明](docs/prompt-guide-443.html) · [更新记录](CHANGELOG.md) · [4.4.7 发布说明](docs/release-447.md) · [4.4.6 发布说明](docs/release-446.md)
+[新手图文教程](docs/operator-guide-443.html) · [提示信息说明](docs/prompt-guide-443.html) · [更新记录](CHANGELOG.md) · [4.4.8 发布说明](docs/release-448.md) · [4.4.7 发布说明](docs/release-447.md)
 
 开源许可：MIT（见 LICENSE / NOTICE）。界面图标：Fluent System Icons（MIT）。所属公司：杨凌园上园智能科技有限公司 · https://www.cowmata.com/

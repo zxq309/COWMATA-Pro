@@ -27,6 +27,8 @@ import numpy as np
 
 from cowmata_engine.features import FEATURE_MODULES, WINDOW_MS, load_feature, validate_rows
 
+from .runtime import hkey, hval
+
 HOUR_MS = 3_600_000
 SLOTS_PER_HOUR = HOUR_MS // WINDOW_MS  # 6
 DERIVATIONS = {
@@ -155,7 +157,8 @@ def extract_feature_tables(root, *, keys=None, workers=None, window_ms=WINDOW_MS
              for group, paths in groups.items() if group[3] == spec.modality]
     tables = {key: [] for key in ready}
     if tasks:
-        count = max(1, min(workers or os.cpu_count() or 2, 16, len(tasks)))
+        # one task = one feature plug-in over one cow stream; Windows process pools allow at most 61 workers
+        count = max(1, min(workers or os.cpu_count() or 2, 61 if os.name == "nt" else 128, len(tasks)))
         done = 0
         if count == 1:
             for key, identity, paths in tasks:
@@ -370,18 +373,24 @@ def derive_series(values, coverage, *, adaptive=True):
 
 
 def _grid(rows, columns, origin, count):
-    """Coverage-weighted mean per 10 min slot; returns (values[col], coverage, delay_slots)."""
+    """Coverage-weighted mean per 10 min slot; returns (values[col], coverage, availability[slot]).
+
+    ``availability[slot]`` is the time by which every window up to that slot had arrived (running maximum of the
+    windows' ``available_epoch_ms``; empty slots never block), so a decision at ``t`` may use exactly the slots
+    with ``availability <= t`` — strictly causal per window instead of one worst-case delay for the whole wearing."""
     values = {c: np.zeros(count) for c in columns}
     weights = {c: np.zeros(count) for c in columns}
     coverage = np.zeros(count)
-    delay = 0
+    arrived = np.zeros(count)
+    present = np.zeros(count, bool)
     for row in rows:
         slot = int((row["start_epoch_ms"] - origin) // WINDOW_MS)
         if not 0 <= slot < count:
             continue
         w = max(float(row.get("coverage") or 0.0), 1e-3)
         coverage[slot] = max(coverage[slot], float(row.get("coverage") or 0.0))
-        delay = max(delay, int(row.get("available_epoch_ms", row["end_epoch_ms"])) - int(row["end_epoch_ms"]))
+        arrived[slot] = max(arrived[slot], float(row.get("available_epoch_ms", row["end_epoch_ms"])))
+        present[slot] = True
         for c in columns:
             x = row.get(c)
             if x is not None and math.isfinite(x):
@@ -391,7 +400,26 @@ def _grid(rows, columns, origin, count):
     for c in columns:
         with np.errstate(invalid="ignore", divide="ignore"):
             out[c] = np.where(weights[c] > 0, values[c] / np.maximum(weights[c], 1e-12), np.nan)
-    return out, coverage, int(math.ceil(delay / WINDOW_MS))
+    return out, coverage, np.maximum.accumulate(arrived), np.flatnonzero(present)
+
+
+MAX_STALE_MS = 3 * HOUR_MS  # a stream whose newest arrived window is older than this counts as missing
+
+
+def _usable_slot(t, origin, count, arrived, present):
+    """Newest slot with a real window that had fully arrived by ``t`` (and every earlier window too); None when the
+    stream has nothing usable or its newest usable window is older than ``MAX_STALE_MS``."""
+    last = min(int((t - origin) // WINDOW_MS) - 1, count - 1)
+    if last < 0:
+        return None
+    s = int(np.searchsorted(arrived[:last + 1], t, side="right")) - 1
+    if s < 0:
+        return None
+    j = int(np.searchsorted(present, s, side="right")) - 1
+    if j < 0:
+        return None
+    s = int(present[j])
+    return None if t - (origin + (s + 1) * WINDOW_MS) > MAX_STALE_MS else s
 
 
 def feature_columns(manifests):
@@ -425,10 +453,10 @@ def build_decision_rows(tables, manifests, *, step_ms=HOUR_MS, min_history_h=0.0
         last = max(r["end_epoch_ms"] for rows in streams.values() for r in rows)
         origin = (first // WINDOW_MS) * WINDOW_MS
         count = int((last - origin) // WINDOW_MS) + 1
-        derived, cover, delays = {}, {}, {}
+        derived, cover, avail = {}, {}, {}
         for key, rows in streams.items():
-            base, coverage, delay = _grid(rows, [c for c, _ in names[key]], origin, count)
-            delays[key] = delay
+            base, coverage, arrived, present = _grid(rows, [c for c, _ in names[key]], origin, count)
+            avail[key] = (arrived, present)
             cover[key] = None
             allowed = set(manifests[key].get("derivations") or DERIVATIONS)
             for column, name in names[key]:
@@ -446,17 +474,18 @@ def build_decision_rows(tables, manifests, *, step_ms=HOUR_MS, min_history_h=0.0
             row["hour_sin"], row["hour_cos"] = math.sin(2 * math.pi * local / 24), math.cos(2 * math.pi * local / 24)
             row.update(dict.fromkeys(all_derived))
             present = 0
+            slots = {key: _usable_slot(t, origin, count, *avail[key]) for key in streams}
             for key in FEATURE_MODULES:
                 if key not in streams:
                     row[f"coverage.{key}@6h"] = 0.0
                     continue
-                slot = int((t - origin) // WINDOW_MS) - 1 - delays[key]
-                value = float(cover[key][slot]) if 0 <= slot < count else 0.0
+                slot = slots[key]
+                value = float(cover[key][slot]) if slot is not None else 0.0
                 row[f"coverage.{key}@6h"] = value
                 present += value > 0
             for name, (key, series) in derived.items():
-                slot = int((t - origin) // WINDOW_MS) - 1 - delays[key]
-                x = series[slot] if 0 <= slot < count else np.nan
+                slot = slots[key]
+                x = series[slot] if slot is not None else np.nan
                 row[name] = float(x) if np.isfinite(x) else None
             row["features_present"] = present
             if present and row["history_hours"] >= min_history_h:
@@ -475,7 +504,7 @@ def attach_truth(rows, calvings, *, horizons=HORIZONS, lookback_days=10):
                        calving_end_epoch_ms=None, calving_interval_ms=None, label_source=None,
                        label_quality=None, training_eligible=None)
             for h in horizons:
-                row[f"y_{h}h"] = None
+                row[f"y_{hkey(h)}h"] = None
         else:
             hours = found["hours_to_calving"]
             row.update(hours_to_calving=round(hours, 4), calving_epoch_ms=int(found["calving_epoch_ms"]),
@@ -485,7 +514,7 @@ def attach_truth(rows, calvings, *, horizons=HORIZONS, lookback_days=10):
                        label_source=found["label_source"], label_quality=found["label_quality"],
                        training_eligible=bool(found["training_eligible"]))
             for h in horizons:
-                row[f"y_{h}h"] = int(hours <= h)
+                row[f"y_{hkey(h)}h"] = int(hours <= hval(h))
     return rows
 
 
@@ -561,7 +590,7 @@ def univariate(rows, horizon=12):
     """AUC of each input column alone for the chosen horizon (direction-free, 0.5–1)."""
     from sklearn.metrics import roc_auc_score
 
-    target = f"y_{horizon}h"
+    target = f"y_{hkey(horizon)}h"
     labelled = [r for r in rows if r.get(target) is not None]
     y = np.asarray([r[target] for r in labelled])
     result = []
@@ -581,9 +610,9 @@ def univariate(rows, horizon=12):
 
 
 def build_dataset(*, output, features_root=None, raw_root=None, ledger=None, calving_dataset=None,
-                  keys=None, workers=None, horizons=HORIZONS, lookback_days=10,
+                  keys=None, workers=None, horizons=HORIZONS, lookback_days=10, step_ms=HOUR_MS,
                   progress=lambda *_: None, cancelled=lambda: False):
-    """Build (or load) feature windows, derive decision rows and attach calving truth."""
+    """Build (or load) feature windows, derive decision rows (every ``step_ms``) and attach calving truth."""
     started = time.monotonic()
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -598,7 +627,7 @@ def build_dataset(*, output, features_root=None, raw_root=None, ledger=None, cal
         raise ValueError("请提供特征数据集目录或原始数据目录")
     if not tables:
         raise ValueError("没有可用的特征窗口；请先让各特征模块生成 windows.csv")
-    decision = build_decision_rows(tables, manifests, progress=progress, cancelled=cancelled)
+    decision = build_decision_rows(tables, manifests, step_ms=int(step_ms), progress=progress, cancelled=cancelled)
     from .labels import load_calvings
 
     calvings = load_calvings(ledger, calving_dataset, progress=progress) if (ledger or calving_dataset) else {}
@@ -609,7 +638,7 @@ def build_dataset(*, output, features_root=None, raw_root=None, ledger=None, cal
     header = ["cow_id", "devices", "decision_epoch_ms", "history_hours", "features_present",
               "hours_to_calving", "calving_epoch_ms", "calving_start_epoch_ms", "calving_end_epoch_ms",
               "calving_interval_ms", "label_source", "label_quality", "training_eligible",
-              *[f"y_{h}h" for h in horizons],
+              *[f"y_{hkey(h)}h" for h in horizons],
               *coverage_columns, *columns]
     with table_file.open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.DictWriter(stream, header, extrasaction="ignore")
@@ -623,15 +652,15 @@ def build_dataset(*, output, features_root=None, raw_root=None, ledger=None, cal
         cows=len({r["cow_id"] for r in decision}), calving_cows=len({r["cow_id"] for r in labelled}),
         calvings=sum(len(v) for v in calvings.values()),
         label_sources={s: sum(1 for c in calvings.values() for i in c if i["source"] == s) for s in ("video", "ledger")},
-        horizons=list(horizons), lookback_days=lookback_days, input_columns=columns,
+        horizons=[hval(h) for h in horizons], lookback_days=lookback_days, input_columns=columns,
         derivations=DERIVATIONS, features={k: dict(version=m.get("version"), columns=m["columns"], rows=m["rows"],
                                                    primary=m.get("primary"), derivations=m.get("derivations"))
                                            for k, m in manifests.items()},
         missing_features=[k for k in (keys or FEATURE_MODULES) if k not in manifests],
         feature_coverage={k: float(np.mean([r[f"coverage.{k}@6h"] > 0 for r in decision])) if decision else 0.0
                           for k in FEATURE_MODULES},
-        positives={f"{h}h": sum(1 for r in labelled if r.get(f"y_{h}h") == 1) for h in horizons},
-        profile=profile(decision), univariate=univariate(decision)[:60],
+        positives={f"{hkey(h)}h": sum(1 for r in labelled if r.get(f"y_{hkey(h)}h") == 1) for h in horizons},
+        profile=profile(decision), univariate=univariate(decision, horizon=max(hval(h) for h in horizons))[:60],
         catalog=catalog, issues=issues[:2000], issue_count=len(issues),
         calving_times={cow: items for cow, items in calvings.items()},
         elapsed_seconds=round(time.monotonic() - started, 2),

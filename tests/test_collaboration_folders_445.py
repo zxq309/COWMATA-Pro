@@ -186,6 +186,10 @@ def test_tampered_return_folder_is_refused_and_not_moved(farm, exchange, tmp_pat
     inside = returned / label.relative_to(task)
     if tamper == 'extra_file':
         (returned / 'readme.txt').write_text('x', encoding='utf-8')
+        report = receive_return(farm, returned, archive_to=collaboration_home(farm) / '已接收')
+        assert report['imported'] == 1 and report['ignored_extra'][0]['path'] == 'readme.txt'
+        assert not returned.exists() and (farm / label.relative_to(task)).exists()
+        return
     elif tamper == 'changed_label':
         inside.write_bytes(inside.read_bytes()[:-1] + b' ')  # same size, different bytes
     else:

@@ -14,7 +14,7 @@ from cowmata_engine.features import FEATURE_MODULES
 
 from .dataset import build_decision_rows, extract_feature_tables, load_feature_tables
 from .models_inference import predict_model, predict_time_to_event
-from .runtime import HOUR_MS, MANIFEST_SCHEMA, alert_episodes
+from .runtime import HOUR_MS, MANIFEST_SCHEMA, alert_episodes, hkey, hval
 
 RESULT_SCHEMA = "cowmata-decision-result-4.3.8"
 PPG_DISPLAY = tuple(f"{c}@6h" for c in ("ppg_rmssd_ms", "ppg_sd1sd2", "ppg_irregularity", "ppg_resp_rate_bpm",
@@ -27,12 +27,16 @@ SIGNAL_DISPLAY = {
     "hr_rise_bpm": "hr_rise_bpm@6h", "spo2_percent": "spo2_percent@6h", "perfusion_index": "perfusion_index_percent@6h",
     "gyro_entropy": "gyro_spectral_entropy@6h",
     "posture_changes": "posture_changes@6h", "straining_events": "straining_events@1h",
+    # 逍遥脉诊（PPG 脉搏波逐搏指标，参与训练）
+    "ppg_rmssd_ms": "ppg_rmssd_ms@6h", "ppg_sd1sd2": "ppg_sd1sd2@6h", "ppg_irregularity": "ppg_irregularity@6h",
+    "ppg_resp_rate_bpm": "ppg_resp_rate_bpm@6h", "ppg_reflection_index": "ppg_reflection_index@6h",
 }
 FEATURE_TITLES = {key: title for key, (_, title) in FEATURE_MODULES.items()}
 OUTPUT_FIELDS = {
     "cow_id": "牛耳标",
     "decision_epoch_ms": "预测时刻（使用此刻之前已收到的数据）",
-    "risk": "产犊前 1 h / 2 h / 3 h / 6 h / 12 h 内的校准概率（逐时刻原值）",
+    "risk": "各风险边界内开始产犊的校准概率（三级模型：高风险边界 2.5 h、中风险边界 12 h；旧模型为各提前量）",
+    "class_probabilities": "三级概率 P(低) / P(中) / P(高)，和为 1（有序三分类，两个边界概率单调换算）",
     "risk_primary": "主提前量（模型训练提前量）产犊概率，按预警规则逐牛平滑；与预警阈值、预警等级对应",
     "threshold": "主提前量预警阈值（按牛留出 Youden 指数最优）",
     "warning_level": "预警等级：正常 / 关注 / 高度关注 / 临产 / 数据不足",
@@ -62,8 +66,8 @@ def read_model(folder):
         file = folder / Path(item["file"]).name
         if hashlib.sha256(file.read_bytes()).hexdigest() != item["sha256"]:
             raise ValueError(f"决策模型文件校验失败：{file.name}")
-        docs[int(horizon)] = json.loads(file.read_text(encoding="utf-8"))
-        if docs[int(horizon)]["columns"] != manifest["columns"]:
+        docs[hval(horizon)] = json.loads(file.read_text(encoding="utf-8"))
+        if docs[hval(horizon)]["columns"] != manifest["columns"]:
             raise ValueError("决策模型输入列与清单不一致")
     tte = None
     if manifest.get("time_to_calving"):
@@ -135,6 +139,17 @@ def explain(manifest, doc, x, column_keys):
     return drivers
 
 
+def class_probabilities(risk, block):
+    """Three-level probabilities (低 / 中 / 高, sum 1) from the two cumulative boundary models of a three-level model:
+    P(高) = P(onset within the high boundary), P(中) = P(within the medium boundary) − P(高), P(低) = the rest.
+    ``risk`` maps boundary hours to calibrated, monotone (accumulated) probabilities."""
+    bounds = block.get("boundaries_h") or {}
+    q_high = float(risk.get(hval(bounds.get("高风险", 2.5)), 0.0))
+    q_mid = max(q_high, float(risk.get(hval(bounds.get("中风险", 12)), q_high)))
+    q_high, q_mid = min(max(q_high, 0.0), 1.0), min(max(q_mid, 0.0), 1.0)
+    return {"low": round(1.0 - q_mid, 4), "medium": round(q_mid - q_high, 4), "high": round(q_high, 4)}
+
+
 def _level(manifest, risk, row, low_data):
     if low_data:
         levels = {item["level"]: item["advice"] for item in manifest["levels"]}
@@ -145,8 +160,8 @@ def _level(manifest, risk, row, low_data):
     thr = manifest["thresholds"]
     policy = manifest.get("threshold_policy") or {}
     short = horizons[0]
-    base = float(thr[str(primary)])
-    critical = min(0.999, max(float(thr.get(str(short), base)),
+    base = float(thr[hkey(primary)])
+    critical = min(0.999, max(float(thr.get(hkey(short), base)),
                               base * float(policy.get("critical_factor", 1.25))))
     attention = max(0.001, base * float(policy.get("attention_factor", 0.60)))
     levels = {item["level"]: item["advice"] for item in manifest["levels"]}
@@ -155,7 +170,7 @@ def _level(manifest, risk, row, low_data):
     if risk.get(primary, 0) >= base:
         return "高度关注", levels["高度关注"]
     if risk.get(primary, 0) >= attention or (
-            horizons[-1] in risk and risk[horizons[-1]] >= float(thr.get(str(horizons[-1]), base))):
+            horizons[-1] in risk and risk[horizons[-1]] >= float(thr.get(hkey(horizons[-1]), base))):
         return "关注", levels["关注"]
     return "正常", levels["正常"]
 
@@ -181,16 +196,17 @@ def predict_rows(rows, model_folder):
     probs = {}
     for horizon, doc in docs.items():
         raw = predict_model(doc, x)
-        cal = manifest["calibrators"].get(str(horizon))
+        cal = manifest["calibrators"].get(hkey(horizon))
         probs[horizon] = np.interp(raw, cal["x"], cal["y"]) if cal else raw
     order = sorted(probs)
     # P(calving within 1 h) <= P(within 2 h) <= ... <= P(within 12 h).
     stacked = np.maximum.accumulate(np.column_stack([probs[h] for h in order]), axis=1)
     hours = predict_time_to_event(tte, x) if tte else None
-    drivers = explain(manifest, docs[manifest["horizon_hours"]], x, column_keys)
+    levels_block = manifest.get("risk_levels")
+    drivers = explain(manifest, docs[hval(manifest["horizon_hours"])], x, column_keys)
     # 4.3.8 alert rule: causal per-cow EWMA of the primary-horizon risk (identical to training evaluation).
     span = float((manifest.get("alert_rule") or {}).get("ewma_span_hours") or 0)
-    primary_j = order.index(manifest["horizon_hours"])
+    primary_j = order.index(hval(manifest["horizon_hours"]))
     alert_risk = stacked[:, primary_j].copy()
     if span:
         alpha = 2.0 / (span + 1.0)
@@ -213,17 +229,19 @@ def predict_rows(rows, model_folder):
         # The primary threshold was chosen on the per-cow smoothed risk (alert rule): levels, ``risk_primary``
         # (charts, CSV) and alert episodes use that, while ``risk`` stays raw for callers that apply each
         # horizon's own rule (calving algorithm, 4.4.5).
-        level, advice = _level(manifest, {**risk, manifest["horizon_hours"]: float(alert_risk[i])}, row, low)
+        level, advice = _level(manifest, {**risk, hval(manifest["horizon_hours"]): float(alert_risk[i])}, row, low)
         item = dict(
             cow_id=row["cow_id"], devices=row.get("devices"), decision_epoch_ms=int(row["decision_epoch_ms"]),
-            risk={f"{h}h": round(v, 4) for h, v in risk.items()},
+            risk={f"{hkey(h)}h": round(v, 4) for h, v in risk.items()},
             risk_primary=round(float(alert_risk[i]), 4), risk_alert=round(float(alert_risk[i]), 4),
-            threshold=float(manifest["thresholds"][str(manifest["horizon_hours"])]),
+            threshold=float(manifest["thresholds"][hkey(manifest["horizon_hours"])]),
             warning_level=level, advice=advice, drivers=drivers[i], feature_coverage=coverage,
             missing_features=missing, history_hours=row.get("history_hours"),
             history_status="参考历史不足 24 小时，基线类特征不可用" if (row.get("history_hours") or 0) < 24 else "参考历史充足",
             model_version=manifest["version"],
         )
+        if levels_block:
+            item["class_probabilities"] = class_probabilities(risk, levels_block)
         if hours is not None:
             item.update(hours_to_calving_p10=round(float(hours[i, 0]), 1), hours_to_calving_p50=round(float(hours[i, 1]), 1),
                         hours_to_calving_p90=round(float(hours[i, 2]), 1),
@@ -239,11 +257,11 @@ def predict_rows(rows, model_folder):
     by_cow = defaultdict(list)
     for item in out:
         by_cow[item["cow_id"]].append(item)
-    primary = manifest["horizon_hours"]
+    primary = hval(manifest["horizon_hours"])
     for cow, items in by_cow.items():
         items.sort(key=lambda r: r["decision_epoch_ms"])
         found = alert_episodes([r["decision_epoch_ms"] for r in items], np.asarray([r["risk_alert"] for r in items]),
-                               float(manifest["thresholds"][str(primary)]), persistence=manifest.get("persistence_hours", 2))
+                               float(manifest["thresholds"][hkey(primary)]), persistence=manifest.get("persistence_hours", 2))
         for e in found:
             inside = [r for r in items if e["first"] <= r["decision_epoch_ms"] <= e["end"]]
             eta = [r.get("predicted_calving_epoch_ms") for r in inside if r.get("predicted_calving_epoch_ms")]
@@ -304,7 +322,7 @@ def predict_folder(folder, model, output, *, workers=None, features_root=None, p
 def write_result_csv(path, rows):
     import csv
 
-    horizons = (1, 2, 3, 6, 12)
+    horizons = sorted({k[:-1] for r in rows for k in (r.get("risk") or {})}, key=hval)
     header = ["cow_id", "decision_epoch_ms"] + [f"risk_{h}h" for h in horizons] + ["risk_primary", "threshold",
               "warning_level", "hours_to_calving_p10", "hours_to_calving_p50", "hours_to_calving_p90",
               "drivers", "missing_features", "history_hours", "model_version"]

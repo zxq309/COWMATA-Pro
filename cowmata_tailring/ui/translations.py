@@ -80,7 +80,6 @@ ZH_TO_EN: dict[str, str] = {
     "正在准备本段流畅播放 · 无重编码 · 首次完成后复用": "Preparing smooth playback for this clip · No re-encoding · Reused after the first load",
     "s · 分数 ": "s · score ",
     "」？\n旧标签与已标区间不改变。": "”?\nExisting labels and intervals remain unchanged.",
-    "产犊": "Calving",
     "候选标注正在推理，请结束或取消后再运行本算法。": "Candidate inference is running. Finish or cancel it first.",
     "健康与繁殖 · ": "Health & reproduction · ",
     "健康与繁殖(&R)": "Health & reproduction(&R)",
@@ -3520,7 +3519,6 @@ ZH_TO_EN.update({
   "磁盘空间不足，旧版保持不变": "Insufficient disk space; the old version is unchanged",
   "端侧数据下载 · CSV 自动配置": "Device Data Download · Automatic CSV configuration",
   "等待所有窗口成功保存并关闭；未成功保存时不会更新。": "Waiting for all windows to save successfully and close. The update will not proceed if saving fails.",
-  "算法": "Algorithm",
   "精确产犊登记时间之前7天；无结局者排除": "The 7 days before the exact recorded calving time; cows without known outcomes are excluded",
   "精确率": "Precision",
   "结束（北京时间）": "End (Beijing time)",
@@ -4987,7 +4985,74 @@ ZH_TO_EN.update({
         'on any drive',
 })
 # Folder names of the algorithm routes and the saved-location prefix are identifiers, never translated.
-NON_TRANSLATABLE = NON_TRANSLATABLE | {'常规经典算法', 'AI大模型算法', '目录树/'}
+NON_TRANSLATABLE = NON_TRANSLATABLE | {'常规经典算法', 'AI大模型算法', '目录树/', '产犊', '算法', '推理算法', '盲测结果', '盲测报告.html', '前端对接', '监测总览.html', '盲测评估摘要.json', '盲测_逐头.csv'}
+
+# 4.4.8: collaboration receive, bundled models and forward decision window.
+ZH_TO_EN.update({
+    '正向决策…': 'Forward decision...',
+    '正向决策': 'Forward decision',
+    '算法路线': 'Algorithm route',
+    '脉诊来源': 'Pulse diagnosis source',
+    '正向决策一次': 'Run forward decision once',
+    '盲测（不使用产犊时间）': 'Blind test (without calving time)',
+    '盲测评估': 'Blind test evaluation',
+    '打开盲测报告': 'Open blind test report',
+    '打开监测总览': 'Open monitoring overview',
+    '打开结果文件夹': 'Open results folder',
+    '取消任务': 'Cancel job',
+    '暂无盲测评估摘要。': 'No blind test summary is available.',
+    '已有任务在运行，请先取消或等待完成。': 'A job is already running. Cancel it or wait for it to finish.',
+    '缺少算法包，无法运行。': 'The algorithm package is missing; cannot run.',
+    '启动失败：': 'Start failed: ',
+    '任务完成。': 'Job completed.',
+    '任务失败，退出码 ': 'Job failed, exit code ',
+    '已请求取消任务。': 'Cancellation was requested.',
+    '未找到盲测报告。': 'Blind test report not found.',
+    '未找到监测总览。': 'Monitoring overview not found.',
+    '未找到结果文件夹。': 'Results folder not found.',
+    '评估摘要读取失败：': 'Failed to read evaluation summary: ',
+    '逐头结果读取失败：': 'Failed to read per-cow results: ',
+    '软件自带行为识别模型；目录树有更新训练版本时自动优先使用。分数不是概率，空结果不是负样本。': 'Behavior models are bundled with the software. Newer trained versions in the site tree are used automatically. Scores are not probabilities; empty results are not negative samples.',
+    '默认使用软件自带模型；目录树中更新的训练器模型会自动优先。也可手动选择行为识别模型目录。': 'Bundled models are used by default. Newer trainer models in the site tree are preferred automatically. You can also choose a behavior model folder manually.',
+    '已忽略清单之外的文件 ': 'Ignored files outside the manifest ',
+    ' 个（未导入）': ' (not imported)',
+    '与清单内文件相同': 'Same as a manifest file',
+    '与清单内文件不同，请与标注人确认': 'Different from the manifest file; confirm with the annotator',
+    ' 个未显示': ' not shown',
+    '  ……另有 ': '  ... plus ',
+    ' 个，首段 ': ' items; first clip ',
+    ' 录像：': ' recordings: ',
+    ' 没有覆盖本包传感器时间段（': ' does not cover this package sensor time range (',
+    ' 至 ': ' to ',
+    'ZIP 缺少清单里的文件：': 'ZIP is missing a manifest file: ',
+    '压缩包含加密条目': 'The archive contains an encrypted entry',
+    '压缩包含目录链接或符号链接': 'The archive contains a directory link or symbolic link',
+    '压缩包含重复路径': 'The archive contains a duplicate path',
+    '已补入相邻日期可能跨零点覆盖的录像：': 'Added adjacent-day recordings that may cover midnight: ',
+    '正向决策器：目录树\\': 'Forward decider: directory tree\\',
+    '\\5_正向决策器\\产犊\\<版本>\\推理算法。': '\\5_forward-decider\\calving\\<version>\\inference package.',
+    '）的录像；请核对源数据或视角选择': '); check the source data or camera selection',
+    '，末段 ': ', last clip ',
+})
+NON_TRANSLATABLE = NON_TRANSLATABLE | {'^(.*) - 副本(?: \\([1-9][0-9]*\\))?$'}
+
+ZH_TO_EN.update({
+    '金姆脉诊': 'Jinmu pulse diagnosis',
+    '逍遥脉诊': 'Xiaoyao pulse diagnosis',
+    '未找到': 'Not found: ',
+    '正向决策器：': 'Forward decider: ',
+    '\n未找到同版本训练器算法；盲测评估不可用。': '\nNo trainer algorithm of the same version was found; blind test evaluation is unavailable.',
+    '\n训练器算法：': '\nTrainer algorithm: ',
+    '已达到': 'Reached',
+    '未达到': 'Not reached',
+    '版本 ': 'Version ',
+    '\n准确率 ': '\nAccuracy ',
+    '\u3000误报率 ': '  False alarm rate ',
+    '\u3000漏报率 ': '  Miss rate ',
+    '\n提前 ': '\nLead time ',
+    ' 小时目标 ': ' h target ',
+    '。': '.',
+})
 
 # 4.4.7: workflow guide (F1 / 业务流程), retry of failed download batches, risk-overview guidance.
 ZH_TO_EN.update({
