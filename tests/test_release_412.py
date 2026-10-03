@@ -33,7 +33,8 @@ def test_selected_date_package_preserves_exact_tree_and_bytes(tmp_path,monkeypat
     names=[p.relative_to(out).as_posix() for p in out.rglob('*') if p.is_file()]
     chosen={r:body for r,body in paths.items() if '/2026-08-17/' in r}
     for rel,body in chosen.items():assert (out/root.name/rel).read_bytes()==body
-    assert not any('/2026-08-18/' in n for n in names)
+    assert any('/2026-08-18/' in n for n in names if '/录像/' in n)  # adjacent-day early video covers the package edge
+    assert not any('/2026-08-18/' in n for n in names if '/录像/' not in n)
     assert all(n.endswith(('.json','.mp4')) for n in names)
 
 

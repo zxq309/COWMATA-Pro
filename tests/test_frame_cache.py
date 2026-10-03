@@ -3,6 +3,7 @@ import pytest
 from PIL import Image
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
+from types import SimpleNamespace
 
 from cowmata_tailring.workspace.frame_cache import FrameCache, recommended_budget
 from cowmata_tailring.workspace.playback import VideoBoard
@@ -47,6 +48,7 @@ def test_precise_cache_never_confuses_source_identity_or_request(app, tmp_path, 
 
     def extract(path, target, timeline, **options):
         assert options["image_codec"] == "bmp"
+        assert options["preroll"] == 3
         calls.append(target)
         return Image.new("RGB", (2, 2)), target
 
@@ -109,4 +111,18 @@ def test_repeat_main_selection_does_not_relayout_native_surfaces(app, monkeypatc
     board.set_main("B")
     board.set_main("B")
     assert calls == [True]
+    board.close()
+
+
+def test_incremental_index_starts_only_newly_available_view(app, monkeypatch):
+    board = VideoBoard()
+    board.timer.stop()
+    board.select(["A", "B"])
+    board.tiles["A"].interval = SimpleNamespace(asset_id="ready")
+    board.tiles["B"].interval = None
+    board.timeline = SimpleNamespace(locate=lambda *_args, **_kwargs: (SimpleNamespace(asset_id="new"), 0))
+    calls = []
+    monkeypatch.setattr(board, "_position", lambda camera, tile, force=False: calls.append((camera, force)))
+    board.refresh_available()
+    assert calls == [("B", True)]
     board.close()

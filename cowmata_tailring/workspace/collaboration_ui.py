@@ -470,6 +470,14 @@ class CollaborationDialog(QDialog):
                         lines.append('拒绝接收（数据包未移动）：' + report['error'])
                     else:
                         lines.append(f'已接收 {report["imported"]}，重复 {report["unchanged"]}，冲突 {len(report["conflicts"])}')
+                        ignored = report.get('ignored_extra') or []
+                        if ignored:
+                            lines.append('已忽略清单之外的文件 ' + str(len(ignored)) + ' 个（未导入）')
+                            for item in ignored[:20]:
+                                state = '与清单内文件相同' if item.get('identical') else '与清单内文件不同，请与标注人确认'
+                                lines.append('  ' + item.get('path', '') + '：' + state)
+                            if len(ignored) > 20:
+                                lines.append('  ……另有 ' + str(len(ignored) - 20) + ' 个未显示')
                         lines.extend(report['conflicts'])
                         if report.get('archive'):
                             lines.append('冲突报告：' + report['archive'])
@@ -706,3 +714,4 @@ def open_dispatch(window, root):
     if dialog.root.text().strip():
         QTimer.singleShot(0, dialog.scan_inventory)
     return dialog
+

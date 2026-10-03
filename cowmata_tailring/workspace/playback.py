@@ -834,6 +834,12 @@ class VideoBoard(QWidget):
         if tile.asset_id != interval.asset_id or force or not had_interval:
             self._request(tile, interval, target)
 
+    def refresh_available(self):
+        """Start only views that became available after incremental indexing."""
+        for camera, tile in sorted(self.tiles.items(), key=lambda item: item[0] != self.main_camera):
+            if tile.interval is None and self.timeline.locate(camera, self.reference_ms):
+                self._position(camera, tile, force=True)
+
     def coverage_message(self, camera):
         if self.timeline.locate(camera, self.reference_ms):
             return "当前时刻有录像覆盖；仍需核对画面中的牛与同步时间。"
@@ -1183,8 +1189,14 @@ class VideoBoard(QWidget):
                 return
             try:
                 from .probe import extract_frame
-                frame, actual = extract_frame(path, target, timeline, cancelled=lambda: self._closing or generation != self.generation,
-                                              image_codec="bmp")
+                frame, actual = extract_frame(
+                    path,
+                    target,
+                    timeline,
+                    preroll=3,
+                    cancelled=lambda: self._closing or generation != self.generation,
+                    image_codec="bmp",
+                )
                 data = frame.tobytes("raw", "RGB")
                 result = QImage(data, frame.width, frame.height, frame.width * 3, QImage.Format.Format_RGB888).copy()
                 if file_stamp(path) != stamp:

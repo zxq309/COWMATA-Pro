@@ -399,14 +399,25 @@ class MainWindow(ControllerWindow):
         retired = found.pop("数据集构建…", None)  # moved to the calving-prediction package in 4.3.8
         if retired is not None:
             retired.deleteLater()
+        self._menu_objects = []
 
         def menu(parent, title):
-            child = parent.addMenu(title)
+            # The PySide string overload returns an ownership-transferred
+            # wrapper: a later QAction.menu() call can invalidate a wrapper
+            # already held by tests or plug-ins. An explicit parented QMenu
+            # keeps one stable Python/C++ object for the window lifetime.
+            child = QMenu(title, parent)
+            parent.addMenu(child)
             child.setToolTipsVisible(True)
+            self._menu_objects.append(child)
             return child
 
         def take(target, original, title=None, shortcut=None):
             action = found.pop(original)
+            # bar.clear() retires the old menus with deleteLater(). Reparent
+            # reused actions before that event runs, otherwise Qt deletes the
+            # command from its new menu together with the old owner.
+            action.setParent(target)
             action.setText(title or original)
             action.setToolTip(original)
             action.setStatusTip(original)
@@ -483,6 +494,8 @@ class MainWindow(ControllerWindow):
         self._action(organize, "归类记录…", lambda: self._organization_command("export_report"))
         self._action(organize, "打开归类目录", lambda: self._organization_command("open_destination"))
         download.addSeparator()
+        from cowmata_tailring.edge_download.forward_decision import open_forward_decision
+        self._action(download, "正向决策…", lambda: open_forward_decision(self))
         self._action(download, "风险等级总览", self.open_risk_overview)
         self._action(download, "下载设置…", lambda: downloader.run(lambda d: d.open_configuration(), show=False))
         records = menu(download, "下载记录")

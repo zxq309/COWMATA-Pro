@@ -159,6 +159,18 @@ def test_move_project_and_labels_independently(source, tmp_path):
     assert not load_history(output, relocated).timeline.intervals
 
 
+def test_explicit_relink_root_precedes_stale_label_location(source, tmp_path):
+    root, motion, work, _rows = source
+    stale = tmp_path / "stale-package" / "产犊" / "标注工程" / "moved.标注.json"
+    save_label_file(stale, document(source, include_record=False))
+    loaded = load_history(stale, root)
+    assert loaded.root == root.resolve()
+    assert loaded.motion is not None
+    assert loaded.motion.source_path == motion.source_path
+    assert loaded.work.asset_id == work.asset_id
+    assert loaded.timeline.locate("A", 10100)[1] == 100
+
+
 def test_renamed_sources_found_by_indexed_hash(source, tmp_path):
     root, _, _, rows = source
     output = tmp_path / "loose.json"

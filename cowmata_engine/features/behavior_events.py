@@ -1,11 +1,12 @@
 """行为事件频次 (behavior events) decision feature, plug-in ``cowmata-decision-feature-1``.
 
-Bridges behavior recognition and calving decision (4.3.8): the event suite trained by
-``cowmata_engine.behavior.train`` (起立 STANDING_UP / 卧倒 LYING_DOWN / 努责 STRAINING_BOUT,
-tail-ring 9-axis, video-labelled) scans every Motion file; recognised events are counted per
+Bridges behavior recognition and calving decision (4.3.8, tail events 4.4.8): the event suite trained by
+``cowmata_engine.behavior.train`` (起立 STANDING_UP / 卧倒 LYING_DOWN / 努责 STRAINING_BOUT / 抬尾 TAIL_RAISED /
+甩尾 TAIL_WAGGING, tail-ring 9-axis, video-labelled) scans every Motion file; recognised events are counted per
 absolute 10-min window.  Pre-calving restlessness (more lying bouts and posture changes in the
-last 6-12 h, Jensen 2012; Miedema 2011; Borchers 2017) is then expressed by the engine's per-cow
-baselines (1 h / 6 h sums, 24 h delta, 72 h z-score).
+last 6-12 h, Jensen 2012; Miedema 2011; Borchers 2017) and tail raising in the last hours before calving
+(Miedema 2011; the principle of tail-movement calving sensors) are then expressed by the engine's per-cow
+baselines (1 h / 6 h sums, 24 h delta, 72 h z-score). Codes missing from the suite give empty columns.
 
 The suite folder (``suite.json`` + models) comes from ``$COWMATA_BEHAVIOR_SUITE`` or the active /
 newest suite under ``<model_home>/versions``.  Only events whose ``available_ms`` is inside the
@@ -22,26 +23,30 @@ import numpy as np
 from cowmata_engine.features.base import WINDOW_MS, FeatureSpec, empty_row, window_grid, window_start
 
 LOOKAHEAD_MS = 300_000  # second features use a +-5 min context; events are known <= 5 min after they end
-CODES = ("STANDING_UP", "LYING_DOWN", "STRAINING_BOUT")
+CODES = ("STANDING_UP", "LYING_DOWN", "STRAINING_BOUT", "TAIL_RAISED", "TAIL_WAGGING")
 
 SPEC = FeatureSpec(
     key="behavior_events",
     title="行为事件频次",
     modality="motion",
-    version="behavior-events-1",
+    version="behavior-events-2",
     columns=("posture_changes", "standing_up_events", "lying_down_events", "straining_events",
-             "straining_score_max", "behavior_observed_min"),
+             "straining_score_max", "tail_raised_events", "tail_raised_score_max", "tail_wagging_events",
+             "behavior_observed_min"),
     primary="posture_changes",
     unit="次/10 min",
     lookahead_ms=LOOKAHEAD_MS,
     derivations=("1h", "6h", "d24", "z72", "slope6h"),
-    expected_change="产前 6–12 h 起卧转换与卧倒次数增加（坐立不安），产前 1–3 h 努责事件成串出现。",
+    expected_change="产前 6–12 h 起卧转换与卧倒次数增加（坐立不安），产前数小时抬尾增多，产前 1–3 h 努责事件成串出现。",
     column_titles={
         "posture_changes": "起卧转换次数",
         "standing_up_events": "起立次数",
         "lying_down_events": "卧倒次数",
         "straining_events": "努责事件数",
         "straining_score_max": "最高努责置信度",
+        "tail_raised_events": "抬尾次数",
+        "tail_raised_score_max": "最高抬尾置信度",
+        "tail_wagging_events": "甩尾次数",
         "behavior_observed_min": "有效观测分钟",
     },
 )
@@ -67,7 +72,7 @@ def _suite(folder: str):
 
     suite = read_suite(Path(folder))
     codes = [m["code"] for m in suite["models"] if m["code"] in CODES]
-    if not codes:
+    if not {"STANDING_UP", "LYING_DOWN"} & set(codes):
         raise ValueError("行为识别模型不含 起立/卧倒/努责 事件")
     return suite, tuple(codes)
 
@@ -127,6 +132,10 @@ def extract_series(sources, *, window_ms=WINDOW_MS, suite_folder=None):
                        straining_events=float(count["STRAINING_BOUT"]) if "STRAINING_BOUT" in codes else None,
                        straining_score_max=max([s for k, s in slot["ev"] if k == "STRAINING_BOUT"], default=0.0)
                        if "STRAINING_BOUT" in codes else None,
+                       tail_raised_events=float(count["TAIL_RAISED"]) if "TAIL_RAISED" in codes else None,
+                       tail_raised_score_max=max([s for k, s in slot["ev"] if k == "TAIL_RAISED"], default=0.0)
+                       if "TAIL_RAISED" in codes else None,
+                       tail_wagging_events=float(count["TAIL_WAGGING"]) if "TAIL_WAGGING" in codes else None,
                        behavior_observed_min=slot["obs"] / 60.0)
         rows.append(row)
     return rows

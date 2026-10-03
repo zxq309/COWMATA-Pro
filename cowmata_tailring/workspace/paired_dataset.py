@@ -74,6 +74,9 @@ def local_source_root(label_path, document):
                 return root
     for p in label_path.parents:
         if p.name=='标注工程':
+            parts = Path(relative).parts
+            if parts and p.parent.name == parts[0]:
+                return p.parent.parent
             return p.parent
     return None
 

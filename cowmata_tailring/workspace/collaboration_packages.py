@@ -15,7 +15,7 @@ import tempfile
 import time
 import zipfile
 from contextlib import ExitStack, contextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 
@@ -324,10 +324,40 @@ def _skip_reason(exc):
     return str(exc)
 
 
-def _day_videos(root, days, views):
-    """Recordings the receiving side accepts (录像/<日期>/视角NN/<文件>); anything else is noted."""
-    found, missing, notes = [], [], []
-    for day in days:
+def _video_start(relative):
+    try:
+        day = relative.split('/')[1]
+        stem = Path(relative).stem
+        return datetime.strptime(day + ' ' + stem.split('_', 1)[1], '%Y-%m-%d %H-%M-%S')
+    except (IndexError, ValueError):
+        return None
+
+
+def _sensor_span(paths):
+    starts = []
+    for relative in paths:
+        try:
+            day = PurePosixPath(relative).parts[-3]
+            stem = PurePosixPath(relative).stem.split('.', 1)[0]
+            starts.append(datetime.strptime(day + ' ' + stem.split('_', 1)[1], '%Y-%m-%d %H-%M-%S'))
+        except (IndexError, ValueError):
+            continue
+    return (min(starts), max(starts) + timedelta(hours=1)) if starts else (None, None)
+
+
+def _days_with_adjacent(days):
+    base = {date.fromisoformat(d) for d in days}
+    return sorted(base | {d - timedelta(days=1) for d in base} | {d + timedelta(days=1) for d in base})
+
+
+def _day_videos(root, days, views, sensor_paths=()):
+    """Recordings accepted by the receiver, including adjacent-day clips that can overlap selected days."""
+    found, missing, notes, by_view = [], [], [], {}
+    selected = set(views or [])
+    day_set = {date.fromisoformat(d) for d in days}
+    lo, hi = _sensor_span(sensor_paths)
+    for day_obj in _days_with_adjacent(days):
+        day = day_obj.isoformat()
         count = 0
         for entry in _listing(os.path.join(root, RECORDINGS, day)):
             relative = RECORDINGS + '/' + day + '/' + entry.name
@@ -335,24 +365,49 @@ def _day_videos(root, days, views):
                 if os.path.splitext(entry.name)[1].lower() in VIDEO_SUFFIXES:
                     notes.append('录像不在“视角NN”目录内，未打包：' + relative)
                 continue
-            if views is not None and entry.name not in views:
+            if views is not None and entry.name not in selected:
                 continue
-            nested, outside = 0, 0
+            if not _VIEW.fullmatch(entry.name):
+                bad = sum(1 for item in _listing(entry.path) if os.path.splitext(item.name)[1].lower() in VIDEO_SUFFIXES)
+                if bad:
+                    notes.append('视角目录名不是“视角NN”，接收端无法识别，' + str(bad) + ' 个录像未打包：' + relative)
+                continue
+            nested = 0
             for item in _listing(entry.path):
+                child = relative + '/' + item.name
                 if _linked(item) or item.is_dir(follow_symlinks=False):
                     nested += 1
-                elif os.path.splitext(item.name)[1].lower() in VIDEO_SUFFIXES:
-                    if _VIEW.fullmatch(entry.name):
-                        found.append(relative + '/' + item.name)
-                        count += 1
-                    else:
-                        outside += 1
-            if outside:
-                notes.append('视角目录名不是“视角NN”，接收端无法识别，' + str(outside) + ' 个录像未打包：' + relative)
+                    continue
+                if os.path.splitext(item.name)[1].lower() not in VIDEO_SUFFIXES:
+                    continue
+                start = _video_start(child)
+                if start is None:
+                    continue
+                include = day_obj in day_set
+                if not include and day_obj == min(day_set) - timedelta(days=1):
+                    include = start.time() >= dt_time(22, 0)
+                if not include and day_obj == max(day_set) + timedelta(days=1):
+                    include = start.time() < dt_time(1, 0)
+                if include:
+                    found.append(child)
+                    count += 1
+                    by_view.setdefault(entry.name, []).append(start)
             if nested:
                 notes.append('视角目录内的子文件夹未打包：' + relative)
-        if not count:
+        if day_obj in day_set and not count:
             missing.append(day)
+    if by_view:
+        for view, starts in sorted(by_view.items()):
+            notes.append(f'{view} 录像：{len(starts)} 个，首段 {min(starts):%Y-%m-%d %H:%M:%S}，末段 {max(starts):%Y-%m-%d %H:%M:%S}')
+    expected = sorted(selected or by_view)
+    if lo and hi:
+        for view in expected:
+            starts = by_view.get(view, [])
+            if not any(start <= hi and start + timedelta(hours=1) >= lo for start in starts):
+                notes.append(f'{view} 没有覆盖本包传感器时间段（{lo:%Y-%m-%d %H:%M:%S} 至 {hi:%Y-%m-%d %H:%M:%S}）的录像；请核对源数据或视角选择')
+    adjacent = sorted({p.split('/')[1] for p in found if p.split('/')[1] not in days})
+    if adjacent:
+        notes.append('已补入相邻日期可能跨零点覆盖的录像：' + '、'.join(adjacent))
     return found, missing, notes
 
 
@@ -404,7 +459,7 @@ def _plan_dispatch(root, units, *, count=1, views=None, purpose='annotation', ca
                 warnings.append(unit['key'] + ' 缺少 ' + '、'.join(sorted(missing)) + '；不影响派包，按现有资料打包')
         days = sorted({u['day'] for u in group})
         categories = sorted({u['category'] for u in group})
-        videos, missing_days, video_notes = _day_videos(root, days, views)
+        videos, missing_days, video_notes = _day_videos(root, days, views, [p for u in group for p in u['paths']])
         warnings += video_notes
         if missing_days:
             warnings.append('所选日期还没有录像文件，包内仅含传感器 JSON：' + '、'.join(missing_days))
@@ -1046,26 +1101,115 @@ def _check_manifest(value):
     return value
 
 
-def validate_archive(path):
-    """Manifest of a ≤4.4.4 ZIP package after checking its members (still accepted when opened or received)."""
+def _zip_name_candidates(info):
+    names = [info.filename.replace('\\', '/')]
+    if not info.flag_bits & 0x800:
+        try:
+            decoded = info.filename.encode('cp437').decode('gbk').replace('\\', '/')
+            if decoded not in names:
+                names.append(decoded)
+        except UnicodeError:
+            pass
+    return names
+
+
+def _safe_zip_relative(name):
+    relative = name[:-1] if name.endswith('/') else name
+    if not relative:
+        return None
+    reason = unsafe_relative(relative)
+    if reason:
+        raise ValueError('压缩包含越界或不安全路径：' + relative)
+    safe_path(Path.cwd(), relative)
+    return relative
+
+
+def _zip_index(path):
     with zipfile.ZipFile(path) as archive:
         infos = archive.infolist()
-        names = set()
+        decoded = []
         for info in infos:
-            safe_path(Path.cwd(), info.filename)
-            key = info.filename.casefold()
-            if key in names or info.is_dir() or stat.S_ISLNK(info.external_attr >> 16) or info.flag_bits & 1:
-                raise ValueError('压缩包含重复路径、目录链接或加密条目')
-            names.add(key)
-        if MANIFEST not in archive.namelist() or archive.getinfo(MANIFEST).file_size > 64 * 1024**2:
+            if info.flag_bits & 1:
+                raise ValueError('压缩包含加密条目')
+            if stat.S_ISLNK(info.external_attr >> 16):
+                raise ValueError('压缩包含目录链接或符号链接')
+            candidates = _zip_name_candidates(info)
+            decoded.append((info, candidates))
+        manifest_name = None
+        for _info, candidates in decoded:
+            for name in candidates:
+                clean = name.rstrip('/')
+                if clean == MANIFEST or clean.endswith('/' + MANIFEST):
+                    manifest_name = clean
+                    break
+            if manifest_name:
+                break
+        if manifest_name is None:
             raise ValueError('缺少有效的协作清单')
-        value = _check_manifest(json.loads(archive.read(MANIFEST)))
-        if {m['path'].casefold() for m in value['members']} != names - {MANIFEST.casefold()}:
-            raise ValueError('ZIP 内容与清单不一致')
-        for member in value['members']:
-            if archive.getinfo(member['path']).file_size != member['size']:
-                raise ValueError('ZIP 文件大小或内容摘要无效')
-        return value
+        wrapper = manifest_name[:-len('/' + MANIFEST)] if manifest_name.endswith('/' + MANIFEST) else ''
+        if wrapper and not all(any(n == wrapper or n.startswith(wrapper + '/') for n in candidates) for _i, candidates in decoded):
+            wrapper = ''
+        names, directories, files = set(), set(), {}
+        manifest_info = None
+        for info, candidates in decoded:
+            chosen = None
+            for name in candidates:
+                if wrapper:
+                    if name == wrapper:
+                        chosen = ''
+                    elif name.startswith(wrapper + '/'):
+                        chosen = name[len(wrapper) + 1:]
+                elif name == manifest_name:
+                    chosen = MANIFEST
+                else:
+                    chosen = name
+                if chosen is not None:
+                    break
+            if chosen is None:
+                chosen = candidates[0]
+            relative = _safe_zip_relative(chosen)
+            if relative is None:
+                continue
+            key = relative.casefold()
+            if key in names:
+                raise ValueError('压缩包含重复路径')
+            names.add(key)
+            if info.is_dir() or chosen.endswith('/'):
+                directories.add(key)
+                continue
+            if key in directories:
+                raise ValueError('压缩包含重复路径')
+            if relative == MANIFEST:
+                manifest_info = info
+            else:
+                files[key] = (relative, info)
+        if manifest_info is None or manifest_info.file_size > 64 * 1024**2:
+            raise ValueError('缺少有效的协作清单')
+        value = _check_manifest(json.loads(archive.read(manifest_info)))
+        members = {}
+        extras = {}
+        for key, item in files.items():
+            rel, info = item
+            if key in {m['path'].casefold() for m in value['members']}:
+                members[key] = item
+            else:
+                extras[key] = item
+        return value, members, extras
+
+
+def validate_archive(path, *, strict=True):
+    """Manifest of a ≤4.4.4 ZIP package after checking its members (still accepted when opened or received)."""
+    value, members, extras = _zip_index(path)
+    expected = {m['path'].casefold() for m in value['members']}
+    if expected - set(members):
+        missing = next(m['path'] for m in value['members'] if m['path'].casefold() not in members)
+        raise ValueError('ZIP 缺少清单里的文件：' + missing)
+    if strict and extras:
+        raise ValueError('ZIP 内容与清单不一致')
+    for member in value['members']:
+        if members[member['path'].casefold()][1].file_size != member['size']:
+            raise ValueError('ZIP 文件大小或内容摘要无效')
+    return value
 
 
 NOT_A_PACKAGE = '所选文件夹不是协作数据包（里面没有“协作清单.json”）：'
@@ -1104,21 +1248,64 @@ def validate_folder(folder, *, strict=True, cancelled=lambda: False):
             raise ValueError('数据包里的文件大小与清单不一致：' + member['path'])
         if strict and digest_file(safe_path(folder, member['path'])) != member['sha256']:
             raise ValueError('数据包里的文件内容与清单不一致：' + member['path'])
-    if strict and files:
-        raise ValueError('数据包含清单之外的文件：' + sorted(relative for relative, _ in files.values())[0])
+    if strict:
+        for relative, _size in files.values():
+            safe_path(folder, relative)
     return value
+
+def _duplicate_candidate(relative):
+    path = PurePosixPath(relative)
+    stem, suffix = path.stem, path.suffix
+    patterns = (r'^(.*) \([1-9][0-9]*\)$', r'^(.*) - 副本(?: \([1-9][0-9]*\))?$', r'^(.*) - copy(?: \([1-9][0-9]*\))?$')
+    for pattern in patterns:
+        match = re.match(pattern, stem, re.IGNORECASE)
+        if match:
+            return path.with_name(match.group(1) + suffix).as_posix()
+    return ''
+
+
+def _ignored_extra_folder(folder, manifest):
+    files, _ = _tree(folder)
+    files.pop(MANIFEST.casefold(), None)
+    listed = {m['path'].casefold(): m for m in manifest['members']}
+    for key in list(listed):
+        files.pop(key, None)
+    result = []
+    for _key, (relative, size) in sorted(files.items(), key=lambda item: item[1][0]):
+        same_as = _duplicate_candidate(relative)
+        listed_member = listed.get(same_as.casefold()) if same_as else None
+        identical = bool(listed_member and size == listed_member['size'] and digest_file(safe_path(folder, relative)) == listed_member['sha256'])
+        result.append(dict(path=relative, size=size, same_as=same_as if listed_member else '', identical=identical))
+    return result
+
+
+def _ignored_extra_archive(path, manifest):
+    _value, members, extras = _zip_index(path)
+    listed = {m['path'].casefold(): m for m in manifest['members']}
+    result = []
+    with zipfile.ZipFile(path) as archive:
+        for _key, (relative, info) in sorted(extras.items(), key=lambda item: item[1][0]):
+            same_as = _duplicate_candidate(relative)
+            listed_member = listed.get(same_as.casefold()) if same_as else None
+            identical = False
+            if listed_member and info.file_size == listed_member['size']:
+                digest = hashlib.sha256(archive.read(info)).hexdigest()
+                identical = digest == listed_member['sha256']
+            result.append(dict(path=relative, size=info.file_size, same_as=same_as if listed_member else '', identical=identical))
+    return result
 
 
 def read_package(path, *, strict=True):
     """Manifest of a package folder (4.4.5) or a ≤4.4.4 ZIP."""
     path = Path(path)
-    return validate_folder(path, strict=strict) if path.is_dir() else validate_archive(path)
+    return validate_folder(path, strict=strict) if path.is_dir() else validate_archive(path, strict=strict)
 
 
 def _extract(path, directory, manifest, cancelled, progress):
     total, done = sum(m['size'] for m in manifest['members']), 0
     if shutil.disk_usage(directory).free < total + 16 * 1024**2:
         raise OSError('解包磁盘空间不足')
+    value, members, _extras = _zip_index(path)
     with zipfile.ZipFile(path) as archive:
         for member in manifest['members']:
             check(cancelled)
@@ -1126,7 +1313,7 @@ def _extract(path, directory, manifest, cancelled, progress):
             destination.parent.mkdir(parents=True, exist_ok=True)
             digest = hashlib.sha256()
             size = 0
-            with archive.open(member['path']) as source, destination.open('xb') as target:
+            with archive.open(members[member['path'].casefold()][1]) as source, destination.open('xb') as target:
                 while block := source.read(CHUNK):
                     check(cancelled)
                     size += len(block)
@@ -1565,9 +1752,7 @@ def _kept_raw_manifests(root):
                 if listed.is_file() and listed.stat().st_size <= 64 * 1024**2:
                     found.append((entry.path, json.loads(listed.read_bytes())))
             elif entry.name.lower().endswith('.zip'):
-                with zipfile.ZipFile(entry.path) as bundle:
-                    if MANIFEST in bundle.namelist() and bundle.getinfo(MANIFEST).file_size <= 64 * 1024**2:
-                        found.append((entry.path, json.loads(bundle.read(MANIFEST))))
+                found.append((entry.path, validate_archive(entry.path, strict=False)))
         except (OSError, ValueError, zipfile.BadZipFile):
             continue
     return found
@@ -1605,12 +1790,15 @@ def receive_return(root, path, *, archive_to=None, cancelled=lambda: False, prog
     root = Path(root).resolve(strict=True)
     path = Path(path).resolve(strict=True)
     folder = path.is_dir()
-    manifest = _peek_folder(path) if folder else validate_archive(path)
+    manifest = _peek_folder(path) if folder else validate_archive(path, strict=False)
     identity = farm_identity(root)
     if manifest['kind'] != 'annotations' or not identity or manifest['farm_id'] != identity['farm_id']:
         raise ValueError('标注包不属于此牧场' if manifest['kind'] == 'annotations' else '这是原始数据包，不是标注数据包')
     if folder:  # only now hash the (small) return, file by file
         manifest = validate_folder(path, strict=True, cancelled=cancelled)
+        ignored_extra = _ignored_extra_folder(path, manifest)
+    else:
+        ignored_extra = _ignored_extra_archive(path, manifest)
     if archive_to is not None:
         archive_to = check_destination(root, archive_to)
         if archive_to == path or archive_to.is_relative_to(path):
@@ -1635,8 +1823,9 @@ def receive_return(root, path, *, archive_to=None, cancelled=lambda: False, prog
     if not set(annotations) <= set(members):
         raise ValueError('清单列出的标注文件不在数据包里')
     home = collaboration_home(root)
-    report = dict(package_id=manifest['package_id'], package=str(path), imported=0, unchanged=0, conflicts=[], files=[])
+    report = dict(package_id=manifest['package_id'], package=str(path), imported=0, unchanged=0, conflicts=[], files=[], ignored_extra=[])
     held = journal_dir = None
+    report['ignored_extra'] = ignored_extra
     with DatasetLease([root], 'organize'), ExitStack() as locks, tempfile.TemporaryDirectory(prefix='cowmata-receive-') as temporary:
         for category in {u['category'] for u in assignment['units']}:
             meta = safe_path(root, category + '/标注工程')
@@ -1835,3 +2024,4 @@ def destination_candidates(mode, root=None, *, package=None, recent=(), drives=N
                             and any(hint in entry.name for hint in _TARGET_HINTS)):
                         add(entry.path, kind)
     return found[:24]
+

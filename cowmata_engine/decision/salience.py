@@ -34,7 +34,9 @@ METHOD = ("按产犊开始前的时段（0–1、1–2、2–3、3–6、6–12�
 
 
 def column_name(h):
-    return f"salience@{int(h)}h"
+    from .runtime import hkey
+
+    return f"salience@{hkey(h)}h"
 
 
 def _auc(pos, neg):
@@ -103,7 +105,9 @@ def weights(stats, horizons, *, top=TOP):
                 scores[column] = (score, 1.0 if float((n * delta).sum()) >= 0 else -1.0)
         best = sorted(scores.items(), key=lambda kv: -kv[1][0])[:top]
         total = sum(v[0] for _, v in best)
-        result[str(int(h))] = {c: [round(v[0] / total, 6), v[1]] for c, v in best} if total else {}
+        from .runtime import hkey
+
+        result[hkey(h)] = {c: [round(v[0] / total, 6), v[1]] for c, v in best} if total else {}
     return result
 
 
@@ -127,13 +131,15 @@ def composite(x, columns, stats, weight):
 
 def cross_fit(x, hours, columns, split, horizons):
     """Out-of-fold composites (rows × horizons) and the full-data (stats, weights) used for deployment."""
-    horizons = [int(h) for h in horizons]
+    from .runtime import hkey, hval
+
+    horizons = [hval(h) for h in horizons]
     out = np.full((len(x), len(horizons)), np.nan)
     for train, test in split:
         stats = profile(x[train], hours[train], columns)
         w = weights(stats, horizons)
         for k, h in enumerate(horizons):
-            out[test, k] = composite(x[test], columns, stats, w[str(h)])
+            out[test, k] = composite(x[test], columns, stats, w[hkey(h)])
     stats = profile(x, hours, columns)
     return out, stats, weights(stats, horizons)
 

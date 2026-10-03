@@ -41,6 +41,33 @@ def contained(root, relative):
     return path
 
 
+def _selected_project_root(root):
+    """Accept either the farm itself or its single dispatched-package wrapper."""
+    root = Path(root).resolve()
+    from .farm_layout import MARKER
+
+    if (root / MARKER).is_file():
+        return root
+    children = [marker.parent for marker in root.glob("*/" + MARKER) if marker.is_file()]
+    return children[0].resolve() if len(children) == 1 else root
+
+
+def _source_candidates(root, relative):
+    """Resolve both farm-relative and legacy category-relative source paths."""
+    root = Path(root).resolve()
+    relative = Path(relative)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Source path escapes the selected project")
+    candidates = [contained(root, relative)]
+    if relative.parts and root.name == relative.parts[0]:
+        candidates.append(contained(root.parent, relative))
+    if relative.parts and relative.parts[0] in {"Motion", "PPG", "Temp", "Video"}:
+        from .farm_layout import CATEGORY_PATHS
+
+        candidates.extend(contained(root, Path(category) / relative) for category in CATEGORY_PATHS)
+    return list(dict.fromkeys(candidates))
+
+
 def _overlap(start, end, lo, hi):
     return start <= hi and (end if end is not None else start) >= lo
 
@@ -316,8 +343,8 @@ def load_history(path, root=None, *, cancelled=lambda: False):
             [f"旧人工标签：绝对时间记录；未连接九轴，不生成虚构波形。另有 {unknown} 条记录待核，原行随文件保留。"])
     hint = doc["source"].get("project_root_hint", "")
     local_root = local_source_root(path, doc)
-    requested_root = Path(root).resolve() if root else None
-    root = local_root or requested_root or (Path(hint).resolve() if hint and Path(hint).is_dir() else None)
+    requested_root = _selected_project_root(root) if root else None
+    root = requested_root or local_root or (Path(hint).resolve() if hint and Path(hint).is_dir() else None)
     if root is None and not explicit_root:
         root=next((p for p in Path(path).resolve().parents if
             all((p/name).is_dir() for name in ('Motion','Video','PPG','标注工程'))),None)
@@ -368,21 +395,25 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         for relative in dict.fromkeys(paths):
             if cancelled():
                 raise InterruptedError("History load cancelled")
-            try:
-                source = contained(root, relative)
-                before = file_stamp(source)
-                assert_not_being_written(source)
-                if digest_file(source) != work.asset_id:
-                    continue
-                from .sensor_records import load_sensor_json
-                motion = load_sensor_json(source, kind=doc["source"].get("kind"), acc_scale=doc["source"].get("acc_scale", 4096))
-                if before != file_stamp(source):
-                    motion = None
-                    continue
+            error = None
+            for source in _source_candidates(root, relative):
+                try:
+                    before = file_stamp(source)
+                    assert_not_being_written(source)
+                    if digest_file(source) != work.asset_id:
+                        continue
+                    from .sensor_records import load_sensor_json
+                    motion = load_sensor_json(source, kind=doc["source"].get("kind"), acc_scale=doc["source"].get("acc_scale", 4096))
+                    if before != file_stamp(source):
+                        motion = None
+                        continue
+                    break
+                except (OSError, ValueError) as exc:
+                    error = exc
+            if motion is not None:
                 break
-            except (OSError, ValueError) as exc:
-                warnings.append(str(exc))
-                continue
+            if error is not None:
+                warnings.append(str(error))
     if motion is not None and doc["view"].get("auto_full_record"):
         doc["view"].update(start_ms=0, end_ms=motion.duration_ms)
     if motion is None:
@@ -396,13 +427,6 @@ def load_history(path, root=None, *, cancelled=lambda: False):
         warnings.append("按设备采集时间定位候选录像；未替代人工相机校准，历史标签保持原状。")
     elif not work.clock.anchors:
         warnings.append("没有可用九轴采集时间或校准锚点；不会用文件名或服务器收包时间对齐视频。")
-    if requested_root and requested_root != root:
-        root = requested_root
-        try:
-            rows, settings = _history_index(root, scope=index_scope)
-        except (OSError, ValueError, UnicodeError, RuntimeError, sqlite3.Error):
-            rows, settings = [], {}
-            warnings.append("所选数据工程索引无法读取；仍可查看标签和证据图，请检查工程是否已关闭或重新建立索引。")
     saved = doc.get("video", {})
     video_root_hint=saved.get('archive',{}).get('archive_root_hint') or hint
     saved_ids={r['asset_id'] for r in saved.get('rows',[])}
@@ -449,7 +473,8 @@ def load_history(path, root=None, *, cancelled=lambda: False):
             continue
         seen.add(row["path"])
         try:
-            source = contained(root, row["path"])
+            paths = _source_candidates(root, row["path"])
+            source = next((candidate for candidate in paths if candidate.is_file()), paths[0])
             if row.get('external_source') and (not source.is_file() or not explicit_root and Path(row['external_source']).is_file()):
                 source=Path(row['external_source']).resolve(strict=True)
             before = file_stamp(source)

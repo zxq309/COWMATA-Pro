@@ -125,3 +125,40 @@ def test_classified_videos_can_be_reviewed_without_claiming_sync(tmp_path, monke
     assert not history.timeline.intervals[0].verified
     assert history.timeline.intervals[0].media_start == 0
     assert index.read_bytes() == original
+
+
+def test_farm_relative_label_path_does_not_duplicate_category_root(tmp_path):
+    from test_paired_dataset_v370 import fixture_farm
+
+    from cowmata_tailring.workspace.farm_layout import initialize_farm
+    from cowmata_tailring.workspace.label_file import load_history
+
+    farm = tmp_path / "farm"
+    raw, label = fixture_farm(farm)
+    initialize_farm(farm)
+    document = json.loads(label.read_text(encoding="utf-8"))
+    document["source"]["path"] = raw.relative_to(farm).as_posix()
+    label.write_text(json.dumps(document), encoding="utf-8")
+    history = load_history(label)
+    assert history.root == farm.resolve()
+    assert history.motion is not None
+    assert history.motion.source_path == raw
+
+
+def test_relink_accepts_dispatched_package_wrapper(tmp_path):
+    from test_paired_dataset_v370 import fixture_farm
+
+    from cowmata_tailring.workspace.farm_layout import initialize_farm
+    from cowmata_tailring.workspace.label_file import load_history
+
+    wrapper = tmp_path / "raw-package"
+    farm = wrapper / "farm"
+    raw, label = fixture_farm(farm)
+    initialize_farm(farm)
+    moved = tmp_path / "labels" / "one.标注.json"
+    moved.parent.mkdir()
+    moved.write_bytes(label.read_bytes())
+    history = load_history(moved, wrapper)
+    assert history.root == farm.resolve()
+    assert history.motion is not None
+    assert history.motion.source_path == raw

@@ -1212,8 +1212,8 @@ class MainWindow(AlignmentMixin, QMainWindow):
         self.camera_pages.set_selected(selected)
         if selected != self.board.selected:
             self.board.select(selected)
-        elif any(not t.interval and timeline.locate(c, self.board.reference_ms) for c, t in self.board.tiles.items()):
-            self.board.seek(self.board.reference_ms)
+        else:
+            self.board.refresh_available()
         for camera, tile in self.board.tiles.items():
             if not tile.interval:
                 tile.status(self.board.coverage_message(camera))

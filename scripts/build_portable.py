@@ -9,10 +9,35 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import zipfile
 from pathlib import Path
+
+
+def copy_bundled_behavior(source, destination):
+    r"""Copy a prediction-only behavior suite into APP_ROOT\models\行为识别."""
+    source = Path(source).resolve()
+    if not (source / "versions").is_dir():
+        raise SystemExit("COWMATA_BUNDLED_BEHAVIOR must point to a 行为识别 folder")
+    target = destination / "models" / "行为识别"
+    target.mkdir(parents=True, exist_ok=True)
+    for pointer in ("active.json", "selected.json"):
+        if (source / pointer).is_file():
+            shutil.copy2(source / pointer, target / pointer)
+    versions = target / "versions"
+    versions.mkdir(exist_ok=True)
+    skip_names = {"留出记录候选.csv", "逐记录评估-实时.csv", "逐记录评估.csv", "训练明细.csv"}
+    for manifest in sorted((source / "versions").glob("*/suite.json")):
+        doc = json.loads(manifest.read_text(encoding="utf-8"))
+        out = versions / manifest.parent.name
+        out.mkdir(parents=True, exist_ok=True)
+        needed = {"suite.json", doc.get("report", "")}
+        needed.update(model.get("file", "") for model in doc.get("models", []))
+        for name in needed:
+            if name and name not in skip_names and (manifest.parent / name).is_file():
+                shutil.copy2(manifest.parent / name, out / name)
 
 
 def write_checksum(archive, digest):
@@ -105,10 +130,13 @@ def main():
                         ignore=portable_ignore)
         if name in {"assets", "vendor"} and components != source and (source / name).is_dir():
             shutil.copytree(source / name, destination / name, dirs_exist_ok=True, ignore=portable_ignore)
+    bundled_behavior = os.environ.get("COWMATA_BUNDLED_BEHAVIOR", "").strip()
+    if bundled_behavior:
+        copy_bundled_behavior(bundled_behavior, destination)
     for name in ("cowmata-security.json", "upload_key.pub", "COWMATA.exe", "START_ANNOTATOR.bat", "修复旧版更新.cmd", "portable_start.py", "使用说明.txt", "README.md", "README.zh-CN.md", "CHANGELOG.md", "CITATION.cff", "CONTRIBUTING.md", "LICENSE", "NOTICE", "requirements-portable.txt", "requirements-events-20260906.txt"):
         shutil.copy2(input_path(name), destination / name)
     (destination / "docs").mkdir()
-    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'operator-guide-395.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'release-395.md', 'release-410.md', 'release-411.md', 'release-439.md', 'release-440.md', 'release-441.md', 'release-442.md', 'release-443.md', 'release-444.md', 'release-445.md', 'release-446.md', 'release-447.md', 'operator-guide-443.html', 'prompt-guide-443.html', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md', 'DECISION_ENGINE_433.md', 'ENGINE_API_433.md', 'DECISION_RESULTS_433.md', 'DECISION_ENGINE_435.md', 'ENGINE_API_435.md', 'DECISION_ENGINE_437.md', 'LYING_RATIO_ALGORITHM.md', 'heart-rate-algorithm.md', 'spo2-algorithm.md'):
+    for name in ('index.html', 'portable-components.md', 'operator-guide-380.html', 'operator-guide-390.html', 'operator-guide-395.html', 'quick-start-390.md', 'validation-390.md', 'release-380.md', 'release-381.md', 'release-382.md', 'release-383.md', 'release-384.md', 'release-390.md', 'data-contract-390.md', 'decision-research-390.md', 'algorithm-validation-382.md', 'client-updates.md', 'release-392.md', 'download-repair-391.md', 'release-393.md', 'release-394.md', 'release-395.md', 'release-410.md', 'release-411.md', 'release-439.md', 'release-440.md', 'release-441.md', 'release-442.md', 'release-443.md', 'release-444.md', 'release-445.md', 'release-446.md', 'release-447.md', 'release-448.md', 'operator-guide-443.html', 'prompt-guide-443.html', 'temperature-contract-393.md', 'dahua-import-393.md', 'SHARED_SIGNALS_393.md', 'DECISION_ENGINE_433.md', 'ENGINE_API_433.md', 'DECISION_RESULTS_433.md', 'DECISION_ENGINE_435.md', 'ENGINE_API_435.md', 'DECISION_ENGINE_437.md', 'LYING_RATIO_ALGORITHM.md', 'heart-rate-algorithm.md', 'spo2-algorithm.md'):
         shutil.copy2(source/'docs'/name, destination/'docs'/name)
     shutil.copytree(source/'docs/images/guide380', destination/'docs/images/guide380')
     shutil.copytree(source/'docs/images/guide390', destination/'docs/images/guide390')

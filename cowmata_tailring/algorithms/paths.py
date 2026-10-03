@@ -119,6 +119,10 @@ def discover_model_homes() -> list[Path]:
 _DISCOVERY: dict[str, tuple[float, list[Path]]] = {}
 
 
+def bundled_model_home() -> Path:
+    return (APP_ROOT / "models" / BEHAVIOR_FOLDER).resolve()
+
+
 def model_home() -> Path:
     configured = _configured("COWMATA_ALGORITHM_HOME")
     if configured is not None:
@@ -130,7 +134,10 @@ def model_home() -> Path:
     if has_suites(local):
         return local
     discovered = discover_model_homes()
-    return discovered[0] if discovered else local
+    if discovered:
+        return discovered[0]
+    bundled = bundled_model_home()
+    return bundled if has_suites(bundled) else local
 
 
 def algorithm_output_root() -> Path:
