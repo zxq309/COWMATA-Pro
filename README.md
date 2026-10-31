@@ -1,66 +1,253 @@
-# COWMATA Annotator 4.4.7
+<div align="center">
 
-**奶牛尾环数据工作台**：打开工程 → 上传台账 → 下载端侧数据 → 标注 → 工具。一个账号、一个窗口。
+> **3.2.1 correction (2026-09-09, same-version update):** every IMU record displays the shared reference date/time on its waveform axis, hover readout and editable position field. Startup now requires a release check before opening annotation. Any newer release downloads and installs automatically, then reopens the app; intermediate releases are skipped. Failed checks/updates allow retry or exit, without entering the old workspace. Earlier 3.2.1 clients need a manual download from the existing release; the version number is unchanged.
 
-## 目录树（4.4.6：所有业务文件都在一棵目录树里，盘符不限，现场在 E:\）
+> **3.2.1 鈥?2026-09-09:** fix default video selection and startup search in large nested projects. Add per-view seek bars and smoother rate changes/seeks, colored record progress, save prompts on exit/completion, and editable reopened labels. Download the [complete offline installer](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1); see [release notes](docs/release-321.md) and [pre-release workflow validation](docs/release-321-validation.md).
 
+> **3.2.0 鈥?2026-09-09:** official COWMATA green branding across the UI and Windows icons. New single-camera Behavior Recognition and Health & Reproduction menus, five real model integrations and explicit unavailable algorithms. Retain on-demand records, main-camera priority, resume and team returns; trim the offline package. See the [illustrated Chinese quick start](docs/quick-start-illustrated.pdf), [algorithm boundaries](docs/algorithm-inspection.md) and [validation](docs/release-320-validation.md). Historical recordings below retain their original version.
+
+> **Windows offline app:** ordinary users download the complete offline Setup EXE from
+> [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases).
+> No Python, pip, VLC, CUDA toolkit, or model setup is required. The automatically
+> generated **Source code.zip is not the runnable application**.
+
+<img src="assets/brand/cowmata-logo.svg" alt="COWMATA" width="300">
+
+# COWMATA Tail-Ring Annotator
+
+**Human-in-the-loop video and nine-axis IMU annotation for cattle behaviour and calving research**
+
+[![CI](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml/badge.svg)](https://github.com/zxq309/cattle-tail-ring-annotator/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/release-3.2.1-92C142)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+[English](README.md) 路 [绠€浣撲腑鏂嘳(README.zh-CN.md) 路 [Project overview](https://github.com/zxq309/cowmata)
+
+</div>
+
+[![3.2.0 actual application: official green and behavior inspection](assets/screenshots/algorithm-320-live.png)](docs/quick-start-illustrated.pdf)
+
+<p align="center"><sub>Open the ten-page illustrated quick start. Real IMU, surveillance images and model execution; DEMO alignment and labels demonstrate operations, not scientific ground truth.</sub></p>
+
+## Overview
+
+COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synchronized cattle video and continuous nine-axis tail-ring IMU data. It combines a shared timeline, protocol-v4 labels, safe project persistence, review tools, and research-ready exports in one interface.
+
+### Why this tool
+
+- **Video and IMU in one timeline** 鈥?seek, play, zoom, and inspect nine channels without switching applications.
+- **Alignment before annotation** 鈥?formal annotation remains locked until the video and sensor timelines are pinned.
+- **Protocol v4 built in** 鈥?preserve the original 16 behaviour/calving labels and synchronization anchor; append mounting without shifting historic indices.
+- **Human-controlled model assistance** 鈥?candidates enter a review queue and never become labels without confirmation.
+- **Traceable output** 鈥?stable machine codes, display labels, timestamps, provenance fields, and validation-aware exports.
+- **Bilingual UI** 鈥?English and Simplified Chinese affect display only; persisted label codes remain stable.
+
+## Real application demos
+
+### 3.1.2: one live camera, on-demand auxiliary stills
+
+[![Actual single-view-priority playback and hover controls](assets/screenshots/single-view-live.png)](docs/playback-performance-312.md)
+
+Actual Windows capture with four real recording sources (the auxiliary list scrolls), one live main view, dated paused auxiliary images and synthetic IMU for demonstration only. This is not scientific alignment or labelled truth. Hover controls operate the shared timeline; [measurements distinguish GUI response from decoder arrival](docs/playback-performance-312.md).
+
+Click a thumbnail to watch/download its short recording. These are native application captures, not design mockups. Videos are Release assets; raw recordings and IMU files are not committed to Git.
+
+| Multiview and continuous playback | Actual model candidate review |
+| --- | --- |
+| [![A/B/C layouts, main view, precise pause and next recording](assets/screenshots/multiview-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/01-multiview.mp4) | [![Five-model inference and review queue](assets/screenshots/candidates-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/02-candidates.mp4) |
+| Label and single-file export | Independent snippet history |
+| [![Interval marking, explicit confirmation and traceable export](assets/screenshots/labels-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/03-label-export.mp4) | [![Reopen a snippet and locate its original video](assets/screenshots/history-live.jpg)](https://github.com/zxq309/cattle-tail-ring-annotator/releases/download/v3.1.0-rc.1/04-history.mp4) |
+
+The isolated DEMO copies use illustrative alignment and labels, never field truth. Candidates require human review; low-rate auxiliary previews do not replace precise paused original frames. See [capture scope](docs/live-demos.md).
+
+## New: evidence images and offline review
+
+[![Actual offline image/IMU history viewer](assets/screenshots/evidence-live.png)](docs/evidence-archive.md)
+
+Retain one still per selected camera, carry it with your labels, and verify external video copies before freeing laptop storage. Images never enter the IMU models. This native screenshot uses three real surveillance scenes with **illustrative DEMO clocks and labels, not scientifically synchronized ground truth**. See [the workflow and limits](docs/evidence-archive.md).
+
+## Requirements
+
+- Windows 10/11 **x64**, with the normal graphics driver installed.
+- Enough local space for the application (approximately 2 GB extracted), project indexes and optional caches.
+- Hardware decoding is automatically attempted; software compatibility mode remains available.
+
+The source and pure logic tests also run outside Windows, but native playback and the delivered executable are Windows-only. See [distribution and build instructions](docs/windows-distribution.md).
+
+## Quick start
+
+### One-click Windows launch
+
+Download the complete offline **`COWMATA-...-Setup.exe`** 鈫?review the license 鈫?select a parent folder and accept/edit the suggested **COWMATA Annotator** subfolder 鈫?install 鈫?launch. The destination must not overwrite unrelated files. Thereafter, use the desktop/Start menu shortcut and open your data project or any original IMU JSON. All private runtimes and models are included; no online bootstrap is required. Updater-enabled installations can use **Help 鈫?About 鈫?Version and updates**.
+
+The application provides A/B/C layouts, 1鈥? selectable views, GPU playback, cross-file continuation, exact original-frame review, offline RapidOCR PP-OCRv6 medium, five versioned 20260906 candidate models, self-contained IMU annotation export, and independent history review. Predictions are candidates, never automatic ground truth. See [usage](浣跨敤璇存槑.txt).
+
+### Source development (not required for annotators)
+
+The Git repository intentionally excludes runtimes, model weights, local recordings, sensor data, caches and installers. For complete offline workspace development, use the matching Release runtime as described in [the developer guide](docs/windows-distribution.md). For the legacy basic interface only, install Python 3.10+ and VLC 3.x, then:
+
+Open PowerShell:
+
+```powershell
+git clone https://github.com/zxq309/cattle-tail-ring-annotator.git
+cd cattle-tail-ring-annotator
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e .
+cowmata-annotator --mode basic
 ```
-<目录树>\1_下载器\扬大_高邮牧场\     原始数据（产犊 / 待产犊 / 怀孕\孕晚期 / …）· 台账（下载镜像与 上传\<账号> 工作副本）
-                                  · 标注工程 · 科牧特_协作标注（派包 / 回传 / 接收）· 录像
-<目录树>\2_标注器\<版本>\          本软件：安装包 · 便携包 · 源码包
-<目录树>\常规经典算法\{3_训练器, 4_逆向决策器, 5_正向决策器}\产犊\<版本>\…
-<目录树>\AI大模型算法\{3_训练器, 4_逆向决策器, 5_正向决策器}\产犊\<版本>\…（本地千问，同结构）
+
+The equivalent module command is:
+
+```powershell
+python -m cowmata_tailring --mode basic
 ```
 
-- **相对路径**：下载、台账、上传工作副本、归类、派包等位置都按“目录树内的相对位置”保存（`目录树/1_下载器/扬大_高邮牧场`），软件启动时自动找到目录树（软件放在目录树里时就用这一棵，否则在本机各磁盘里找）。整棵目录树换盘或拷到别的电脑，无需重设；存放目录树的磁盘没插上时，下载会停下并提示，**绝不改存到 C 盘、D 盘等其他位置**。
-- 4.4.5 及以前默认放在软件旁 `COWMATA Pro 数据`、文档或 `F:\` 的数据与台账，在下一轮下载开始时整体移入目录树（同名同内容去重，不同的保留并提示）。
-- 自动标注模型在目录树里查找 `<路线>\3_训练器\产犊\<最新版本>\模型\行为识别`（也认 4.4.5 及更早的布局）。
+For model-assisted review:
 
-## 菜单
+```powershell
+pip install -e ".[model]"
+cowmata-annotator --mode model-assist
+```
 
-| 菜单 | 内容 |
-|---|---|
-| 文件 | 打开工程 / 九轴 / 视频 / 协作数据包、历史回看、保存、导出、关闭工程、退出 |
-| 编辑 | 撤销、重做、修改标签、批量修改、删除、查找记录 |
-| 上传 | 台账、导入表格、同步修改、刷新服务器、新建记录、核对冲突、统计报告、导出 CSV、四张表、上传设置 |
-| 下载 | 端侧数据、开始下载、暂停下载、数据归类、风险等级总览、下载设置、下载记录、检测连接、打开下载目录 |
-| 标注 | 自动生成候选、用所选区间建立候选、逐项检查、自动标注模型、完成本份 / 下一份、确认为真值、留存证据图、协作（派包 / 标注数据包都是文件夹） |
-| 工具 | 时间同步、录像、视图、性能诊断、硬件解码、旧版兼容、设置 |
-| 帮助 | 快速开始、新手图文教程、提示信息说明、账号、关于 |
+The scripts under `scripts/` remain available for model-assisted and diagnostic launches. Use `scripts\launch-debug.bat` when console output is needed.
 
-## 下载：一个按钮
+## Project-workspace workflow
 
-- **下载**：按样本试验台账自动下载（九轴、PPG、温度），按台账分类保存；下载到当前时刻，每轮结束 1 分钟后继续。
-- **暂停**：停止本轮并删除未完成的临时文件；再点“下载”从断点继续（已下载的完整文件自动跳过）。
-- 打开下载器和每轮开始时，先核对 **待产犊**：台账已补产犊时间的，文件立即移到 **产犊** 或 **孕晚期**；仍为空的留在待产犊。
-- 下载期间自动启动 **正向决策器**：在“下载设置 → 随下载启动的正向决策器”按电脑勾选 **常规经典算法** 和/或 **AI大模型算法**（`<路线>\5_正向决策器\产犊\<最新版本>\推理算法`）。某头待产犊的牛有新的完整 JSON，即重新推理，风险等级与监测报告写到同版本的 `前端对接`，“下载 → 风险等级总览”查看（每个模块都可点开看逐小时详情）。
+Open the existing data-project folder 鈫?let the background index discover IMU devices and video views 鈫?choose the device/cow and 1鈥? views 鈫?verify clock anchors 鈫?review actual video and label the original IMU interval 鈫?export a self-contained annotation JSON. Open that JSON independently later; original recording identities and calibration locate the video, not the annotation filename.
 
-## 协作：数据包都是文件夹
+While four or more views and candidate inference run together, main-camera priority protects interaction; auxiliary frames are clearly marked previews, not current evidence. Pause to verify exact original frames across views. See [Windows distribution and GPU details](docs/windows-distribution.md) and [OCR integration](docs/ocr-lightweight-integration.md).
 
-| 步骤 | 谁 | 做什么 |
-|---|---|---|
-| 标注 → 协作 → 派发原始数据包 | 派包人 | 每个包生成一个 `…_原始` 文件夹（JSON + 录像，按原目录树复制，不压缩），直接放到“派发到”选的位置：默认 `<牧场>\科牧特_协作标注\原始数据包`，也列出移动硬盘、`派包 / 转移 / 协作` 等文件夹和最近用过的位置 |
-| 文件 → 打开协作数据包 | 标注员 | 选 `…_原始` 文件夹，原位置打开，或在“放到”选本机位置先整个移过去 |
-| 标注 → 协作 → 生成标注数据包 | 标注员 | 生成 `…_标注_<编号>` 文件夹（只含标注和证据图），放到“保存到”选的位置（默认与原始数据包放在一起） |
-| 标注 → 协作 → 接收标注数据包 | 派包人 | 选一个或多个标注数据包文件夹，完整核验后并入牧场，再把文件夹移到“接收后移到”选的位置（默认 `科牧特_协作标注\已接收`）；有冲突的移到 `冲突待核对` 并写报告，被拒收的留在原处 |
+The following single-video examples, shortcuts and legacy model-package contract remain for compatibility with `--mode basic` / `--mode model-assist`; the EXE defaults to the project workspace.
 
-每个文件夹带 `协作清单.json`（逐个文件的大小和 SHA-256）；写到一半的包是隐藏的 `.….partial`，完成后才改成正式名字，同名文件夹从不覆盖。4.4.4 及以前的 ZIP 包仍可打开和接收。
+## Usage example
 
-## 台账分类（上传、服务器、下载同一规则）
+Place your own sensor JSON and matching video under the local `examples/` directory, then open both at startup:
 
-| 产犊开始 / 结束 | 归类 |
-|---|---|
-| 均为空（产犊监测 / 孕后期监测） | 待产犊 |
-| 时间在佩戴期内 | 产犊 |
-| 填“/”，或产犊发生在拆除设备之后 | 孕晚期 |
-| 只填一项、先后颠倒、格式错误；死胎 / 难产 / 产后监测却未填时间 | 待核对 |
+```powershell
+cowmata-annotator --mode basic --lang zh `
+  --json "examples\2026-08-08 10_44_34.json" `
+  --video "examples\hiv00102.mp4"
+```
 
-## 安装与升级
+The media used for the screenshot is intentionally excluded from Git because the video is 256 MiB and the sensor JSON is about 5 MiB. See [examples/README.md](examples/README.md) for the local-data policy.
 
-- 安装包 `COWMATA-Pro-4.4.7-Setup.exe`（NSIS）；便携包 `COWMATA-Pro-4.4.7-Portable.zip`；源码包 `COWMATA-Pro-4.4.7-Source.zip`。
-- 已安装的 4.3.x / 4.4.0–4.4.5：帮助 → 关于 → 检查更新，原地升级，工程、标注与设置保留。
-- 便携包也可直接解压到 `<目录树>\2_标注器\<版本>\` 运行：软件就用它所在的这棵目录树。
+## Annotation workflow
 
-[新手图文教程](docs/operator-guide-443.html) · [提示信息说明](docs/prompt-guide-443.html) · [更新记录](CHANGELOG.md) · [4.4.8 发布说明](docs/release-448.md) · [4.4.7 发布说明](docs/release-447.md)
+1. **Open IMU JSON** 鈥?confirm sample count, frequency, time range, gaps, and the rendered nine-axis waveforms.
+2. **Open video** 鈥?load the matching recording and inspect its real duration.
+3. **Align and pin** 鈥?seek both timelines to the same observable event, then choose **Pin**. Annotation is enabled only after alignment.
+4. **Create labels** 鈥?press a label shortcut. Point labels are placed at the playhead; interval labels are created by dragging over the waveform.
+5. **Review and save** 鈥?adjust boundaries, add notes, undo/redo, save the project, and export only after validation succeeds.
 
-开源许可：MIT（见 LICENSE / NOTICE）。界面图标：Fluent System Icons（MIT）。所属公司：杨凌园上园智能科技有限公司 · https://www.cowmata.com/
+Project saves are written atomically so an interrupted write does not replace a valid project with a partial file.
+
+## Keyboard shortcuts
+
+### Editing and navigation
+
+| Action | Shortcut |
+| --- | --- |
+| Play / pause | `Space` |
+| Save project | `Ctrl+S` |
+| Undo | `Ctrl+Z` |
+| Redo | `Ctrl+Y` or `Ctrl+Shift+Z` |
+| Delete selected event | `Delete` or `Backspace` |
+| Previous / next frame | `[` / `]` |
+| Move playhead by 100 ms | `鈫恅 / `鈫抈 |
+| Previous / next activity | `P` / `N` |
+| Show the full signal range | `F` |
+| Video fullscreen | `F11` or double-click video |
+| Exit fullscreen / cancel pending interval | `Esc` |
+| Calibrate selected model interval | `Ctrl+E` (model-assist mode) |
+
+### Protocol-v4 labels
+
+| Shortcut | Label | Machine code | Type |
+| --- | --- | --- | --- |
+| `1` | Standing | `STANDING` | Interval |
+| `2` | Lying | `LYING` | Interval |
+| `3` | Walking | `WALKING` | Interval |
+| `4` | Straining onset | `STRAINING_ONSET` | Point |
+| `5` | Straining bout | `STRAINING_BOUT` | Interval |
+| `6` | Amniotic sac first visible | `AMNIOTIC_SAC_FIRST_VISIBLE` | Point |
+| `7` | First fetal part visible | `FETAL_PART_FIRST_VISIBLE` | Point |
+| `8` | Calf fully expelled (T0) | `CALF_FULLY_EXPELLED` | Point |
+| `9` | Fetal membranes fully expelled | `FETAL_MEMBRANES_FULLY_EXPELLED` | Point |
+| `Q` | Tail raised | `TAIL_RAISED` | Interval |
+| `W` | Tail wagging | `TAIL_WAGGING` | Interval |
+| `E` | Standing up | `STANDING_UP` | Interval |
+| `R` | Lying down | `LYING_DOWN` | Interval |
+| `A` | Urination | `URINATION` | Interval |
+| `S` | Defecation | `DEFECATION` | Interval |
+| `D` | Manual calving assistance | `MANUAL_CALVING_ASSISTANCE` | Interval |
+| `0` | Synchronization anchor | `SYNC_ANCHOR` | Point, non-trainable |
+
+## Model-assisted review
+
+Model files are not tracked in this repository. Select a local package through **Model assist 鈫?Model package settings鈥?*:
+
+| File | Required | Role |
+| --- | --- | --- |
+| `gbdt_full.joblib` | Yes | Six event classes and posture/walking fallback |
+| `best.pt` | No | `OfflineMultiTaskTCN` for standing, lying, and walking |
+| `inference_config.json` | No | Sensor-scaling overrides for JSON outside the package |
+
+`xgboost` is pinned to `3.2.0` for artifact compatibility. Suggestions are imported as **Pending review** and retain their original class, boundaries, scores, and later human edits. See [Model-assisted annotation](docs/model-assist.md) for the full contract.
+
+## Inputs, projects, and exports
+
+| Item | Purpose |
+| --- | --- |
+| Nine-axis JSON | Continuous accelerometer, gyroscope, magnetometer, and timestamp data |
+| Video | MP4 and other VLC-supported cattle recordings |
+| Project JSON | Alignment, source references, protocol, labels, events, notes, and review state |
+| Events CSV + metadata JSON | Flat event exchange with `label`, `code`, and `en` fields |
+| Aggregated / BORIS CSV | Interoperable interval/point event summary |
+| Training-sample CSV | Timestamped multi-hot samples; set the real `cow_id` before export |
+| IRR CSV | Inter-rater reliability report |
+
+The interface language never rewrites stored annotations. Machine keys such as `STANDING` and `TAIL_RAISED` remain unchanged across English and Chinese sessions.
+
+## Repository layout
+
+```text
+cattle-tail-ring-annotator/
+鈹溾攢鈹€ START_ANNOTATOR.bat     # Offline backup launcher; never installs dependencies
+鈹溾攢鈹€ cowmata_tailring/       # Application, UI, media, annotation, and inference code
+鈹溾攢鈹€ assets/                 # Authorized brand assets and README screenshot
+鈹溾攢鈹€ docs/                   # Usage, model-assist, architecture, and packaging notes
+鈹溾攢鈹€ examples/               # Local-only sample data instructions
+鈹溾攢鈹€ scripts/                # Windows and shell launch helpers
+鈹溾攢鈹€ tests/                  # Automated tests
+鈹斺攢鈹€ .github/                # CI, issue forms, and pull-request template
+```
+
+## Development and verification
+
+```powershell
+pip install -e ".[dev]"
+ruff check cowmata_tailring tests
+pytest -q
+python -m cowmata_tailring --version
+```
+
+This branch contains 3.1.2. Published artifacts are in [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases); historical records remain in [CHANGELOG.md](CHANGELOG.md). Source-only CI deliberately skips the five binary-pack integrity cases; those are required in offline-package acceptance.
+
+## Contributing, security, and citation
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- Report vulnerabilities through the process in [SECURITY.md](SECURITY.md), not a public issue.
+- Cite the software with [CITATION.cff](CITATION.cff).
+- Use [GitHub Issues](https://github.com/zxq309/cattle-tail-ring-annotator/issues) for reproducible bugs and scoped feature requests.
+
+## License and brand assets
+
+Source code is released under the [MIT License](LICENSE). The COWMATA names and logo files in `assets/brand/` are company brand assets and are not relicensed by MIT; see [NOTICE](NOTICE) and [assets/README.md](assets/README.md).
+
+## Latest update
+
+**2026-09-09** 鈥?3.1.2: on-demand IMU/video discovery, supported native recording clocks, single-view priority, off-GUI decoding, hover controls, progress/resume and verified team returns. Existing models, screenshot evidence and safe client updates are retained. [Full changelog](CHANGELOG.md).
