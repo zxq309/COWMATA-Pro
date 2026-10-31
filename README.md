@@ -2,9 +2,9 @@
 
 > **3.2.1 correction (2026-09-09, same-version update):** every IMU record displays the shared reference date/time on its waveform axis, hover readout and editable position field. Startup now requires a release check before opening annotation. Any newer release downloads and installs automatically, then reopens the app; intermediate releases are skipped. Failed checks/updates allow retry or exit, without entering the old workspace. Earlier 3.2.1 clients need a manual download from the existing release; the version number is unchanged.
 
-> **3.2.1 鈥?2026-09-09:** fix default video selection and startup search in large nested projects. Add per-view seek bars and smoother rate changes/seeks, colored record progress, save prompts on exit/completion, and editable reopened labels. Download the [complete offline installer](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1); see [release notes](docs/release-321.md) and [pre-release workflow validation](docs/release-321-validation.md).
+> **3.2.1 — 2026-09-09:** fix default video selection and startup search in large nested projects. Add per-view seek bars and smoother rate changes/seeks, colored record progress, save prompts on exit/completion, and editable reopened labels. Download the [complete offline installer](https://github.com/zxq309/cattle-tail-ring-annotator/releases/tag/v3.2.1); see [release notes](docs/release-321.md) and [pre-release workflow validation](docs/release-321-validation.md).
 
-> **3.2.0 鈥?2026-09-09:** official COWMATA green branding across the UI and Windows icons. New single-camera Behavior Recognition and Health & Reproduction menus, five real model integrations and explicit unavailable algorithms. Retain on-demand records, main-camera priority, resume and team returns; trim the offline package. See the [illustrated Chinese quick start](docs/quick-start-illustrated.pdf), [algorithm boundaries](docs/algorithm-inspection.md) and [validation](docs/release-320-validation.md). Historical recordings below retain their original version.
+> **3.2.0 — 2026-09-09:** official COWMATA green branding across the UI and Windows icons. New single-camera Behavior Recognition and Health & Reproduction menus, five real model integrations and explicit unavailable algorithms. Retain on-demand records, main-camera priority, resume and team returns; trim the offline package. See the [illustrated Chinese quick start](docs/quick-start-illustrated.pdf), [algorithm boundaries](docs/algorithm-inspection.md) and [validation](docs/release-320-validation.md). Historical recordings below retain their original version.
 
 > **Windows offline app:** ordinary users download the complete offline Setup EXE from
 > [Releases](https://github.com/zxq309/cattle-tail-ring-annotator/releases).
@@ -23,7 +23,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[English](README.md) 路 [绠€浣撲腑鏂嘳(README.zh-CN.md) 路 [Project overview](https://github.com/zxq309/cowmata)
+[English](README.md) · [简体中文](README.zh-CN.md) · [Project overview](https://github.com/zxq309/cowmata)
 
 </div>
 
@@ -37,12 +37,12 @@ COWMATA Tail-Ring Annotator is a Windows desktop workstation for reviewing synch
 
 ### Why this tool
 
-- **Video and IMU in one timeline** 鈥?seek, play, zoom, and inspect nine channels without switching applications.
-- **Alignment before annotation** 鈥?formal annotation remains locked until the video and sensor timelines are pinned.
-- **Protocol v4 built in** 鈥?preserve the original 16 behaviour/calving labels and synchronization anchor; append mounting without shifting historic indices.
-- **Human-controlled model assistance** 鈥?candidates enter a review queue and never become labels without confirmation.
-- **Traceable output** 鈥?stable machine codes, display labels, timestamps, provenance fields, and validation-aware exports.
-- **Bilingual UI** 鈥?English and Simplified Chinese affect display only; persisted label codes remain stable.
+- **Video and IMU in one timeline** — seek, play, zoom, and inspect nine channels without switching applications.
+- **Alignment before annotation** — formal annotation remains locked until the video and sensor timelines are pinned.
+- **Protocol v4 built in** — preserve the original 16 behaviour/calving labels and synchronization anchor; append mounting without shifting historic indices.
+- **Human-controlled model assistance** — candidates enter a review queue and never become labels without confirmation.
+- **Traceable output** — stable machine codes, display labels, timestamps, provenance fields, and validation-aware exports.
+- **Bilingual UI** — English and Simplified Chinese affect display only; persisted label codes remain stable.
 
 ## Real application demos
 
@@ -80,9 +80,9 @@ The source and pure logic tests also run outside Windows, but native playback an
 
 ### One-click Windows launch
 
-Download the complete offline **`COWMATA-...-Setup.exe`** 鈫?review the license 鈫?select a parent folder and accept/edit the suggested **COWMATA Annotator** subfolder 鈫?install 鈫?launch. The destination must not overwrite unrelated files. Thereafter, use the desktop/Start menu shortcut and open your data project or any original IMU JSON. All private runtimes and models are included; no online bootstrap is required. Updater-enabled installations can use **Help 鈫?About 鈫?Version and updates**.
+Download the complete offline **`COWMATA-...-Setup.exe`** → review the license → select a parent folder and accept/edit the suggested **COWMATA Annotator** subfolder → install → launch. The destination must not overwrite unrelated files. Thereafter, use the desktop/Start menu shortcut and open your data project or any original IMU JSON. All private runtimes and models are included; no online bootstrap is required. Updater-enabled installations can use **Help → About → Version and updates**.
 
-The application provides A/B/C layouts, 1鈥? selectable views, GPU playback, cross-file continuation, exact original-frame review, offline RapidOCR PP-OCRv6 medium, five versioned 20260906 candidate models, self-contained IMU annotation export, and independent history review. Predictions are candidates, never automatic ground truth. See [usage](浣跨敤璇存槑.txt).
+The application provides A/B/C layouts, 1–8 selectable views, GPU playback, cross-file continuation, exact original-frame review, offline RapidOCR PP-OCRv6 medium, five versioned 20260906 candidate models, self-contained IMU annotation export, and independent history review. Predictions are candidates, never automatic ground truth. See [usage](使用说明.txt).
 
 ### Source development (not required for annotators)
 
@@ -117,7 +117,7 @@ The scripts under `scripts/` remain available for model-assisted and diagnostic 
 
 ## Project-workspace workflow
 
-Open the existing data-project folder 鈫?let the background index discover IMU devices and video views 鈫?choose the device/cow and 1鈥? views 鈫?verify clock anchors 鈫?review actual video and label the original IMU interval 鈫?export a self-contained annotation JSON. Open that JSON independently later; original recording identities and calibration locate the video, not the annotation filename.
+Open the existing data-project folder → let the background index discover IMU devices and video views → choose the device/cow and 1–8 views → verify clock anchors → review actual video and label the original IMU interval → export a self-contained annotation JSON. Open that JSON independently later; original recording identities and calibration locate the video, not the annotation filename.
 
 While four or more views and candidate inference run together, main-camera priority protects interaction; auxiliary frames are clearly marked previews, not current evidence. Pause to verify exact original frames across views. See [Windows distribution and GPU details](docs/windows-distribution.md) and [OCR integration](docs/ocr-lightweight-integration.md).
 
@@ -137,11 +137,11 @@ The media used for the screenshot is intentionally excluded from Git because the
 
 ## Annotation workflow
 
-1. **Open IMU JSON** 鈥?confirm sample count, frequency, time range, gaps, and the rendered nine-axis waveforms.
-2. **Open video** 鈥?load the matching recording and inspect its real duration.
-3. **Align and pin** 鈥?seek both timelines to the same observable event, then choose **Pin**. Annotation is enabled only after alignment.
-4. **Create labels** 鈥?press a label shortcut. Point labels are placed at the playhead; interval labels are created by dragging over the waveform.
-5. **Review and save** 鈥?adjust boundaries, add notes, undo/redo, save the project, and export only after validation succeeds.
+1. **Open IMU JSON** — confirm sample count, frequency, time range, gaps, and the rendered nine-axis waveforms.
+2. **Open video** — load the matching recording and inspect its real duration.
+3. **Align and pin** — seek both timelines to the same observable event, then choose **Pin**. Annotation is enabled only after alignment.
+4. **Create labels** — press a label shortcut. Point labels are placed at the playhead; interval labels are created by dragging over the waveform.
+5. **Review and save** — adjust boundaries, add notes, undo/redo, save the project, and export only after validation succeeds.
 
 Project saves are written atomically so an interrupted write does not replace a valid project with a partial file.
 
@@ -157,7 +157,7 @@ Project saves are written atomically so an interrupted write does not replace a 
 | Redo | `Ctrl+Y` or `Ctrl+Shift+Z` |
 | Delete selected event | `Delete` or `Backspace` |
 | Previous / next frame | `[` / `]` |
-| Move playhead by 100 ms | `鈫恅 / `鈫抈 |
+| Move playhead by 100 ms | `←` / `→` |
 | Previous / next activity | `P` / `N` |
 | Show the full signal range | `F` |
 | Video fullscreen | `F11` or double-click video |
@@ -188,7 +188,7 @@ Project saves are written atomically so an interrupted write does not replace a 
 
 ## Model-assisted review
 
-Model files are not tracked in this repository. Select a local package through **Model assist 鈫?Model package settings鈥?*:
+Model files are not tracked in this repository. Select a local package through **Model assist → Model package settings…**:
 
 | File | Required | Role |
 | --- | --- | --- |
@@ -216,14 +216,14 @@ The interface language never rewrites stored annotations. Machine keys such as `
 
 ```text
 cattle-tail-ring-annotator/
-鈹溾攢鈹€ START_ANNOTATOR.bat     # Offline backup launcher; never installs dependencies
-鈹溾攢鈹€ cowmata_tailring/       # Application, UI, media, annotation, and inference code
-鈹溾攢鈹€ assets/                 # Authorized brand assets and README screenshot
-鈹溾攢鈹€ docs/                   # Usage, model-assist, architecture, and packaging notes
-鈹溾攢鈹€ examples/               # Local-only sample data instructions
-鈹溾攢鈹€ scripts/                # Windows and shell launch helpers
-鈹溾攢鈹€ tests/                  # Automated tests
-鈹斺攢鈹€ .github/                # CI, issue forms, and pull-request template
+├── START_ANNOTATOR.bat     # Offline backup launcher; never installs dependencies
+├── cowmata_tailring/       # Application, UI, media, annotation, and inference code
+├── assets/                 # Authorized brand assets and README screenshot
+├── docs/                   # Usage, model-assist, architecture, and packaging notes
+├── examples/               # Local-only sample data instructions
+├── scripts/                # Windows and shell launch helpers
+├── tests/                  # Automated tests
+└── .github/                # CI, issue forms, and pull-request template
 ```
 
 ## Development and verification
@@ -250,4 +250,4 @@ Source code is released under the [MIT License](LICENSE). The COWMATA names and 
 
 ## Latest update
 
-**2026-09-09** 鈥?3.1.2: on-demand IMU/video discovery, supported native recording clocks, single-view priority, off-GUI decoding, hover controls, progress/resume and verified team returns. Existing models, screenshot evidence and safe client updates are retained. [Full changelog](CHANGELOG.md).
+**2026-09-09** — 3.1.2: on-demand IMU/video discovery, supported native recording clocks, single-view priority, off-GUI decoding, hover controls, progress/resume and verified team returns. Existing models, screenshot evidence and safe client updates are retained. [Full changelog](CHANGELOG.md).
