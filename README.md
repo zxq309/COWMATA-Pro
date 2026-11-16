@@ -23,7 +23,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows)](#requirements)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [Project overview](https://github.com/zxq309/cowmata)
+Chinese: [README.zh-CN.md](README.zh-CN.md) · [Project overview](https://github.com/zxq309/cowmata)
 
 </div>
 
@@ -82,7 +82,7 @@ The source and pure logic tests also run outside Windows, but native playback an
 
 Download the complete offline **`COWMATA-...-Setup.exe`** → review the license → select a parent folder and accept/edit the suggested **COWMATA Annotator** subfolder → install → launch. The destination must not overwrite unrelated files. Thereafter, use the desktop/Start menu shortcut and open your data project or any original IMU JSON. All private runtimes and models are included; no online bootstrap is required. Updater-enabled installations can use **Help → About → Version and updates**.
 
-The application provides A/B/C layouts, 1–8 selectable views, GPU playback, cross-file continuation, exact original-frame review, offline RapidOCR PP-OCRv6 medium, five versioned 20260906 candidate models, self-contained IMU annotation export, and independent history review. Predictions are candidates, never automatic ground truth. See [usage](使用说明.txt).
+The application provides A/B/C layouts, 1–8 selectable views, GPU playback, cross-file continuation, exact original-frame review, offline RapidOCR PP-OCRv6 medium, five versioned 20260906 candidate models, self-contained IMU annotation export, and independent history review. Predictions are candidates, never automatic ground truth. See [usage](%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E.txt).
 
 ### Source development (not required for annotators)
 
